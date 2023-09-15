@@ -19,15 +19,17 @@ var (
 	ErrCouldNotSetNetworkInterfaces = errors.New("could not set network interfaces")
 	ErrCouldNotStartInstance        = errors.New("could not start instance")
 	ErrCouldNotStopInstance         = errors.New("could not stop instance")
+	ErrCouldNotPauseInstance        = errors.New("could not pause instance")
+	ErrCouldNotCreateSnapshot       = errors.New("could not create snapshot")
 )
 
-func putJSON(client *http.Client, body any, resource string) error {
+func submitJSON(method string, client *http.Client, body any, resource string) error {
 	p, err := json.Marshal(body)
 	if err != nil {
 		return err
 	}
 
-	req, err := http.NewRequest(http.MethodPut, "http://localhost/"+resource, bytes.NewReader(p))
+	req, err := http.NewRequest(method, "http://localhost/"+resource, bytes.NewReader(p))
 	if err != nil {
 		return err
 	}
@@ -62,7 +64,8 @@ func StartVM(
 	hostInterface string,
 	hostMAC string,
 ) error {
-	if err := putJSON(
+	if err := submitJSON(
+		http.MethodPut,
 		client,
 		&v1.BootSource{
 			InitrdPath:      initramfsPath,
@@ -74,7 +77,8 @@ func StartVM(
 		return fmt.Errorf("%w: %s", ErrCouldNotSetBootSource, err)
 	}
 
-	if err := putJSON(
+	if err := submitJSON(
+		http.MethodPut,
 		client,
 		&v1.Drive{
 			DriveID:      "root",
@@ -87,7 +91,8 @@ func StartVM(
 		return fmt.Errorf("%w: %s", ErrCouldNotSetDrive, err)
 	}
 
-	if err := putJSON(
+	if err := submitJSON(
+		http.MethodPut,
 		client,
 		&v1.MachineConfig{
 			VCPUCount:  cpuCount,
@@ -98,7 +103,8 @@ func StartVM(
 		return fmt.Errorf("%w: %s", ErrCouldNotSetMachineConfig, err)
 	}
 
-	if err := putJSON(
+	if err := submitJSON(
+		http.MethodPut,
 		client,
 		&v1.NetworkInterface{
 			IfaceID:     hostInterface,
@@ -110,7 +116,8 @@ func StartVM(
 		return fmt.Errorf("%w: %s", ErrCouldNotSetNetworkInterfaces, err)
 	}
 
-	if err := putJSON(
+	if err := submitJSON(
+		http.MethodPut,
 		client,
 		&v1.Action{
 			ActionType: "InstanceStart",
@@ -126,7 +133,8 @@ func StartVM(
 func StopVM(
 	client *http.Client,
 ) error {
-	if err := putJSON(
+	if err := submitJSON(
+		http.MethodPut,
 		client,
 		&v1.Action{
 			ActionType: "SendCtrlAltDel",
@@ -134,6 +142,40 @@ func StopVM(
 		"actions",
 	); err != nil {
 		return fmt.Errorf("%w: %s", ErrCouldNotStopInstance, err)
+	}
+
+	return nil
+}
+
+func SnapshotVM(
+	client *http.Client,
+
+	statePath string,
+	memoryPath string,
+) error {
+	if err := submitJSON(
+		http.MethodPatch,
+		client,
+		&v1.VirtualMachineStateRequest{
+			State: "Paused",
+		},
+		"vm",
+	); err != nil {
+		return fmt.Errorf("%w: %s", ErrCouldNotPauseInstance, err)
+	}
+
+	if err := submitJSON(
+		http.MethodPut,
+		client,
+		&v1.SnapshotCreateRequest{
+			SnapshotType:   "Full",
+			SnapshotPath:   statePath,
+			MemoryFilePath: memoryPath,
+			Version:        "1.1.0",
+		},
+		"snapshot/create",
+	); err != nil {
+		return fmt.Errorf("%w: %s", ErrCouldNotCreateSnapshot, err)
 	}
 
 	return nil

@@ -27,3 +27,14 @@ type NetworkInterface struct {
 	GuestMAC    string `json:"guest_mac"`
 	HostDevName string `json:"host_dev_name"`
 }
+
+type VirtualMachineStateRequest struct {
+	State string `json:"state"`
+}
+
+type SnapshotCreateRequest struct {
+	SnapshotType   string `json:"snapshot_type"`
+	SnapshotPath   string `json:"snapshot_path"`
+	MemoryFilePath string `json:"mem_file_path"`
+	Version        string `json:"version"`
+}

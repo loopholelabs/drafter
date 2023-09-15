@@ -15,6 +15,8 @@ func main() {
 	initramfsPath := flag.String("initramfs-path", "out/template/architekt.initramfs", "initramfs path")
 	kernelPath := flag.String("kernel-path", "out/template/architekt.kernel", "Kernel path")
 	diskPath := flag.String("disk-path", "out/template/architekt.disk", "Disk path")
+	statePath := flag.String("state-path", "out/template/architekt.state", "State path")
+	memoryPath := flag.String("memory-path", "out/template/architekt.memory", "Memory path")
 
 	cpuCount := flag.Int("cpu-count", 1, "CPU count")
 	memorySize := flag.Int("memory-size", 1024, "Memory size (in MB)")
@@ -24,6 +26,7 @@ func main() {
 
 	start := flag.Bool("start", false, "Whether to start the VM")
 	stop := flag.Bool("stop", false, "Whether to stop the VM")
+	snapshot := flag.Bool("snapshot", false, "Whether to snapshot the VM")
 
 	flag.Parse()
 
@@ -48,6 +51,17 @@ func main() {
 
 			*hostInterface,
 			*hostMAC,
+		); err != nil {
+			panic(err)
+		}
+	}
+
+	if *snapshot {
+		if err := firecracker.SnapshotVM(
+			client,
+
+			*statePath,
+			*memoryPath,
 		); err != nil {
 			panic(err)
 		}
