@@ -17,9 +17,8 @@ var (
 )
 
 type FirecrackerInstance struct {
-	bin      string
-	logLevel string
-	logPath  string
+	bin     string
+	verbose bool
 
 	socketDir string
 	cmd       *exec.Cmd
@@ -30,13 +29,11 @@ type FirecrackerInstance struct {
 
 func NewFirecrackerInstance(
 	bin string,
-	logLevel string,
-	logPath string,
+	verbose bool,
 ) *FirecrackerInstance {
 	return &FirecrackerInstance{
-		bin:      bin,
-		logLevel: logLevel,
-		logPath:  logPath,
+		bin:     bin,
+		verbose: verbose,
 
 		wg:   sync.WaitGroup{},
 		errs: make(chan error),
@@ -72,7 +69,18 @@ func (i *FirecrackerInstance) Start() (string, error) {
 
 	socketPath := filepath.Join(i.socketDir, "firecracker.sock")
 
-	i.cmd = exec.Command(i.bin, "--level", i.logLevel, "--log-path", i.logPath, "--api-sock", socketPath)
+	execLine := []string{i.bin, "--api-sock", socketPath}
+	if i.verbose {
+		execLine = append(execLine, "--level", "Debug", "--log-path", "/dev/stderr")
+	}
+
+	i.cmd = exec.Command(execLine[0], execLine[1:]...)
+	if i.verbose {
+		i.cmd.Stdout = os.Stdout
+		i.cmd.Stderr = os.Stderr
+		i.cmd.Stdin = os.Stdin
+	}
+
 	if err := i.cmd.Start(); err != nil {
 		return "", err
 	}
