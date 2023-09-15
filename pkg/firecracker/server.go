@@ -16,7 +16,7 @@ var (
 	errSignalKilled = errors.New("signal: killed")
 )
 
-type FirecrackerInstance struct {
+type Server struct {
 	bin string
 
 	verbose      bool
@@ -30,14 +30,14 @@ type FirecrackerInstance struct {
 	errs chan error
 }
 
-func NewFirecrackerInstance(
+func NewServer(
 	bin string,
 
 	verbose bool,
 	enableOutput bool,
 	enableInput bool,
-) *FirecrackerInstance {
-	return &FirecrackerInstance{
+) *Server {
+	return &Server{
 		bin: bin,
 
 		verbose:      verbose,
@@ -49,8 +49,8 @@ func NewFirecrackerInstance(
 	}
 }
 
-func (i *FirecrackerInstance) Wait() error {
-	for err := range i.errs {
+func (s *Server) Wait() error {
+	for err := range s.errs {
 		if err != nil {
 			return err
 		}
@@ -59,9 +59,9 @@ func (i *FirecrackerInstance) Wait() error {
 	return nil
 }
 
-func (i *FirecrackerInstance) Start() (string, error) {
+func (s *Server) Start() (string, error) {
 	var err error
-	i.socketDir, err = os.MkdirTemp("", "")
+	s.socketDir, err = os.MkdirTemp("", "")
 	if err != nil {
 		return "", err
 	}
@@ -72,42 +72,42 @@ func (i *FirecrackerInstance) Start() (string, error) {
 	}
 	defer watcher.Close()
 
-	if err := watcher.AddWatch(i.socketDir, inotify.InCreate); err != nil {
+	if err := watcher.AddWatch(s.socketDir, inotify.InCreate); err != nil {
 		return "", err
 	}
 
-	socketPath := filepath.Join(i.socketDir, "firecracker.sock")
+	socketPath := filepath.Join(s.socketDir, "firecracker.sock")
 
-	execLine := []string{i.bin, "--api-sock", socketPath}
-	if i.verbose {
+	execLine := []string{s.bin, "--api-sock", socketPath}
+	if s.verbose {
 		execLine = append(execLine, "--level", "Debug", "--log-path", "/dev/stderr")
 	}
 
-	i.cmd = exec.Command(execLine[0], execLine[1:]...)
-	if i.enableOutput {
-		i.cmd.Stdout = os.Stdout
-		i.cmd.Stderr = os.Stderr
+	s.cmd = exec.Command(execLine[0], execLine[1:]...)
+	if s.enableOutput {
+		s.cmd.Stdout = os.Stdout
+		s.cmd.Stderr = os.Stderr
 	}
 
-	if i.enableInput {
-		i.cmd.Stdin = os.Stdin
+	if s.enableInput {
+		s.cmd.Stdin = os.Stdin
 	}
 
-	if err := i.cmd.Start(); err != nil {
+	if err := s.cmd.Start(); err != nil {
 		return "", err
 	}
 
-	i.wg.Add(1)
+	s.wg.Add(1)
 	go func() {
-		defer i.wg.Done()
+		defer s.wg.Done()
 
-		if err := i.cmd.Wait(); err != nil && err.Error() != errSignalKilled.Error() {
-			i.errs <- err
+		if err := s.cmd.Wait(); err != nil && err.Error() != errSignalKilled.Error() {
+			s.errs <- err
 
 			return
 		}
 
-		close(i.errs)
+		close(s.errs)
 	}()
 
 	for ev := range watcher.Event {
@@ -119,14 +119,14 @@ func (i *FirecrackerInstance) Start() (string, error) {
 	return "", ErrNoSocketCreated
 }
 
-func (i *FirecrackerInstance) Stop() error {
-	if i.cmd != nil && i.cmd.Process != nil {
-		_ = i.cmd.Process.Kill()
+func (s *Server) Stop() error {
+	if s.cmd != nil && s.cmd.Process != nil {
+		_ = s.cmd.Process.Kill()
 	}
 
-	i.wg.Wait()
+	s.wg.Wait()
 
-	_ = os.RemoveAll(i.socketDir)
+	_ = os.RemoveAll(s.socketDir)
 
 	return nil
 }

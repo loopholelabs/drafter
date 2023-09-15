@@ -3,10 +3,10 @@ package main
 import (
 	"flag"
 	"fmt"
-	"os/exec"
 	"sync"
 
 	"github.com/loopholelabs/architekt/pkg/firecracker"
+	"github.com/loopholelabs/architekt/pkg/network"
 )
 
 func main() {
@@ -22,33 +22,18 @@ func main() {
 
 	flag.Parse()
 
-	if output, err := exec.Command("ip", "tuntap", "add", *hostInterface, "mode", "tap").CombinedOutput(); err != nil {
-		panic(string(output))
+	tap := network.NewTAP(
+		*hostInterface,
+		*hostMAC,
+		*bridgeInterface,
+	)
+
+	if err := tap.Open(); err != nil {
+		panic(err)
 	}
+	defer tap.Close()
 
-	if output, err := exec.Command("ip", "link", "set", "dev", *hostInterface, "master", *bridgeInterface).CombinedOutput(); err != nil {
-		panic(string(output))
-	}
-
-	if output, err := exec.Command("ip", "link", "set", "dev", *hostInterface, "address", *hostMAC).CombinedOutput(); err != nil {
-		panic(string(output))
-	}
-
-	if output, err := exec.Command("ip", "link", "set", *hostInterface, "up").CombinedOutput(); err != nil {
-		panic(string(output))
-	}
-
-	if output, err := exec.Command("sysctl", "-w", "net.ipv4.conf."+*hostInterface+".proxy_arp=1").CombinedOutput(); err != nil {
-		panic(string(output))
-	}
-
-	defer func() {
-		if output, err := exec.Command("ip", "tuntap", "del", "dev", *hostInterface, "mode", "tap").CombinedOutput(); err != nil {
-			panic(string(output))
-		}
-	}()
-
-	instance := firecracker.NewFirecrackerInstance(
+	srv := firecracker.NewServer(
 		*firecrackerBin,
 
 		*verbose,
@@ -62,16 +47,16 @@ func main() {
 	go func() {
 		defer wg.Done()
 
-		if err := instance.Wait(); err != nil {
+		if err := srv.Wait(); err != nil {
 			panic(err)
 		}
 	}()
 
-	socket, err := instance.Start()
+	socket, err := srv.Start()
 	if err != nil {
 		panic(err)
 	}
-	defer instance.Stop()
+	defer srv.Stop()
 
 	fmt.Println(socket)
 
