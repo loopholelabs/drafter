@@ -21,3 +21,9 @@ type MachineConfig struct {
 type Action struct {
 	ActionType string `json:"action_type"`
 }
+
+type NetworkInterface struct {
+	IfaceID     string `json:"iface_id"`
+	GuestMAC    string `json:"guest_mac"`
+	HostDevName string `json:"host_dev_name"`
+}

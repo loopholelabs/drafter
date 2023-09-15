@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"path"
 
 	v1 "github.com/loopholelabs/architekt/pkg/api/http/firecracker/v1"
 )
@@ -50,6 +51,9 @@ func main() {
 	cpuCount := flag.Int("cpu-count", 1, "CPU count")
 	memorySize := flag.Int("memory-size", 1024, "Memory size (in MB)")
 
+	hostInterface := flag.String("host-interface", "vm0", "Host interface name")
+	hostMAC := flag.String("host-mac", "02:0e:d9:fd:68:3d", "Host MAC address")
+
 	start := flag.Bool("start", false, "Whether to start the VM")
 	stop := flag.Bool("stop", false, "Whether to stop the VM")
 
@@ -84,7 +88,7 @@ func main() {
 				IsRootDevice: true,
 				IsReadOnly:   false,
 			},
-			"drives/root",
+			path.Join("drives", "root"),
 		); err != nil {
 			panic(err)
 		}
@@ -96,6 +100,18 @@ func main() {
 				MemSizeMib: *memorySize,
 			},
 			"machine-config",
+		); err != nil {
+			panic(err)
+		}
+
+		if err := putJSON(
+			client,
+			&v1.NetworkInterface{
+				IfaceID:     *hostInterface,
+				GuestMAC:    *hostMAC,
+				HostDevName: *hostInterface,
+			},
+			path.Join("network-interfaces", *hostInterface),
 		); err != nil {
 			panic(err)
 		}

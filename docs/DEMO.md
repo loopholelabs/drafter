@@ -13,7 +13,7 @@ sudo install ./build/cargo_target/x86_64-unknown-linux-gnu/debug/firecracker /us
 ## Setting up Networking
 
 ```shell
-export GATEWAY_INTERFACE="wg-mullvad"
+export GATEWAY_INTERFACE="wlp0s20f3"
 export BRIDGE_INTERFACE="firecracker0"
 export BRIDGE_CIDR="192.168.233.1/24"
 
@@ -106,4 +106,11 @@ make -j$(nproc) vmlinux
 EOT
 
 cp /tmp/kernel/vmlinux out/template/architekt.kernel
+```
+
+## Starting Manager and Worker
+
+```shell
+go build -o /tmp/architect-worker ./cmd/architect-worker/ && sudo /tmp/architect-worker
+go build -o /tmp/architect-manager ./cmd/architect-manager/ && sudo /tmp/architect-manager --firecracker-socket /tmp/672476761/firecracker.sock --start
 ```
