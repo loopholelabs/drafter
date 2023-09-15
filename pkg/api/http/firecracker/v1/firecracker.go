@@ -38,3 +38,15 @@ type SnapshotCreateRequest struct {
 	MemoryFilePath string `json:"mem_file_path"`
 	Version        string `json:"version"`
 }
+
+type SnapshotLoadRequest struct {
+	SnapshotPath         string                           `json:"snapshot_path"`
+	MemoryBackend        SnapshotLoadRequestMemoryBackend `json:"mem_backend"`
+	EnableDiffSnapshots  bool                             `json:"enable_diff_snapshots"`
+	ResumeVirtualMachine bool                             `json:"resume_vm"`
+}
+
+type SnapshotLoadRequestMemoryBackend struct {
+	BackendPath string `json:"backend_path"`
+	BackendType string `json:"backend_type"`
+}

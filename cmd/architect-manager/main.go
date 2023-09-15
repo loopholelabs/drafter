@@ -26,7 +26,8 @@ func main() {
 
 	start := flag.Bool("start", false, "Whether to start the VM")
 	stop := flag.Bool("stop", false, "Whether to stop the VM")
-	snapshot := flag.Bool("snapshot", false, "Whether to snapshot the VM")
+	createSnapshot := flag.Bool("create-snapshot", false, "Whether to create a VM snapshot")
+	resumeSnapshot := flag.Bool("resume-snapshot", false, "Whether to resume a VM snapshot")
 
 	flag.Parse()
 
@@ -56,8 +57,8 @@ func main() {
 		}
 	}
 
-	if *snapshot {
-		if err := firecracker.SnapshotVM(
+	if *createSnapshot {
+		if err := firecracker.CreateSnapshot(
 			client,
 
 			*statePath,
@@ -69,6 +70,17 @@ func main() {
 
 	if *stop {
 		if err := firecracker.StopVM(client); err != nil {
+			panic(err)
+		}
+	}
+
+	if *resumeSnapshot {
+		if err := firecracker.ResumeSnapshot(
+			client,
+
+			*statePath,
+			*memoryPath,
+		); err != nil {
 			panic(err)
 		}
 	}

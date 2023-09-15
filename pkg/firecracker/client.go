@@ -21,6 +21,7 @@ var (
 	ErrCouldNotStopInstance         = errors.New("could not stop instance")
 	ErrCouldNotPauseInstance        = errors.New("could not pause instance")
 	ErrCouldNotCreateSnapshot       = errors.New("could not create snapshot")
+	ErrCouldNotResumeSnapshot       = errors.New("could not resume snapshot")
 )
 
 func submitJSON(method string, client *http.Client, body any, resource string) error {
@@ -147,7 +148,7 @@ func StopVM(
 	return nil
 }
 
-func SnapshotVM(
+func CreateSnapshot(
 	client *http.Client,
 
 	statePath string,
@@ -176,6 +177,32 @@ func SnapshotVM(
 		"snapshot/create",
 	); err != nil {
 		return fmt.Errorf("%w: %s", ErrCouldNotCreateSnapshot, err)
+	}
+
+	return nil
+}
+
+func ResumeSnapshot(
+	client *http.Client,
+
+	statePath string,
+	memoryPath string,
+) error {
+	if err := submitJSON(
+		http.MethodPut,
+		client,
+		&v1.SnapshotLoadRequest{
+			SnapshotPath: statePath,
+			MemoryBackend: v1.SnapshotLoadRequestMemoryBackend{
+				BackendType: "File",
+				BackendPath: memoryPath,
+			},
+			EnableDiffSnapshots:  false,
+			ResumeVirtualMachine: true,
+		},
+		"snapshot/load",
+	); err != nil {
+		return fmt.Errorf("%w: %s", ErrCouldNotResumeSnapshot, err)
 	}
 
 	return nil
