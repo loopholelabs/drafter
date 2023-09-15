@@ -17,8 +17,11 @@ var (
 )
 
 type FirecrackerInstance struct {
-	bin     string
-	verbose bool
+	bin string
+
+	verbose      bool
+	enableOutput bool
+	enableInput  bool
 
 	socketDir string
 	cmd       *exec.Cmd
@@ -29,11 +32,17 @@ type FirecrackerInstance struct {
 
 func NewFirecrackerInstance(
 	bin string,
+
 	verbose bool,
+	enableOutput bool,
+	enableInput bool,
 ) *FirecrackerInstance {
 	return &FirecrackerInstance{
-		bin:     bin,
-		verbose: verbose,
+		bin: bin,
+
+		verbose:      verbose,
+		enableOutput: enableOutput,
+		enableInput:  enableInput,
 
 		wg:   sync.WaitGroup{},
 		errs: make(chan error),
@@ -75,9 +84,12 @@ func (i *FirecrackerInstance) Start() (string, error) {
 	}
 
 	i.cmd = exec.Command(execLine[0], execLine[1:]...)
-	if i.verbose {
+	if i.enableOutput {
 		i.cmd.Stdout = os.Stdout
 		i.cmd.Stderr = os.Stderr
+	}
+
+	if i.enableInput {
 		i.cmd.Stdin = os.Stdin
 	}
 
