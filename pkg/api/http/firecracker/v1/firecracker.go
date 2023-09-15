@@ -50,3 +50,8 @@ type SnapshotLoadRequestMemoryBackend struct {
 	BackendPath string `json:"backend_path"`
 	BackendType string `json:"backend_type"`
 }
+
+type SnapshotNoMemoryCreateRequest struct {
+	SnapshotPath string `json:"snapshot_path"`
+	Version      string `json:"version"`
+}

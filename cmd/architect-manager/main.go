@@ -28,6 +28,7 @@ func main() {
 	stop := flag.Bool("stop", false, "Whether to stop the VM")
 	createSnapshot := flag.Bool("create-snapshot", false, "Whether to create a VM snapshot")
 	resumeSnapshot := flag.Bool("resume-snapshot", false, "Whether to resume a VM snapshot")
+	flushSnapshot := flag.Bool("flush-snapshot", false, "Whether to flush a VM snapshot")
 
 	flag.Parse()
 
@@ -80,6 +81,16 @@ func main() {
 
 			*statePath,
 			*memoryPath,
+		); err != nil {
+			panic(err)
+		}
+	}
+
+	if *flushSnapshot {
+		if err := firecracker.FlushSnapshot(
+			client,
+
+			*statePath,
 		); err != nil {
 			panic(err)
 		}
