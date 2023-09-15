@@ -50,6 +50,9 @@ func main() {
 	cpuCount := flag.Int("cpu-count", 1, "CPU count")
 	memorySize := flag.Int("memory-size", 1024, "Memory size (in MB)")
 
+	start := flag.Bool("start", false, "Whether to start the VM")
+	stop := flag.Bool("stop", false, "Whether to stop the VM")
+
 	flag.Parse()
 
 	client := &http.Client{
@@ -60,49 +63,63 @@ func main() {
 		},
 	}
 
-	if err := putJSON(
-		client,
-		&v1.BootSource{
-			InitrdPath:      *initramfsPath,
-			KernelImagePath: *kernelPath,
-			BootArgs:        "console=ttyS0 panic=1 pci=off modules=ext4 rootfstype=ext4 i8042.noaux i8042.nomux i8042.nopnp i8042.dumbkbd rootflags=rw",
-		},
-		"boot-source",
-	); err != nil {
-		panic(err)
+	if *start {
+		if err := putJSON(
+			client,
+			&v1.BootSource{
+				InitrdPath:      *initramfsPath,
+				KernelImagePath: *kernelPath,
+				BootArgs:        "console=ttyS0 panic=1 pci=off modules=ext4 rootfstype=ext4 i8042.noaux i8042.nomux i8042.nopnp i8042.dumbkbd rootflags=rw",
+			},
+			"boot-source",
+		); err != nil {
+			panic(err)
+		}
+
+		if err := putJSON(
+			client,
+			&v1.Drive{
+				DriveID:      "root",
+				PathOnHost:   *diskPath,
+				IsRootDevice: true,
+				IsReadOnly:   false,
+			},
+			"drives/root",
+		); err != nil {
+			panic(err)
+		}
+
+		if err := putJSON(
+			client,
+			&v1.MachineConfig{
+				VCPUCount:  *cpuCount,
+				MemSizeMib: *memorySize,
+			},
+			"machine-config",
+		); err != nil {
+			panic(err)
+		}
+
+		if err := putJSON(
+			client,
+			&v1.Action{
+				ActionType: "InstanceStart",
+			},
+			"actions",
+		); err != nil {
+			panic(err)
+		}
 	}
 
-	if err := putJSON(
-		client,
-		&v1.Drive{
-			DriveID:      "root",
-			PathOnHost:   *diskPath,
-			IsRootDevice: true,
-			IsReadOnly:   false,
-		},
-		"drives/root",
-	); err != nil {
-		panic(err)
-	}
-
-	if err := putJSON(
-		client,
-		&v1.MachineConfig{
-			VCPUCount:  *cpuCount,
-			MemSizeMib: *memorySize,
-		},
-		"machine-config",
-	); err != nil {
-		panic(err)
-	}
-
-	if err := putJSON(
-		client,
-		&v1.Action{
-			ActionType: "InstanceStart",
-		},
-		"actions",
-	); err != nil {
-		panic(err)
+	if *stop {
+		if err := putJSON(
+			client,
+			&v1.Action{
+				ActionType: "SendCtrlAltDel",
+			},
+			"actions",
+		); err != nil {
+			panic(err)
+		}
 	}
 }

@@ -106,6 +106,8 @@ func (i *FirecrackerInstance) Start() (string, error) {
 
 			return
 		}
+
+		close(i.errs)
 	}()
 
 	for ev := range watcher.Event {
@@ -125,8 +127,6 @@ func (i *FirecrackerInstance) Stop() error {
 	i.wg.Wait()
 
 	_ = os.RemoveAll(i.socketDir)
-
-	close(i.errs)
 
 	return nil
 }

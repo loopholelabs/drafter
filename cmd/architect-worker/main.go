@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"sync"
 
 	"github.com/loopholelabs/architekt/pkg/firecracker"
 )
@@ -23,7 +24,12 @@ func main() {
 		*enableInput,
 	)
 
+	var wg sync.WaitGroup
+
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
+
 		if err := instance.Wait(); err != nil {
 			panic(err)
 		}
@@ -37,5 +43,5 @@ func main() {
 
 	fmt.Println(socket)
 
-	select {}
+	wg.Wait()
 }
