@@ -62,10 +62,6 @@ func (s *Server) Wait() error {
 }
 
 func (s *Server) Start() error {
-	if err := os.Remove(s.socketPath); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-
 	watcher, err := inotify.NewWatcher()
 	if err != nil {
 		return err
@@ -124,7 +120,7 @@ func (s *Server) Stop() error {
 
 	s.wg.Wait()
 
-	_ = os.RemoveAll(s.socketPath)
+	_ = os.Remove(s.socketPath)
 
 	return nil
 }

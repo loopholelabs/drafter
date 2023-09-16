@@ -11,7 +11,7 @@ import (
 
 func main() {
 	firecrackerBin := flag.String("firecracker-bin", "firecracker", "Firecracker binary")
-	firecrackerSocketPath := flag.String("firecracker-socket-path", "firecracker.sock", "Firecracker socket")
+	firecrackerSocketPath := flag.String("firecracker-socket-path", "firecracker.sock", "Firecracker socket path")
 
 	verbose := flag.Bool("verbose", false, "Whether to enable verbose logging")
 	enableOutput := flag.Bool("enable-output", true, "Whether to enable VM stdout and stderr")

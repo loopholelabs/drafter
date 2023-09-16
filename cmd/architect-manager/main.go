@@ -17,7 +17,7 @@ func main() {
 		panic(err)
 	}
 
-	firecrackerSocketPath := flag.String("firecracker-socket-path", "firecracker.sock", "Firecracker socket")
+	firecrackerSocketPath := flag.String("firecracker-socket-path", "firecracker.sock", "Firecracker socket path")
 
 	initramfsPath := flag.String("initramfs-path", "out/template/architekt.initramfs", "initramfs path")
 	kernelPath := flag.String("kernel-path", "out/template/architekt.kernel", "Kernel path")
@@ -32,7 +32,7 @@ func main() {
 	hostMAC := flag.String("host-mac", "02:0e:d9:fd:68:3d", "Host MAC address")
 
 	vsockPath := flag.String("vsock-path", filepath.Join(pwd, "vsock.sock"), "VSock path (must be absolute; will be recreated at this place when restoring)")
-	vsockPort := flag.Int("vsock-port", 25, "VSock port")
+	vsockCID := flag.Int("vsock-cid", 25, "VSock CID")
 
 	start := flag.Bool("start", false, "Whether to start the VM")
 	stop := flag.Bool("stop", false, "Whether to stop the VM")
@@ -65,7 +65,7 @@ func main() {
 			*hostMAC,
 
 			*vsockPath,
-			*vsockPort,
+			*vsockCID,
 		); err != nil {
 			panic(err)
 		}

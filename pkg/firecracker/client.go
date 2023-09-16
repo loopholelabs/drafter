@@ -67,7 +67,7 @@ func StartVM(
 	hostMAC string,
 
 	vsockPath string,
-	vsockPort int,
+	vsockCID int,
 ) error {
 	if err := submitJSON(
 		http.MethodPut,
@@ -112,7 +112,7 @@ func StartVM(
 		http.MethodPut,
 		client,
 		&v1.VSock{
-			GuestCID: vsockPort,
+			GuestCID: vsockCID,
 			UDSPath:  vsockPath,
 		},
 		"vsock",
