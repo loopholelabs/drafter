@@ -2,7 +2,7 @@ package main
 
 import (
 	"flag"
-	"fmt"
+	"log"
 	"sync"
 
 	"github.com/loopholelabs/architekt/pkg/firecracker"
@@ -11,6 +11,7 @@ import (
 
 func main() {
 	firecrackerBin := flag.String("firecracker-bin", "firecracker", "Firecracker binary")
+	firecrackerSocketPath := flag.String("firecracker-socket-path", "firecracker.sock", "Firecracker socket")
 
 	verbose := flag.Bool("verbose", false, "Whether to enable verbose logging")
 	enableOutput := flag.Bool("enable-output", true, "Whether to enable VM stdout and stderr")
@@ -35,6 +36,7 @@ func main() {
 
 	srv := firecracker.NewServer(
 		*firecrackerBin,
+		*firecrackerSocketPath,
 
 		*verbose,
 		*enableOutput,
@@ -52,13 +54,12 @@ func main() {
 		}
 	}()
 
-	socket, err := srv.Start()
-	if err != nil {
+	if err := srv.Start(); err != nil {
 		panic(err)
 	}
 	defer srv.Stop()
 
-	fmt.Println(socket)
+	log.Println("Ready on", *firecrackerSocketPath)
 
 	wg.Wait()
 }

@@ -17,14 +17,14 @@ var (
 )
 
 type Server struct {
-	bin string
+	bin        string
+	socketPath string
 
 	verbose      bool
 	enableOutput bool
 	enableInput  bool
 
-	socketDir string
-	cmd       *exec.Cmd
+	cmd *exec.Cmd
 
 	wg   sync.WaitGroup
 	errs chan error
@@ -32,13 +32,15 @@ type Server struct {
 
 func NewServer(
 	bin string,
+	socketPath string,
 
 	verbose bool,
 	enableOutput bool,
 	enableInput bool,
 ) *Server {
 	return &Server{
-		bin: bin,
+		bin:        bin,
+		socketPath: socketPath,
 
 		verbose:      verbose,
 		enableOutput: enableOutput,
@@ -59,26 +61,22 @@ func (s *Server) Wait() error {
 	return nil
 }
 
-func (s *Server) Start() (string, error) {
-	var err error
-	s.socketDir, err = os.MkdirTemp("", "")
-	if err != nil {
-		return "", err
+func (s *Server) Start() error {
+	if err := os.Remove(s.socketPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
 	}
 
 	watcher, err := inotify.NewWatcher()
 	if err != nil {
-		return "", err
+		return err
 	}
 	defer watcher.Close()
 
-	if err := watcher.AddWatch(s.socketDir, inotify.InCreate); err != nil {
-		return "", err
+	if err := watcher.AddWatch(filepath.Dir(s.socketPath), inotify.InCreate); err != nil {
+		return err
 	}
 
-	socketPath := filepath.Join(s.socketDir, "firecracker.sock")
-
-	execLine := []string{s.bin, "--api-sock", socketPath}
+	execLine := []string{s.bin, "--api-sock", s.socketPath}
 	if s.verbose {
 		execLine = append(execLine, "--level", "Debug", "--log-path", "/dev/stderr")
 	}
@@ -94,7 +92,7 @@ func (s *Server) Start() (string, error) {
 	}
 
 	if err := s.cmd.Start(); err != nil {
-		return "", err
+		return err
 	}
 
 	s.wg.Add(1)
@@ -111,12 +109,12 @@ func (s *Server) Start() (string, error) {
 	}()
 
 	for ev := range watcher.Event {
-		if ev.Name == socketPath {
-			return socketPath, nil
+		if ev.Name == s.socketPath {
+			return nil
 		}
 	}
 
-	return "", ErrNoSocketCreated
+	return ErrNoSocketCreated
 }
 
 func (s *Server) Stop() error {
@@ -126,7 +124,7 @@ func (s *Server) Stop() error {
 
 	s.wg.Wait()
 
-	_ = os.RemoveAll(s.socketDir)
+	_ = os.RemoveAll(s.socketPath)
 
 	return nil
 }

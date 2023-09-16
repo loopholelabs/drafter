@@ -112,9 +112,10 @@ cp /tmp/kernel/vmlinux out/template/architekt.kernel
 
 ```shell
 go build -o /tmp/architect-worker ./cmd/architect-worker/ && sudo /tmp/architect-worker
-go build -o /tmp/architect-manager ./cmd/architect-manager/ && sudo /tmp/architect-manager --firecracker-socket /tmp/672476761/firecracker.sock --start
-go build -o /tmp/architect-manager ./cmd/architect-manager/ && sudo /tmp/architect-manager --firecracker-socket /tmp/672476761/firecracker.sock --create-snapshot
-go build -o /tmp/architect-manager ./cmd/architect-manager/ && sudo /tmp/architect-manager --firecracker-socket /tmp/672476761/firecracker.sock --resume-snapshot
-go build -o /tmp/architect-manager ./cmd/architect-manager/ && sudo /tmp/architect-manager --firecracker-socket /tmp/672476761/firecracker.sock --flush-snapshot
-go build -o /tmp/architect-manager ./cmd/architect-manager/ && sudo /tmp/architect-manager --firecracker-socket /tmp/672476761/firecracker.sock --stop
+
+go build -o /tmp/architect-manager ./cmd/architect-manager/ && sudo /tmp/architect-manager --firecracker-socket firecracker.sock --start
+go build -o /tmp/architect-manager ./cmd/architect-manager/ && sudo /tmp/architect-manager --firecracker-socket firecracker.sock --create-snapshot
+go build -o /tmp/architect-manager ./cmd/architect-manager/ && sudo /tmp/architect-manager --firecracker-socket firecracker.sock --resume-snapshot
+go build -o /tmp/architect-manager ./cmd/architect-manager/ && sudo /tmp/architect-manager --firecracker-socket firecracker.sock --flush-snapshot
+go build -o /tmp/architect-manager ./cmd/architect-manager/ && sudo /tmp/architect-manager --firecracker-socket firecracker.sock --stop
 ```
