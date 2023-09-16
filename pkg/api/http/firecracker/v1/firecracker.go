@@ -55,3 +55,8 @@ type SnapshotNoMemoryCreateRequest struct {
 	SnapshotPath string `json:"snapshot_path"`
 	Version      string `json:"version"`
 }
+
+type VSock struct {
+	GuestCID int    `json:"guest_cid"`
+	UDSPath  string `json:"uds_path"`
+}

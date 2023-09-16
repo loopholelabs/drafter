@@ -65,6 +65,9 @@ func StartVM(
 
 	hostInterface string,
 	hostMAC string,
+
+	vsockPath string,
+	vsockPort int,
 ) error {
 	if err := submitJSON(
 		http.MethodPut,
@@ -103,6 +106,18 @@ func StartVM(
 		"machine-config",
 	); err != nil {
 		return fmt.Errorf("%w: %s", ErrCouldNotSetMachineConfig, err)
+	}
+
+	if err := submitJSON(
+		http.MethodPut,
+		client,
+		&v1.VSock{
+			GuestCID: vsockPort,
+			UDSPath:  vsockPath,
+		},
+		"vsock",
+	); err != nil {
+		return fmt.Errorf("%w: %s", ErrCouldNotSetNetworkInterfaces, err)
 	}
 
 	if err := submitJSON(

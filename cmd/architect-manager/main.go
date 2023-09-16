@@ -5,12 +5,19 @@ import (
 	"flag"
 	"net"
 	"net/http"
+	"os"
+	"path/filepath"
 
 	"github.com/loopholelabs/architekt/pkg/firecracker"
 )
 
 func main() {
-	firecrackerSocket := flag.String("firecracker-socket", "firecracker.sock", "Firecracker socket")
+	pwd, err := os.Getwd()
+	if err != nil {
+		panic(err)
+	}
+
+	firecrackerSocketPath := flag.String("firecracker-socket-path", "firecracker.sock", "Firecracker socket")
 
 	initramfsPath := flag.String("initramfs-path", "out/template/architekt.initramfs", "initramfs path")
 	kernelPath := flag.String("kernel-path", "out/template/architekt.kernel", "Kernel path")
@@ -24,6 +31,9 @@ func main() {
 	hostInterface := flag.String("host-interface", "vm0", "Host interface name")
 	hostMAC := flag.String("host-mac", "02:0e:d9:fd:68:3d", "Host MAC address")
 
+	vsockPath := flag.String("vsock-path", filepath.Join(pwd, "vsock.sock"), "VSock path (must be absolute; will be recreated at this place when restoring)")
+	vsockPort := flag.Int("vsock-port", 25, "VSock port")
+
 	start := flag.Bool("start", false, "Whether to start the VM")
 	stop := flag.Bool("stop", false, "Whether to stop the VM")
 	createSnapshot := flag.Bool("create-snapshot", false, "Whether to create a VM snapshot")
@@ -35,7 +45,7 @@ func main() {
 	client := &http.Client{
 		Transport: &http.Transport{
 			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-				return net.Dial("unix", *firecrackerSocket)
+				return net.Dial("unix", *firecrackerSocketPath)
 			},
 		},
 	}
@@ -53,6 +63,9 @@ func main() {
 
 			*hostInterface,
 			*hostMAC,
+
+			*vsockPath,
+			*vsockPort,
 		); err != nil {
 			panic(err)
 		}
