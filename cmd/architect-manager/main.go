@@ -32,7 +32,7 @@ func main() {
 	hostMAC := flag.String("host-mac", "02:0e:d9:fd:68:3d", "Host MAC address")
 
 	vsockPath := flag.String("vsock-path", filepath.Join(pwd, "vsock.sock"), "VSock path (must be absolute; will be recreated at this place when restoring)")
-	vsockCID := flag.Int("vsock-cid", 25, "VSock CID")
+	vsockCID := flag.Int("vsock-cid", 3, "VSock CID")
 
 	start := flag.Bool("start", false, "Whether to start the VM")
 	stop := flag.Bool("stop", false, "Whether to stop the VM")

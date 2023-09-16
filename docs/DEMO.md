@@ -36,9 +36,27 @@ sudo iptables --insert FORWARD --in-interface ${BRIDGE_INTERFACE} -j ACCEPT
 export DISK_SIZE="5G"
 export GATEWAY_IP="192.168.233.1"
 export GUEST_CIDR="192.168.233.2/24"
+export VSOCK_CID="2"
+export VSOCK_PORT="25"
 
 rm -rf out/template
 mkdir -p out/template
+
+rm -rf /tmp/kernel
+mkdir -p /tmp/kernel
+
+curl -Lo /tmp/kernel.tar.xz https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-5.10.194.tar.xz
+tar Jxvf /tmp/kernel.tar.xz --strip-components=1 -C /tmp/kernel
+
+curl -Lo /tmp/kernel/.config https://raw.githubusercontent.com/firecracker-microvm/firecracker/main/resources/guest_configs/microvm-kernel-x86_64-5.10.config
+
+sh - <<'EOT'
+cd /tmp/kernel
+
+make -j$(nproc) vmlinux
+EOT
+
+cp /tmp/kernel/vmlinux out/template/architekt.kernel
 
 qemu-img create -f raw out/template/architekt.disk ${DISK_SIZE}
 mkfs.ext4 out/template/architekt.disk
@@ -83,7 +101,6 @@ rc-update add chronyd default
 rc-update add redis default
 EOT
 
-
 sudo cp /tmp/template/boot/initramfs-virt out/template/architekt.initramfs
 sudo chown ${USER} out/template/architekt.initramfs
 
@@ -91,21 +108,37 @@ sync -f /tmp/template
 sudo umount /tmp/template || true
 rm -rf /tmp/template
 
-rm -rf /tmp/kernel
-mkdir -p /tmp/kernel
+sudo umount /tmp/template || true
+rm -rf /tmp/template
+mkdir -p /tmp/template
 
-curl -Lo /tmp/kernel.tar.xz https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-5.10.194.tar.xz
-tar Jxvf /tmp/kernel.tar.xz --strip-components=1 -C /tmp/kernel
+sudo mount out/template/architekt.disk /tmp/template
+sudo chown ${USER} /tmp/template
 
-curl -Lo /tmp/kernel/.config https://raw.githubusercontent.com/firecracker-microvm/firecracker/main/resources/guest_configs/microvm-kernel-x86_64-5.10.config
+CGO_ENABLED=0 go build -o /tmp/template/usr/sbin/architect-agent ./cmd/architect-agent
+tee /tmp/template/etc/init.d/architect-agent <<EOT
+#!/sbin/openrc-run
 
-sh - <<'EOT'
-cd /tmp/kernel
+command="/usr/sbin/architect-agent"
+command_args="--vsock-cid ${VSOCK_CID} --vsock-port ${VSOCK_PORT}"
+command_background=true
+pidfile="/run/\${RC_SVCNAME}.pid"
+output_log="/dev/stdout"
+error_log="/dev/stderr"
 
-make -j$(nproc) vmlinux
+depend() {
+	need net redis
+}
+EOT
+chmod +x /tmp/template/etc/init.d/architect-agent
+
+sudo chroot /tmp/template sh - <<'EOT'
+rc-update add architect-agent default
 EOT
 
-cp /tmp/kernel/vmlinux out/template/architekt.kernel
+sync -f /tmp/template
+sudo umount /tmp/template || true
+rm -rf /tmp/template
 ```
 
 ## Starting Manager and Worker
@@ -113,9 +146,9 @@ cp /tmp/kernel/vmlinux out/template/architekt.kernel
 ```shell
 go build -o /tmp/architect-worker ./cmd/architect-worker/ && sudo /tmp/architect-worker
 
-go build -o /tmp/architect-manager ./cmd/architect-manager/ && sudo /tmp/architect-manager --firecracker-socket firecracker.sock --start
-go build -o /tmp/architect-manager ./cmd/architect-manager/ && sudo /tmp/architect-manager --firecracker-socket firecracker.sock --create-snapshot
-go build -o /tmp/architect-manager ./cmd/architect-manager/ && sudo /tmp/architect-manager --firecracker-socket firecracker.sock --resume-snapshot
-go build -o /tmp/architect-manager ./cmd/architect-manager/ && sudo /tmp/architect-manager --firecracker-socket firecracker.sock --flush-snapshot
-go build -o /tmp/architect-manager ./cmd/architect-manager/ && sudo /tmp/architect-manager --firecracker-socket firecracker.sock --stop
+go build -o /tmp/architect-manager ./cmd/architect-manager/ && sudo /tmp/architect-manager --start
+go build -o /tmp/architect-manager ./cmd/architect-manager/ && sudo /tmp/architect-manager --create-snapshot
+go build -o /tmp/architect-manager ./cmd/architect-manager/ && sudo /tmp/architect-manager --resume-snapshot
+go build -o /tmp/architect-manager ./cmd/architect-manager/ && sudo /tmp/architect-manager --flush-snapshot
+go build -o /tmp/architect-manager ./cmd/architect-manager/ && sudo /tmp/architect-manager --stop
 ```
