@@ -188,7 +188,7 @@ func CreateSnapshot(
 			SnapshotType:   "Full",
 			SnapshotPath:   statePath,
 			MemoryFilePath: memoryPath,
-			Version:        "1.1.0",
+			Version:        "1.3.0",
 		},
 		"snapshot/create",
 	); err != nil {
@@ -245,7 +245,7 @@ func FlushSnapshot(
 		client,
 		&v1.SnapshotNoMemoryCreateRequest{
 			SnapshotPath: statePath,
-			Version:      "1.1.0",
+			Version:      "1.3.0",
 		},
 		"snapshot-nomemory/create",
 	); err != nil {

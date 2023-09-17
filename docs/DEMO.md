@@ -152,3 +152,9 @@ go build -o /tmp/architect-manager ./cmd/architect-manager/ && sudo /tmp/archite
 go build -o /tmp/architect-manager ./cmd/architect-manager/ && sudo /tmp/architect-manager --flush-snapshot
 go build -o /tmp/architect-manager ./cmd/architect-manager/ && sudo /tmp/architect-manager --stop
 ```
+
+## Creating an Image
+
+```shell
+go build -o /tmp/architect-imager ./cmd/architect-imager/ && sudo /tmp/architect-imager
+```
