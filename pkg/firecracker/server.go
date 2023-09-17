@@ -105,7 +105,7 @@ func (s *Server) Start() error {
 	}()
 
 	for ev := range watcher.Event {
-		if ev.Name == s.socketPath {
+		if filepath.Clean(ev.Name) == filepath.Clean(s.socketPath) {
 			return nil
 		}
 	}
