@@ -16,11 +16,6 @@ import (
 )
 
 func main() {
-	pwd, err := os.Getwd()
-	if err != nil {
-		panic(err)
-	}
-
 	firecrackerBin := flag.String("firecracker-bin", "firecracker", "Firecracker binary")
 	firecrackerSocketPath := flag.String("firecracker-socket-path", "firecracker.sock", "Firecracker socket path")
 
@@ -32,7 +27,7 @@ func main() {
 	hostMAC := flag.String("host-mac", "02:0e:d9:fd:68:3d", "Host MAC address")
 	bridgeInterface := flag.String("bridge-interface", "firecracker0", "Bridge interface name")
 
-	vsockPath := flag.String("vsock-path", filepath.Join(pwd, "vsock.sock"), "VSock path (must be absolute and permanent; will be recreated at this absolute path when restoring)")
+	vsockPath := flag.String("vsock-path", "vsock.sock", "VSock path")
 	vsockPort := flag.Int("vsock-port", 25, "VSock port")
 	vsockCID := flag.Int("vsock-cid", 3, "VSock CID")
 
