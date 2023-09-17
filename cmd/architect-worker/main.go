@@ -59,7 +59,7 @@ func main() {
 	}
 	defer srv.Stop()
 
-	log.Println("Ready on", *firecrackerSocketPath)
+	log.Println("Listening on", *firecrackerSocketPath)
 
 	wg.Wait()
 }

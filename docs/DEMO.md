@@ -115,11 +115,11 @@ mkdir -p /tmp/template
 sudo mount out/template/architekt.disk /tmp/template
 sudo chown ${USER} /tmp/template
 
-CGO_ENABLED=0 go build -o /tmp/template/usr/sbin/architect-agent ./cmd/architect-agent
-tee /tmp/template/etc/init.d/architect-agent <<EOT
+CGO_ENABLED=0 go build -o /tmp/template/usr/sbin/architect-liveness ./cmd/architect-liveness
+tee /tmp/template/etc/init.d/architect-liveness <<EOT
 #!/sbin/openrc-run
 
-command="/usr/sbin/architect-agent"
+command="/usr/sbin/architect-liveness"
 command_args="--vsock-cid ${VSOCK_CID} --vsock-port ${VSOCK_PORT}"
 command_background=true
 pidfile="/run/\${RC_SVCNAME}.pid"
@@ -130,10 +130,10 @@ depend() {
 	need net redis
 }
 EOT
-chmod +x /tmp/template/etc/init.d/architect-agent
+chmod +x /tmp/template/etc/init.d/architect-liveness
 
 sudo chroot /tmp/template sh - <<'EOT'
-rc-update add architect-agent default
+rc-update add architect-liveness default
 EOT
 
 sync -f /tmp/template
@@ -141,20 +141,18 @@ sudo umount /tmp/template || true
 rm -rf /tmp/template
 ```
 
+## Creating an Image
+
+```shell
+go build -o /tmp/architect-imager ./cmd/architect-imager/ && sudo /tmp/architect-imager
+```
+
 ## Starting Manager and Worker
 
 ```shell
 go build -o /tmp/architect-worker ./cmd/architect-worker/ && sudo /tmp/architect-worker
 
-go build -o /tmp/architect-manager ./cmd/architect-manager/ && sudo /tmp/architect-manager --start
-go build -o /tmp/architect-manager ./cmd/architect-manager/ && sudo /tmp/architect-manager --create-snapshot
 go build -o /tmp/architect-manager ./cmd/architect-manager/ && sudo /tmp/architect-manager --resume-snapshot
 go build -o /tmp/architect-manager ./cmd/architect-manager/ && sudo /tmp/architect-manager --flush-snapshot
 go build -o /tmp/architect-manager ./cmd/architect-manager/ && sudo /tmp/architect-manager --stop
-```
-
-## Creating an Image
-
-```shell
-go build -o /tmp/architect-imager ./cmd/architect-imager/ && sudo /tmp/architect-imager
 ```

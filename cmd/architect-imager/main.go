@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"flag"
-	"fmt"
 	"net"
 	"net/http"
 	"os"
@@ -11,6 +10,7 @@ import (
 	"sync"
 
 	"github.com/loopholelabs/architekt/pkg/firecracker"
+	"github.com/loopholelabs/architekt/pkg/liveness"
 	"github.com/loopholelabs/architekt/pkg/network"
 	"github.com/loopholelabs/architekt/pkg/utils"
 )
@@ -53,13 +53,15 @@ func main() {
 
 	flag.Parse()
 
-	vsockPortPath := fmt.Sprintf("%s_%d", *vsockPath, *vsockPort)
-	lis, err := net.Listen("unix", vsockPortPath)
-	if err != nil {
+	ping := liveness.NewLivenessPingReceiver(
+		*vsockPath,
+		uint32(*vsockPort),
+	)
+
+	if err := ping.Open(); err != nil {
 		panic(err)
 	}
-	defer os.Remove(vsockPortPath)
-	defer lis.Close()
+	defer ping.Close()
 
 	tap := network.NewTAP(
 		*hostInterface,
@@ -133,9 +135,9 @@ func main() {
 	if err := firecracker.StartVM(
 		client,
 
-		*initramfsInputPath,
-		*kernelInputPath,
-		*diskInputPath,
+		*initramfsOutputPath,
+		*kernelOutputPath,
+		*diskOutputPath,
 
 		*cpuCount,
 		*memorySize,
@@ -150,11 +152,9 @@ func main() {
 	}
 	defer os.Remove(*vsockPath)
 
-	conn, err := lis.Accept()
-	if err != nil {
+	if err := ping.Receive(); err != nil {
 		panic(err)
 	}
-	defer conn.Close()
 
 	if err := os.MkdirAll(filepath.Dir(*stateOutputPath), os.ModePerm); err != nil {
 		panic(err)
