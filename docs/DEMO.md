@@ -144,7 +144,7 @@ rm -rf /tmp/template
 ## Creating an Image
 
 ```shell
-go build -o /tmp/architect-imager ./cmd/architect-imager/ && sudo /tmp/architect-imager
+go build -o /tmp/architect-packager ./cmd/architect-packager/ && sudo /tmp/architect-packager
 ```
 
 ## Starting Manager and Worker
@@ -152,7 +152,8 @@ go build -o /tmp/architect-imager ./cmd/architect-imager/ && sudo /tmp/architect
 ```shell
 go build -o /tmp/architect-worker ./cmd/architect-worker/ && sudo /tmp/architect-worker
 
-go build -o /tmp/architect-manager ./cmd/architect-manager/ && sudo /tmp/architect-manager --resume-snapshot
-go build -o /tmp/architect-manager ./cmd/architect-manager/ && sudo /tmp/architect-manager --flush-snapshot
+go build -o /tmp/architect-manager ./cmd/architect-manager/ && sudo /tmp/architect-manager --start
 go build -o /tmp/architect-manager ./cmd/architect-manager/ && sudo /tmp/architect-manager --stop
+
+go build -o /tmp/architect-manager ./cmd/architect-manager/ && sudo /tmp/architect-manager --flush # Pauses the VM
 ```

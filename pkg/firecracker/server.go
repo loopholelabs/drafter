@@ -19,6 +19,7 @@ var (
 type Server struct {
 	bin        string
 	socketPath string
+	pwd        string
 
 	verbose      bool
 	enableOutput bool
@@ -33,6 +34,7 @@ type Server struct {
 func NewServer(
 	bin string,
 	socketPath string,
+	pwd string,
 
 	verbose bool,
 	enableOutput bool,
@@ -41,6 +43,7 @@ func NewServer(
 	return &Server{
 		bin:        bin,
 		socketPath: socketPath,
+		pwd:        pwd,
 
 		verbose:      verbose,
 		enableOutput: enableOutput,
@@ -78,6 +81,7 @@ func (s *Server) Start() error {
 	}
 
 	s.cmd = exec.Command(execLine[0], execLine[1:]...)
+	s.cmd.Dir = s.pwd
 	if s.enableOutput {
 		s.cmd.Stdout = os.Stdout
 		s.cmd.Stderr = os.Stderr

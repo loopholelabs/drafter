@@ -12,12 +12,9 @@ import (
 func main() {
 	firecrackerSocketPath := flag.String("firecracker-socket-path", "firecracker.sock", "Firecracker socket path")
 
-	statePath := flag.String("state-path", "out/image/architekt.state", "State path")
-	memoryPath := flag.String("memory-path", "out/image/architekt.memory", "Memory path")
-
+	start := flag.Bool("start", false, "Whether to start the VM")
 	stop := flag.Bool("stop", false, "Whether to stop the VM")
-	resumeSnapshot := flag.Bool("resume-snapshot", false, "Whether to resume a VM snapshot")
-	flushSnapshot := flag.Bool("flush-snapshot", false, "Whether to flush a VM snapshot")
+	flush := flag.Bool("flush", false, "Whether to flush a VM to disk (will pause the VM)")
 
 	flag.Parse()
 
@@ -29,29 +26,20 @@ func main() {
 		},
 	}
 
+	if *start {
+		if err := firecracker.ResumeSnapshot(client); err != nil {
+			panic(err)
+		}
+	}
+
 	if *stop {
 		if err := firecracker.StopVM(client); err != nil {
 			panic(err)
 		}
 	}
 
-	if *resumeSnapshot {
-		if err := firecracker.ResumeSnapshot(
-			client,
-
-			*statePath,
-			*memoryPath,
-		); err != nil {
-			panic(err)
-		}
-	}
-
-	if *flushSnapshot {
-		if err := firecracker.FlushSnapshot(
-			client,
-
-			*statePath,
-		); err != nil {
+	if *flush {
+		if err := firecracker.FlushSnapshot(client); err != nil {
 			panic(err)
 		}
 	}

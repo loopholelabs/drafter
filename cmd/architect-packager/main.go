@@ -15,9 +15,20 @@ import (
 	"github.com/loopholelabs/architekt/pkg/utils"
 )
 
+const (
+	initramfsName = "architekt.initramfs"
+	kernelName    = "architekt.kernel"
+	diskName      = "architekt.disk"
+)
+
 func main() {
+	pwd, err := os.Getwd()
+	if err != nil {
+		panic(err)
+	}
+
 	firecrackerBin := flag.String("firecracker-bin", "firecracker", "Firecracker binary")
-	firecrackerSocketPath := flag.String("firecracker-socket-path", "firecracker.sock", "Firecracker socket path")
+	firecrackerSocketPath := flag.String("firecracker-socket-path", filepath.Join(pwd, "firecracker.sock"), "Firecracker socket path (must be absolute)")
 
 	verbose := flag.Bool("verbose", false, "Whether to enable verbose logging")
 	enableOutput := flag.Bool("enable-output", true, "Whether to enable VM stdout and stderr")
@@ -31,25 +42,23 @@ func main() {
 	vsockPort := flag.Int("vsock-port", 25, "VSock port")
 	vsockCID := flag.Int("vsock-cid", 3, "VSock CID")
 
-	initramfsInputPath := flag.String("initramfs-input-path", filepath.Join("out", "template", "architekt.initramfs"), "initramfs input path")
-	initramfsOutputPath := flag.String("initramfs-output-path", filepath.Join("out", "image", "architekt.initramfs"), "initramfs output path")
+	initramfsInputPath := flag.String("initramfs-input-path", filepath.Join(pwd, "out", "template", "architekt.initramfs"), "initramfs input path")
+	kernelInputPath := flag.String("kernel-input-path", filepath.Join(pwd, "out", "template", "architekt.kernel"), "Kernel input path")
+	diskInputPath := flag.String("disk-input-path", filepath.Join(pwd, "out", "template", "architekt.disk"), "Disk input path")
 
-	kernelInputPath := flag.String("kernel-input-path", filepath.Join("out", "template", "architekt.kernel"), "Kernel input path")
-	kernelOutputPath := flag.String("kernel-output-path", filepath.Join("out", "image", "architekt.kernel"), "Kernel output path")
-
-	diskInputPath := flag.String("disk-input-path", filepath.Join("out", "template", "architekt.disk"), "Disk input path")
-	diskOutputPath := flag.String("disk-output-path", filepath.Join("out", "image", "architekt.disk"), "Disk output path")
-
-	stateOutputPath := flag.String("state-output-path", filepath.Join("out", "image", "architekt.state"), "State output path")
-	memoryOutputPath := flag.String("memory-output-path", filepath.Join("out", "image", "architekt.memory"), "Memory output path")
+	packagePath := flag.String("package-path", filepath.Join("out", "package"), "Path to write extracted package to")
 
 	cpuCount := flag.Int("cpu-count", 1, "CPU count")
 	memorySize := flag.Int("memory-size", 1024, "Memory size (in MB)")
 
 	flag.Parse()
 
+	if err := os.MkdirAll(*packagePath, os.ModePerm); err != nil {
+		panic(err)
+	}
+
 	ping := liveness.NewLivenessPingReceiver(
-		*vsockPath,
+		filepath.Join(*packagePath, *vsockPath),
 		uint32(*vsockPort),
 	)
 
@@ -72,6 +81,7 @@ func main() {
 	srv := firecracker.NewServer(
 		*firecrackerBin,
 		*firecrackerSocketPath,
+		*packagePath,
 
 		*verbose,
 		*enableOutput,
@@ -103,36 +113,30 @@ func main() {
 		},
 	}
 
-	if err := os.MkdirAll(filepath.Dir(*initramfsOutputPath), os.ModePerm); err != nil {
+	var (
+		initramfsOutputPath = filepath.Join(*packagePath, initramfsName)
+		kernelOutputPath    = filepath.Join(*packagePath, kernelName)
+		diskOutputPath      = filepath.Join(*packagePath, diskName)
+	)
+
+	if _, err := utils.CopyFile(*initramfsInputPath, initramfsOutputPath); err != nil {
 		panic(err)
 	}
 
-	if _, err := utils.CopyFile(*initramfsInputPath, *initramfsOutputPath); err != nil {
+	if _, err := utils.CopyFile(*kernelInputPath, kernelOutputPath); err != nil {
 		panic(err)
 	}
 
-	if err := os.MkdirAll(filepath.Dir(*kernelOutputPath), os.ModePerm); err != nil {
-		panic(err)
-	}
-
-	if _, err := utils.CopyFile(*kernelInputPath, *kernelOutputPath); err != nil {
-		panic(err)
-	}
-
-	if err := os.MkdirAll(filepath.Dir(*diskOutputPath), os.ModePerm); err != nil {
-		panic(err)
-	}
-
-	if _, err := utils.CopyFile(*diskInputPath, *diskOutputPath); err != nil {
+	if _, err := utils.CopyFile(*diskInputPath, diskOutputPath); err != nil {
 		panic(err)
 	}
 
 	if err := firecracker.StartVM(
 		client,
 
-		*initramfsOutputPath,
-		*kernelOutputPath,
-		*diskOutputPath,
+		initramfsName,
+		kernelName,
+		diskName,
 
 		*cpuCount,
 		*memorySize,
@@ -145,26 +149,13 @@ func main() {
 	); err != nil {
 		panic(err)
 	}
-	defer os.Remove(*vsockPath)
+	defer os.Remove(filepath.Join(*packagePath, *vsockPath))
 
 	if err := ping.Receive(); err != nil {
 		panic(err)
 	}
 
-	if err := os.MkdirAll(filepath.Dir(*stateOutputPath), os.ModePerm); err != nil {
-		panic(err)
-	}
-
-	if err := os.MkdirAll(filepath.Dir(*memoryOutputPath), os.ModePerm); err != nil {
-		panic(err)
-	}
-
-	if err := firecracker.CreateSnapshot(
-		client,
-
-		*stateOutputPath,
-		*memoryOutputPath,
-	); err != nil {
+	if err := firecracker.CreateSnapshot(client); err != nil {
 		panic(err)
 	}
 }

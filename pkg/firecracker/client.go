@@ -25,6 +25,11 @@ var (
 	ErrCouldNotFlushSnapshot        = errors.New("could not flush snapshot")
 )
 
+const (
+	stateName  = "architekt.state"
+	memoryName = "architekt.memory"
+)
+
 func submitJSON(method string, client *http.Client, body any, resource string) error {
 	p, err := json.Marshal(body)
 	if err != nil {
@@ -164,12 +169,7 @@ func StopVM(
 	return nil
 }
 
-func CreateSnapshot(
-	client *http.Client,
-
-	statePath string,
-	memoryPath string,
-) error {
+func CreateSnapshot(client *http.Client) error {
 	if err := submitJSON(
 		http.MethodPatch,
 		client,
@@ -186,8 +186,8 @@ func CreateSnapshot(
 		client,
 		&v1.SnapshotCreateRequest{
 			SnapshotType:   "Full",
-			SnapshotPath:   statePath,
-			MemoryFilePath: memoryPath,
+			SnapshotPath:   stateName,
+			MemoryFilePath: memoryName,
 			Version:        "1.3.0",
 		},
 		"snapshot/create",
@@ -198,20 +198,15 @@ func CreateSnapshot(
 	return nil
 }
 
-func ResumeSnapshot(
-	client *http.Client,
-
-	statePath string,
-	memoryPath string,
-) error {
+func ResumeSnapshot(client *http.Client) error {
 	if err := submitJSON(
 		http.MethodPut,
 		client,
 		&v1.SnapshotLoadRequest{
-			SnapshotPath: statePath,
+			SnapshotPath: stateName,
 			MemoryBackend: v1.SnapshotLoadRequestMemoryBackend{
 				BackendType: "File",
-				BackendPath: memoryPath,
+				BackendPath: memoryName,
 			},
 			EnableDiffSnapshots:  false,
 			ResumeVirtualMachine: true,
@@ -224,11 +219,7 @@ func ResumeSnapshot(
 	return nil
 }
 
-func FlushSnapshot(
-	client *http.Client,
-
-	statePath string,
-) error {
+func FlushSnapshot(client *http.Client) error {
 	if err := submitJSON(
 		http.MethodPatch,
 		client,
@@ -244,7 +235,7 @@ func FlushSnapshot(
 		http.MethodPut,
 		client,
 		&v1.SnapshotNoMemoryCreateRequest{
-			SnapshotPath: statePath,
+			SnapshotPath: stateName,
 			Version:      "1.3.0",
 		},
 		"snapshot-nomemory/create",
