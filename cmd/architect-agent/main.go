@@ -12,7 +12,7 @@ import (
 )
 
 func main() {
-	vsockCID := flag.Int("vsock-cid", 2, "VSock CID")
+	vsockCID := flag.Int("vsock-cid", 3, "VSock CID")
 	vsockPort := flag.Int("vsock-port", 26, "VSock port")
 
 	flag.Parse()
@@ -27,7 +27,7 @@ func main() {
 			return nil
 		},
 		func(ctx context.Context) error {
-			log.Println("Resuming app")
+			log.Println("Resumed app")
 
 			return nil
 		},

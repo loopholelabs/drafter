@@ -39,7 +39,7 @@ func main() {
 	bridgeInterface := flag.String("bridge-interface", "firecracker0", "Bridge interface name")
 
 	vsockPath := flag.String("vsock-path", "vsock.sock", "VSock path")
-	vsockPort := flag.Int("vsock-port", 25, "VSock port")
+	livenessVSockPort := flag.Int("liveness-vsock-port", 25, "Liveness VSock port")
 	vsockCID := flag.Int("vsock-cid", 3, "VSock CID")
 
 	initramfsInputPath := flag.String("initramfs-input-path", filepath.Join(pwd, "out", "template", "architekt.initramfs"), "initramfs input path")
@@ -59,7 +59,7 @@ func main() {
 
 	ping := liveness.NewLivenessPingReceiver(
 		filepath.Join(*packagePath, *vsockPath),
-		uint32(*vsockPort),
+		uint32(*livenessVSockPort),
 	)
 
 	if err := ping.Open(); err != nil {
