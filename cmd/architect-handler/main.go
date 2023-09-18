@@ -31,6 +31,7 @@ func main() {
 	)
 
 	var wg sync.WaitGroup
+	defer wg.Wait()
 
 	wg.Add(1)
 	go func() {
