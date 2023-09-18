@@ -163,29 +163,12 @@ sudo umount /tmp/template || true
 rm -rf /tmp/template
 ```
 
-## Creating an Image
+## Starting Packager and Runner
 
 ```shell
+sudo pkill -9 firecracker; rm -f *.sock; sudo rm -rf out/package/; sudo ip tuntap del dev vm0 mode tap # Cleaning up artifacts from potentially failed runs
+
 go build -o /tmp/architect-packager ./cmd/architect-packager/ && sudo /tmp/architect-packager
-```
 
-## Starting Manager and Worker
-
-```shell
-go build -o /tmp/architect-worker ./cmd/architect-worker/ && sudo /tmp/architect-worker
-
-go build -o /tmp/architect-manager ./cmd/architect-manager/ && sudo /tmp/architect-manager --start
-go build -o /tmp/architect-manager ./cmd/architect-manager/ && sudo /tmp/architect-manager --stop
-
-go build -o /tmp/architect-handler ./cmd/architect-handler/ && sudo /tmp/architect-handler --before-suspend
-go build -o /tmp/architect-manager ./cmd/architect-manager/ && sudo /tmp/architect-manager --flush # Pauses the VM; you need to manually `--start` again
-go build -o /tmp/architect-handler ./cmd/architect-handler/ && sudo /tmp/architect-handler --after-resume
-```
-
-## End-to-End Test
-
-```shell
-rm -f *.sock && sudo rm -rf out/package/ && sudo ip tuntap del dev vm0 mode tap; go build -o /tmp/architect-packager ./cmd/architect-packager/ && sudo /tmp/architect-packager && go build -o /tmp/architect-runner ./cmd/architect-runner/ && sudo /tmp/architect-runner --verbose
-
-go build -o /tmp/architect-runner ./cmd/architect-runner/ && sudo /tmp/architect-runner --verbose
+go build -o /tmp/architect-runner ./cmd/architect-runner/ && sudo /tmp/architect-runner # You can now CTRL+C to flush the snapshot & resume
 ```

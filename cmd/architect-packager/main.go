@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/loopholelabs/architekt/pkg/firecracker"
 	"github.com/loopholelabs/architekt/pkg/network"
@@ -40,7 +41,7 @@ func main() {
 
 	vsockPath := flag.String("vsock-path", "vsock.sock", "VSock path")
 	livenessVSockPort := flag.Int("liveness-vsock-port", 25, "Liveness VSock port")
-	// agentVSockPort := flag.Int("agent-vsock-port", 26, "Agent VSock port")
+	agentVSockPort := flag.Int("agent-vsock-port", 26, "Agent VSock port")
 
 	initramfsInputPath := flag.String("initramfs-input-path", filepath.Join(pwd, "out", "template", "architekt.initramfs"), "initramfs input path")
 	kernelInputPath := flag.String("kernel-input-path", filepath.Join(pwd, "out", "template", "architekt.kernel"), "Kernel input path")
@@ -53,8 +54,8 @@ func main() {
 
 	flag.Parse()
 
-	// ctx, cancel := context.WithCancel(context.Background())
-	// defer cancel()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	if err := os.MkdirAll(*packagePath, os.ModePerm); err != nil {
 		panic(err)
@@ -158,31 +159,34 @@ func main() {
 		panic(err)
 	}
 
-	// handler := vsock.NewHandler(
-	// 	filepath.Join(*packagePath, *vsockPath),
-	// 	uint32(*agentVSockPort),
+	handler := vsock.NewHandler(
+		filepath.Join(*packagePath, *vsockPath),
+		uint32(*agentVSockPort),
 
-	// 	time.Second*10,
-	// )
+		time.Second*10,
+	)
 
-	// wg.Add(1)
-	// go func() {
-	// 	defer wg.Done()
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
 
-	// 	if err := handler.Wait(); err != nil {
-	// 		panic(err)
-	// 	}
-	// }()
+		if err := handler.Wait(); err != nil {
+			panic(err)
+		}
+	}()
 
-	// peer, err := handler.Open(ctx)
-	// if err != nil {
-	// 	panic(err)
-	// }
-	// defer handler.Close()
+	peer, err := handler.Open(ctx)
+	if err != nil {
+		panic(err)
+	}
+	defer handler.Close()
 
-	// if err := peer.BeforeSuspend(ctx); err != nil {
-	// 	panic(err)
-	// }
+	if err := peer.BeforeSuspend(ctx); err != nil {
+		panic(err)
+	}
+	// Connections need to be closed before creating the snapshot
+	ping.Close()
+	_ = handler.Close()
 
 	if err := firecracker.CreateSnapshot(client); err != nil {
 		panic(err)

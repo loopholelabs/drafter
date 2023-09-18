@@ -14,6 +14,7 @@ import (
 
 	"github.com/loopholelabs/architekt/pkg/firecracker"
 	"github.com/loopholelabs/architekt/pkg/network"
+	"github.com/loopholelabs/architekt/pkg/vsock"
 )
 
 func main() {
@@ -34,14 +35,14 @@ func main() {
 	bridgeInterface := flag.String("bridge-interface", "firecracker0", "Bridge interface name")
 
 	vsockPath := flag.String("vsock-path", "vsock.sock", "VSock path")
-	// agentVSockPort := flag.Int("agent-vsock-port", 26, "Agent VSock port")
+	agentVSockPort := flag.Int("agent-vsock-port", 26, "Agent VSock port")
 
 	packagePath := flag.String("package-path", filepath.Join("out", "package"), "Path to write extracted package to")
 
 	flag.Parse()
 
-	// ctx, cancel := context.WithCancel(context.Background())
-	// defer cancel()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	tap := network.NewTAP(
 		*hostInterface,
@@ -96,31 +97,31 @@ func main() {
 	}
 	defer os.Remove(filepath.Join(*packagePath, *vsockPath))
 
-	// handler := vsock.NewHandler(
-	// 	filepath.Join(*packagePath, *vsockPath),
-	// 	uint32(*agentVSockPort),
+	handler := vsock.NewHandler(
+		filepath.Join(*packagePath, *vsockPath),
+		uint32(*agentVSockPort),
 
-	// 	time.Second*10,
-	// )
+		time.Second*10,
+	)
 
-	// wg.Add(1)
-	// go func() {
-	// 	defer wg.Done()
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
 
-	// 	if err := handler.Wait(); err != nil {
-	// 		panic(err)
-	// 	}
-	// }()
+		if err := handler.Wait(); err != nil {
+			panic(err)
+		}
+	}()
 
-	// peer, err := handler.Open(ctx)
-	// if err != nil {
-	// 	panic(err)
-	// }
-	// defer handler.Close()
+	peer, err := handler.Open(ctx)
+	if err != nil {
+		panic(err)
+	}
+	defer handler.Close()
 
-	// if err := peer.AfterResume(ctx); err != nil {
-	// 	panic(err)
-	// }
+	if err := peer.AfterResume(ctx); err != nil {
+		panic(err)
+	}
 
 	log.Println("Resume:", time.Since(before))
 
@@ -131,9 +132,11 @@ func main() {
 
 	before = time.Now()
 
-	// if err := peer.BeforeSuspend(ctx); err != nil {
-	// 	panic(err)
-	// }
+	if err := peer.BeforeSuspend(ctx); err != nil {
+		panic(err)
+	}
+
+	_ = handler.Close() // Connection needs to be closed before flushing the snapshot
 
 	if err := firecracker.FlushSnapshot(client); err != nil {
 		panic(err)
