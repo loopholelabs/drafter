@@ -3,22 +3,17 @@ package main
 import (
 	"context"
 	"flag"
+	"log"
 	"net"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/loopholelabs/architekt/pkg/firecracker"
 	"github.com/loopholelabs/architekt/pkg/network"
-	"github.com/loopholelabs/architekt/pkg/utils"
-	"github.com/loopholelabs/architekt/pkg/vsock"
-)
-
-const (
-	initramfsName = "architekt.initramfs"
-	kernelName    = "architekt.kernel"
-	diskName      = "architekt.disk"
 )
 
 func main() {
@@ -39,36 +34,14 @@ func main() {
 	bridgeInterface := flag.String("bridge-interface", "firecracker0", "Bridge interface name")
 
 	vsockPath := flag.String("vsock-path", "vsock.sock", "VSock path")
-	livenessVSockPort := flag.Int("liveness-vsock-port", 25, "Liveness VSock port")
 	// agentVSockPort := flag.Int("agent-vsock-port", 26, "Agent VSock port")
 
-	initramfsInputPath := flag.String("initramfs-input-path", filepath.Join(pwd, "out", "template", "architekt.initramfs"), "initramfs input path")
-	kernelInputPath := flag.String("kernel-input-path", filepath.Join(pwd, "out", "template", "architekt.kernel"), "Kernel input path")
-	diskInputPath := flag.String("disk-input-path", filepath.Join(pwd, "out", "template", "architekt.disk"), "Disk input path")
-
 	packagePath := flag.String("package-path", filepath.Join("out", "package"), "Path to write extracted package to")
-
-	cpuCount := flag.Int("cpu-count", 1, "CPU count")
-	memorySize := flag.Int("memory-size", 1024, "Memory size (in MB)")
 
 	flag.Parse()
 
 	// ctx, cancel := context.WithCancel(context.Background())
 	// defer cancel()
-
-	if err := os.MkdirAll(*packagePath, os.ModePerm); err != nil {
-		panic(err)
-	}
-
-	ping := vsock.NewLivenessPingReceiver(
-		filepath.Join(*packagePath, *vsockPath),
-		uint32(*livenessVSockPort),
-	)
-
-	if err := ping.Open(); err != nil {
-		panic(err)
-	}
-	defer ping.Close()
 
 	tap := network.NewTAP(
 		*hostInterface,
@@ -116,47 +89,12 @@ func main() {
 		},
 	}
 
-	var (
-		initramfsOutputPath = filepath.Join(*packagePath, initramfsName)
-		kernelOutputPath    = filepath.Join(*packagePath, kernelName)
-		diskOutputPath      = filepath.Join(*packagePath, diskName)
-	)
+	before := time.Now()
 
-	if _, err := utils.CopyFile(*initramfsInputPath, initramfsOutputPath); err != nil {
-		panic(err)
-	}
-
-	if _, err := utils.CopyFile(*kernelInputPath, kernelOutputPath); err != nil {
-		panic(err)
-	}
-
-	if _, err := utils.CopyFile(*diskInputPath, diskOutputPath); err != nil {
-		panic(err)
-	}
-
-	if err := firecracker.StartVM(
-		client,
-
-		initramfsName,
-		kernelName,
-		diskName,
-
-		*cpuCount,
-		*memorySize,
-
-		*hostInterface,
-		*hostMAC,
-
-		*vsockPath,
-		vsock.CIDGuest,
-	); err != nil {
+	if err := firecracker.ResumeSnapshot(client); err != nil {
 		panic(err)
 	}
 	defer os.Remove(filepath.Join(*packagePath, *vsockPath))
-
-	if err := ping.Receive(); err != nil {
-		panic(err)
-	}
 
 	// handler := vsock.NewHandler(
 	// 	filepath.Join(*packagePath, *vsockPath),
@@ -180,11 +118,26 @@ func main() {
 	// }
 	// defer handler.Close()
 
+	// if err := peer.AfterResume(ctx); err != nil {
+	// 	panic(err)
+	// }
+
+	log.Println("Resume:", time.Since(before))
+
+	done := make(chan os.Signal, 1)
+	signal.Notify(done, os.Interrupt)
+
+	<-done
+
+	before = time.Now()
+
 	// if err := peer.BeforeSuspend(ctx); err != nil {
 	// 	panic(err)
 	// }
 
-	if err := firecracker.CreateSnapshot(client); err != nil {
+	if err := firecracker.FlushSnapshot(client); err != nil {
 		panic(err)
 	}
+
+	log.Println("Suspend:", time.Since(before))
 }

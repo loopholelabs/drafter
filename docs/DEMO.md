@@ -129,7 +129,7 @@ output_log="/dev/stdout"
 error_log="/dev/stderr"
 
 depend() {
-	need net redis
+	need net redis architect-agent
 }
 EOT
 chmod +x /tmp/template/etc/init.d/architect-liveness
@@ -180,4 +180,12 @@ go build -o /tmp/architect-manager ./cmd/architect-manager/ && sudo /tmp/archite
 go build -o /tmp/architect-handler ./cmd/architect-handler/ && sudo /tmp/architect-handler --before-suspend
 go build -o /tmp/architect-manager ./cmd/architect-manager/ && sudo /tmp/architect-manager --flush # Pauses the VM; you need to manually `--start` again
 go build -o /tmp/architect-handler ./cmd/architect-handler/ && sudo /tmp/architect-handler --after-resume
+```
+
+## End-to-End Test
+
+```shell
+rm -f *.sock && sudo rm -rf out/package/ && sudo ip tuntap del dev vm0 mode tap; go build -o /tmp/architect-packager ./cmd/architect-packager/ && sudo /tmp/architect-packager && go build -o /tmp/architect-runner ./cmd/architect-runner/ && sudo /tmp/architect-runner --verbose
+
+go build -o /tmp/architect-runner ./cmd/architect-runner/ && sudo /tmp/architect-runner --verbose
 ```
