@@ -6,13 +6,13 @@ import (
 	"log"
 	"time"
 
+	"github.com/loopholelabs/architekt/pkg/firecracker"
 	"github.com/loopholelabs/architekt/pkg/services"
 	"github.com/mdlayher/vsock"
 	"github.com/pojntfx/dudirekta/pkg/rpc"
 )
 
 func main() {
-	vsockCID := flag.Int("vsock-cid", 3, "VSock CID")
 	vsockPort := flag.Int("vsock-port", 26, "VSock port")
 
 	flag.Parse()
@@ -55,7 +55,7 @@ func main() {
 		},
 	)
 
-	lis, err := vsock.ListenContextID(uint32(*vsockCID), uint32(*vsockPort), nil)
+	lis, err := vsock.ListenContextID(firecracker.CIDGuest, uint32(*vsockPort), nil)
 	if err != nil {
 		panic(err)
 	}

@@ -16,6 +16,11 @@ var (
 	errSignalKilled = errors.New("signal: killed")
 )
 
+const (
+	CIDHost  = 2
+	CIDGuest = 3
+)
+
 type Server struct {
 	bin        string
 	socketPath string

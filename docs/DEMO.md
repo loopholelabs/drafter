@@ -36,9 +36,7 @@ sudo iptables --insert FORWARD --in-interface ${BRIDGE_INTERFACE} -j ACCEPT
 export DISK_SIZE="5G"
 export GATEWAY_IP="192.168.233.1"
 export GUEST_CIDR="192.168.233.2/24"
-export LIVENESS_VSOCK_CID="2"
 export LIVENESS_VSOCK_PORT="25"
-export AGENT_VSOCK_CID="3"
 export AGENT_VSOCK_PORT="26"
 
 rm -rf out/template
@@ -124,7 +122,7 @@ tee /tmp/template/etc/init.d/architect-liveness <<EOT
 #!/sbin/openrc-run
 
 command="/usr/sbin/architect-liveness"
-command_args="--vsock-cid ${LIVENESS_VSOCK_CID} --vsock-port ${LIVENESS_VSOCK_PORT}"
+command_args="--vsock-port ${LIVENESS_VSOCK_PORT}"
 command_background=true
 pidfile="/run/\${RC_SVCNAME}.pid"
 output_log="/dev/stdout"
@@ -144,7 +142,7 @@ tee /tmp/template/etc/init.d/architect-agent <<EOT
 #!/sbin/openrc-run
 
 command="/usr/sbin/architect-agent"
-command_args="--vsock-cid ${AGENT_VSOCK_CID} --vsock-port ${AGENT_VSOCK_PORT}"
+command_args="--vsock-port ${AGENT_VSOCK_PORT}"
 command_background=true
 pidfile="/run/\${RC_SVCNAME}.pid"
 output_log="/dev/stdout"
@@ -179,5 +177,7 @@ go build -o /tmp/architect-worker ./cmd/architect-worker/ && sudo /tmp/architect
 go build -o /tmp/architect-manager ./cmd/architect-manager/ && sudo /tmp/architect-manager --start
 go build -o /tmp/architect-manager ./cmd/architect-manager/ && sudo /tmp/architect-manager --stop
 
-go build -o /tmp/architect-manager ./cmd/architect-manager/ && sudo /tmp/architect-manager --flush # Pauses the VM
+go build -o /tmp/architect-handler ./cmd/architect-handler/ && sudo /tmp/architect-handler --before-suspend
+go build -o /tmp/architect-manager ./cmd/architect-manager/ && sudo /tmp/architect-manager --flush # Pauses the VM; you need to manually `--start` again
+go build -o /tmp/architect-handler ./cmd/architect-handler/ && sudo /tmp/architect-handler --after-resume
 ```

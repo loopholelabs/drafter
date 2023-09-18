@@ -40,7 +40,6 @@ func main() {
 
 	vsockPath := flag.String("vsock-path", "vsock.sock", "VSock path")
 	livenessVSockPort := flag.Int("liveness-vsock-port", 25, "Liveness VSock port")
-	vsockCID := flag.Int("vsock-cid", 3, "VSock CID")
 
 	initramfsInputPath := flag.String("initramfs-input-path", filepath.Join(pwd, "out", "template", "architekt.initramfs"), "initramfs input path")
 	kernelInputPath := flag.String("kernel-input-path", filepath.Join(pwd, "out", "template", "architekt.kernel"), "Kernel input path")
@@ -145,7 +144,7 @@ func main() {
 		*hostMAC,
 
 		*vsockPath,
-		*vsockCID,
+		firecracker.CIDGuest,
 	); err != nil {
 		panic(err)
 	}
