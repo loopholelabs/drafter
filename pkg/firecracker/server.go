@@ -16,11 +16,6 @@ var (
 	errSignalKilled = errors.New("signal: killed")
 )
 
-const (
-	CIDHost  = 2
-	CIDGuest = 3
-)
-
 type Server struct {
 	bin        string
 	socketPath string
@@ -69,7 +64,7 @@ func (s *Server) Wait() error {
 	return nil
 }
 
-func (s *Server) Start() error {
+func (s *Server) Open() error {
 	watcher, err := inotify.NewWatcher()
 	if err != nil {
 		return err
@@ -122,7 +117,7 @@ func (s *Server) Start() error {
 	return ErrNoSocketCreated
 }
 
-func (s *Server) Stop() error {
+func (s *Server) Close() error {
 	if s.cmd != nil && s.cmd.Process != nil {
 		_ = s.cmd.Process.Kill()
 	}

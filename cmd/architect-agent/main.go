@@ -4,12 +4,10 @@ import (
 	"context"
 	"flag"
 	"log"
+	"sync"
 	"time"
 
-	"github.com/loopholelabs/architekt/pkg/firecracker"
-	"github.com/loopholelabs/architekt/pkg/services"
-	"github.com/mdlayher/vsock"
-	"github.com/pojntfx/dudirekta/pkg/rpc"
+	"github.com/loopholelabs/architekt/pkg/vsock"
 )
 
 func main() {
@@ -20,7 +18,10 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	svc := services.NewAgent(
+	agent := vsock.NewAgent(
+		vsock.CIDGuest,
+		uint32(*vsockPort),
+
 		func(ctx context.Context) error {
 			log.Println("Suspending app")
 
@@ -31,61 +32,27 @@ func main() {
 
 			return nil
 		},
-	)
-
-	clients := 0
-	registry := rpc.NewRegistry(
-		svc,
-		struct{}{},
 
 		time.Second*10,
-		ctx,
-		&rpc.Options{
-			ResponseBufferLen: rpc.DefaultResponseBufferLen,
-			OnClientConnect: func(remoteID string) {
-				clients++
-
-				log.Printf("%v clients connected", clients)
-			},
-			OnClientDisconnect: func(remoteID string) {
-				clients--
-
-				log.Printf("%v clients connected", clients)
-			},
-		},
 	)
 
-	lis, err := vsock.ListenContextID(firecracker.CIDGuest, uint32(*vsockPort), nil)
-	if err != nil {
+	var wg sync.WaitGroup
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+
+		if err := agent.Wait(); err != nil {
+			panic(err)
+		}
+	}()
+
+	if err := agent.Open(ctx); err != nil {
 		panic(err)
 	}
-	defer lis.Close()
+	defer agent.Close()
 
-	log.Println("Listening on", lis.Addr())
+	log.Println("Listening on", *vsockPort)
 
-	for {
-		func() {
-			conn, err := lis.Accept()
-			if err != nil {
-				log.Println("could not accept connection, continuing:", err)
-
-				return
-			}
-
-			go func() {
-
-				defer func() {
-					_ = conn.Close()
-
-					if err := recover(); err != nil {
-						log.Printf("Client disconnected with error: %v", err)
-					}
-				}()
-
-				if err := registry.Link(conn); err != nil {
-					panic(err)
-				}
-			}()
-		}()
-	}
+	wg.Wait()
 }

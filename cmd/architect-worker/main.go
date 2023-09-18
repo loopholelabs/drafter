@@ -64,10 +64,10 @@ func main() {
 		}
 	}()
 
-	if err := srv.Start(); err != nil {
+	if err := srv.Open(); err != nil {
 		panic(err)
 	}
-	defer srv.Stop()
+	defer srv.Close()
 
 	log.Println("Listening on", *firecrackerSocketPath)
 

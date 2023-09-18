@@ -10,9 +10,9 @@ import (
 	"sync"
 
 	"github.com/loopholelabs/architekt/pkg/firecracker"
-	"github.com/loopholelabs/architekt/pkg/liveness"
 	"github.com/loopholelabs/architekt/pkg/network"
 	"github.com/loopholelabs/architekt/pkg/utils"
+	"github.com/loopholelabs/architekt/pkg/vsock"
 )
 
 const (
@@ -56,7 +56,7 @@ func main() {
 		panic(err)
 	}
 
-	ping := liveness.NewLivenessPingReceiver(
+	ping := vsock.NewLivenessPingReceiver(
 		filepath.Join(*packagePath, *vsockPath),
 		uint32(*livenessVSockPort),
 	)
@@ -99,10 +99,10 @@ func main() {
 		}
 	}()
 
-	if err := srv.Start(); err != nil {
+	if err := srv.Open(); err != nil {
 		panic(err)
 	}
-	defer srv.Stop()
+	defer srv.Close()
 
 	client := &http.Client{
 		Transport: &http.Transport{
@@ -144,7 +144,7 @@ func main() {
 		*hostMAC,
 
 		*vsockPath,
-		firecracker.CIDGuest,
+		vsock.CIDGuest,
 	); err != nil {
 		panic(err)
 	}

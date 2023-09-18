@@ -1,4 +1,4 @@
-package liveness
+package vsock
 
 import (
 	"fmt"

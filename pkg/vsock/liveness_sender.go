@@ -1,6 +1,11 @@
-package liveness
+package vsock
 
 import "github.com/mdlayher/vsock"
+
+const (
+	CIDHost  = 2
+	CIDGuest = 3
+)
 
 func SendLivenessPing(
 	vsockCID uint32,
