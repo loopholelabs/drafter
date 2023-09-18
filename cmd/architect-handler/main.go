@@ -2,24 +2,13 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
-	"fmt"
 	"log"
-	"net"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
-	"github.com/loopholelabs/architekt/pkg/services"
-	"github.com/loopholelabs/architekt/pkg/utils"
-	"github.com/pojntfx/dudirekta/pkg/rpc"
-)
-
-var (
-	errCouldNotConnectToVSock = errors.New("could not connect to VSock")
-	errPeerNotFound           = errors.New("peer not found")
+	"github.com/loopholelabs/architekt/pkg/vsock"
 )
 
 func main() {
@@ -34,70 +23,31 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	ready := make(chan string)
-
-	clients := 0
-	registry := rpc.NewRegistry(
-		struct{}{},
-		services.AgentRemote{},
+	handler := vsock.NewHandler(
+		*vsockPath,
+		uint32(*agentVSockPort),
 
 		time.Second*10,
-		ctx,
-		&rpc.Options{
-			ResponseBufferLen: rpc.DefaultResponseBufferLen,
-			OnClientConnect: func(remoteID string) {
-				clients++
-
-				log.Printf("%v clients connected", clients)
-
-				ready <- remoteID
-			},
-			OnClientDisconnect: func(remoteID string) {
-				clients--
-
-				log.Printf("%v clients connected", clients)
-			},
-		},
 	)
 
-	conn, err := net.Dial("unix", *vsockPath)
-	if err != nil {
-		panic(err)
-	}
-	defer conn.Close()
-
-	if _, err := conn.Write([]byte(fmt.Sprintf("CONNECT %d\n", *agentVSockPort))); err != nil {
-		panic(err)
-	}
-
-	line, err := utils.ReadLineNoBuffer(conn)
-	if err != nil {
-		panic(err)
-	}
-
-	if !strings.HasPrefix(line, "OK ") {
-		panic(errCouldNotConnectToVSock)
-	}
-
-	log.Println("Connected to", conn.RemoteAddr())
-
 	var wg sync.WaitGroup
-	defer wg.Wait()
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 
-		if err := registry.Link(conn); err != nil && !strings.HasSuffix(err.Error(), "use of closed network connection") {
+		if err := handler.Wait(); err != nil {
 			panic(err)
 		}
 	}()
 
-	remoteID := <-ready
-	peer, ok := registry.Peers()[remoteID]
-	if !ok {
-		panic(errPeerNotFound)
+	peer, err := handler.Open(ctx)
+	if err != nil {
+		panic(err)
 	}
+	defer handler.Close()
+
+	log.Println("Connected to", *vsockPath, *agentVSockPort)
 
 	if *beforeSuspend {
 		if err := peer.BeforeSuspend(ctx); err != nil {
@@ -109,9 +59,5 @@ func main() {
 		if err := peer.AfterResume(ctx); err != nil {
 			panic(err)
 		}
-	}
-
-	if err := conn.Close(); err != nil {
-		panic(err)
 	}
 }
