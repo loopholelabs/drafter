@@ -36,8 +36,10 @@ sudo iptables --insert FORWARD --in-interface ${BRIDGE_INTERFACE} -j ACCEPT
 export DISK_SIZE="5G"
 export GATEWAY_IP="192.168.233.1"
 export GUEST_CIDR="192.168.233.2/24"
-export VSOCK_CID="2"
-export VSOCK_PORT="25"
+export LIVENESS_VSOCK_CID="2"
+export LIVENESS_VSOCK_PORT="25"
+export AGENT_VSOCK_CID="3"
+export AGENT_VSOCK_PORT="26"
 
 rm -rf out/template
 mkdir -p out/template
@@ -116,11 +118,13 @@ sudo mount out/template/architekt.disk /tmp/template
 sudo chown ${USER} /tmp/template
 
 CGO_ENABLED=0 go build -o /tmp/template/usr/sbin/architect-liveness ./cmd/architect-liveness
+CGO_ENABLED=0 go build -o /tmp/template/usr/sbin/architect-agent ./cmd/architect-agent
+
 tee /tmp/template/etc/init.d/architect-liveness <<EOT
 #!/sbin/openrc-run
 
 command="/usr/sbin/architect-liveness"
-command_args="--vsock-cid ${VSOCK_CID} --vsock-port ${VSOCK_PORT}"
+command_args="--vsock-cid ${LIVENESS_VSOCK_CID} --vsock-port ${LIVENESS_VSOCK_PORT}"
 command_background=true
 pidfile="/run/\${RC_SVCNAME}.pid"
 output_log="/dev/stdout"
@@ -134,6 +138,26 @@ chmod +x /tmp/template/etc/init.d/architect-liveness
 
 sudo chroot /tmp/template sh - <<'EOT'
 rc-update add architect-liveness default
+EOT
+
+tee /tmp/template/etc/init.d/architect-agent <<EOT
+#!/sbin/openrc-run
+
+command="/usr/sbin/architect-agent"
+command_args="--vsock-cid ${AGENT_VSOCK_CID} --vsock-port ${AGENT_VSOCK_PORT}"
+command_background=true
+pidfile="/run/\${RC_SVCNAME}.pid"
+output_log="/dev/stdout"
+error_log="/dev/stderr"
+
+depend() {
+	need net redis
+}
+EOT
+chmod +x /tmp/template/etc/init.d/architect-agent
+
+sudo chroot /tmp/template sh - <<'EOT'
+rc-update add architect-agent default
 EOT
 
 sync -f /tmp/template

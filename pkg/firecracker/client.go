@@ -16,6 +16,7 @@ var (
 	ErrCouldNotSetBootSource        = errors.New("could not set boot source")
 	ErrCouldNotSetDrive             = errors.New("could not set drive")
 	ErrCouldNotSetMachineConfig     = errors.New("could not set machine config")
+	ErrCouldNotSetVSock             = errors.New("could not set vsock")
 	ErrCouldNotSetNetworkInterfaces = errors.New("could not set network interfaces")
 	ErrCouldNotStartInstance        = errors.New("could not start instance")
 	ErrCouldNotStopInstance         = errors.New("could not stop instance")
@@ -122,7 +123,7 @@ func StartVM(
 		},
 		"vsock",
 	); err != nil {
-		return fmt.Errorf("%w: %s", ErrCouldNotSetNetworkInterfaces, err)
+		return fmt.Errorf("%w: %s", ErrCouldNotSetVSock, err)
 	}
 
 	if err := submitJSON(
