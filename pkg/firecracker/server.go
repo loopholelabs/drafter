@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sync"
 
+	"golang.org/x/sys/unix"
 	"k8s.io/utils/inotify"
 )
 
@@ -82,6 +83,10 @@ func (s *Server) Open() error {
 
 	s.cmd = exec.Command(execLine[0], execLine[1:]...)
 	s.cmd.Dir = s.pwd
+	s.cmd.SysProcAttr = &unix.SysProcAttr{ // Don't forward signals from parent to child process
+		Setpgid: true,
+		Pgid:    0,
+	}
 	if s.enableOutput {
 		s.cmd.Stdout = os.Stdout
 		s.cmd.Stderr = os.Stderr
