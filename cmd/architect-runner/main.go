@@ -77,10 +77,10 @@ func main() {
 		}
 	}()
 
+	defer srv.Close()
 	if err := srv.Open(); err != nil {
 		panic(err)
 	}
-	defer srv.Close()
 
 	client := &http.Client{
 		Transport: &http.Transport{
@@ -113,11 +113,11 @@ func main() {
 		}
 	}()
 
-	peer, err := handler.Open(ctx)
+	defer handler.Close()
+	peer, err := handler.Open(ctx, time.Millisecond*100, time.Second*10)
 	if err != nil {
 		panic(err)
 	}
-	defer handler.Close()
 
 	if err := peer.AfterResume(ctx); err != nil {
 		panic(err)

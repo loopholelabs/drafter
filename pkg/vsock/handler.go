@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"log"
 	"net"
 	"strings"
 	"sync"
@@ -59,7 +61,11 @@ func (s *Handler) Wait() error {
 	return nil
 }
 
-func (s *Handler) Open(ctx context.Context) (services.AgentRemote, error) {
+func (s *Handler) Open(
+	ctx context.Context,
+	connectDeadline time.Duration,
+	retryDeadline time.Duration,
+) (services.AgentRemote, error) {
 	ready := make(chan string)
 
 	registry := rpc.NewRegistry(
@@ -76,23 +82,75 @@ func (s *Handler) Open(ctx context.Context) (services.AgentRemote, error) {
 		},
 	)
 
-	var err error
-	s.conn, err = net.Dial("unix", s.vsockPath)
-	if err != nil {
-		return services.AgentRemote{}, err
+	connectToService := func() (bool, error) {
+		var (
+			errs = make(chan error)
+			done = make(chan struct{})
+		)
+
+		go func() {
+			var err error
+			s.conn, err = net.Dial("unix", s.vsockPath)
+			if err != nil {
+				errs <- err
+
+				return
+			}
+
+			if _, err = s.conn.Write([]byte(fmt.Sprintf("CONNECT %d\n", s.vsockPort))); err != nil {
+				errs <- err
+
+				return
+			}
+
+			line, err := iutils.ReadLineNoBuffer(s.conn)
+			if err != nil {
+				errs <- err
+
+				return
+			}
+
+			if !strings.HasPrefix(line, "OK ") {
+				errs <- ErrCouldNotConnectToVSock
+
+				return
+			}
+
+			done <- struct{}{}
+		}()
+
+		select {
+		case err := <-errs:
+			if !errors.Is(err, io.EOF) {
+				return false, err
+			}
+
+			return true, nil
+		case <-time.After(connectDeadline):
+			return true, nil
+
+		case <-done:
+			return false, nil
+		}
 	}
 
-	if _, err := s.conn.Write([]byte(fmt.Sprintf("CONNECT %d\n", s.vsockPort))); err != nil {
-		return services.AgentRemote{}, err
-	}
+	before := time.Now()
 
-	line, err := iutils.ReadLineNoBuffer(s.conn)
-	if err != nil {
-		return services.AgentRemote{}, err
-	}
+	for {
+		if time.Since(before) > retryDeadline {
+			return services.AgentRemote{}, ErrCouldNotConnectToVSock
+		}
 
-	if !strings.HasPrefix(line, "OK ") {
-		return services.AgentRemote{}, ErrCouldNotConnectToVSock
+		retry, err := connectToService()
+		if err != nil {
+			log.Println(err)
+
+			return services.AgentRemote{}, err
+		}
+
+		if !retry {
+			break
+		}
 	}
 
 	s.wg.Add(1)
