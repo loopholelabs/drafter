@@ -115,13 +115,13 @@ mkdir -p /tmp/template
 sudo mount out/template/architekt.disk /tmp/template
 sudo chown ${USER} /tmp/template
 
-CGO_ENABLED=0 go build -o /tmp/template/usr/sbin/architect-liveness ./cmd/architect-liveness
-CGO_ENABLED=0 go build -o /tmp/template/usr/sbin/architect-agent ./cmd/architect-agent
+CGO_ENABLED=0 go build -o /tmp/template/usr/sbin/architekt-liveness ./cmd/architekt-liveness
+CGO_ENABLED=0 go build -o /tmp/template/usr/sbin/architekt-agent ./cmd/architekt-agent
 
-tee /tmp/template/etc/init.d/architect-liveness <<EOT
+tee /tmp/template/etc/init.d/architekt-liveness <<EOT
 #!/sbin/openrc-run
 
-command="/usr/sbin/architect-liveness"
+command="/usr/sbin/architekt-liveness"
 command_args="--vsock-port ${LIVENESS_VSOCK_PORT}"
 command_background=true
 pidfile="/run/\${RC_SVCNAME}.pid"
@@ -129,19 +129,19 @@ output_log="/dev/stdout"
 error_log="/dev/stderr"
 
 depend() {
-	need net redis architect-agent
+	need net redis architekt-agent
 }
 EOT
-chmod +x /tmp/template/etc/init.d/architect-liveness
+chmod +x /tmp/template/etc/init.d/architekt-liveness
 
 sudo chroot /tmp/template sh - <<'EOT'
-rc-update add architect-liveness default
+rc-update add architekt-liveness default
 EOT
 
-tee /tmp/template/etc/init.d/architect-agent <<EOT
+tee /tmp/template/etc/init.d/architekt-agent <<EOT
 #!/sbin/openrc-run
 
-command="/usr/sbin/architect-agent"
+command="/usr/sbin/architekt-agent"
 command_args="--vsock-port ${AGENT_VSOCK_PORT}"
 command_background=true
 pidfile="/run/\${RC_SVCNAME}.pid"
@@ -152,10 +152,10 @@ depend() {
 	need net redis
 }
 EOT
-chmod +x /tmp/template/etc/init.d/architect-agent
+chmod +x /tmp/template/etc/init.d/architekt-agent
 
 sudo chroot /tmp/template sh - <<'EOT'
-rc-update add architect-agent default
+rc-update add architekt-agent default
 EOT
 
 sync -f /tmp/template
@@ -168,7 +168,7 @@ rm -rf /tmp/template
 ```shell
 sudo pkill -9 firecracker; rm -f *.sock; sudo rm -rf out/package/; sudo ip tuntap del dev vm0 mode tap # Cleaning up artifacts from potentially failed runs
 
-go build -o /tmp/architect-packager ./cmd/architect-packager/ && sudo /tmp/architect-packager
+go build -o /tmp/architekt-packager ./cmd/architekt-packager/ && sudo /tmp/architekt-packager
 
-go build -o /tmp/architect-runner ./cmd/architect-runner/ && sudo /tmp/architect-runner # You can now CTRL+C to flush the snapshot & resume
+go build -o /tmp/architekt-runner ./cmd/architekt-runner/ && sudo /tmp/architekt-runner # You can now CTRL+C to flush the snapshot & resume
 ```
