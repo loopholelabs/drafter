@@ -166,9 +166,9 @@ rm -rf /tmp/blueprint
 ## Starting Packager and Runner
 
 ```shell
-sudo pkill -9 firecracker; rm -f *.sock; sudo rm -f out/redis.ark; sudo ip tuntap del dev vm0 mode tap # Cleaning up artifacts from potentially failed runs
+sudo pkill -9 firecracker; rm -f *.sock; sudo umount out/redis.ark; sudo rm -f out/redis.ark; sudo ip tuntap del dev vm0 mode tap # Cleaning up artifacts from potentially failed runs
 
 go build -o /tmp/architekt-packager ./cmd/architekt-packager/ && sudo /tmp/architekt-packager
 
-go build -o /tmp/architekt-runner ./cmd/architekt-runner/ && sudo /tmp/architekt-runner # You can now CTRL+C to flush the snapshot & resume
+go build -o /tmp/architekt-runner ./cmd/architekt-runner/ && sudo /tmp/architekt-runner # You can now CTRL+C to flush the snapshot & run again to resume
 ```

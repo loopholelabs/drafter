@@ -14,6 +14,7 @@ import (
 
 	"github.com/loopholelabs/architekt/pkg/firecracker"
 	"github.com/loopholelabs/architekt/pkg/network"
+	"github.com/loopholelabs/architekt/pkg/utils"
 	"github.com/loopholelabs/architekt/pkg/vsock"
 )
 
@@ -37,12 +38,25 @@ func main() {
 	vsockPath := flag.String("vsock-path", "vsock.sock", "VSock path")
 	agentVSockPort := flag.Int("agent-vsock-port", 26, "Agent VSock port")
 
-	packagePath := flag.String("package-path", filepath.Join("out", "package"), "Path to write extracted package to")
+	packagePath := flag.String("package-path", filepath.Join("out", "redis.ark"), "Path to package to use")
 
 	flag.Parse()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	packageDir, err := os.MkdirTemp("", "")
+	if err != nil {
+		panic(err)
+	}
+	defer os.RemoveAll(packageDir)
+
+	mount := utils.NewLoopMount(*packagePath, packageDir)
+
+	if err := mount.Open(); err != nil {
+		panic(err)
+	}
+	defer mount.Close()
 
 	tap := network.NewTAP(
 		*hostInterface,
@@ -58,7 +72,7 @@ func main() {
 	srv := firecracker.NewServer(
 		*firecrackerBin,
 		*firecrackerSocketPath,
-		*packagePath,
+		packageDir,
 
 		*verbose,
 		*enableOutput,
@@ -95,10 +109,10 @@ func main() {
 	if err := firecracker.ResumeSnapshot(client); err != nil {
 		panic(err)
 	}
-	defer os.Remove(filepath.Join(*packagePath, *vsockPath))
+	defer os.Remove(filepath.Join(packageDir, *vsockPath))
 
 	handler := vsock.NewHandler(
-		filepath.Join(*packagePath, *vsockPath),
+		filepath.Join(packageDir, *vsockPath),
 		uint32(*agentVSockPort),
 
 		time.Second*10,
