@@ -30,7 +30,7 @@ sudo iptables --table nat --append POSTROUTING --out-interface ${GATEWAY_INTERFA
 sudo iptables --insert FORWARD --in-interface ${BRIDGE_INTERFACE} -j ACCEPT
 ```
 
-## Setting up Template
+## Setting up Blueprint
 
 ```shell
 export DISK_SIZE="5G"
@@ -39,8 +39,8 @@ export GUEST_CIDR="192.168.233.2/24"
 export LIVENESS_VSOCK_PORT="25"
 export AGENT_VSOCK_PORT="26"
 
-rm -rf out/template
-mkdir -p out/template
+rm -rf out/blueprint
+mkdir -p out/blueprint
 
 rm -rf /tmp/kernel
 mkdir -p /tmp/kernel
@@ -56,26 +56,26 @@ cd /tmp/kernel
 make -j$(nproc) vmlinux
 EOT
 
-cp /tmp/kernel/vmlinux out/template/architekt.kernel
+cp /tmp/kernel/vmlinux out/blueprint/architekt.akkernel
 
-qemu-img create -f raw out/template/architekt.disk ${DISK_SIZE}
-mkfs.ext4 out/template/architekt.disk
+qemu-img create -f raw out/blueprint/architekt.akdisk ${DISK_SIZE}
+mkfs.ext4 out/blueprint/architekt.akdisk
 
-sudo umount /tmp/template || true
-rm -rf /tmp/template
-mkdir -p /tmp/template
+sudo umount /tmp/blueprint || true
+rm -rf /tmp/blueprint
+mkdir -p /tmp/blueprint
 
-sudo mount out/template/architekt.disk /tmp/template
-sudo chown ${USER} /tmp/template
+sudo mount out/blueprint/architekt.akdisk /tmp/blueprint
+sudo chown ${USER} /tmp/blueprint
 
 curl -Lo /tmp/rootfs.tar.gz https://dl-cdn.alpinelinux.org/alpine/v3.18/releases/x86_64/alpine-minirootfs-3.18.3-x86_64.tar.gz
-tar zxvf /tmp/rootfs.tar.gz -C /tmp/template
+tar zxvf /tmp/rootfs.tar.gz -C /tmp/blueprint
 
-tee /tmp/template/etc/resolv.conf <<'EOT'
+tee /tmp/blueprint/etc/resolv.conf <<'EOT'
 nameserver 1.1.1.1
 EOT
 
-tee /tmp/template/etc/network/interfaces <<EOT
+tee /tmp/blueprint/etc/network/interfaces <<EOT
 auto lo
 iface lo inet loopback
 
@@ -85,7 +85,7 @@ iface eth0 inet static
     gateway ${GATEWAY_IP}
 EOT
 
-sudo chroot /tmp/template sh - <<'EOT'
+sudo chroot /tmp/blueprint sh - <<'EOT'
 apk add alpine-base util-linux linux-virt linux-virt-dev coreutils binutils grep bzip2 chrony redis redis-openrc
 echo root:root | chpasswd
 
@@ -101,24 +101,24 @@ rc-update add chronyd default
 rc-update add redis default
 EOT
 
-sudo cp /tmp/template/boot/initramfs-virt out/template/architekt.initramfs
-sudo chown ${USER} out/template/architekt.initramfs
+sudo cp /tmp/blueprint/boot/initramfs-virt out/blueprint/architekt.akinitramfs
+sudo chown ${USER} out/blueprint/architekt.akinitramfs
 
-sync -f /tmp/template
-sudo umount /tmp/template || true
-rm -rf /tmp/template
+sync -f /tmp/blueprint
+sudo umount /tmp/blueprint || true
+rm -rf /tmp/blueprint
 
-sudo umount /tmp/template || true
-rm -rf /tmp/template
-mkdir -p /tmp/template
+sudo umount /tmp/blueprint || true
+rm -rf /tmp/blueprint
+mkdir -p /tmp/blueprint
 
-sudo mount out/template/architekt.disk /tmp/template
-sudo chown ${USER} /tmp/template
+sudo mount out/blueprint/architekt.akdisk /tmp/blueprint
+sudo chown ${USER} /tmp/blueprint
 
-CGO_ENABLED=0 go build -o /tmp/template/usr/sbin/architekt-liveness ./cmd/architekt-liveness
-CGO_ENABLED=0 go build -o /tmp/template/usr/sbin/architekt-agent ./cmd/architekt-agent
+CGO_ENABLED=0 go build -o /tmp/blueprint/usr/sbin/architekt-liveness ./cmd/architekt-liveness
+CGO_ENABLED=0 go build -o /tmp/blueprint/usr/sbin/architekt-agent ./cmd/architekt-agent
 
-tee /tmp/template/etc/init.d/architekt-liveness <<EOT
+tee /tmp/blueprint/etc/init.d/architekt-liveness <<EOT
 #!/sbin/openrc-run
 
 command="/usr/sbin/architekt-liveness"
@@ -132,13 +132,13 @@ depend() {
 	need net redis architekt-agent
 }
 EOT
-chmod +x /tmp/template/etc/init.d/architekt-liveness
+chmod +x /tmp/blueprint/etc/init.d/architekt-liveness
 
-sudo chroot /tmp/template sh - <<'EOT'
+sudo chroot /tmp/blueprint sh - <<'EOT'
 rc-update add architekt-liveness default
 EOT
 
-tee /tmp/template/etc/init.d/architekt-agent <<EOT
+tee /tmp/blueprint/etc/init.d/architekt-agent <<EOT
 #!/sbin/openrc-run
 
 command="/usr/sbin/architekt-agent"
@@ -152,21 +152,21 @@ depend() {
 	need net redis
 }
 EOT
-chmod +x /tmp/template/etc/init.d/architekt-agent
+chmod +x /tmp/blueprint/etc/init.d/architekt-agent
 
-sudo chroot /tmp/template sh - <<'EOT'
+sudo chroot /tmp/blueprint sh - <<'EOT'
 rc-update add architekt-agent default
 EOT
 
-sync -f /tmp/template
-sudo umount /tmp/template || true
-rm -rf /tmp/template
+sync -f /tmp/blueprint
+sudo umount /tmp/blueprint || true
+rm -rf /tmp/blueprint
 ```
 
 ## Starting Packager and Runner
 
 ```shell
-sudo pkill -9 firecracker; rm -f *.sock; sudo rm -f out/architekt.package; sudo ip tuntap del dev vm0 mode tap # Cleaning up artifacts from potentially failed runs
+sudo pkill -9 firecracker; rm -f *.sock; sudo rm -f out/redis.akpkg; sudo ip tuntap del dev vm0 mode tap # Cleaning up artifacts from potentially failed runs
 
 go build -o /tmp/architekt-packager ./cmd/architekt-packager/ && sudo /tmp/architekt-packager
 

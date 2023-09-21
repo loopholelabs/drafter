@@ -22,9 +22,9 @@ import (
 )
 
 const (
-	initramfsName = "architekt.initramfs"
-	kernelName    = "architekt.kernel"
-	diskName      = "architekt.disk"
+	initramfsName = "architekt.akinitramfs"
+	kernelName    = "architekt.akkernel"
+	diskName      = "architekt.akdisk"
 )
 
 func main() {
@@ -48,15 +48,15 @@ func main() {
 	livenessVSockPort := flag.Int("liveness-vsock-port", 25, "Liveness VSock port")
 	agentVSockPort := flag.Int("agent-vsock-port", 26, "Agent VSock port")
 
-	initramfsInputPath := flag.String("initramfs-input-path", filepath.Join(pwd, "out", "template", "architekt.initramfs"), "initramfs input path")
-	kernelInputPath := flag.String("kernel-input-path", filepath.Join(pwd, "out", "template", "architekt.kernel"), "Kernel input path")
-	diskInputPath := flag.String("disk-input-path", filepath.Join(pwd, "out", "template", "architekt.disk"), "Disk input path")
+	initramfsInputPath := flag.String("initramfs-input-path", filepath.Join(pwd, "out", "blueprint", "architekt.akinitramfs"), "initramfs input path")
+	kernelInputPath := flag.String("kernel-input-path", filepath.Join(pwd, "out", "blueprint", "architekt.akkernel"), "Kernel input path")
+	diskInputPath := flag.String("disk-input-path", filepath.Join(pwd, "out", "blueprint", "architekt.akdisk"), "Disk input path")
 
 	cpuCount := flag.Int("cpu-count", 1, "CPU count")
 	memorySize := flag.Int("memory-size", 1024, "Memory size (in MB)")
 
-	packagePath := flag.String("package-path", filepath.Join("out", "architekt.package"), "Path to write package file to")
-	paddingSize := flag.Int("package-padding", 128, "Padding to add to package for state file and file system metadata (in MB)")
+	packagePath := flag.String("package-path", filepath.Join("out", "redis.akpkg"), "Path to write package file to")
+	packagePaddingSize := flag.Int("package-padding-size", 128, "Padding to add to package for state file and file system metadata (in MB)")
 
 	flag.Parse()
 
@@ -78,7 +78,7 @@ func main() {
 		panic(err)
 	}
 
-	packageSize := math.Ceil((float64(((initramfsSize+kernelSize+diskSize)/(1024*1024))+int64(*memorySize)+int64(*paddingSize))/float64(1024))/float64(10)) * 10
+	packageSize := math.Ceil((float64(((initramfsSize+kernelSize+diskSize)/(1024*1024))+int64(*memorySize)+int64(*packagePaddingSize))/float64(1024))/float64(10)) * 10
 
 	if err := fsdata.CreateFile(int(packageSize), *packagePath); err != nil {
 		panic(err)

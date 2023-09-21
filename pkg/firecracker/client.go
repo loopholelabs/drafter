@@ -27,8 +27,8 @@ var (
 )
 
 const (
-	stateName  = "architekt.state"
-	memoryName = "architekt.memory"
+	stateName  = "architekt.akstate"
+	memoryName = "architekt.akmemory"
 )
 
 func submitJSON(method string, client *http.Client, body any, resource string) error {
