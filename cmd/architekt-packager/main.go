@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"flag"
-	"log"
 	"math"
 	"net"
 	"net/http"
@@ -12,13 +11,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/freddierice/go-losetup/v2"
 	"github.com/loopholelabs/architekt/pkg/firecracker"
 	"github.com/loopholelabs/architekt/pkg/network"
 	"github.com/loopholelabs/architekt/pkg/utils"
 	"github.com/loopholelabs/architekt/pkg/vsock"
 	"github.com/loopholelabs/voltools/fsdata"
-	"golang.org/x/sys/unix"
 )
 
 const (
@@ -90,32 +87,12 @@ func main() {
 	}
 	defer os.RemoveAll(packageDir)
 
-	loop, err := losetup.Attach(*packagePath, 0, false)
-	if err != nil {
+	mount := utils.NewLoopMount(*packagePath, packageDir)
+
+	if err := mount.Open(); err != nil {
 		panic(err)
 	}
-	defer loop.Detach()
-
-	if err := unix.Mount(loop.Path(), packageDir, "ext4", 0, ""); err != nil {
-		panic(err)
-	}
-	defer unix.Unmount(packageDir, 0)
-
-	defer func() {
-		fd, err := unix.Open(packageDir, unix.O_RDONLY, 0)
-		if err != nil {
-			log.Println("Could not open package directory for syncing:", err)
-
-			return
-		}
-		defer unix.Close(fd)
-
-		if err := unix.Fsync(fd); err != nil {
-			log.Println("Could not open sync package directory:", err)
-
-			return
-		}
-	}()
+	defer mount.Close()
 
 	ping := vsock.NewLivenessPingReceiver(
 		filepath.Join(packageDir, *vsockPath),
