@@ -56,16 +56,16 @@ cd /tmp/kernel
 make -j$(nproc) vmlinux
 EOT
 
-cp /tmp/kernel/vmlinux out/blueprint/architekt.akkernel
+cp /tmp/kernel/vmlinux out/blueprint/architekt.arkkernel
 
-qemu-img create -f raw out/blueprint/architekt.akdisk ${DISK_SIZE}
-mkfs.ext4 out/blueprint/architekt.akdisk
+qemu-img create -f raw out/blueprint/architekt.arkdisk ${DISK_SIZE}
+mkfs.ext4 out/blueprint/architekt.arkdisk
 
 sudo umount /tmp/blueprint || true
 rm -rf /tmp/blueprint
 mkdir -p /tmp/blueprint
 
-sudo mount out/blueprint/architekt.akdisk /tmp/blueprint
+sudo mount out/blueprint/architekt.arkdisk /tmp/blueprint
 sudo chown ${USER} /tmp/blueprint
 
 curl -Lo /tmp/rootfs.tar.gz https://dl-cdn.alpinelinux.org/alpine/v3.18/releases/x86_64/alpine-minirootfs-3.18.3-x86_64.tar.gz
@@ -101,8 +101,8 @@ rc-update add chronyd default
 rc-update add redis default
 EOT
 
-sudo cp /tmp/blueprint/boot/initramfs-virt out/blueprint/architekt.akinitramfs
-sudo chown ${USER} out/blueprint/architekt.akinitramfs
+sudo cp /tmp/blueprint/boot/initramfs-virt out/blueprint/architekt.arkinitramfs
+sudo chown ${USER} out/blueprint/architekt.arkinitramfs
 
 sync -f /tmp/blueprint
 sudo umount /tmp/blueprint || true
@@ -112,7 +112,7 @@ sudo umount /tmp/blueprint || true
 rm -rf /tmp/blueprint
 mkdir -p /tmp/blueprint
 
-sudo mount out/blueprint/architekt.akdisk /tmp/blueprint
+sudo mount out/blueprint/architekt.arkdisk /tmp/blueprint
 sudo chown ${USER} /tmp/blueprint
 
 CGO_ENABLED=0 go build -o /tmp/blueprint/usr/sbin/architekt-liveness ./cmd/architekt-liveness
@@ -166,7 +166,7 @@ rm -rf /tmp/blueprint
 ## Starting Packager and Runner
 
 ```shell
-sudo pkill -9 firecracker; rm -f *.sock; sudo rm -f out/redis.akpkg; sudo ip tuntap del dev vm0 mode tap # Cleaning up artifacts from potentially failed runs
+sudo pkill -9 firecracker; rm -f *.sock; sudo rm -f out/redis.ark; sudo ip tuntap del dev vm0 mode tap # Cleaning up artifacts from potentially failed runs
 
 go build -o /tmp/architekt-packager ./cmd/architekt-packager/ && sudo /tmp/architekt-packager
 
