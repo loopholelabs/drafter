@@ -166,7 +166,7 @@ rm -rf /tmp/template
 ## Starting Packager and Runner
 
 ```shell
-sudo pkill -9 firecracker; rm -f *.sock; sudo rm -rf out/package/; sudo ip tuntap del dev vm0 mode tap # Cleaning up artifacts from potentially failed runs
+sudo pkill -9 firecracker; rm -f *.sock; sudo rm -f out/architekt.package; sudo ip tuntap del dev vm0 mode tap # Cleaning up artifacts from potentially failed runs
 
 go build -o /tmp/architekt-packager ./cmd/architekt-packager/ && sudo /tmp/architekt-packager
 

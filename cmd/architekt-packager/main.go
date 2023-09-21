@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"flag"
+	"log"
+	"math"
 	"net"
 	"net/http"
 	"os"
@@ -10,10 +12,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/freddierice/go-losetup/v2"
 	"github.com/loopholelabs/architekt/pkg/firecracker"
 	"github.com/loopholelabs/architekt/pkg/network"
 	"github.com/loopholelabs/architekt/pkg/utils"
 	"github.com/loopholelabs/architekt/pkg/vsock"
+	"github.com/loopholelabs/voltools/fsdata"
+	"golang.org/x/sys/unix"
 )
 
 const (
@@ -47,22 +52,73 @@ func main() {
 	kernelInputPath := flag.String("kernel-input-path", filepath.Join(pwd, "out", "template", "architekt.kernel"), "Kernel input path")
 	diskInputPath := flag.String("disk-input-path", filepath.Join(pwd, "out", "template", "architekt.disk"), "Disk input path")
 
-	packagePath := flag.String("package-path", filepath.Join("out", "package"), "Path to write extracted package to")
-
 	cpuCount := flag.Int("cpu-count", 1, "CPU count")
 	memorySize := flag.Int("memory-size", 1024, "Memory size (in MB)")
+
+	packagePath := flag.String("package-path", filepath.Join("out", "architekt.package"), "Path to write package file to")
+	paddingSize := flag.Int("package-padding", 128, "Padding to add to package for state file and file system metadata (in MB)")
 
 	flag.Parse()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	if err := os.MkdirAll(*packagePath, os.ModePerm); err != nil {
+	initramfsSize, err := utils.GetFileSize(*initramfsInputPath)
+	if err != nil {
 		panic(err)
 	}
 
+	kernelSize, err := utils.GetFileSize(*kernelInputPath)
+	if err != nil {
+		panic(err)
+	}
+
+	diskSize, err := utils.GetFileSize(*diskInputPath)
+	if err != nil {
+		panic(err)
+	}
+
+	packageSize := math.Ceil((float64(((initramfsSize+kernelSize+diskSize)/(1024*1024))+int64(*memorySize)+int64(*paddingSize))/float64(1024))/float64(10)) * 10
+
+	if err := fsdata.CreateFile(int(packageSize), *packagePath); err != nil {
+		panic(err)
+	}
+
+	packageDir, err := os.MkdirTemp("", "")
+	if err != nil {
+		panic(err)
+	}
+	defer os.RemoveAll(packageDir)
+
+	loop, err := losetup.Attach(*packagePath, 0, false)
+	if err != nil {
+		panic(err)
+	}
+	defer loop.Detach()
+
+	if err := unix.Mount(loop.Path(), packageDir, "ext4", 0, ""); err != nil {
+		panic(err)
+	}
+	defer unix.Unmount(packageDir, 0)
+
+	defer func() {
+		fd, err := unix.Open(packageDir, unix.O_RDONLY, 0)
+		if err != nil {
+			log.Println("Could not open package directory for syncing:", err)
+
+			return
+		}
+		defer unix.Close(fd)
+
+		if err := unix.Fsync(fd); err != nil {
+			log.Println("Could not open sync package directory:", err)
+
+			return
+		}
+	}()
+
 	ping := vsock.NewLivenessPingReceiver(
-		filepath.Join(*packagePath, *vsockPath),
+		filepath.Join(packageDir, *vsockPath),
 		uint32(*livenessVSockPort),
 	)
 
@@ -85,7 +141,7 @@ func main() {
 	srv := firecracker.NewServer(
 		*firecrackerBin,
 		*firecrackerSocketPath,
-		*packagePath,
+		packageDir,
 
 		*verbose,
 		*enableOutput,
@@ -118,9 +174,9 @@ func main() {
 	}
 
 	var (
-		initramfsOutputPath = filepath.Join(*packagePath, initramfsName)
-		kernelOutputPath    = filepath.Join(*packagePath, kernelName)
-		diskOutputPath      = filepath.Join(*packagePath, diskName)
+		initramfsOutputPath = filepath.Join(packageDir, initramfsName)
+		kernelOutputPath    = filepath.Join(packageDir, kernelName)
+		diskOutputPath      = filepath.Join(packageDir, diskName)
 	)
 
 	if _, err := utils.CopyFile(*initramfsInputPath, initramfsOutputPath); err != nil {
@@ -153,14 +209,14 @@ func main() {
 	); err != nil {
 		panic(err)
 	}
-	defer os.Remove(filepath.Join(*packagePath, *vsockPath))
+	defer os.Remove(filepath.Join(packageDir, *vsockPath))
 
 	if err := ping.Receive(); err != nil {
 		panic(err)
 	}
 
 	handler := vsock.NewHandler(
-		filepath.Join(*packagePath, *vsockPath),
+		filepath.Join(packageDir, *vsockPath),
 		uint32(*agentVSockPort),
 
 		time.Second*10,
