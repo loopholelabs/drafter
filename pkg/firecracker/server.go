@@ -83,10 +83,7 @@ func (s *Server) Open() error {
 
 	s.cmd = exec.Command(execLine[0], execLine[1:]...)
 	s.cmd.Dir = s.pwd
-	s.cmd.SysProcAttr = &unix.SysProcAttr{ // Don't forward signals from parent to child process
-		Setpgid: true,
-		Pgid:    0,
-	}
+
 	if s.enableOutput {
 		s.cmd.Stdout = os.Stdout
 		s.cmd.Stderr = os.Stderr
@@ -94,6 +91,13 @@ func (s *Server) Open() error {
 
 	if s.enableInput {
 		s.cmd.Stdin = os.Stdin
+	} else {
+		// Don't forward CTRL-C etc. signals from parent to child process
+		// We can't enable this if we set the cmd stdin or we deadlock
+		s.cmd.SysProcAttr = &unix.SysProcAttr{
+			Setpgid: true,
+			Pgid:    0,
+		}
 	}
 
 	if err := s.cmd.Start(); err != nil {
