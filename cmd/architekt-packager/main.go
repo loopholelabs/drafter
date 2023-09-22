@@ -3,26 +3,11 @@ package main
 import (
 	"context"
 	"flag"
-	"math"
-	"net"
-	"net/http"
 	"os"
 	"path/filepath"
 	"sync"
-	"time"
 
-	"github.com/loopholelabs/architekt/pkg/firecracker"
-	"github.com/loopholelabs/architekt/pkg/network"
 	"github.com/loopholelabs/architekt/pkg/roles"
-	"github.com/loopholelabs/architekt/pkg/utils"
-	"github.com/loopholelabs/architekt/pkg/vsock"
-	"github.com/loopholelabs/voltools/fsdata"
-)
-
-const (
-	initramfsName = "architekt.arkinitramfs"
-	kernelName    = "architekt.arkkernel"
-	diskName      = "architekt.arkdisk"
 )
 
 func main() {
@@ -32,7 +17,6 @@ func main() {
 	}
 
 	firecrackerBin := flag.String("firecracker-bin", "firecracker", "Firecracker binary")
-	firecrackerSocketPath := flag.String("firecracker-socket-path", filepath.Join(pwd, "firecracker.sock"), "Firecracker socket path (must be absolute)")
 
 	verbose := flag.Bool("verbose", false, "Whether to enable verbose logging")
 	enableOutput := flag.Bool("enable-output", true, "Whether to enable VM stdout and stderr")
@@ -52,7 +36,7 @@ func main() {
 	cpuCount := flag.Int("cpu-count", 1, "CPU count")
 	memorySize := flag.Int("memory-size", 1024, "Memory size (in MB)")
 
-	packagePath := flag.String("package-path", filepath.Join("out", "redis.ark"), "Path to write package file to")
+	packageOutputPath := flag.String("package-output-path", filepath.Join("out", "redis.ark"), "Path to write package file to")
 	packagePaddingSize := flag.Int("package-padding-size", 128, "Padding to add to package for state file and file system metadata (in MB)")
 
 	flag.Parse()
@@ -60,78 +44,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	initramfsSize, err := utils.GetFileSize(*initramfsInputPath)
-	if err != nil {
-		panic(err)
-	}
-
-	kernelSize, err := utils.GetFileSize(*kernelInputPath)
-	if err != nil {
-		panic(err)
-	}
-
-	diskSize, err := utils.GetFileSize(*diskInputPath)
-	if err != nil {
-		panic(err)
-	}
-
-	packageSize := math.Ceil((float64(((initramfsSize+kernelSize+diskSize)/(1024*1024))+int64(*memorySize)+int64(*packagePaddingSize))/float64(1024))/float64(10)) * 10
-
-	if err := fsdata.CreateFile(int(packageSize), *packagePath); err != nil {
-		panic(err)
-	}
-
-	loop := utils.NewLoop(*packagePath)
-
-	devicePath, err := loop.Open()
-	if err != nil {
-		panic(err)
-	}
-	defer loop.Close()
-
-	packageDir, err := os.MkdirTemp("", "")
-	if err != nil {
-		panic(err)
-	}
-	defer os.RemoveAll(packageDir)
-
-	mount := utils.NewMount(devicePath, packageDir)
-
-	if err := mount.Open(); err != nil {
-		panic(err)
-	}
-	defer mount.Close()
-
-	ping := vsock.NewLivenessPingReceiver(
-		filepath.Join(packageDir, roles.VSockName),
-		uint32(*livenessVSockPort),
-	)
-
-	if err := ping.Open(); err != nil {
-		panic(err)
-	}
-	defer ping.Close()
-
-	tap := network.NewTAP(
-		*hostInterface,
-		*hostMAC,
-		*bridgeInterface,
-	)
-
-	if err := tap.Open(); err != nil {
-		panic(err)
-	}
-	defer tap.Close()
-
-	srv := firecracker.NewServer(
-		*firecrackerBin,
-		*firecrackerSocketPath,
-		packageDir,
-
-		*verbose,
-		*enableOutput,
-		*enableInput,
-	)
+	packager := roles.NewPackager()
 
 	var wg sync.WaitGroup
 	defer wg.Wait()
@@ -140,97 +53,47 @@ func main() {
 	go func() {
 		defer wg.Done()
 
-		if err := srv.Wait(); err != nil {
+		if err := packager.Wait(); err != nil {
 			panic(err)
 		}
 	}()
 
-	defer srv.Close()
-	if err := srv.Open(); err != nil {
-		panic(err)
-	}
+	if err := packager.CreatePackage(
+		ctx,
 
-	client := &http.Client{
-		Transport: &http.Transport{
-			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-				return net.Dial("unix", *firecrackerSocketPath)
-			},
+		*initramfsInputPath,
+		*kernelInputPath,
+		*diskInputPath,
+
+		*packageOutputPath,
+
+		roles.VMConfiguration{
+			CpuCount:           *cpuCount,
+			MemorySize:         *memorySize,
+			PackagePaddingSize: *packagePaddingSize,
 		},
-	}
+		roles.LivenessConfiguration{
+			LivenessVSockPort: uint32(*livenessVSockPort),
+		},
 
-	var (
-		initramfsOutputPath = filepath.Join(packageDir, initramfsName)
-		kernelOutputPath    = filepath.Join(packageDir, kernelName)
-		diskOutputPath      = filepath.Join(packageDir, diskName)
-	)
+		roles.HypervisorConfiguration{
+			FirecrackerBin: *firecrackerBin,
 
-	if _, err := utils.CopyFile(*initramfsInputPath, initramfsOutputPath); err != nil {
-		panic(err)
-	}
-
-	if _, err := utils.CopyFile(*kernelInputPath, kernelOutputPath); err != nil {
-		panic(err)
-	}
-
-	if _, err := utils.CopyFile(*diskInputPath, diskOutputPath); err != nil {
-		panic(err)
-	}
-
-	if err := firecracker.StartVM(
-		client,
-
-		initramfsName,
-		kernelName,
-		diskName,
-
-		*cpuCount,
-		*memorySize,
-
-		*hostInterface,
-		*hostMAC,
-
-		roles.VSockName,
-		vsock.CIDGuest,
+			Verbose:      *verbose,
+			EnableOutput: *enableOutput,
+			EnableInput:  *enableInput,
+		},
+		roles.NetworkConfiguration{
+			HostInterface:   *hostInterface,
+			HostMAC:         *hostMAC,
+			BridgeInterface: *bridgeInterface,
+		},
+		roles.AgentConfiguration{
+			AgentVSockPort: uint32(*agentVSockPort),
+		},
 	); err != nil {
 		panic(err)
 	}
-	defer os.Remove(filepath.Join(packageDir, roles.VSockName))
 
-	if err := ping.Receive(); err != nil {
-		panic(err)
-	}
-
-	handler := vsock.NewHandler(
-		filepath.Join(packageDir, roles.VSockName),
-		uint32(*agentVSockPort),
-
-		time.Second*10,
-	)
-
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-
-		if err := handler.Wait(); err != nil {
-			panic(err)
-		}
-	}()
-
-	defer handler.Close()
-	peer, err := handler.Open(ctx, time.Millisecond*100, time.Second*10)
-	if err != nil {
-		panic(err)
-	}
-
-	if err := peer.BeforeSuspend(ctx); err != nil {
-		panic(err)
-	}
-
-	// Connections need to be closed before creating the snapshot
-	ping.Close()
-	_ = handler.Close()
-
-	if err := firecracker.CreateSnapshot(client); err != nil {
-		panic(err)
-	}
+	wg.Wait()
 }

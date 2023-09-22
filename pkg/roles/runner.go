@@ -40,7 +40,7 @@ type NetworkConfiguration struct {
 }
 
 type AgentConfiguration struct {
-	AgentVSockPort int
+	AgentVSockPort uint32
 }
 
 type Runner struct {
@@ -120,8 +120,8 @@ func (r *Runner) Open() error {
 	if err != nil {
 		return err
 	}
-
 	r.firecrackerSocketPath = filepath.Join(r.firecrackerSocketDir, "firecracker.sock")
+
 	r.srv = firecracker.NewServer(
 		r.hypervisorConfiguration.FirecrackerBin,
 		r.firecrackerSocketPath,
@@ -162,7 +162,7 @@ func (r *Runner) Resume(ctx context.Context) error {
 
 	r.handler = vsock.NewHandler(
 		filepath.Join(r.packageDir, VSockName),
-		uint32(r.agentConfiguration.AgentVSockPort),
+		r.agentConfiguration.AgentVSockPort,
 		time.Second*10,
 	)
 

@@ -25,7 +25,7 @@ func main() {
 	hostMAC := flag.String("host-mac", "02:0e:d9:fd:68:3d", "Host MAC address")
 	bridgeInterface := flag.String("bridge-interface", "firecracker0", "Bridge interface name")
 
-	agentVSockPort := flag.Int("agent-vsock-port", 26, "Agent VSock port")
+	agentVSockPort := flag.Uint("agent-vsock-port", 26, "Agent VSock port")
 
 	packagePath := flag.String("package-path", filepath.Join("out", "redis.ark"), "Path to package to use")
 
@@ -58,7 +58,7 @@ func main() {
 			BridgeInterface: *bridgeInterface,
 		},
 		roles.AgentConfiguration{
-			AgentVSockPort: *agentVSockPort,
+			AgentVSockPort: uint32(*agentVSockPort),
 		},
 	)
 
