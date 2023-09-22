@@ -51,7 +51,15 @@ func main() {
 	}
 	defer os.RemoveAll(packageDir)
 
-	mount := utils.NewLoopMount(*packagePath, packageDir)
+	loop := utils.NewLoop(*packagePath)
+
+	devicePath, err := loop.Open()
+	if err != nil {
+		panic(err)
+	}
+	defer loop.Close()
+
+	mount := utils.NewMount(devicePath, packageDir)
 
 	if err := mount.Open(); err != nil {
 		panic(err)
