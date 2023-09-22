@@ -13,6 +13,7 @@ import (
 
 	"github.com/loopholelabs/architekt/pkg/firecracker"
 	"github.com/loopholelabs/architekt/pkg/network"
+	"github.com/loopholelabs/architekt/pkg/roles"
 	"github.com/loopholelabs/architekt/pkg/utils"
 	"github.com/loopholelabs/architekt/pkg/vsock"
 	"github.com/loopholelabs/voltools/fsdata"
@@ -41,7 +42,6 @@ func main() {
 	hostMAC := flag.String("host-mac", "02:0e:d9:fd:68:3d", "Host MAC address")
 	bridgeInterface := flag.String("bridge-interface", "firecracker0", "Bridge interface name")
 
-	vsockPath := flag.String("vsock-path", "vsock.sock", "VSock path")
 	livenessVSockPort := flag.Int("liveness-vsock-port", 25, "Liveness VSock port")
 	agentVSockPort := flag.Int("agent-vsock-port", 26, "Agent VSock port")
 
@@ -81,12 +81,6 @@ func main() {
 		panic(err)
 	}
 
-	packageDir, err := os.MkdirTemp("", "")
-	if err != nil {
-		panic(err)
-	}
-	defer os.RemoveAll(packageDir)
-
 	loop := utils.NewLoop(*packagePath)
 
 	devicePath, err := loop.Open()
@@ -94,6 +88,12 @@ func main() {
 		panic(err)
 	}
 	defer loop.Close()
+
+	packageDir, err := os.MkdirTemp("", "")
+	if err != nil {
+		panic(err)
+	}
+	defer os.RemoveAll(packageDir)
 
 	mount := utils.NewMount(devicePath, packageDir)
 
@@ -103,7 +103,7 @@ func main() {
 	defer mount.Close()
 
 	ping := vsock.NewLivenessPingReceiver(
-		filepath.Join(packageDir, *vsockPath),
+		filepath.Join(packageDir, roles.VSockName),
 		uint32(*livenessVSockPort),
 	)
 
@@ -189,19 +189,19 @@ func main() {
 		*hostInterface,
 		*hostMAC,
 
-		*vsockPath,
+		roles.VSockName,
 		vsock.CIDGuest,
 	); err != nil {
 		panic(err)
 	}
-	defer os.Remove(filepath.Join(packageDir, *vsockPath))
+	defer os.Remove(filepath.Join(packageDir, roles.VSockName))
 
 	if err := ping.Receive(); err != nil {
 		panic(err)
 	}
 
 	handler := vsock.NewHandler(
-		filepath.Join(packageDir, *vsockPath),
+		filepath.Join(packageDir, roles.VSockName),
 		uint32(*agentVSockPort),
 
 		time.Second*10,
@@ -225,6 +225,7 @@ func main() {
 	if err := peer.BeforeSuspend(ctx); err != nil {
 		panic(err)
 	}
+
 	// Connections need to be closed before creating the snapshot
 	ping.Close()
 	_ = handler.Close()
