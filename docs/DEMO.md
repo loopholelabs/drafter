@@ -163,7 +163,7 @@ sudo umount /tmp/blueprint || true
 rm -rf /tmp/blueprint
 ```
 
-## Starting Packager and Runner
+## Starting Packager, Runner, Registry and Peer
 
 ```shell
 sudo pkill -9 firecracker; sudo umount out/redis.ark; sudo rm -f out/redis.ark; sudo ip tuntap del dev vm0 mode tap # Cleaning up artifacts from potentially failed runs
@@ -171,4 +171,12 @@ sudo pkill -9 firecracker; sudo umount out/redis.ark; sudo rm -f out/redis.ark; 
 go build -o /tmp/architekt-packager ./cmd/architekt-packager/ && sudo /tmp/architekt-packager
 
 go build -o /tmp/architekt-runner ./cmd/architekt-runner/ && sudo /tmp/architekt-runner # You can now CTRL+C to flush the snapshot & run again to resume
+
+go build -o /tmp/architekt-registry ./cmd/architekt-registry/ && sudo /tmp/architekt-registry
+
+sudo pkill -9 firecracker; sudo pkill -9 architekt-peer; sudo ip tuntap del dev vm0 mode tap # Cleaning up artifacts from potentially failed runs
+
+go build -o /tmp/architekt-peer ./cmd/architekt-peer/ && sudo /tmp/architekt-peer --raddr localhost:1337
+
+go build -o /tmp/architekt-peer ./cmd/architekt-peer/ && sudo /tmp/architekt-peer
 ```

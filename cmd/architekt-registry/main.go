@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
+	iutils "github.com/loopholelabs/architekt/pkg/utils"
 	"github.com/pojntfx/go-nbd/pkg/backend"
 	v1 "github.com/pojntfx/r3map/pkg/api/proto/migration/v1"
 	"github.com/pojntfx/r3map/pkg/services"
@@ -23,11 +24,16 @@ func main() {
 
 	flag.Parse()
 
+	size, err := iutils.GetFileSize(*packagePath)
+	if err != nil {
+		panic(err)
+	}
+
 	f, err := os.Open(*packagePath)
 	if err != nil {
 		panic(err)
 	}
-	f.Close()
+	defer f.Close()
 
 	svc := services.NewSeederService(
 		backend.NewFileBackend(f),
@@ -54,7 +60,7 @@ func main() {
 	}
 	defer lis.Close()
 
-	log.Println("Seeding on", *laddr)
+	log.Println("Seeding", size, "bytes on", *laddr)
 
 	if err := server.Serve(lis); err != nil {
 		if !utils.IsClosedErr(err) {

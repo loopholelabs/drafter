@@ -225,7 +225,11 @@ func (r *Runner) Close() error {
 
 	_ = os.RemoveAll(r.packageDir)
 
-	close(r.errs)
+	if r.errs != nil {
+		close(r.errs)
+
+		r.errs = nil
+	}
 
 	return nil
 }
