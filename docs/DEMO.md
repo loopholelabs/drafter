@@ -176,7 +176,9 @@ go build -o /tmp/architekt-registry ./cmd/architekt-registry/ && sudo /tmp/archi
 
 sudo pkill -9 firecracker; sudo pkill -9 architekt-peer; sudo ip tuntap del dev vm0 mode tap # Cleaning up artifacts from potentially failed runs
 
-go build -o /tmp/architekt-peer ./cmd/architekt-peer/ && sudo /tmp/architekt-peer --raddr localhost:1337
+sudo mount -o remount,size=24G,noatime /tmp # Potentially increase /tmp disk space (where the r3map cache file is stored)
 
-go build -o /tmp/architekt-peer ./cmd/architekt-peer/ && sudo /tmp/architekt-peer
+go build -o /tmp/architekt-peer ./cmd/architekt-peer/ && sudo /tmp/architekt-peer --raddr localhost:1337 --single-host
+
+go build -o /tmp/architekt-peer ./cmd/architekt-peer/ && sudo /tmp/architekt-peer --single-host
 ```

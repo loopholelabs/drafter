@@ -42,6 +42,8 @@ func main() {
 	raddr := flag.String("raddr", "localhost:1338", "Remote address")
 	laddr := flag.String("laddr", "localhost:1338", "Listen address")
 
+	singleHost := flag.Bool("single-host", false, "Whether to enable single-host mode which only starts resources ad-hoc")
+
 	flag.Parse()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -77,9 +79,11 @@ func main() {
 		}
 	}()
 
-	defer runner.Close()
-	if err := runner.Open(); err != nil {
-		panic(err)
+	if !*singleHost {
+		defer runner.Close()
+		if err := runner.Open(); err != nil {
+			panic(err)
+		}
 	}
 
 	f, err := os.CreateTemp("", "")
@@ -127,9 +131,19 @@ func main() {
 		&migration.MigratorHooks{
 			OnBeforeSync: func() error {
 				before := time.Now()
-				defer log.Println("Suspend:", time.Since(before))
+				defer func() {
+					log.Println("Suspend:", time.Since(before))
+				}()
 
 				log.Println("Suspending VM")
+
+				if *singleHost {
+					if err := runner.Suspend(ctx); err != nil {
+						return err
+					}
+
+					return runner.Close()
+				}
 
 				return runner.Suspend(ctx)
 			},
@@ -228,6 +242,13 @@ func main() {
 	bar.Clear()
 
 	log.Println("Resuming VM on", file)
+
+	if *singleHost {
+		defer runner.Close()
+		if err := runner.Open(); err != nil {
+			panic(err)
+		}
+	}
 
 	if err := runner.Resume(ctx, file); err != nil {
 		panic(err)
