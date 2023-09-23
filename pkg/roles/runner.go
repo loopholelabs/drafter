@@ -44,8 +44,6 @@ type AgentConfiguration struct {
 }
 
 type Runner struct {
-	packageDevicePath string
-
 	hypervisorConfiguration HypervisorConfiguration
 	networkConfiguration    NetworkConfiguration
 	agentConfiguration      AgentConfiguration
@@ -65,15 +63,11 @@ type Runner struct {
 }
 
 func NewRunner(
-	packageDevicePath string,
-
 	hypervisorConfiguration HypervisorConfiguration,
 	networkConfiguration NetworkConfiguration,
 	agentConfiguration AgentConfiguration,
 ) *Runner {
 	return &Runner{
-		packageDevicePath: packageDevicePath,
-
 		hypervisorConfiguration: hypervisorConfiguration,
 		networkConfiguration:    networkConfiguration,
 		agentConfiguration:      agentConfiguration,
@@ -102,11 +96,6 @@ func (r *Runner) Open() error {
 		return err
 	}
 
-	r.mount = utils.NewMount(r.packageDevicePath, r.packageDir)
-	if err := r.mount.Open(); err != nil {
-		return err
-	}
-
 	r.tap = network.NewTAP(
 		r.networkConfiguration.HostInterface,
 		r.networkConfiguration.HostMAC,
@@ -122,28 +111,6 @@ func (r *Runner) Open() error {
 	}
 	r.firecrackerSocketPath = filepath.Join(r.firecrackerSocketDir, "firecracker.sock")
 
-	r.srv = firecracker.NewServer(
-		r.hypervisorConfiguration.FirecrackerBin,
-		r.firecrackerSocketPath,
-		r.packageDir,
-		r.hypervisorConfiguration.Verbose,
-		r.hypervisorConfiguration.EnableOutput,
-		r.hypervisorConfiguration.EnableInput,
-	)
-
-	r.wg.Add(1)
-	go func() {
-		defer r.wg.Done()
-
-		if err := r.srv.Wait(); err != nil {
-			r.errs <- err
-		}
-	}()
-
-	if err := r.srv.Open(); err != nil {
-		return err
-	}
-
 	r.client = &http.Client{
 		Transport: &http.Transport{
 			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
@@ -155,7 +122,36 @@ func (r *Runner) Open() error {
 	return nil
 }
 
-func (r *Runner) Resume(ctx context.Context) error {
+func (r *Runner) Resume(ctx context.Context, packageDevicePath string) error {
+	r.mount = utils.NewMount(packageDevicePath, r.packageDir)
+	if err := r.mount.Open(); err != nil {
+		return err
+	}
+
+	if r.srv == nil {
+		r.srv = firecracker.NewServer(
+			r.hypervisorConfiguration.FirecrackerBin,
+			r.firecrackerSocketPath,
+			r.packageDir,
+			r.hypervisorConfiguration.Verbose,
+			r.hypervisorConfiguration.EnableOutput,
+			r.hypervisorConfiguration.EnableInput,
+		)
+
+		r.wg.Add(1)
+		go func() {
+			defer r.wg.Done()
+
+			if err := r.srv.Wait(); err != nil {
+				r.errs <- err
+			}
+		}()
+
+		if err := r.srv.Open(); err != nil {
+			return err
+		}
+	}
+
 	if err := firecracker.ResumeSnapshot(r.client); err != nil {
 		return err
 	}

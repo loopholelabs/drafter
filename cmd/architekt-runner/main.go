@@ -43,8 +43,6 @@ func main() {
 	defer loop.Close()
 
 	runner := roles.NewRunner(
-		packageDevicePath,
-
 		roles.HypervisorConfiguration{
 			FirecrackerBin: *firecrackerBin,
 
@@ -81,7 +79,7 @@ func main() {
 
 	before := time.Now()
 
-	if err := runner.Resume(ctx); err != nil {
+	if err := runner.Resume(ctx, packageDevicePath); err != nil {
 		panic(err)
 	}
 
