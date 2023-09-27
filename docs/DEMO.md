@@ -6,7 +6,7 @@
 git clone https://github.com/loopholelabs/firecracker /tmp/firecracker
 cd /tmp/firecracker
 
-git remote-add upstream https://github.com/firecracker-microvm/firecracker
+git remote add upstream https://github.com/firecracker-microvm/firecracker
 git fetch --all
 
 tools/devtool build --release

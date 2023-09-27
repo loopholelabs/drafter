@@ -29,6 +29,8 @@ var (
 const (
 	stateName  = "architekt.arkstate"
 	memoryName = "architekt.arkmemory"
+
+	snapshotVersion = "1.4.0"
 )
 
 func submitJSON(method string, client *http.Client, body any, resource string) error {
@@ -189,7 +191,7 @@ func CreateSnapshot(client *http.Client) error {
 			SnapshotType:   "Full",
 			SnapshotPath:   stateName,
 			MemoryFilePath: memoryName,
-			Version:        "1.3.0",
+			Version:        snapshotVersion,
 		},
 		"snapshot/create",
 	); err != nil {
@@ -237,7 +239,7 @@ func FlushSnapshot(client *http.Client) error {
 		client,
 		&v1.SnapshotNoMemoryCreateRequest{
 			SnapshotPath: stateName,
-			Version:      "1.3.0",
+			Version:      snapshotVersion,
 		},
 		"snapshot-nomemory/create",
 	); err != nil {
