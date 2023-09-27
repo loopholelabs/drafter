@@ -6,8 +6,58 @@
 git clone https://github.com/loopholelabs/firecracker /tmp/firecracker
 cd /tmp/firecracker
 
-cargo build --target x86_64-unknown-linux-gnu
-sudo install ./build/cargo_target/x86_64-unknown-linux-gnu/debug/firecracker /usr/local/bin/
+hydrun -o fedora:38 -i bash
+
+sudo dnf install -y curl clang gcc make glibc-devel binutils-devel openssl-devel musl* git kernel-devel
+
+curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain "1.70.0"
+source "$HOME/.cargo/env"
+
+rustup target add x86_64-unknown-linux-musl
+rustup component add llvm-tools-preview
+rustup component add rustfmt
+
+# These symlinks might not work out-of-the-box on Fedora as the directory structure may be different.
+# You may have to adjust the paths as per the Fedora directory structure.
+mkdir -p /usr/include/x86_64-linux-musl
+ln -s /usr/include/asm /usr/include/$(uname -m)-linux-musl/asm
+ln -s /usr/include/linux /usr/include/$(uname -m)-linux-musl/linux
+ln -s /usr/include/asm-generic /usr/include/$(uname -m)-linux-musl/asm-generic
+export CFLAGS="-I /usr/include/x86_64-linux-musl/"
+
+rm -rf build
+cargo build --release --target x86_64-unknown-linux-musl -p firecracker -p jailer
+
+exit
+
+sudo install ./build/cargo_target/x86_64-unknown-linux-musl/release/firecracker /usr/local/bin/ && sudo install ./build/cargo_target/x86_64-unknown-linux-musl/release/jailer /usr/local/bin/
+
+hydrun -o ubuntu:22.04 -i bash
+
+apt update
+apt install -y curl clang gcc make libc-dev binutils-dev libssl-dev musl-tools git
+
+curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain "1.70.0"
+source "$HOME/.cargo/env"
+
+rustup target add x86_64-unknown-linux-musl
+rustup component add llvm-tools-preview
+rustup component add rustfmt
+
+ln -s /usr/include/$(uname -m)-linux-gnu/asm /usr/include/$(uname -m)-linux-musl/asm
+ln -s /usr/include/linux /usr/include/$(uname -m)-linux-musl/linux
+ln -s /usr/include/asm-generic /usr/include/$(uname -m)-linux-musl/asm-generic
+
+rm -rf build
+cargo build --release --target x86_64-unknown-linux-musl -p firecracker -p jailer
+
+exit
+
+sudo install ./build/cargo_target/x86_64-unknown-linux-musl/release/firecracker /usr/local/bin/ && sudo install ./build/cargo_target/x86_64-unknown-linux-musl/release/jailer /usr/local/bin/
+
+sudo rm -rf build
+cargo build --release --target x86_64-unknown-linux-gnu -p firecracker
+sudo install ./build/cargo_target/x86_64-unknown-linux-gnu/release/firecracker /usr/local/bin/
 ```
 
 ## Setting up Networking
