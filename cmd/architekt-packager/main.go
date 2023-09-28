@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"flag"
-	"os"
 	"path/filepath"
 	"sync"
 
@@ -11,14 +10,16 @@ import (
 )
 
 func main() {
-	pwd, err := os.Getwd()
-	if err != nil {
-		panic(err)
-	}
+	firecrackerBin := flag.String("firecracker-bin", filepath.Join("/usr", "local", "bin", "firecracker"), "Firecracker binary")
+	jailerBin := flag.String("jailer-bin", filepath.Join("/usr", "local", "bin", "jailer"), "Jailer binary (from Firecracker)")
 
-	firecrackerBin := flag.String("firecracker-bin", "firecracker", "Firecracker binary")
+	chrootBaseDir := flag.String("chroot-base-dir", filepath.Join("out", "vms"), "`chroot` base directory")
 
-	verbose := flag.Bool("verbose", false, "Whether to enable verbose logging")
+	uid := flag.Int("uid", 123, "User ID for the Firecracker process")
+	gid := flag.Int("gid", 100, "Group ID for the Firecracker process")
+
+	netns := flag.String("netns", "ns1", "Network namespace to run Firecracke in")
+
 	enableOutput := flag.Bool("enable-output", true, "Whether to enable VM stdout and stderr")
 	enableInput := flag.Bool("enable-input", false, "Whether to enable VM stdin")
 
@@ -29,9 +30,9 @@ func main() {
 	livenessVSockPort := flag.Int("liveness-vsock-port", 25, "Liveness VSock port")
 	agentVSockPort := flag.Int("agent-vsock-port", 26, "Agent VSock port")
 
-	initramfsInputPath := flag.String("initramfs-input-path", filepath.Join(pwd, "out", "blueprint", "architekt.arkinitramfs"), "initramfs input path")
-	kernelInputPath := flag.String("kernel-input-path", filepath.Join(pwd, "out", "blueprint", "architekt.arkkernel"), "Kernel input path")
-	diskInputPath := flag.String("disk-input-path", filepath.Join(pwd, "out", "blueprint", "architekt.arkdisk"), "Disk input path")
+	initramfsInputPath := flag.String("initramfs-input-path", filepath.Join("out", "blueprint", "architekt.arkinitramfs"), "initramfs input path")
+	kernelInputPath := flag.String("kernel-input-path", filepath.Join("out", "blueprint", "architekt.arkkernel"), "Kernel input path")
+	diskInputPath := flag.String("disk-input-path", filepath.Join("out", "blueprint", "architekt.arkdisk"), "Disk input path")
 
 	cpuCount := flag.Int("cpu-count", 1, "CPU count")
 	memorySize := flag.Int("memory-size", 1024, "Memory size (in MB)")
@@ -78,8 +79,15 @@ func main() {
 
 		roles.HypervisorConfiguration{
 			FirecrackerBin: *firecrackerBin,
+			JailerBin:      *jailerBin,
 
-			Verbose:      *verbose,
+			ChrootBaseDir: *chrootBaseDir,
+
+			UID: *uid,
+			GID: *gid,
+
+			NetNS: *netns,
+
 			EnableOutput: *enableOutput,
 			EnableInput:  *enableInput,
 		},
@@ -94,6 +102,4 @@ func main() {
 	); err != nil {
 		panic(err)
 	}
-
-	wg.Wait()
 }

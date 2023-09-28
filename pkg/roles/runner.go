@@ -27,8 +27,15 @@ var (
 
 type HypervisorConfiguration struct {
 	FirecrackerBin string
+	JailerBin      string
 
-	Verbose      bool
+	ChrootBaseDir string
+
+	UID int
+	GID int
+
+	NetNS string
+
 	EnableOutput bool
 	EnableInput  bool
 }
@@ -48,15 +55,14 @@ type Runner struct {
 	networkConfiguration    NetworkConfiguration
 	agentConfiguration      AgentConfiguration
 
-	packageDir            string
-	mount                 *utils.Mount
-	tap                   *network.TAP
-	firecrackerSocketDir  string
-	firecrackerSocketPath string
-	srv                   *firecracker.Server
-	client                *http.Client
-	handler               *vsock.Handler
-	peer                  services.AgentRemote
+	mount   *utils.Mount
+	tap     *network.TAP
+	srv     *firecracker.Server
+	client  *http.Client
+	handler *vsock.Handler
+	peer    services.AgentRemote
+
+	vmPath string
 
 	wg   sync.WaitGroup
 	errs chan error
@@ -90,50 +96,35 @@ func (r *Runner) Wait() error {
 }
 
 func (r *Runner) Open() error {
-	var err error
-	r.packageDir, err = os.MkdirTemp("", "")
-	if err != nil {
-		return err
-	}
-
-	r.tap = network.NewTAP(
-		r.networkConfiguration.HostInterface,
-		r.networkConfiguration.HostMAC,
-		r.networkConfiguration.BridgeInterface,
-	)
-	if err := r.tap.Open(); err != nil {
-		return err
-	}
-
-	r.firecrackerSocketDir, err = os.MkdirTemp("", "")
-	if err != nil {
-		return err
-	}
-	r.firecrackerSocketPath = filepath.Join(r.firecrackerSocketDir, "firecracker.sock")
-
-	r.client = &http.Client{
-		Transport: &http.Transport{
-			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-				return net.Dial("unix", r.firecrackerSocketPath)
-			},
-		},
-	}
+	// r.tap = network.NewTAP(
+	// 	r.networkConfiguration.HostInterface,
+	// 	r.networkConfiguration.HostMAC,
+	// 	r.networkConfiguration.BridgeInterface,
+	// )
+	// if err := r.tap.Open(); err != nil {
+	// 	return err
+	// }
 
 	return nil
 }
 
 func (r *Runner) Resume(ctx context.Context, packageDevicePath string) error {
-	r.mount = utils.NewMount(packageDevicePath, r.packageDir)
-	if err := r.mount.Open(); err != nil {
-		return err
-	}
-
 	if r.srv == nil {
+		if err := os.MkdirAll(r.hypervisorConfiguration.ChrootBaseDir, os.ModePerm); err != nil {
+			return err
+		}
+
 		r.srv = firecracker.NewServer(
 			r.hypervisorConfiguration.FirecrackerBin,
-			r.firecrackerSocketPath,
-			r.packageDir,
-			r.hypervisorConfiguration.Verbose,
+			r.hypervisorConfiguration.JailerBin,
+
+			r.hypervisorConfiguration.ChrootBaseDir,
+
+			r.hypervisorConfiguration.UID,
+			r.hypervisorConfiguration.GID,
+
+			r.hypervisorConfiguration.NetNS,
+
 			r.hypervisorConfiguration.EnableOutput,
 			r.hypervisorConfiguration.EnableInput,
 		)
@@ -147,7 +138,31 @@ func (r *Runner) Resume(ctx context.Context, packageDevicePath string) error {
 			}
 		}()
 
-		if err := r.srv.Open(); err != nil {
+		var err error
+		r.vmPath, err = r.srv.Open()
+		if err != nil {
+			return err
+		}
+
+		r.client = &http.Client{
+			Transport: &http.Transport{
+				DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+					return net.Dial("unix", filepath.Join(r.vmPath, firecracker.FirecrackerSocketName))
+				},
+			},
+		}
+
+		mountDir := filepath.Join(r.vmPath, firecracker.MountName)
+		if err := os.MkdirAll(mountDir, os.ModePerm); err != nil {
+			return err
+		}
+
+		r.mount = utils.NewMount(packageDevicePath, filepath.Join(r.vmPath, firecracker.MountName))
+		if err := r.mount.Open(); err != nil {
+			return err
+		}
+
+		if err := os.Chown(mountDir, r.hypervisorConfiguration.UID, r.hypervisorConfiguration.GID); err != nil {
 			return err
 		}
 	}
@@ -157,7 +172,7 @@ func (r *Runner) Resume(ctx context.Context, packageDevicePath string) error {
 	}
 
 	r.handler = vsock.NewHandler(
-		filepath.Join(r.packageDir, VSockName),
+		filepath.Join(r.vmPath, VSockName),
 		r.agentConfiguration.AgentVSockPort,
 		time.Second*10,
 	)
@@ -211,9 +226,7 @@ func (r *Runner) Close() error {
 
 	r.wg.Wait()
 
-	_ = os.Remove(filepath.Join(r.packageDir, VSockName))
-
-	_ = os.RemoveAll(r.firecrackerSocketDir)
+	_ = os.Remove(filepath.Join(r.vmPath, VSockName))
 
 	if r.tap != nil {
 		_ = r.tap.Close()
@@ -223,7 +236,7 @@ func (r *Runner) Close() error {
 		_ = r.mount.Close()
 	}
 
-	_ = os.RemoveAll(r.packageDir)
+	_ = os.RemoveAll(filepath.Dir(r.vmPath)) // Remove `firecracker/$id`, not just `firecracker/$id/root`
 
 	if r.errs != nil {
 		close(r.errs)

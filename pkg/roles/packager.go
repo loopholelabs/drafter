@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/loopholelabs/architekt/pkg/firecracker"
-	"github.com/loopholelabs/architekt/pkg/network"
 	"github.com/loopholelabs/architekt/pkg/utils"
 	"github.com/loopholelabs/architekt/pkg/vsock"
 	"github.com/loopholelabs/voltools/fsdata"
@@ -96,52 +95,32 @@ func (p *Packager) CreatePackage(
 	}
 	defer loop.Close()
 
-	packageDir, err := os.MkdirTemp("", "")
-	if err != nil {
+	// tap := network.NewTAP(
+	// 	networkConfiguration.HostInterface,
+	// 	networkConfiguration.HostMAC,
+	// 	networkConfiguration.BridgeInterface,
+	// )
+
+	// if err := tap.Open(); err != nil {
+	// 	return err
+	// }
+	// defer tap.Close()
+
+	if err := os.MkdirAll(hypervisorConfiguration.ChrootBaseDir, os.ModePerm); err != nil {
 		return err
 	}
-	defer os.RemoveAll(packageDir)
-
-	mount := utils.NewMount(devicePath, packageDir)
-
-	if err := mount.Open(); err != nil {
-		return err
-	}
-	defer mount.Close()
-
-	ping := vsock.NewLivenessPingReceiver(
-		filepath.Join(packageDir, VSockName),
-		uint32(livenessConfiguration.LivenessVSockPort),
-	)
-
-	if err := ping.Open(); err != nil {
-		return err
-	}
-	defer ping.Close()
-
-	tap := network.NewTAP(
-		networkConfiguration.HostInterface,
-		networkConfiguration.HostMAC,
-		networkConfiguration.BridgeInterface,
-	)
-
-	if err := tap.Open(); err != nil {
-		return err
-	}
-	defer tap.Close()
-
-	firecrackerSocketDir, err := os.MkdirTemp("", "")
-	if err != nil {
-		return err
-	}
-	defer os.RemoveAll(firecrackerSocketDir)
-	firecrackerSocketPath := filepath.Join(firecrackerSocketDir, "firecracker.sock")
 
 	srv := firecracker.NewServer(
 		hypervisorConfiguration.FirecrackerBin,
-		firecrackerSocketPath,
-		packageDir,
-		hypervisorConfiguration.Verbose,
+		hypervisorConfiguration.JailerBin,
+
+		hypervisorConfiguration.ChrootBaseDir,
+
+		hypervisorConfiguration.UID,
+		hypervisorConfiguration.GID,
+
+		hypervisorConfiguration.NetNS,
+
 		hypervisorConfiguration.EnableOutput,
 		hypervisorConfiguration.EnableInput,
 	)
@@ -159,42 +138,76 @@ func (p *Packager) CreatePackage(
 	}()
 
 	defer srv.Close()
-	if err := srv.Open(); err != nil {
+	vmPath, err := srv.Open()
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(filepath.Dir(vmPath)) // Remove `firecracker/$id`, not just `firecracker/$id/root`
+
+	ping := vsock.NewLivenessPingReceiver(
+		filepath.Join(vmPath, VSockName),
+		uint32(livenessConfiguration.LivenessVSockPort),
+	)
+
+	livenessVSockPath, err := ping.Open()
+	if err != nil {
+		return err
+	}
+	defer ping.Close()
+
+	if err := os.Chown(livenessVSockPath, hypervisorConfiguration.UID, hypervisorConfiguration.GID); err != nil {
 		return err
 	}
 
 	client := &http.Client{
 		Transport: &http.Transport{
 			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-				return net.Dial("unix", firecrackerSocketPath)
+				return net.Dial("unix", filepath.Join(vmPath, firecracker.FirecrackerSocketName))
 			},
 		},
 	}
 
+	mountDir := filepath.Join(vmPath, firecracker.MountName)
+	if err := os.MkdirAll(mountDir, os.ModePerm); err != nil {
+		return err
+	}
+
+	mount := utils.NewMount(devicePath, mountDir)
+
+	if err := mount.Open(); err != nil {
+		return err
+	}
+	defer mount.Close()
+	defer srv.Close() // We need to stop the Firecracker process from using the mount before we can unmount it
+
+	if err := os.Chown(mountDir, hypervisorConfiguration.UID, hypervisorConfiguration.GID); err != nil {
+		return err
+	}
+
 	var (
-		initramfsOutputPath = filepath.Join(packageDir, InitramfsName)
-		kernelOutputPath    = filepath.Join(packageDir, KernelName)
-		diskOutputPath      = filepath.Join(packageDir, DiskName)
+		initramfsOutputPath = filepath.Join(vmPath, firecracker.MountName, InitramfsName)
+		kernelOutputPath    = filepath.Join(vmPath, firecracker.MountName, KernelName)
+		diskOutputPath      = filepath.Join(vmPath, firecracker.MountName, DiskName)
 	)
 
-	if _, err := utils.CopyFile(initramfsInputPath, initramfsOutputPath); err != nil {
+	if _, err := utils.CopyFile(initramfsInputPath, initramfsOutputPath, hypervisorConfiguration.UID, hypervisorConfiguration.GID); err != nil {
 		return err
 	}
 
-	if _, err := utils.CopyFile(kernelInputPath, kernelOutputPath); err != nil {
+	if _, err := utils.CopyFile(kernelInputPath, kernelOutputPath, hypervisorConfiguration.UID, hypervisorConfiguration.GID); err != nil {
 		return err
 	}
 
-	if _, err := utils.CopyFile(diskInputPath, diskOutputPath); err != nil {
+	if _, err := utils.CopyFile(diskInputPath, diskOutputPath, hypervisorConfiguration.UID, hypervisorConfiguration.GID); err != nil {
 		return err
 	}
 
 	if err := firecracker.StartVM(
 		client,
 
-		InitramfsName,
-		KernelName,
-		DiskName,
+		filepath.Join(firecracker.MountName, InitramfsName),
+		filepath.Join(firecracker.MountName, KernelName),
+		filepath.Join(firecracker.MountName, DiskName),
 
 		vmConfiguration.CpuCount,
 		vmConfiguration.MemorySize,
@@ -207,14 +220,14 @@ func (p *Packager) CreatePackage(
 	); err != nil {
 		return err
 	}
-	defer os.Remove(filepath.Join(packageDir, VSockName))
+	defer os.Remove(filepath.Join(vmPath, VSockName))
 
 	if err := ping.Receive(); err != nil {
 		return err
 	}
 
 	handler := vsock.NewHandler(
-		filepath.Join(packageDir, VSockName),
+		filepath.Join(vmPath, VSockName),
 		uint32(agentConfiguration.AgentVSockPort),
 
 		time.Second*10,

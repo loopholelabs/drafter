@@ -15,9 +15,16 @@ import (
 )
 
 func main() {
-	firecrackerBin := flag.String("firecracker-bin", "firecracker", "Firecracker binary")
+	firecrackerBin := flag.String("firecracker-bin", filepath.Join("/usr", "local", "bin", "firecracker"), "Firecracker binary")
+	jailerBin := flag.String("jailer-bin", filepath.Join("/usr", "local", "bin", "jailer"), "Jailer binary (from Firecracker)")
 
-	verbose := flag.Bool("verbose", false, "Whether to enable verbose logging")
+	chrootBaseDir := flag.String("chroot-base-dir", filepath.Join("out", "vms"), "`chroot` base directory")
+
+	uid := flag.Int("uid", 123, "User ID for the Firecracker process")
+	gid := flag.Int("gid", 100, "Group ID for the Firecracker process")
+
+	netns := flag.String("netns", "ns1", "Network namespace to run Firecracke in")
+
 	enableOutput := flag.Bool("enable-output", true, "Whether to enable VM stdout and stderr")
 	enableInput := flag.Bool("enable-input", false, "Whether to enable VM stdin")
 
@@ -45,8 +52,15 @@ func main() {
 	runner := roles.NewRunner(
 		roles.HypervisorConfiguration{
 			FirecrackerBin: *firecrackerBin,
+			JailerBin:      *jailerBin,
 
-			Verbose:      *verbose,
+			ChrootBaseDir: *chrootBaseDir,
+
+			UID: *uid,
+			GID: *gid,
+
+			NetNS: *netns,
+
 			EnableOutput: *enableOutput,
 			EnableInput:  *enableInput,
 		},

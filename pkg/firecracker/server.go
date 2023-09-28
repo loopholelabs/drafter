@@ -2,11 +2,13 @@ package firecracker
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sync"
 
+	"github.com/google/uuid"
 	"golang.org/x/sys/unix"
 	"k8s.io/utils/inotify"
 )
@@ -17,36 +19,56 @@ var (
 	errSignalKilled = errors.New("signal: killed")
 )
 
-type Server struct {
-	bin        string
-	socketPath string
-	pwd        string
+const (
+	FirecrackerSocketName = "firecracker.sock"
+)
 
-	verbose      bool
+type Server struct {
+	firecrackerBin string
+	jailerBin      string
+
+	chrootBaseDir string
+
+	uid int
+	gid int
+
+	netns string
+
 	enableOutput bool
 	enableInput  bool
 
-	cmd *exec.Cmd
+	cmd   *exec.Cmd
+	vmDir string
 
 	wg   sync.WaitGroup
 	errs chan error
 }
 
 func NewServer(
-	bin string,
-	socketPath string,
-	pwd string,
+	firecrackerBin string,
+	jailerBin string,
 
-	verbose bool,
+	chrootBaseDir string,
+
+	uid int,
+	gid int,
+
+	netns string,
+
 	enableOutput bool,
 	enableInput bool,
 ) *Server {
 	return &Server{
-		bin:        bin,
-		socketPath: socketPath,
-		pwd:        pwd,
+		firecrackerBin: firecrackerBin,
+		jailerBin:      jailerBin,
 
-		verbose:      verbose,
+		chrootBaseDir: chrootBaseDir,
+
+		uid: uid,
+		gid: gid,
+
+		netns: netns,
+
 		enableOutput: enableOutput,
 		enableInput:  enableInput,
 
@@ -65,24 +87,42 @@ func (s *Server) Wait() error {
 	return nil
 }
 
-func (s *Server) Open() error {
+func (s *Server) Open() (string, error) {
+	id := uuid.NewString()
+
+	s.vmDir = filepath.Join(s.chrootBaseDir, "firecracker", id, "root")
+	if err := os.MkdirAll(s.vmDir, os.ModePerm); err != nil {
+		return "", err
+	}
+
 	watcher, err := inotify.NewWatcher()
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer watcher.Close()
 
-	if err := watcher.AddWatch(filepath.Dir(s.socketPath), inotify.InCreate); err != nil {
-		return err
+	if err := watcher.AddWatch(s.vmDir, inotify.InCreate); err != nil {
+		return "", err
 	}
 
-	execLine := []string{s.bin, "--api-sock", s.socketPath}
-	if s.verbose {
-		execLine = append(execLine, "--level", "Debug", "--log-path", "/dev/stderr")
-	}
-
-	s.cmd = exec.Command(execLine[0], execLine[1:]...)
-	s.cmd.Dir = s.pwd
+	s.cmd = exec.Command(
+		s.jailerBin,
+		"--chroot-base-dir",
+		s.chrootBaseDir,
+		"--uid",
+		fmt.Sprintf("%v", s.uid),
+		"--gid",
+		fmt.Sprintf("%v", s.gid),
+		"--netns",
+		filepath.Join("/var", "run", "netns", s.netns),
+		"--id",
+		id,
+		"--exec-file",
+		s.firecrackerBin,
+		"--",
+		"--api-sock",
+		FirecrackerSocketName,
+	)
 
 	if s.enableOutput {
 		s.cmd.Stdout = os.Stdout
@@ -101,7 +141,7 @@ func (s *Server) Open() error {
 	}
 
 	if err := s.cmd.Start(); err != nil {
-		return err
+		return "", err
 	}
 
 	s.wg.Add(1)
@@ -114,16 +154,21 @@ func (s *Server) Open() error {
 			return
 		}
 
-		close(s.errs)
+		if s.errs != nil {
+			close(s.errs)
+
+			s.errs = nil
+		}
 	}()
 
+	socketPath := filepath.Join(s.vmDir, FirecrackerSocketName)
 	for ev := range watcher.Event {
-		if filepath.Clean(ev.Name) == filepath.Clean(s.socketPath) {
-			return nil
+		if filepath.Clean(ev.Name) == filepath.Clean(socketPath) {
+			return s.vmDir, nil
 		}
 	}
 
-	return ErrNoSocketCreated
+	return "", ErrNoSocketCreated
 }
 
 func (s *Server) Close() error {
@@ -133,7 +178,11 @@ func (s *Server) Close() error {
 
 	s.wg.Wait()
 
-	_ = os.Remove(s.socketPath)
+	if s.errs != nil {
+		close(s.errs)
+
+		s.errs = nil
+	}
 
 	return nil
 }

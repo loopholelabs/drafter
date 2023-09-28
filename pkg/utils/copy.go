@@ -5,7 +5,7 @@ import (
 	"os"
 )
 
-func CopyFile(src, dst string) (int64, error) {
+func CopyFile(src, dst string, uid int, gid int) (int64, error) {
 	srcFile, err := os.Open(src)
 	if err != nil {
 		return 0, err
@@ -18,5 +18,14 @@ func CopyFile(src, dst string) (int64, error) {
 	}
 	defer dstFile.Close()
 
-	return io.Copy(dstFile, srcFile)
+	n, err := io.Copy(dstFile, srcFile)
+	if err != nil {
+		return 0, err
+	}
+
+	if err := os.Chown(dst, uid, gid); err != nil {
+		return 0, err
+	}
+
+	return n, nil
 }

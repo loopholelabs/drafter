@@ -21,14 +21,14 @@ func NewLivenessPingReceiver(
 	}
 }
 
-func (l *LivenessPingReceiver) Open() error {
+func (l *LivenessPingReceiver) Open() (string, error) {
 	var err error
 	l.lis, err = net.Listen("unix", l.vsockPortPath)
 	if err != nil {
-		return err
+		return "", err
 	}
 
-	return nil
+	return l.vsockPortPath, nil
 }
 
 func (l *LivenessPingReceiver) Receive() error {
@@ -42,9 +42,9 @@ func (l *LivenessPingReceiver) Receive() error {
 }
 
 func (l *LivenessPingReceiver) Close() {
-	_ = os.Remove(l.vsockPortPath)
-
 	if l.lis != nil {
 		_ = l.lis.Close()
 	}
+
+	_ = os.Remove(l.vsockPortPath)
 }

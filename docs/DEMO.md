@@ -171,7 +171,7 @@ rm -rf /tmp/blueprint
 ## Starting Packager, Runner, Registry and Peer
 
 ```shell
-sudo pkill -9 firecracker; sudo umount out/redis.ark; sudo rm -f out/redis.ark; sudo ip tuntap del dev vm0 mode tap # Cleaning up artifacts from potentially failed runs
+sudo pkill -9 firecracker; sudo umount out/redis.ark; sudo rm -f out/redis.ark; sudo ip netns del ns1; sudo ip netns add ns1; sudo ip netns exec ns1 ip tuntap add dev vm0 mode tap; sudo rm -rf out/vms # Cleaning up artifacts from potentially failed runs
 
 go build -o /tmp/architekt-packager ./cmd/architekt-packager/ && sudo /tmp/architekt-packager
 
@@ -179,7 +179,7 @@ go build -o /tmp/architekt-runner ./cmd/architekt-runner/ && sudo /tmp/architekt
 
 go build -o /tmp/architekt-registry ./cmd/architekt-registry/ && sudo /tmp/architekt-registry
 
-sudo pkill -9 firecracker; sudo pkill -9 architekt-peer; sudo ip tuntap del dev vm0 mode tap # Cleaning up artifacts from potentially failed runs
+sudo pkill -9 firecracker; sudo pkill -9 architekt-peer; sudo ip netns del ns1; sudo ip netns add ns1; sudo ip netns exec ns1 ip tuntap add dev vm0 mode tap; sudo rm -rf out/vms # Cleaning up artifacts from potentially failed runs
 
 sudo mount -o remount,size=24G,noatime /tmp # Potentially increase /tmp disk space (where the r3map cache file is stored)
 

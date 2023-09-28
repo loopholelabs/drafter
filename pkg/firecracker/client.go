@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"path"
+	"path/filepath"
 
 	v1 "github.com/loopholelabs/architekt/pkg/api/http/firecracker/v1"
 )
@@ -31,6 +32,8 @@ const (
 	memoryName = "architekt.arkmemory"
 
 	snapshotVersion = "1.4.0"
+
+	MountName = "mount"
 )
 
 func submitJSON(method string, client *http.Client, body any, resource string) error {
@@ -189,8 +192,8 @@ func CreateSnapshot(client *http.Client) error {
 		client,
 		&v1.SnapshotCreateRequest{
 			SnapshotType:   "Full",
-			SnapshotPath:   stateName,
-			MemoryFilePath: memoryName,
+			SnapshotPath:   filepath.Join(MountName, stateName),
+			MemoryFilePath: filepath.Join(MountName, memoryName),
 			Version:        snapshotVersion,
 		},
 		"snapshot/create",
@@ -206,10 +209,10 @@ func ResumeSnapshot(client *http.Client) error {
 		http.MethodPut,
 		client,
 		&v1.SnapshotLoadRequest{
-			SnapshotPath: stateName,
+			SnapshotPath: filepath.Join(MountName, stateName),
 			MemoryBackend: v1.SnapshotLoadRequestMemoryBackend{
 				BackendType: "File",
-				BackendPath: memoryName,
+				BackendPath: filepath.Join(MountName, memoryName),
 			},
 			EnableDiffSnapshots:  false,
 			ResumeVirtualMachine: true,
@@ -238,7 +241,7 @@ func FlushSnapshot(client *http.Client) error {
 		http.MethodPut,
 		client,
 		&v1.SnapshotNoMemoryCreateRequest{
-			SnapshotPath: stateName,
+			SnapshotPath: filepath.Join(MountName, stateName),
 			Version:      snapshotVersion,
 		},
 		"snapshot-nomemory/create",
