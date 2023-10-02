@@ -11,14 +11,13 @@ import (
 	"time"
 
 	"github.com/loopholelabs/architekt/pkg/firecracker"
-	"github.com/loopholelabs/architekt/pkg/network"
 	"github.com/loopholelabs/architekt/pkg/services"
 	"github.com/loopholelabs/architekt/pkg/utils"
 	"github.com/loopholelabs/architekt/pkg/vsock"
 )
 
 const (
-	VSockName = "architect.arksock"
+	VSockName = "architekt.arksock"
 )
 
 var (
@@ -41,9 +40,8 @@ type HypervisorConfiguration struct {
 }
 
 type NetworkConfiguration struct {
-	HostInterface   string
-	HostMAC         string
-	BridgeInterface string
+	Interface string
+	MAC       string
 }
 
 type AgentConfiguration struct {
@@ -56,7 +54,6 @@ type Runner struct {
 	agentConfiguration      AgentConfiguration
 
 	mount   *utils.Mount
-	tap     *network.TAP
 	srv     *firecracker.Server
 	client  *http.Client
 	handler *vsock.Handler
@@ -91,19 +88,6 @@ func (r *Runner) Wait() error {
 	}
 
 	r.wg.Wait()
-
-	return nil
-}
-
-func (r *Runner) Open() error {
-	// r.tap = network.NewTAP(
-	// 	r.networkConfiguration.HostInterface,
-	// 	r.networkConfiguration.HostMAC,
-	// 	r.networkConfiguration.BridgeInterface,
-	// )
-	// if err := r.tap.Open(); err != nil {
-	// 	return err
-	// }
 
 	return nil
 }
@@ -227,10 +211,6 @@ func (r *Runner) Close() error {
 	r.wg.Wait()
 
 	_ = os.Remove(filepath.Join(r.vmPath, VSockName))
-
-	if r.tap != nil {
-		_ = r.tap.Close()
-	}
 
 	if r.mount != nil {
 		_ = r.mount.Close()

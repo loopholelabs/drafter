@@ -95,17 +95,6 @@ func (p *Packager) CreatePackage(
 	}
 	defer loop.Close()
 
-	// tap := network.NewTAP(
-	// 	networkConfiguration.HostInterface,
-	// 	networkConfiguration.HostMAC,
-	// 	networkConfiguration.BridgeInterface,
-	// )
-
-	// if err := tap.Open(); err != nil {
-	// 	return err
-	// }
-	// defer tap.Close()
-
 	if err := os.MkdirAll(hypervisorConfiguration.ChrootBaseDir, os.ModePerm); err != nil {
 		return err
 	}
@@ -212,8 +201,8 @@ func (p *Packager) CreatePackage(
 		vmConfiguration.CpuCount,
 		vmConfiguration.MemorySize,
 
-		networkConfiguration.HostInterface,
-		networkConfiguration.HostMAC,
+		networkConfiguration.Interface,
+		networkConfiguration.MAC,
 
 		VSockName,
 		vsock.CIDGuest,

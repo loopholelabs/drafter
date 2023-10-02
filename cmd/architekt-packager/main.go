@@ -15,17 +15,15 @@ func main() {
 
 	chrootBaseDir := flag.String("chroot-base-dir", filepath.Join("out", "vms"), "`chroot` base directory")
 
-	uid := flag.Int("uid", 123, "User ID for the Firecracker process")
-	gid := flag.Int("gid", 100, "Group ID for the Firecracker process")
-
-	netns := flag.String("netns", "ns1", "Network namespace to run Firecracke in")
+	uid := flag.Int("uid", 0, "User ID for the Firecracker process")
+	gid := flag.Int("gid", 0, "Group ID for the Firecracker process")
 
 	enableOutput := flag.Bool("enable-output", true, "Whether to enable VM stdout and stderr")
 	enableInput := flag.Bool("enable-input", false, "Whether to enable VM stdin")
 
-	hostInterface := flag.String("host-interface", "vm0", "Host interface name")
-	hostMAC := flag.String("host-mac", "02:0e:d9:fd:68:3d", "Host MAC address")
-	bridgeInterface := flag.String("bridge-interface", "firecracker0", "Bridge interface name")
+	netns := flag.String("netns", "ark0", "Network namespace to run Firecracker in")
+	iface := flag.String("interface", "tap0", "Name of the interface in the network namespace to use")
+	mac := flag.String("mac", "02:0e:d9:fd:68:3d", "MAC of the interface in the network namespace to use")
 
 	livenessVSockPort := flag.Int("liveness-vsock-port", 25, "Liveness VSock port")
 	agentVSockPort := flag.Int("agent-vsock-port", 26, "Agent VSock port")
@@ -92,9 +90,8 @@ func main() {
 			EnableInput:  *enableInput,
 		},
 		roles.NetworkConfiguration{
-			HostInterface:   *hostInterface,
-			HostMAC:         *hostMAC,
-			BridgeInterface: *bridgeInterface,
+			Interface: *iface,
+			MAC:       *mac,
 		},
 		roles.AgentConfiguration{
 			AgentVSockPort: uint32(*agentVSockPort),
