@@ -13,21 +13,21 @@ import (
 type Namespace struct {
 	id string
 
-	hostIface  string
-	guestIface string
+	hostInterface      string
+	namespaceInterface string
 
-	internalGateway string
-	gatewayMask     uint32
+	namespaceInterfaceGateway string
+	namespaceInterfaceNetmask uint32
 
-	internalVeth string
-	externalVeth string
+	hostVethInternalIP string
+	hostVethExternalIP string
 
-	internalAddr string
-	externalAddr string
+	namespaceInterfaceIP string
+	namespaceVethIP      string
 
 	blockedSubnet string
 
-	mac string
+	namespaceInterfaceMAC string
 
 	veth0 string
 	veth1 string
@@ -39,40 +39,40 @@ type Namespace struct {
 func NewNamespace(
 	id string,
 
-	hostIface string,
-	guestIface string,
+	hostInterface string,
+	namespaceInterface string,
 
-	internalGateway string,
-	gatewayMask uint32,
+	namespaceInterfaceGateway string,
+	namespaceInterfaceNetmask uint32,
 
-	internalVeth string,
-	externalVeth string,
+	hostVethInternalIP string,
+	hostVethExternalIP string,
 
-	internalAddr string,
-	externalAddr string,
+	namespaceInterfaceIP string,
+	namespaceVethIP string,
 
 	blockedSubnet string,
 
-	mac string,
+	namespaceInterfaceMAC string,
 ) *Namespace {
 	return &Namespace{
 		id: id,
 
-		hostIface:  hostIface,
-		guestIface: guestIface,
+		hostInterface:      hostInterface,
+		namespaceInterface: namespaceInterface,
 
-		internalGateway: internalGateway,
-		gatewayMask:     gatewayMask,
+		namespaceInterfaceGateway: namespaceInterfaceGateway,
+		namespaceInterfaceNetmask: namespaceInterfaceNetmask,
 
-		internalVeth: internalVeth,
-		externalVeth: externalVeth,
+		hostVethInternalIP: hostVethInternalIP,
+		hostVethExternalIP: hostVethExternalIP,
 
-		internalAddr: internalAddr,
-		externalAddr: externalAddr,
+		namespaceInterfaceIP: namespaceInterfaceIP,
+		namespaceVethIP:      namespaceVethIP,
 
 		blockedSubnet: blockedSubnet,
 
-		mac: mac,
+		namespaceInterfaceMAC: namespaceInterfaceMAC,
 
 		veth0: fmt.Sprintf("%s-veth0", id),
 		veth1: fmt.Sprintf("%s-veth1", id),
@@ -100,14 +100,14 @@ func (n *Namespace) Open() error {
 		LinkAttrs: netlink.NewLinkAttrs(),
 	}
 
-	tapIface.Name = n.guestIface
+	tapIface.Name = n.namespaceInterface
 	tapIface.Mode = netlink.TUNTAP_MODE_TAP
 
 	if err := netlink.LinkAdd(tapIface); err != nil {
 		return err
 	}
 
-	gatewaySubnet := fmt.Sprintf("%s/%d", n.internalGateway, n.gatewayMask)
+	gatewaySubnet := fmt.Sprintf("%s/%d", n.namespaceInterfaceGateway, n.namespaceInterfaceNetmask)
 	parsedGatewaySubnet, err := netlink.ParseAddr(gatewaySubnet)
 	if err != nil {
 		return err
@@ -117,7 +117,7 @@ func (n *Namespace) Open() error {
 		return err
 	}
 
-	parsedMAC, err := net.ParseMAC(n.mac)
+	parsedMAC, err := net.ParseMAC(n.namespaceInterfaceMAC)
 	if err != nil {
 		return err
 	}
@@ -152,7 +152,7 @@ func (n *Namespace) Open() error {
 		return err
 	}
 
-	internalVethSubnet := fmt.Sprintf("%s/%d", n.internalVeth, PairMask)
+	internalVethSubnet := fmt.Sprintf("%s/%d", n.hostVethInternalIP, PairMask)
 	parsedInternalVethSubnet, err := netlink.ParseAddr(internalVethSubnet)
 	if err != nil {
 		return err
@@ -170,7 +170,7 @@ func (n *Namespace) Open() error {
 		return err
 	}
 
-	externalVethSubnet := fmt.Sprintf("%s/%d", n.externalVeth, PairMask)
+	externalVethSubnet := fmt.Sprintf("%s/%d", n.hostVethExternalIP, PairMask)
 	parsedExternalVethSubnet, err := netlink.ParseAddr(externalVethSubnet)
 	if err != nil {
 		return err
@@ -200,7 +200,7 @@ func (n *Namespace) Open() error {
 
 	if err := netlink.RouteAdd(&netlink.Route{
 		Dst: n.parsedDefaultAddress.IPNet,
-		Gw:  net.ParseIP(n.externalVeth),
+		Gw:  net.ParseIP(n.hostVethExternalIP),
 	}); err != nil {
 		return err
 	}
@@ -210,11 +210,11 @@ func (n *Namespace) Open() error {
 		return err
 	}
 
-	if err = iptable.Append("nat", "POSTROUTING", "-o", n.veth0, "-s", n.internalAddr, "-j", "SNAT", "--to", n.externalAddr); err != nil {
+	if err = iptable.Append("nat", "POSTROUTING", "-o", n.veth0, "-s", n.namespaceInterfaceIP, "-j", "SNAT", "--to", n.namespaceVethIP); err != nil {
 		return err
 	}
 
-	if err := iptable.Append("nat", "PREROUTING", "-i", n.veth0, "-d", n.externalAddr, "-j", "DNAT", "--to", n.internalAddr); err != nil {
+	if err := iptable.Append("nat", "PREROUTING", "-i", n.veth0, "-d", n.namespaceVethIP, "-j", "DNAT", "--to", n.namespaceInterfaceIP); err != nil {
 		return err
 	}
 
@@ -222,27 +222,27 @@ func (n *Namespace) Open() error {
 		return err
 	}
 
-	n.parsedExternalAddr, err = netlink.ParseAddr(n.externalAddr + "/32")
+	n.parsedExternalAddr, err = netlink.ParseAddr(n.namespaceVethIP + "/32")
 	if err != nil {
 		return err
 	}
 
 	if err := netlink.RouteAdd(&netlink.Route{
 		Dst: n.parsedExternalAddr.IPNet,
-		Gw:  net.ParseIP(n.internalVeth),
+		Gw:  net.ParseIP(n.hostVethInternalIP),
 	}); err != nil {
 		return err
 	}
 
-	if err := iptable.Append("filter", "FORWARD", "-i", n.veth1, "-o", n.hostIface, "-j", "ACCEPT"); err != nil {
+	if err := iptable.Append("filter", "FORWARD", "-i", n.veth1, "-o", n.hostInterface, "-j", "ACCEPT"); err != nil {
 		return err
 	}
 
-	if err := iptable.Append("filter", "FORWARD", "-s", n.blockedSubnet, "-d", n.externalVeth, "-j", "DROP"); err != nil {
+	if err := iptable.Append("filter", "FORWARD", "-s", n.blockedSubnet, "-d", n.hostVethExternalIP, "-j", "DROP"); err != nil {
 		return err
 	}
 
-	if err := iptable.Append("filter", "FORWARD", "-s", n.externalVeth, "-d", n.blockedSubnet, "-j", "DROP"); err != nil {
+	if err := iptable.Append("filter", "FORWARD", "-s", n.hostVethExternalIP, "-d", n.blockedSubnet, "-j", "DROP"); err != nil {
 		return err
 	}
 
@@ -255,23 +255,23 @@ func (n *Namespace) Close() error {
 		return err
 	}
 
-	if err := iptable.Delete("filter", "FORWARD", "-s", n.blockedSubnet, "-d", n.externalVeth, "-j", "DROP"); err != nil {
+	if err := iptable.Delete("filter", "FORWARD", "-s", n.blockedSubnet, "-d", n.hostVethExternalIP, "-j", "DROP"); err != nil {
 		return err
 	}
 
-	if err := iptable.Delete("filter", "FORWARD", "-s", n.externalVeth, "-d", n.blockedSubnet, "-j", "DROP"); err != nil {
+	if err := iptable.Delete("filter", "FORWARD", "-s", n.hostVethExternalIP, "-d", n.blockedSubnet, "-j", "DROP"); err != nil {
 
 		return err
 	}
 
-	if err := iptable.Delete("filter", "FORWARD", "-i", n.veth1, "-o", n.hostIface, "-j", "ACCEPT"); err != nil {
+	if err := iptable.Delete("filter", "FORWARD", "-i", n.veth1, "-o", n.hostInterface, "-j", "ACCEPT"); err != nil {
 		return err
 	}
 
 	if n.parsedExternalAddr != nil {
 		if err = netlink.RouteDel(&netlink.Route{
 			Dst: n.parsedExternalAddr.IPNet,
-			Gw:  net.ParseIP(n.internalVeth),
+			Gw:  net.ParseIP(n.hostVethInternalIP),
 		}); err != nil {
 			return err
 		}
@@ -297,18 +297,18 @@ func (n *Namespace) Close() error {
 		return err
 	}
 
-	if err := iptable.Delete("nat", "PREROUTING", "-i", n.veth0, "-d", n.externalAddr, "-j", "DNAT", "--to", n.internalAddr); err != nil {
+	if err := iptable.Delete("nat", "PREROUTING", "-i", n.veth0, "-d", n.namespaceVethIP, "-j", "DNAT", "--to", n.namespaceInterfaceIP); err != nil {
 		return err
 	}
 
-	if err := iptable.Delete("nat", "POSTROUTING", "-o", n.veth0, "-s", n.internalAddr, "-j", "SNAT", "--to", n.externalAddr); err != nil {
+	if err := iptable.Delete("nat", "POSTROUTING", "-o", n.veth0, "-s", n.namespaceInterfaceIP, "-j", "SNAT", "--to", n.namespaceVethIP); err != nil {
 		return err
 	}
 
 	if n.parsedDefaultAddress != nil {
 		if err := netlink.RouteDel(&netlink.Route{
 			Dst: n.parsedDefaultAddress.IPNet,
-			Gw:  net.ParseIP(n.externalVeth),
+			Gw:  net.ParseIP(n.hostVethExternalIP),
 		}); err != nil {
 			return err
 		}
@@ -331,7 +331,7 @@ func (n *Namespace) Close() error {
 		return err
 	}
 
-	tapIface, err := netlink.LinkByName(n.guestIface)
+	tapIface, err := netlink.LinkByName(n.namespaceInterface)
 	if err != nil {
 		return err
 	}

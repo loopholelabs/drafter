@@ -14,7 +14,7 @@ const (
 )
 
 var (
-	errInvalidCIDRSize = errors.New("invalid cidr size")
+	ErrInvalidCIDRSize = errors.New("invalid cidr size")
 )
 
 type IPTable struct {
@@ -39,7 +39,7 @@ func (t *IPTable) Open(ctx context.Context) error {
 	}
 
 	if size, _ := netCIDR.Mask.Size(); size > PairMask {
-		return errInvalidCIDRSize
+		return ErrInvalidCIDRSize
 	}
 
 	t.prefix, err = t.ipam.NewPrefix(ctx, t.cidr)
