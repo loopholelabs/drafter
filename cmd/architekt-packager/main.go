@@ -25,6 +25,8 @@ func main() {
 	iface := flag.String("interface", "tap0", "Name of the interface in the network namespace to use")
 	mac := flag.String("mac", "02:0e:d9:fd:68:3d", "MAC of the interface in the network namespace to use")
 
+	numaNode := flag.Int("numa-node", 0, "NUMA node to run Firecracker in")
+
 	livenessVSockPort := flag.Int("liveness-vsock-port", 25, "Liveness VSock port")
 	agentVSockPort := flag.Int("agent-vsock-port", 26, "Agent VSock port")
 
@@ -84,7 +86,8 @@ func main() {
 			UID: *uid,
 			GID: *gid,
 
-			NetNS: *netns,
+			NetNS:    *netns,
+			NumaNode: *numaNode,
 
 			EnableOutput: *enableOutput,
 			EnableInput:  *enableInput,

@@ -32,7 +32,8 @@ type Server struct {
 	uid int
 	gid int
 
-	netns string
+	netns    string
+	numaNode int
 
 	enableOutput bool
 	enableInput  bool
@@ -54,6 +55,7 @@ func NewServer(
 	gid int,
 
 	netns string,
+	numaNode int,
 
 	enableOutput bool,
 	enableInput bool,
@@ -67,7 +69,8 @@ func NewServer(
 		uid: uid,
 		gid: gid,
 
-		netns: netns,
+		netns:    netns,
+		numaNode: numaNode,
 
 		enableOutput: enableOutput,
 		enableInput:  enableInput,
@@ -105,6 +108,11 @@ func (s *Server) Open() (string, error) {
 		return "", err
 	}
 
+	cpus, err := os.ReadFile(filepath.Join("/sys", "devices", "system", "node", fmt.Sprintf("node%v", s.numaNode), "cpulist"))
+	if err != nil {
+		return "", err
+	}
+
 	s.cmd = exec.Command(
 		s.jailerBin,
 		"--chroot-base-dir",
@@ -115,6 +123,10 @@ func (s *Server) Open() (string, error) {
 		fmt.Sprintf("%v", s.gid),
 		"--netns",
 		filepath.Join("/var", "run", "netns", s.netns),
+		"--cgroup",
+		fmt.Sprintf("cpuset.mems=%v", s.numaNode),
+		"--cgroup",
+		fmt.Sprintf("cpuset.cpus=%s", cpus),
 		"--id",
 		id,
 		"--exec-file",
