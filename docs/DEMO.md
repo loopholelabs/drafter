@@ -1,19 +1,8 @@
 # Architekt Demo
 
-## Overview
-
-1. **Installing Firecracker and Architekt**: Builds Firecracker and Architekt binaries from source and installs them in bash
-2. **Setting Up Workstation and Server Dependencies**: Checking for KVM, NBD and availability of Firecracker, pre-creating networks (all in Bash/`architekt-network-setup`, and in the future in the single-instance-per-host run-once DaemonSet `architekt-daemon`'s startup hook)
-3. **Building a Blueprint on a Workstation**: Custom shell script, in the future a Go CLI `architekt-builder` that converts an OCI image to a `.arkdisk` and adds a `.arkinitramfs` and a `.arkkernel`
-4. **Creating and Running a Package on a Workstation**: Using `architekt-packager` to create a `.ark` package and running it with `architekt-runner`
-5. **Distributing, Running and Migrating Packages between Servers**: Using `architekt-registry` to serve a `.ark` package and `architekt-peer` to download and migrate it
-6. **Tearing Down Workstation and Server Dependencies**: Stopping running Firecracker/`architekt-runner`/`architekt-peer` processes, deleting networks (all in Bash/`architekt-network-teardown`, and in the future in the single-instance-per-host run-once DaemonSet `architekt-daemon`'s shutdown hook)
-7. **Uninstalling Firecracker and Architekt**: Removes Firecracker and Architekt binaries and data
-
-## Setting up (with Live Migration Support), NBD and Networking
+## Installing Firecracker and Architekt
 
 ```shell
-# Firecracker
 git clone https://github.com/loopholelabs/firecracker /tmp/firecracker
 cd /tmp/firecracker
 
@@ -23,29 +12,41 @@ git fetch --all
 tools/devtool build --release
 
 sudo install ./build/cargo_target/x86_64-unknown-linux-musl/release/{firecracker,jailer} /usr/local/bin/
+```
 
-# NBD
+```shell
+git clone https://github.com/loopholelabs/architekt.git /tmp/architekt
+cd /tmp/architekt
+
+make depend
+make
+sudo make install
+```
+
+## Setting Up Workstation and Server Dependencies
+
+```shell
+grep -Eoc '(vmx)' /proc/cpuinfo # Intel: Must be > 0 for KVM support
+grep -Eoc '(svm)' /proc/cpuinfo # AMD: Must be > 0 for KVM support
+
+sudo modprobe kvm
+sudo tee /etc/modules-load.d/kvm.conf <<EOT
+kvm
+EOT
+```
+
+```shell
 sudo modprobe nbd
 sudo tee /etc/modules-load.d/nbd.conf <<EOT
 nbd
 EOT
-
-# Networking
-export GATEWAY_INTERFACE="wlp0s20f3"
-
-# Completely reseting the network configuration (should not be necessary)
-sudo systemctl stop firewalld || true
-sudo iptables -X
-sudo iptables -F
-
-for ns in $(ip netns list | awk '{print $1}'); do
-    sudo ip netns delete $ns
-done
-
-go build -o /tmp/architekt-daemon ./cmd/architekt-daemon/ && sudo /tmp/architekt-daemon # Ctrl-C to clean up
 ```
 
-## Setting up Blueprint
+```shell
+sudo architekt-daemon # Sets up networking and keeps running; CTRL-C to tear down networking
+```
+
+## Build a Blueprint on a Workstation
 
 ```shell
 export DISK_SIZE="5G"
@@ -178,24 +179,58 @@ sudo umount /tmp/blueprint || true
 rm -rf /tmp/blueprint
 ```
 
-## Starting Packager, Runner, Registry and Peer
+## Creating and Running a Blueprint on a Workstation
 
 ```shell
-sudo pkill -9 firecracker; sudo umount out/redis.ark; sudo rm -f out/redis.ark; sudo rm -rf out/vms # Cleaning up artifacts from potentially failed runs
+sudo architekt-packager
+sudo architekt-runner # CTRL-C to flush the snapshot and run again to resume
+```
 
-go build -o /tmp/architekt-packager ./cmd/architekt-packager/ && sudo /tmp/architekt-packager
+## Distributing, Running and Migrating Packages between Servers
 
-go build -o /tmp/architekt-runner ./cmd/architekt-runner/ && sudo /tmp/architekt-runner # You can now CTRL+C to flush the snapshot & run again to resume
+```shell
+architekt-registry
+```
 
-go build -o /tmp/architekt-registry ./cmd/architekt-registry/ && sudo /tmp/architekt-registry
+```shell
+sudo mount -o remount,size=24G,noatime /tmp # Potentially increase /tmp disk space (where the r3map cache files are stored)
+sudo architekt-peer --raddr localhost:1337 --enable-input # If --enable-input is specified, CTRL-C is forwarded to the VM, so to stop the VM use `sudo pkill -2 architekt-peer` instead
+```
 
-sudo pkill -9 firecracker; sudo pkill -9 architekt-peer; sudo rm -rf out/vms # Cleaning up artifacts from potentially failed runs
+```shell
+sudo architekt-peer --netns ark1 --enable-input # Migrates to this peer; be sure to use a different namespace (i.e. ark1, the default is ark0) if you're migrating on the same machine
+```
 
-sudo mount -o remount,size=24G,noatime /tmp # Potentially increase /tmp disk space (where the r3map cache file is stored)
+```shell
+sudo architekt-peer # Migrates to this peer without enabling input; CTRL-C to flush the snapshot and stop the VM
+```
 
-go build -o /tmp/architekt-peer ./cmd/architekt-peer/ && sudo /tmp/architekt-peer --raddr localhost:1337
+## Tearing Down Workstation and Server Dependencies
 
-go build -o /tmp/architekt-peer ./cmd/architekt-peer/ && sudo /tmp/architekt-peer --netns ark1 --enable-input # You can use this to interact with the VM, but do note that enabling input removes the ability to `CTRL-C` since signals are forwarded (use `pkill -2 architekt-peer` instead)
+```shell
+sudo pkill -2 architekt-peer
+sudo pkill -2 architekt-registry
+sudo pkill -2 architekt-daemon
 
-go build -o /tmp/architekt-peer ./cmd/architekt-peer/ && sudo /tmp/architekt-peer
+# Completely reseting the network configuration (should not be necessary)
+sudo iptables -X
+sudo iptables -F
+for ns in $(ip netns list | awk '{print $1}'); do
+    sudo ip netns delete $ns
+done
+
+# Completely cleaning up artifacts from failed runs (should not be necessary)
+sudo pkill -9 firecracker
+sudo umount out/redis.ark
+sudo rm -f out/redis.ark
+sudo rm -rf out/vms
+```
+
+## Uninstalling Firecracker and Architekt
+
+```shell
+sudo rm /usr/local/bin/{firecracker,jailer}
+
+cd /tmp/architekt
+sudo make uninstall
 ```
