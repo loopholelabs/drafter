@@ -346,3 +346,7 @@ func (n *Namespace) Close() error {
 
 	return netns.DeleteNamed(n.id)
 }
+
+func (n *Namespace) GetID() string {
+	return n.id
+}
