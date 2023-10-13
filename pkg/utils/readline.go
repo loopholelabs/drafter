@@ -1,8 +1,8 @@
 package utils
 
-import "net"
+import "io"
 
-func ReadLineNoBuffer(conn net.Conn) (string, error) {
+func ReadLineNoBuffer(conn io.Reader) (string, error) {
 	line := ""
 	for {
 		buf := make([]byte, 1)
