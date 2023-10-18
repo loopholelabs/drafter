@@ -2,6 +2,7 @@ package vsock
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -12,9 +13,9 @@ import (
 	"time"
 
 	"github.com/loopholelabs/architekt/pkg/services"
+	"github.com/loopholelabs/architekt/pkg/utils"
 	iutils "github.com/loopholelabs/architekt/pkg/utils"
 	"github.com/pojntfx/dudirekta/pkg/rpc"
-	"github.com/pojntfx/r3map/pkg/utils"
 )
 
 var (
@@ -75,7 +76,6 @@ func (s *Handler) Open(
 		s.timeout,
 		ctx,
 		&rpc.Options{
-			ResponseBufferLen: rpc.DefaultResponseBufferLen,
 			OnClientConnect: func(remoteID string) {
 				ready <- remoteID
 			},
@@ -157,7 +157,13 @@ func (s *Handler) Open(
 	go func() {
 		defer s.wg.Done()
 
-		if err := registry.Link(s.conn); err != nil && !utils.IsClosedErr(err) && !strings.HasSuffix(err.Error(), "use of closed network connection") {
+		if err := registry.LinkStream(
+			json.NewEncoder(s.conn).Encode,
+			json.NewDecoder(s.conn).Decode,
+
+			json.Marshal,
+			json.Unmarshal,
+		); err != nil && !utils.IsClosedErr(err) && !strings.HasSuffix(err.Error(), "use of closed network connection") {
 			s.errs <- err
 
 			return

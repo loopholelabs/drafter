@@ -7,11 +7,11 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/loopholelabs/architekt/pkg/utils"
 	iutils "github.com/loopholelabs/architekt/pkg/utils"
 	"github.com/pojntfx/go-nbd/pkg/backend"
 	v1 "github.com/pojntfx/r3map/pkg/api/proto/migration/v1"
 	"github.com/pojntfx/r3map/pkg/services"
-	"github.com/pojntfx/r3map/pkg/utils"
 	"google.golang.org/grpc"
 )
 

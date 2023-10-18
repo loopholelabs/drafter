@@ -163,6 +163,8 @@ github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZb
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/pojntfx/dudirekta v0.5.1 h1:omrLk+lFJTQd6F/FGhW/tXEJF6Q/Zb4x++6zgWu8Ahw=
 github.com/pojntfx/dudirekta v0.5.1/go.mod h1:2G79XDOe1c3Nz3G+LQfiNZ5K/SS3b2TP1K9JyRt8woI=
+github.com/pojntfx/dudirekta v0.5.2-0.20231017223940-51a2da658c81 h1:RNmu8vFAW3CjJRTPVO5XBZeOlRx4L1ZT8qIe6V+mYww=
+github.com/pojntfx/dudirekta v0.5.2-0.20231017223940-51a2da658c81/go.mod h1:24rdr8SyeWrGqpyURQbvbTepzmh2QhHyKP/rzma1XZk=
 github.com/pojntfx/go-nbd v0.2.0 h1:dBtrQQQ2b4Gr3zNb1Lxzfs1/hnEVtHGJeUEC6GVsBO4=
 github.com/pojntfx/go-nbd v0.2.0/go.mod h1:SehHnbi2e8NiSAKby42Itm8SIoS7b+wAprsfPH3qgYk=
 github.com/pojntfx/r3map v0.0.0-20230823171045-28fc7f1e9dee h1:W8sXJ49ixXZcVt4Y6zsyhatpUUfToTjF5kvWrqOoRj8=

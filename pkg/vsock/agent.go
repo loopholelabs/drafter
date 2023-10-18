@@ -2,13 +2,14 @@ package vsock
 
 import (
 	"context"
+	"encoding/json"
 	"sync"
 	"time"
 
 	"github.com/loopholelabs/architekt/pkg/services"
+	"github.com/loopholelabs/architekt/pkg/utils"
 	"github.com/mdlayher/vsock"
 	"github.com/pojntfx/dudirekta/pkg/rpc"
-	"github.com/pojntfx/r3map/pkg/utils"
 )
 
 type Agent struct {
@@ -99,7 +100,13 @@ func (s *Agent) Open(ctx context.Context) error {
 			go func() {
 				defer conn.Close()
 
-				if err := registry.Link(conn); err != nil && !utils.IsClosedErr(err) {
+				if err := registry.LinkStream(
+					json.NewEncoder(conn).Encode,
+					json.NewDecoder(conn).Decode,
+
+					json.Marshal,
+					json.Unmarshal,
+				); err != nil && !utils.IsClosedErr(err) {
 					s.errs <- err
 
 					return
