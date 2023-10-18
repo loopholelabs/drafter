@@ -110,6 +110,7 @@ func (p *Packager) CreatePackage(
 
 		hypervisorConfiguration.NetNS,
 		hypervisorConfiguration.NumaNode,
+		hypervisorConfiguration.CgroupVersion,
 
 		hypervisorConfiguration.EnableOutput,
 		hypervisorConfiguration.EnableInput,

@@ -42,6 +42,7 @@ func main() {
 	mac := flag.String("mac", "02:0e:d9:fd:68:3d", "MAC of the interface in the network namespace to use")
 
 	numaNode := flag.Int("numa-node", 0, "NUMA node to run Firecracker in")
+	cgroupVersion := flag.Int("cgroup-version", 2, "Cgroup version to use for Jailer")
 
 	agentVSockPort := flag.Uint("agent-vsock-port", 26, "Agent VSock port")
 
@@ -67,8 +68,9 @@ func main() {
 			UID: *uid,
 			GID: *gid,
 
-			NetNS:    *netns,
-			NumaNode: *numaNode,
+			NetNS:         *netns,
+			NumaNode:      *numaNode,
+			CgroupVersion: *cgroupVersion,
 
 			EnableOutput: *enableOutput,
 			EnableInput:  *enableInput,

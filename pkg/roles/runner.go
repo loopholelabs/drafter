@@ -33,8 +33,9 @@ type HypervisorConfiguration struct {
 	UID int
 	GID int
 
-	NetNS    string
-	NumaNode int
+	NetNS         string
+	NumaNode      int
+	CgroupVersion int
 
 	EnableOutput bool
 	EnableInput  bool
@@ -110,6 +111,7 @@ func (r *Runner) Resume(ctx context.Context, packageDevicePath string) error {
 
 			r.hypervisorConfiguration.NetNS,
 			r.hypervisorConfiguration.NumaNode,
+			r.hypervisorConfiguration.CgroupVersion,
 
 			r.hypervisorConfiguration.EnableOutput,
 			r.hypervisorConfiguration.EnableInput,

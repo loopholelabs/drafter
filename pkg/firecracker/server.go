@@ -32,8 +32,9 @@ type Server struct {
 	uid int
 	gid int
 
-	netns    string
-	numaNode int
+	netns         string
+	numaNode      int
+	cgroupVersion int
 
 	enableOutput bool
 	enableInput  bool
@@ -56,6 +57,7 @@ func NewServer(
 
 	netns string,
 	numaNode int,
+	cgroupVersion int,
 
 	enableOutput bool,
 	enableInput bool,
@@ -69,8 +71,9 @@ func NewServer(
 		uid: uid,
 		gid: gid,
 
-		netns:    netns,
-		numaNode: numaNode,
+		netns:         netns,
+		numaNode:      numaNode,
+		cgroupVersion: cgroupVersion,
 
 		enableOutput: enableOutput,
 		enableInput:  enableInput,
@@ -123,6 +126,8 @@ func (s *Server) Open() (string, error) {
 		fmt.Sprintf("%v", s.gid),
 		"--netns",
 		filepath.Join("/var", "run", "netns", s.netns),
+		"--cgroup-version",
+		fmt.Sprintf("%v", s.cgroupVersion),
 		"--cgroup",
 		fmt.Sprintf("cpuset.mems=%v", s.numaNode),
 		"--cgroup",
