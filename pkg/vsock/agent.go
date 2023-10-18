@@ -25,6 +25,8 @@ type Agent struct {
 
 	wg   sync.WaitGroup
 	errs chan error
+
+	verbose bool
 }
 
 func NewAgent(
@@ -35,6 +37,8 @@ func NewAgent(
 	afterResume func(ctx context.Context) error,
 
 	timeout time.Duration,
+
+	verbose bool,
 ) *Agent {
 	return &Agent{
 		vsockCID:  vsockCID,
@@ -47,6 +51,8 @@ func NewAgent(
 
 		wg:   sync.WaitGroup{},
 		errs: make(chan error),
+
+		verbose: verbose,
 	}
 }
 
@@ -64,6 +70,8 @@ func (s *Agent) Open(ctx context.Context) error {
 	svc := services.NewAgent(
 		s.beforeSuspend,
 		s.afterResume,
+
+		s.verbose,
 	)
 
 	registry := rpc.NewRegistry(

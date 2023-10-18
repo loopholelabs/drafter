@@ -1,6 +1,9 @@
 package services
 
-import "context"
+import (
+	"context"
+	"log"
+)
 
 type AgentRemote struct {
 	BeforeSuspend func(ctx context.Context) error
@@ -10,22 +13,36 @@ type AgentRemote struct {
 type Agent struct {
 	beforeSuspend func(ctx context.Context) error
 	afterResume   func(ctx context.Context) error
+
+	verbose bool
 }
 
 func NewAgent(
 	beforeSuspend func(ctx context.Context) error,
 	afterResume func(ctx context.Context) error,
+
+	verbose bool,
 ) *Agent {
 	return &Agent{
 		beforeSuspend: beforeSuspend,
 		afterResume:   afterResume,
+
+		verbose: verbose,
 	}
 }
 
 func (a *Agent) BeforeSuspend(ctx context.Context) error {
+	if a.verbose {
+		log.Println("Calling BeforeSuspend handler")
+	}
+
 	return a.beforeSuspend(ctx)
 }
 
 func (a *Agent) AfterResume(ctx context.Context) error {
+	if a.verbose {
+		log.Println("Calling AfterResume handler")
+	}
+
 	return a.afterResume(ctx)
 }

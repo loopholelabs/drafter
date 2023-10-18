@@ -13,6 +13,8 @@ import (
 func main() {
 	vsockPort := flag.Int("vsock-port", 26, "VSock port")
 
+	verbose := flag.Bool("verbose", false, "Whether to enable verbose logging")
+
 	flag.Parse()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -34,6 +36,8 @@ func main() {
 		},
 
 		time.Second*10,
+
+		*verbose,
 	)
 
 	var wg sync.WaitGroup
