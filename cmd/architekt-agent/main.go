@@ -4,6 +4,9 @@ import (
 	"context"
 	"flag"
 	"log"
+	"os"
+	"os/exec"
+	"strings"
 	"sync"
 	"time"
 
@@ -12,6 +15,10 @@ import (
 
 func main() {
 	vsockPort := flag.Int("vsock-port", 26, "VSock port")
+
+	shellCmd := flag.String("shell-cmd", "sh", "Shell to use to run the before suspend and after resume commands")
+	beforeSuspendCmd := flag.String("before-suspend-cmd", "", "Command to run before the VM is suspended (leave empty to disable)")
+	afterResumeCmd := flag.String("after-resume-cmd", "", "Command to run after the VM has been resumed (leave empty to disable)")
 
 	verbose := flag.Bool("verbose", false, "Whether to enable verbose logging")
 
@@ -27,10 +34,30 @@ func main() {
 		func(ctx context.Context) error {
 			log.Println("Suspending app")
 
+			if strings.TrimSpace(*beforeSuspendCmd) != "" {
+				cmd := exec.Command(*shellCmd, "-c", *beforeSuspendCmd)
+				cmd.Stdout = os.Stdout
+				cmd.Stderr = os.Stderr
+
+				if err := cmd.Run(); err != nil {
+					return err
+				}
+			}
+
 			return nil
 		},
 		func(ctx context.Context) error {
 			log.Println("Resumed app")
+
+			if strings.TrimSpace(*afterResumeCmd) != "" {
+				cmd := exec.Command(*shellCmd, "-c", *afterResumeCmd)
+				cmd.Stdout = os.Stdout
+				cmd.Stderr = os.Stderr
+
+				if err := cmd.Run(); err != nil {
+					return err
+				}
+			}
 
 			return nil
 		},
