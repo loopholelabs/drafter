@@ -12,7 +12,7 @@ Bug reports and pull requests are welcome on GitHub at [https://github.com/looph
 
 ## License
 
-The Architekt project is available as open source under the terms of the [Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0).
+The Architekt project is available as open source under the terms of the [GNU Affero General Public License, Version 3](https://www.gnu.org/licenses/agpl-3.0.en.html).
 
 ## Code of Conduct
 
