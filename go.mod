@@ -17,6 +17,7 @@ require (
 	github.com/vishvananda/netns v0.0.1
 	golang.org/x/sys v0.11.0
 	google.golang.org/grpc v1.57.0
+	google.golang.org/protobuf v1.31.0
 	k8s.io/utils v0.0.0-20230726121419-3b25d923346b
 )
 
@@ -52,7 +53,7 @@ require (
 	github.com/montanaflynn/stats v0.6.6 // indirect
 	github.com/pilebones/go-udev v0.9.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
-	github.com/redis/go-redis/v9 v9.0.5 // indirect
+	github.com/redis/go-redis/v9 v9.2.1 // indirect
 	github.com/rivo/uniseg v0.4.4 // indirect
 	github.com/rs/zerolog v1.30.0 // indirect
 	github.com/teivah/broadcast v0.1.0 // indirect
@@ -76,6 +77,7 @@ require (
 	google.golang.org/genproto v0.0.0-20230803162519-f966b187b2e5 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20230726155614-23370e0ffb3e // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20230807174057-1744710a1577 // indirect
-	google.golang.org/protobuf v1.31.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 )
+
+replace github.com/pojntfx/dudirekta => ../dudirekta

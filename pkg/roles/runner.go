@@ -59,7 +59,7 @@ type Runner struct {
 	srv     *firecracker.Server
 	client  *http.Client
 	handler *vsock.Handler
-	peer    services.AgentRemote
+	remote  services.AgentRemote
 
 	vmPath string
 
@@ -175,12 +175,12 @@ func (r *Runner) Resume(ctx context.Context, packageDevicePath string) error {
 	}()
 
 	var err error
-	r.peer, err = r.handler.Open(ctx, time.Millisecond*100, time.Second*10)
+	r.remote, err = r.handler.Open(ctx, time.Millisecond*100, time.Second*10)
 	if err != nil {
 		return err
 	}
 
-	return r.peer.AfterResume(ctx)
+	return r.remote.AfterResume(ctx)
 }
 
 func (r *Runner) Suspend(ctx context.Context) error {
@@ -188,7 +188,7 @@ func (r *Runner) Suspend(ctx context.Context) error {
 		return ErrVMNotRunning
 	}
 
-	if err := r.peer.BeforeSuspend(ctx); err != nil {
+	if err := r.remote.BeforeSuspend(ctx); err != nil {
 		return err
 	}
 

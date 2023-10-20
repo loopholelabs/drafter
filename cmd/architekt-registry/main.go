@@ -7,10 +7,11 @@ import (
 	"os"
 	"path/filepath"
 
+	v1 "github.com/loopholelabs/architekt/pkg/api/proto/migration/v1"
+	iservices "github.com/loopholelabs/architekt/pkg/services"
 	"github.com/loopholelabs/architekt/pkg/utils"
 	iutils "github.com/loopholelabs/architekt/pkg/utils"
 	"github.com/pojntfx/go-nbd/pkg/backend"
-	v1 "github.com/pojntfx/r3map/pkg/api/proto/migration/v1"
 	"github.com/pojntfx/r3map/pkg/services"
 	"google.golang.org/grpc"
 )
@@ -35,24 +36,30 @@ func main() {
 	}
 	defer f.Close()
 
-	svc := services.NewSeederService(
-		backend.NewFileBackend(f),
+	b := backend.NewFileBackend(f)
+
+	svc := iservices.NewSeederWithSizeService(
+		services.NewSeederService(
+			b,
+			*verbose,
+			func() error {
+				return nil
+			},
+			func() ([]int64, error) {
+				return []int64{}, nil
+			},
+			func() error {
+				return nil
+			},
+			services.MaxChunkSize,
+		),
+		b,
 		*verbose,
-		func() error {
-			return nil
-		},
-		func() ([]int64, error) {
-			return []int64{}, nil
-		},
-		func() error {
-			return nil
-		},
-		services.MaxChunkSize,
 	)
 
 	server := grpc.NewServer()
 
-	v1.RegisterSeederServer(server, services.NewSeederServiceGrpc(svc))
+	v1.RegisterSeederWithSizeServer(server, iservices.NewSeederWithSizeServiceGrpc(svc))
 
 	lis, err := net.Listen("tcp", *laddr)
 	if err != nil {

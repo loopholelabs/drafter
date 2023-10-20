@@ -20,7 +20,7 @@ import (
 
 var (
 	ErrCouldNotConnectToVSock = errors.New("could not connect to VSock")
-	ErrPeerNotFound           = errors.New("peer not found")
+	ErrRemoteNotFound         = errors.New("remote not found")
 )
 
 type Handler struct {
@@ -173,12 +173,23 @@ func (s *Handler) Open(
 	}()
 
 	remoteID := <-ready
-	peer, ok := registry.Peers()[remoteID]
+	var (
+		remote services.AgentRemote
+		ok     bool
+	)
+	_ = registry.ForRemotes(func(candidateID string, candidate services.AgentRemote) error {
+		if candidateID == remoteID {
+			remote = candidate
+			ok = true
+		}
+
+		return nil
+	})
 	if !ok {
-		return services.AgentRemote{}, ErrPeerNotFound
+		return services.AgentRemote{}, ErrRemoteNotFound
 	}
 
-	return peer, nil
+	return remote, nil
 }
 
 func (s *Handler) Close() error {

@@ -234,12 +234,12 @@ func (p *Packager) CreatePackage(
 	}()
 
 	defer handler.Close()
-	peer, err := handler.Open(ctx, time.Millisecond*100, time.Second*10)
+	remote, err := handler.Open(ctx, time.Millisecond*100, time.Second*10)
 	if err != nil {
 		return err
 	}
 
-	if err := peer.BeforeSuspend(ctx); err != nil {
+	if err := remote.BeforeSuspend(ctx); err != nil {
 		return err
 	}
 

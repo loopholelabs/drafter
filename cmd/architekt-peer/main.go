@@ -13,13 +13,14 @@ import (
 	"sync"
 	"time"
 
+	v1 "github.com/loopholelabs/architekt/pkg/api/proto/migration/v1"
 	"github.com/loopholelabs/architekt/pkg/roles"
 	"github.com/loopholelabs/architekt/pkg/utils"
 	"github.com/pojntfx/go-nbd/pkg/backend"
 	"github.com/pojntfx/go-nbd/pkg/client"
-	v1 "github.com/pojntfx/r3map/pkg/api/proto/migration/v1"
 	"github.com/pojntfx/r3map/pkg/migration"
-	"github.com/pojntfx/r3map/pkg/services"
+
+	"github.com/loopholelabs/architekt/pkg/services"
 	"github.com/schollz/progressbar/v3"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -46,8 +47,6 @@ func main() {
 
 	agentVSockPort := flag.Uint("agent-vsock-port", 26, "Agent VSock port")
 
-	size := flag.Int64("size", 10737418240, "Size of the resource")
-
 	raddr := flag.String("raddr", "localhost:1338", "Remote address")
 	laddr := flag.String("laddr", "localhost:1338", "Listen address")
 
@@ -57,6 +56,19 @@ func main() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	conn, err := grpc.Dial(*raddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		panic(err)
+	}
+	defer conn.Close()
+
+	remote, remoteWithSize := services.NewSeederWithSizeRemoteGrpc(v1.NewSeederWithSizeClient(conn))
+
+	size, err := remoteWithSize.Size(ctx)
+	if err != nil {
+		panic(err)
+	}
 
 	runner := roles.NewRunner(
 		roles.HypervisorConfiguration{
@@ -104,12 +116,12 @@ func main() {
 	}
 	defer os.RemoveAll(f.Name())
 
-	if err := f.Truncate(*size); err != nil {
+	if err := f.Truncate(size); err != nil {
 		panic(err)
 	}
 
-	bar := progressbar.NewOptions(
-		int(*size),
+	bar := progressbar.NewOptions64(
+		size,
 		progressbar.OptionSetDescription("Pulling"),
 		progressbar.OptionShowBytes(true),
 		progressbar.OptionOnCompletion(func() {
@@ -132,10 +144,11 @@ func main() {
 
 	bar.Add(client.MaximumBlockSize)
 
+	b := backend.NewFileBackend(f)
 	mgr := migration.NewPathMigrator(
 		ctx,
 
-		backend.NewFileBackend(f),
+		b,
 
 		&migration.MigratorOptions{
 			Verbose: *verbose,
@@ -158,7 +171,7 @@ func main() {
 
 				log.Printf("Invalidated: %.2f MB (%.2f Mb)", float64(delta)/(1024*1024), (float64(delta)/(1024*1024))*8)
 
-				bar.ChangeMax(int(*size) + delta)
+				bar.ChangeMax64(size + int64(delta))
 
 				bar.Describe("Finalizing")
 
@@ -201,21 +214,10 @@ func main() {
 		_ = mgr.Close()
 	}()
 
-	var (
-		file string
-		svc  *services.SeederService
-	)
-
-	conn, err := grpc.Dial(*raddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if err != nil {
-		panic(err)
-	}
-	defer conn.Close()
-
 	log.Println("Leeching from", *raddr)
 
 	defer mgr.Close()
-	finalize, _, err := mgr.Leech(services.NewSeederRemoteGrpc(v1.NewSeederClient(conn)))
+	finalize, _, err := mgr.Leech(remote)
 	if err != nil {
 		panic(err)
 	}
@@ -237,11 +239,10 @@ func main() {
 
 	before := time.Now()
 
-	seed, packagePath, err := finalize()
+	seed, file, err := finalize()
 	if err != nil {
 		panic(err)
 	}
-	file = packagePath
 
 	bar.Clear()
 
@@ -253,14 +254,14 @@ func main() {
 
 	log.Println("Resume:", time.Since(before))
 
-	svc, err = seed()
+	svc, err := seed()
 	if err != nil {
 		panic(err)
 	}
 
 	server := grpc.NewServer()
 
-	v1.RegisterSeederServer(server, services.NewSeederServiceGrpc(svc))
+	v1.RegisterSeederWithSizeServer(server, services.NewSeederWithSizeServiceGrpc(services.NewSeederWithSizeService(svc, b, *verbose)))
 
 	lis, err := net.Listen("tcp", *laddr)
 	if err != nil {
