@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/loopholelabs/architekt/pkg/roles"
+	"github.com/loopholelabs/architekt/pkg/utils"
 )
 
 func main() {
@@ -69,16 +70,16 @@ func main() {
 
 		*packageOutputPath,
 
-		roles.VMConfiguration{
+		utils.VMConfiguration{
 			CpuCount:           *cpuCount,
 			MemorySize:         *memorySize,
 			PackagePaddingSize: *packagePaddingSize,
 		},
-		roles.LivenessConfiguration{
+		utils.LivenessConfiguration{
 			LivenessVSockPort: uint32(*livenessVSockPort),
 		},
 
-		roles.HypervisorConfiguration{
+		utils.HypervisorConfiguration{
 			FirecrackerBin: *firecrackerBin,
 			JailerBin:      *jailerBin,
 
@@ -94,11 +95,11 @@ func main() {
 			EnableOutput: *enableOutput,
 			EnableInput:  *enableInput,
 		},
-		roles.NetworkConfiguration{
+		utils.NetworkConfiguration{
 			Interface: *iface,
 			MAC:       *mac,
 		},
-		roles.AgentConfiguration{
+		utils.AgentConfiguration{
 			AgentVSockPort: uint32(*agentVSockPort),
 		},
 	); err != nil {

@@ -22,16 +22,6 @@ const (
 	DiskName      = "architekt.arkdisk"
 )
 
-type LivenessConfiguration struct {
-	LivenessVSockPort uint32
-}
-
-type VMConfiguration struct {
-	CpuCount           int
-	MemorySize         int
-	PackagePaddingSize int
-}
-
 type Packager struct {
 	wg   sync.WaitGroup
 	errs chan error
@@ -50,12 +40,12 @@ func (p *Packager) CreatePackage(
 
 	packageOutputPath string,
 
-	vmConfiguration VMConfiguration,
-	livenessConfiguration LivenessConfiguration,
+	vmConfiguration utils.VMConfiguration,
+	livenessConfiguration utils.LivenessConfiguration,
 
-	hypervisorConfiguration HypervisorConfiguration,
-	networkConfiguration NetworkConfiguration,
-	agentConfiguration AgentConfiguration,
+	hypervisorConfiguration utils.HypervisorConfiguration,
+	networkConfiguration utils.NetworkConfiguration,
+	agentConfiguration utils.AgentConfiguration,
 ) error {
 	p.wg = sync.WaitGroup{}
 	p.errs = make(chan error)

@@ -27,8 +27,6 @@ func main() {
 	enableInput := flag.Bool("enable-input", false, "Whether to enable VM stdin")
 
 	netns := flag.String("netns", "ark0", "Network namespace to run Firecracker in")
-	iface := flag.String("interface", "tap0", "Name of the interface in the network namespace to use")
-	mac := flag.String("mac", "02:0e:d9:fd:68:3d", "MAC of the interface in the network namespace to use")
 
 	numaNode := flag.Int("numa-node", 0, "NUMA node to run Firecracker in")
 	cgroupVersion := flag.Int("cgroup-version", 2, "Cgroup version to use for Jailer")
@@ -51,7 +49,7 @@ func main() {
 	defer loop.Close()
 
 	runner := roles.NewRunner(
-		roles.HypervisorConfiguration{
+		utils.HypervisorConfiguration{
 			FirecrackerBin: *firecrackerBin,
 			JailerBin:      *jailerBin,
 
@@ -67,11 +65,7 @@ func main() {
 			EnableOutput: *enableOutput,
 			EnableInput:  *enableInput,
 		},
-		roles.NetworkConfiguration{
-			Interface: *iface,
-			MAC:       *mac,
-		},
-		roles.AgentConfiguration{
+		utils.AgentConfiguration{
 			AgentVSockPort: uint32(*agentVSockPort),
 		},
 	)

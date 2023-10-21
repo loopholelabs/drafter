@@ -24,36 +24,9 @@ var (
 	ErrVMNotRunning = errors.New("vm not running")
 )
 
-type HypervisorConfiguration struct {
-	FirecrackerBin string
-	JailerBin      string
-
-	ChrootBaseDir string
-
-	UID int
-	GID int
-
-	NetNS         string
-	NumaNode      int
-	CgroupVersion int
-
-	EnableOutput bool
-	EnableInput  bool
-}
-
-type NetworkConfiguration struct {
-	Interface string
-	MAC       string
-}
-
-type AgentConfiguration struct {
-	AgentVSockPort uint32
-}
-
 type Runner struct {
-	hypervisorConfiguration HypervisorConfiguration
-	networkConfiguration    NetworkConfiguration
-	agentConfiguration      AgentConfiguration
+	hypervisorConfiguration utils.HypervisorConfiguration
+	agentConfiguration      utils.AgentConfiguration
 
 	mount   *utils.Mount
 	srv     *firecracker.Server
@@ -68,13 +41,11 @@ type Runner struct {
 }
 
 func NewRunner(
-	hypervisorConfiguration HypervisorConfiguration,
-	networkConfiguration NetworkConfiguration,
-	agentConfiguration AgentConfiguration,
+	hypervisorConfiguration utils.HypervisorConfiguration,
+	agentConfiguration utils.AgentConfiguration,
 ) *Runner {
 	return &Runner{
 		hypervisorConfiguration: hypervisorConfiguration,
-		networkConfiguration:    networkConfiguration,
 		agentConfiguration:      agentConfiguration,
 
 		wg:   sync.WaitGroup{},
