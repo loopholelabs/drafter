@@ -237,28 +237,36 @@ sudo make uninstall
 
 ## Using the Control Plane
 
+> TODO: Normalize docs with the rest above
+
 ```shell
 go run ./cmd/architekt-manager/ --verbose
 ```
 
 ```shell
-curl -v http://localhost:1339/nodes
+make -j$(nproc) && sudo make install -j$(nproc) && sudo architekt-worker --verbose
 
-curl -v http://localhost:1339/nodes/1/instances
+make -j$(nproc) && sudo make install -j$(nproc) && sudo architekt-worker --verbose
+```
 
-curl -v -X POST http://localhost:1339/nodes/1/instances?packageRaddr="localhost:1337"
+```shell
+curl -v http://localhost:1400/nodes
 
-curl -v http://localhost:1339/nodes/1/instances
+curl -v http://localhost:1400/nodes/1/instances
 
-curl -v -X POST http://localhost:1339/nodes/2/instances/1?sourceNodeID="1"
+curl -v -X POST http://localhost:1400/nodes/1/instances?packageRaddr="localhost:1337"
 
-curl -v http://localhost:1339/nodes/2/instances
+curl -v http://localhost:1400/nodes/1/instances
 
-curl -v -X POST http://localhost:1339/nodes/1/instances/1?sourceNodeID="2"
+curl -v -X POST http://localhost:1400/nodes/2/instances/1?sourceNodeID="1"
 
-curl -v http://localhost:1339/nodes/1/instances
+curl -v http://localhost:1400/nodes/2/instances
 
-curl -v -X DELETE http://localhost:1339/nodes/1/instances/1
+curl -v -X POST http://localhost:1400/nodes/1/instances/1?sourceNodeID="2"
 
-curl -v http://localhost:1339/nodes/1/instances
+curl -v http://localhost:1400/nodes/1/instances
+
+curl -v -X DELETE http://localhost:1400/nodes/1/instances/1
+
+curl -v http://localhost:1400/nodes/1/instances
 ```

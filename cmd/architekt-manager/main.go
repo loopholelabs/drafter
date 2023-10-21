@@ -1,18 +1,53 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
 	"flag"
 	"log"
+	"net"
 	"net/http"
+	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/loopholelabs/architekt/pkg/services"
+	"github.com/loopholelabs/architekt/pkg/utils"
+	"github.com/pojntfx/dudirekta/pkg/rpc"
 )
 
 func main() {
-	laddr := flag.String("laddr", ":1339", "Listen address")
+	controlPlaneLaddr := flag.String("control-plane-laddr", ":1399", "Listen address for control plane")
+
+	apiLaddr := flag.String("api-laddr", ":1400", "Listen address for API")
+
 	verbose := flag.Bool("verbose", false, "Whether to enable verbose logging")
 
 	flag.Parse()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	clients := 0
+
+	registry := rpc.NewRegistry(
+		struct{}{},
+		services.WorkerRemote{},
+
+		time.Second*10,
+		ctx,
+		&rpc.Options{
+			OnClientConnect: func(remoteID string) {
+				clients++
+
+				log.Printf("%v clients connected to control plane", clients)
+			},
+			OnClientDisconnect: func(remoteID string) {
+				clients--
+
+				log.Printf("%v clients connected to control plane", clients)
+			},
+		},
+	)
 
 	r := mux.NewRouter()
 
@@ -93,7 +128,48 @@ func main() {
 		},
 	).Methods("POST")
 
-	log.Println("Listening on", *laddr)
+	lis, err := net.Listen("tcp", *controlPlaneLaddr)
+	if err != nil {
+		panic(err)
+	}
+	defer lis.Close()
 
-	panic(http.ListenAndServe(*laddr, r))
+	log.Println("Control plane listening on", lis.Addr())
+
+	go func() {
+		for {
+			func() {
+				conn, err := lis.Accept()
+				if err != nil {
+					log.Println("could not accept control plane connection, continuing:", err)
+
+					return
+				}
+
+				go func() {
+					defer func() {
+						_ = conn.Close()
+
+						if err := recover(); err != nil && !utils.IsClosedErr(err.(error)) {
+							log.Printf("Control plane client disconnected with error: %v", err)
+						}
+					}()
+
+					if err := registry.LinkStream(
+						json.NewEncoder(conn).Encode,
+						json.NewDecoder(conn).Decode,
+
+						json.Marshal,
+						json.Unmarshal,
+					); err != nil {
+						panic(err)
+					}
+				}()
+			}()
+		}
+	}()
+
+	log.Println("API listening on", *apiLaddr)
+
+	panic(http.ListenAndServe(*apiLaddr, r))
 }

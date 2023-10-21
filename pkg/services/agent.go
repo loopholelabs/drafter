@@ -33,7 +33,7 @@ func NewAgent(
 
 func (a *Agent) BeforeSuspend(ctx context.Context) error {
 	if a.verbose {
-		log.Println("Calling BeforeSuspend handler")
+		log.Println("BeforeSuspend()")
 	}
 
 	return a.beforeSuspend(ctx)
@@ -41,7 +41,7 @@ func (a *Agent) BeforeSuspend(ctx context.Context) error {
 
 func (a *Agent) AfterResume(ctx context.Context) error {
 	if a.verbose {
-		log.Println("Calling AfterResume handler")
+		log.Println("AfterResume()")
 	}
 
 	return a.afterResume(ctx)
