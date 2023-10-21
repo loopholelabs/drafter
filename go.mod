@@ -6,6 +6,7 @@ require (
 	github.com/coreos/go-iptables v0.6.0
 	github.com/freddierice/go-losetup/v2 v2.0.1
 	github.com/google/uuid v1.3.0
+	github.com/gorilla/mux v1.8.0
 	github.com/loopholelabs/voltools v0.1.1
 	github.com/mdlayher/vsock v1.2.1
 	github.com/metal-stack/go-ipam v1.11.3
@@ -56,7 +57,6 @@ require (
 	github.com/redis/go-redis/v9 v9.2.1 // indirect
 	github.com/rivo/uniseg v0.4.4 // indirect
 	github.com/rs/zerolog v1.30.0 // indirect
-	github.com/teivah/broadcast v0.1.0 // indirect
 	github.com/xdg-go/pbkdf2 v1.0.0 // indirect
 	github.com/xdg-go/scram v1.1.1 // indirect
 	github.com/xdg-go/stringprep v1.0.3 // indirect
