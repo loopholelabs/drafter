@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -13,6 +15,16 @@ import (
 	"github.com/loopholelabs/architekt/pkg/services"
 	"github.com/loopholelabs/architekt/pkg/utils"
 	"github.com/pojntfx/dudirekta/pkg/rpc"
+)
+
+var (
+	errCouldNotEncode          = errors.New("could not encode")
+	errCouldNotFetchNodes      = errors.New("could not fetch nodes")
+	errCouldNotFetchInstances  = errors.New("could not fetch instances")
+	errNodeNotFound            = errors.New("node not found")
+	errCouldNotCreateInstance  = errors.New("could not create instance")
+	errCouldNotDeleteInstance  = errors.New("could not delete instance")
+	errCouldNotMigrateInstance = errors.New("could not migrate instance")
 )
 
 func main() {
@@ -57,6 +69,29 @@ func main() {
 			if *verbose {
 				log.Println("Listing nodes")
 			}
+
+			nodes := []string{}
+			if err := registry.ForRemotes(func(remoteID string, remote services.WorkerRemote) error {
+				nodes = append(nodes, remoteID)
+
+				return nil
+			}); err != nil {
+				log.Println(fmt.Errorf("%w: %w", errCouldNotFetchNodes, err))
+
+				w.WriteHeader(http.StatusInternalServerError)
+
+				return
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+
+			if err := json.NewEncoder(w).Encode(nodes); err != nil {
+				log.Println(fmt.Errorf("%w: %w", errCouldNotEncode, err))
+
+				w.WriteHeader(http.StatusInternalServerError)
+
+				return
+			}
 		},
 	).Methods("GET")
 
@@ -73,6 +108,44 @@ func main() {
 			if *verbose {
 				log.Println("Listing instances on node", nodeID)
 			}
+
+			var instances []string
+			if err := registry.ForRemotes(func(remoteID string, remote services.WorkerRemote) error {
+				if remoteID == nodeID {
+					i, err := remote.ListInstances(r.Context())
+					if err != nil {
+						return err
+					}
+
+					instances = i
+				}
+
+				return nil
+			}); err != nil {
+				log.Println(fmt.Errorf("%w: %w", errCouldNotFetchInstances, err))
+
+				w.WriteHeader(http.StatusInternalServerError)
+
+				return
+			}
+
+			if instances == nil {
+				log.Println(errNodeNotFound)
+
+				w.WriteHeader(http.StatusNotFound)
+
+				return
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+
+			if err := json.NewEncoder(w).Encode(instances); err != nil {
+				log.Println(fmt.Errorf("%w: %w", errCouldNotEncode, err))
+
+				w.WriteHeader(http.StatusInternalServerError)
+
+				return
+			}
 		},
 	).Methods("GET")
 
@@ -88,6 +161,44 @@ func main() {
 
 			if *verbose {
 				log.Println("Creating instance on node", nodeID, "from package raddr", packageRaddr)
+			}
+
+			instanceID := ""
+			if err := registry.ForRemotes(func(remoteID string, remote services.WorkerRemote) error {
+				if remoteID == nodeID {
+					i, err := remote.CreateInstance(r.Context(), packageRaddr)
+					if err != nil {
+						return err
+					}
+
+					instanceID = i
+				}
+
+				return nil
+			}); err != nil {
+				log.Println(fmt.Errorf("%w: %w", errCouldNotCreateInstance, err))
+
+				w.WriteHeader(http.StatusInternalServerError)
+
+				return
+			}
+
+			if instanceID == "" {
+				log.Println(errNodeNotFound)
+
+				w.WriteHeader(http.StatusNotFound)
+
+				return
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+
+			if err := json.NewEncoder(w).Encode(instanceID); err != nil {
+				log.Println(fmt.Errorf("%w: %w", errCouldNotEncode, err))
+
+				w.WriteHeader(http.StatusInternalServerError)
+
+				return
 			}
 		},
 	).Methods("POST")
@@ -107,6 +218,33 @@ func main() {
 			if *verbose {
 				log.Println("Deleting instance", instanceID, "from node", nodeID)
 			}
+
+			found := false
+			if err := registry.ForRemotes(func(remoteID string, remote services.WorkerRemote) error {
+				if remoteID == nodeID {
+					if err := remote.DeleteInstance(r.Context(), instanceID); err != nil {
+						return err
+					}
+
+					found = true
+				}
+
+				return nil
+			}); err != nil {
+				log.Println(fmt.Errorf("%w: %w", errCouldNotDeleteInstance, err))
+
+				w.WriteHeader(http.StatusInternalServerError)
+
+				return
+			}
+
+			if !found {
+				log.Println(errNodeNotFound)
+
+				w.WriteHeader(http.StatusNotFound)
+
+				return
+			}
 		},
 	).Methods("DELETE")
 
@@ -124,6 +262,33 @@ func main() {
 
 			if *verbose {
 				log.Println("Migrating instance", instanceID, "from source node", sourceNodeID, "to destination node", destinationNodeID)
+			}
+
+			found := false
+			if err := registry.ForRemotes(func(remoteID string, remote services.WorkerRemote) error {
+				if remoteID == destinationNodeID {
+					if err := remote.MigrateInstance(r.Context(), instanceID, sourceNodeID); err != nil {
+						return err
+					}
+
+					found = true
+				}
+
+				return nil
+			}); err != nil {
+				log.Println(fmt.Errorf("%w: %w", errCouldNotMigrateInstance, err))
+
+				w.WriteHeader(http.StatusInternalServerError)
+
+				return
+			}
+
+			if !found {
+				log.Println(errNodeNotFound)
+
+				w.WriteHeader(http.StatusNotFound)
+
+				return
 			}
 		},
 	).Methods("POST")
