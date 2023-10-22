@@ -262,22 +262,18 @@ func (w *Worker) CreateInstance(ctx context.Context, packageRaddr string) (outpu
 	runnerWg.Add(1)
 	go func() {
 		if err := runner.Wait(); err != nil {
-			runnerWg.Done()
-
 			log.Printf("%v: %v", ErrCouldNotWaitForRunner, err)
-
-			if outputRaddr != "" {
-				w.instancesLock.Lock()
-				delete(w.instances, outputRaddr)
-				w.instancesLock.Unlock()
-			}
-
-			_ = i.close()
-
-			return
 		}
 
 		runnerWg.Done()
+
+		if outputRaddr != "" {
+			w.instancesLock.Lock()
+			delete(w.instances, outputRaddr)
+			w.instancesLock.Unlock()
+		}
+
+		_ = i.close()
 	}()
 
 	i.runner = runner
@@ -398,24 +394,20 @@ func (w *Worker) CreateInstance(ctx context.Context, packageRaddr string) (outpu
 	mgrWg.Add(1)
 	go func() {
 		if err := mgr.Wait(); err != nil {
-			mgrWg.Done()
-
 			log.Printf("%v: %v", ErrCouldNotWaitForManager, err)
-
-			if outputRaddr != "" {
-				w.instancesLock.Lock()
-				delete(w.instances, outputRaddr)
-				w.instancesLock.Unlock()
-			}
-
-			_ = i.close()
-
-			close(cancelled)
-
-			return
 		}
 
 		mgrWg.Done()
+
+		if outputRaddr != "" {
+			w.instancesLock.Lock()
+			delete(w.instances, outputRaddr)
+			w.instancesLock.Unlock()
+		}
+
+		_ = i.close()
+
+		close(cancelled)
 	}()
 
 	if w.verbose {
@@ -486,22 +478,18 @@ func (w *Worker) CreateInstance(ctx context.Context, packageRaddr string) (outpu
 	serverWg.Add(1)
 	go func() {
 		if err := server.Serve(lis); err != nil && !utils.IsClosedErr(err) {
-			serverWg.Done()
-
 			log.Printf("%v: %v", ErrCouldNotServeSeeder, err)
-
-			if outputRaddr != "" {
-				w.instancesLock.Lock()
-				delete(w.instances, outputRaddr)
-				w.instancesLock.Unlock()
-			}
-
-			_ = i.close()
-
-			return
 		}
 
 		serverWg.Done()
+
+		if outputRaddr != "" {
+			w.instancesLock.Lock()
+			delete(w.instances, outputRaddr)
+			w.instancesLock.Unlock()
+		}
+
+		_ = i.close()
 	}()
 
 	i.server = server
