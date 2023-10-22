@@ -42,7 +42,10 @@ type Server struct {
 	cmd   *exec.Cmd
 	vmDir string
 
-	wg   sync.WaitGroup
+	wg sync.WaitGroup
+
+	closeLock sync.Mutex
+
 	errs chan error
 }
 
@@ -189,6 +192,9 @@ func (s *Server) Open() (string, error) {
 }
 
 func (s *Server) Close() error {
+	s.closeLock.Lock()
+	defer s.closeLock.Unlock()
+
 	if s.cmd != nil && s.cmd.Process != nil {
 		_ = s.cmd.Process.Kill()
 	}

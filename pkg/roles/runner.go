@@ -35,7 +35,10 @@ type Runner struct {
 
 	vmPath string
 
-	wg   sync.WaitGroup
+	wg sync.WaitGroup
+
+	closeLock sync.Mutex
+
 	errs chan error
 }
 
@@ -174,6 +177,9 @@ func (r *Runner) Suspend(ctx context.Context) error {
 }
 
 func (r *Runner) Close() error {
+	r.closeLock.Lock()
+	defer r.closeLock.Unlock()
+
 	if r.handler != nil {
 		_ = r.handler.Close()
 	}

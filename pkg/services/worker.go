@@ -46,7 +46,7 @@ type HypervisorConfiguration struct {
 }
 
 type instance struct {
-	instanceLock     sync.Mutex
+	closeLock        sync.Mutex
 	netns            string
 	releaseNamespace func(namespace string) error
 	conn             *grpc.ClientConn
@@ -61,8 +61,8 @@ type instance struct {
 }
 
 func (i *instance) close() error {
-	i.instanceLock.Lock()
-	defer i.instanceLock.Unlock()
+	i.closeLock.Lock()
+	defer i.closeLock.Unlock()
 
 	if i.runner != nil {
 		_ = i.runner.Close()
