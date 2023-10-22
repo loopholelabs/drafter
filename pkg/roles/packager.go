@@ -2,6 +2,7 @@ package roles
 
 import (
 	"context"
+	"encoding/json"
 	"math"
 	"net"
 	"net/http"
@@ -166,9 +167,10 @@ func (p *Packager) CreatePackage(
 	}
 
 	var (
-		initramfsOutputPath = filepath.Join(vmPath, firecracker.MountName, InitramfsName)
-		kernelOutputPath    = filepath.Join(vmPath, firecracker.MountName, KernelName)
-		diskOutputPath      = filepath.Join(vmPath, firecracker.MountName, DiskName)
+		initramfsOutputPath     = filepath.Join(vmPath, firecracker.MountName, InitramfsName)
+		kernelOutputPath        = filepath.Join(vmPath, firecracker.MountName, KernelName)
+		diskOutputPath          = filepath.Join(vmPath, firecracker.MountName, DiskName)
+		packageConfigOutputPath = filepath.Join(vmPath, firecracker.MountName, utils.PackageConfigName)
 	)
 
 	if _, err := utils.CopyFile(initramfsInputPath, initramfsOutputPath, hypervisorConfiguration.UID, hypervisorConfiguration.GID); err != nil {
@@ -238,6 +240,17 @@ func (p *Packager) CreatePackage(
 	_ = handler.Close()
 
 	if err := firecracker.CreateSnapshot(client); err != nil {
+		return err
+	}
+
+	packageConfig, err := json.Marshal(utils.PackageConfig{
+		AgentVSockPort: agentConfiguration.AgentVSockPort,
+	})
+	if err != nil {
+		return err
+	}
+
+	if _, err := utils.WriteFile(packageConfig, packageConfigOutputPath, hypervisorConfiguration.UID, hypervisorConfiguration.GID); err != nil {
 		return err
 	}
 

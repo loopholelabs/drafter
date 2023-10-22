@@ -31,8 +31,6 @@ func main() {
 	numaNode := flag.Int("numa-node", 0, "NUMA node to run Firecracker in")
 	cgroupVersion := flag.Int("cgroup-version", 2, "Cgroup version to use for Jailer")
 
-	agentVSockPort := flag.Uint("agent-vsock-port", 26, "Agent VSock port")
-
 	packagePath := flag.String("package-path", filepath.Join("out", "redis.ark"), "Path to package to use")
 
 	flag.Parse()
@@ -47,6 +45,18 @@ func main() {
 		panic(err)
 	}
 	defer loop.Close()
+
+	packageConfigFile, err := os.Open(packageDevicePath)
+	if err != nil {
+		panic(err)
+	}
+	defer packageConfigFile.Close()
+
+	packageConfig, err := utils.ReadPackageConfigFromEXT4Filesystem(packageConfigFile)
+	if err != nil {
+		panic(err)
+	}
+	_ = packageConfigFile.Close()
 
 	runner := roles.NewRunner(
 		utils.HypervisorConfiguration{
@@ -66,7 +76,7 @@ func main() {
 			EnableInput:  *enableInput,
 		},
 		utils.AgentConfiguration{
-			AgentVSockPort: uint32(*agentVSockPort),
+			AgentVSockPort: packageConfig.AgentVSockPort,
 		},
 	)
 
