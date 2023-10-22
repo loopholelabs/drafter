@@ -3,8 +3,6 @@ package services
 import (
 	"context"
 	"log"
-
-	"github.com/loopholelabs/architekt/pkg/utils"
 )
 
 type HypervisorConfiguration struct {
@@ -37,7 +35,6 @@ type Worker struct {
 	releaseNetworkNamespace func(namespace string) error
 
 	hypervisorConfiguration HypervisorConfiguration
-	agentConfiguration      utils.AgentConfiguration
 }
 
 func NewWorker(
@@ -47,7 +44,6 @@ func NewWorker(
 	releaseNetworkNamespace func(namespace string) error,
 
 	hypervisorConfiguration HypervisorConfiguration,
-	agentConfiguration utils.AgentConfiguration,
 ) *Worker {
 	return &Worker{
 		verbose: verbose,
@@ -56,7 +52,6 @@ func NewWorker(
 		releaseNetworkNamespace: releaseNetworkNamespace,
 
 		hypervisorConfiguration: hypervisorConfiguration,
-		agentConfiguration:      agentConfiguration,
 	}
 }
 

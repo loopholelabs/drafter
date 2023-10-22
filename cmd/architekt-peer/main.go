@@ -43,8 +43,6 @@ func main() {
 	numaNode := flag.Int("numa-node", 0, "NUMA node to run Firecracker in")
 	cgroupVersion := flag.Int("cgroup-version", 2, "Cgroup version to use for Jailer")
 
-	agentVSockPort := flag.Uint("agent-vsock-port", 26, "Agent VSock port")
-
 	raddr := flag.String("raddr", "localhost:1338", "Remote address")
 	laddr := flag.String("laddr", "localhost:1338", "Listen address")
 
@@ -61,9 +59,9 @@ func main() {
 	}
 	defer conn.Close()
 
-	remote, remoteWithSize := services.NewSeederWithSizeRemoteGrpc(v1.NewSeederWithSizeClient(conn))
+	remote, remoteWithMeta := services.NewSeederWithMetaRemoteGrpc(v1.NewSeederWithMetaClient(conn))
 
-	size, err := remoteWithSize.Size(ctx)
+	size, agentVSockPort, err := remoteWithMeta.Meta(ctx)
 	if err != nil {
 		panic(err)
 	}
@@ -86,7 +84,7 @@ func main() {
 			EnableInput:  *enableInput,
 		},
 		utils.AgentConfiguration{
-			AgentVSockPort: uint32(*agentVSockPort),
+			AgentVSockPort: agentVSockPort,
 		},
 	)
 
@@ -255,7 +253,7 @@ func main() {
 
 	server := grpc.NewServer()
 
-	v1.RegisterSeederWithSizeServer(server, services.NewSeederWithSizeServiceGrpc(services.NewSeederWithSizeService(svc, b, *verbose)))
+	v1.RegisterSeederWithMetaServer(server, services.NewSeederWithMetaServiceGrpc(services.NewSeederWithMetaService(svc, b, agentVSockPort, *verbose)))
 
 	lis, err := net.Listen("tcp", *laddr)
 	if err != nil {

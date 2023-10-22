@@ -2,7 +2,7 @@
 // versions:
 // 	protoc-gen-go v1.28.1
 // 	protoc        v3.19.6
-// source: seeder_with_size.proto
+// source: seeder_with_meta.proto
 
 package v1
 
@@ -32,7 +32,7 @@ type ReadAtArgs struct {
 func (x *ReadAtArgs) Reset() {
 	*x = ReadAtArgs{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_seeder_with_size_proto_msgTypes[0]
+		mi := &file_seeder_with_meta_proto_msgTypes[0]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -45,7 +45,7 @@ func (x *ReadAtArgs) String() string {
 func (*ReadAtArgs) ProtoMessage() {}
 
 func (x *ReadAtArgs) ProtoReflect() protoreflect.Message {
-	mi := &file_seeder_with_size_proto_msgTypes[0]
+	mi := &file_seeder_with_meta_proto_msgTypes[0]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -58,7 +58,7 @@ func (x *ReadAtArgs) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadAtArgs.ProtoReflect.Descriptor instead.
 func (*ReadAtArgs) Descriptor() ([]byte, []int) {
-	return file_seeder_with_size_proto_rawDescGZIP(), []int{0}
+	return file_seeder_with_meta_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *ReadAtArgs) GetLength() int32 {
@@ -87,7 +87,7 @@ type ReadAtReply struct {
 func (x *ReadAtReply) Reset() {
 	*x = ReadAtReply{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_seeder_with_size_proto_msgTypes[1]
+		mi := &file_seeder_with_meta_proto_msgTypes[1]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -100,7 +100,7 @@ func (x *ReadAtReply) String() string {
 func (*ReadAtReply) ProtoMessage() {}
 
 func (x *ReadAtReply) ProtoReflect() protoreflect.Message {
-	mi := &file_seeder_with_size_proto_msgTypes[1]
+	mi := &file_seeder_with_meta_proto_msgTypes[1]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -113,7 +113,7 @@ func (x *ReadAtReply) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadAtReply.ProtoReflect.Descriptor instead.
 func (*ReadAtReply) Descriptor() ([]byte, []int) {
-	return file_seeder_with_size_proto_rawDescGZIP(), []int{1}
+	return file_seeder_with_meta_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *ReadAtReply) GetN() int32 {
@@ -139,7 +139,7 @@ type TrackArgs struct {
 func (x *TrackArgs) Reset() {
 	*x = TrackArgs{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_seeder_with_size_proto_msgTypes[2]
+		mi := &file_seeder_with_meta_proto_msgTypes[2]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -152,7 +152,7 @@ func (x *TrackArgs) String() string {
 func (*TrackArgs) ProtoMessage() {}
 
 func (x *TrackArgs) ProtoReflect() protoreflect.Message {
-	mi := &file_seeder_with_size_proto_msgTypes[2]
+	mi := &file_seeder_with_meta_proto_msgTypes[2]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -165,7 +165,7 @@ func (x *TrackArgs) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TrackArgs.ProtoReflect.Descriptor instead.
 func (*TrackArgs) Descriptor() ([]byte, []int) {
-	return file_seeder_with_size_proto_rawDescGZIP(), []int{2}
+	return file_seeder_with_meta_proto_rawDescGZIP(), []int{2}
 }
 
 type TrackReply struct {
@@ -177,7 +177,7 @@ type TrackReply struct {
 func (x *TrackReply) Reset() {
 	*x = TrackReply{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_seeder_with_size_proto_msgTypes[3]
+		mi := &file_seeder_with_meta_proto_msgTypes[3]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -190,7 +190,7 @@ func (x *TrackReply) String() string {
 func (*TrackReply) ProtoMessage() {}
 
 func (x *TrackReply) ProtoReflect() protoreflect.Message {
-	mi := &file_seeder_with_size_proto_msgTypes[3]
+	mi := &file_seeder_with_meta_proto_msgTypes[3]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -203,7 +203,7 @@ func (x *TrackReply) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TrackReply.ProtoReflect.Descriptor instead.
 func (*TrackReply) Descriptor() ([]byte, []int) {
-	return file_seeder_with_size_proto_rawDescGZIP(), []int{3}
+	return file_seeder_with_meta_proto_rawDescGZIP(), []int{3}
 }
 
 type SyncArgs struct {
@@ -215,7 +215,7 @@ type SyncArgs struct {
 func (x *SyncArgs) Reset() {
 	*x = SyncArgs{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_seeder_with_size_proto_msgTypes[4]
+		mi := &file_seeder_with_meta_proto_msgTypes[4]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -228,7 +228,7 @@ func (x *SyncArgs) String() string {
 func (*SyncArgs) ProtoMessage() {}
 
 func (x *SyncArgs) ProtoReflect() protoreflect.Message {
-	mi := &file_seeder_with_size_proto_msgTypes[4]
+	mi := &file_seeder_with_meta_proto_msgTypes[4]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -241,7 +241,7 @@ func (x *SyncArgs) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SyncArgs.ProtoReflect.Descriptor instead.
 func (*SyncArgs) Descriptor() ([]byte, []int) {
-	return file_seeder_with_size_proto_rawDescGZIP(), []int{4}
+	return file_seeder_with_meta_proto_rawDescGZIP(), []int{4}
 }
 
 type SyncReply struct {
@@ -255,7 +255,7 @@ type SyncReply struct {
 func (x *SyncReply) Reset() {
 	*x = SyncReply{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_seeder_with_size_proto_msgTypes[5]
+		mi := &file_seeder_with_meta_proto_msgTypes[5]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -268,7 +268,7 @@ func (x *SyncReply) String() string {
 func (*SyncReply) ProtoMessage() {}
 
 func (x *SyncReply) ProtoReflect() protoreflect.Message {
-	mi := &file_seeder_with_size_proto_msgTypes[5]
+	mi := &file_seeder_with_meta_proto_msgTypes[5]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -281,7 +281,7 @@ func (x *SyncReply) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SyncReply.ProtoReflect.Descriptor instead.
 func (*SyncReply) Descriptor() ([]byte, []int) {
-	return file_seeder_with_size_proto_rawDescGZIP(), []int{5}
+	return file_seeder_with_meta_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *SyncReply) GetDirtyOffsets() []int64 {
@@ -300,7 +300,7 @@ type CloseArgs struct {
 func (x *CloseArgs) Reset() {
 	*x = CloseArgs{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_seeder_with_size_proto_msgTypes[6]
+		mi := &file_seeder_with_meta_proto_msgTypes[6]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -313,7 +313,7 @@ func (x *CloseArgs) String() string {
 func (*CloseArgs) ProtoMessage() {}
 
 func (x *CloseArgs) ProtoReflect() protoreflect.Message {
-	mi := &file_seeder_with_size_proto_msgTypes[6]
+	mi := &file_seeder_with_meta_proto_msgTypes[6]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -326,7 +326,7 @@ func (x *CloseArgs) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CloseArgs.ProtoReflect.Descriptor instead.
 func (*CloseArgs) Descriptor() ([]byte, []int) {
-	return file_seeder_with_size_proto_rawDescGZIP(), []int{6}
+	return file_seeder_with_meta_proto_rawDescGZIP(), []int{6}
 }
 
 type CloseReply struct {
@@ -338,7 +338,7 @@ type CloseReply struct {
 func (x *CloseReply) Reset() {
 	*x = CloseReply{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_seeder_with_size_proto_msgTypes[7]
+		mi := &file_seeder_with_meta_proto_msgTypes[7]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -351,7 +351,7 @@ func (x *CloseReply) String() string {
 func (*CloseReply) ProtoMessage() {}
 
 func (x *CloseReply) ProtoReflect() protoreflect.Message {
-	mi := &file_seeder_with_size_proto_msgTypes[7]
+	mi := &file_seeder_with_meta_proto_msgTypes[7]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -364,32 +364,32 @@ func (x *CloseReply) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CloseReply.ProtoReflect.Descriptor instead.
 func (*CloseReply) Descriptor() ([]byte, []int) {
-	return file_seeder_with_size_proto_rawDescGZIP(), []int{7}
+	return file_seeder_with_meta_proto_rawDescGZIP(), []int{7}
 }
 
-type SizeArgs struct {
+type MetaArgs struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 }
 
-func (x *SizeArgs) Reset() {
-	*x = SizeArgs{}
+func (x *MetaArgs) Reset() {
+	*x = MetaArgs{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_seeder_with_size_proto_msgTypes[8]
+		mi := &file_seeder_with_meta_proto_msgTypes[8]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
 }
 
-func (x *SizeArgs) String() string {
+func (x *MetaArgs) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*SizeArgs) ProtoMessage() {}
+func (*MetaArgs) ProtoMessage() {}
 
-func (x *SizeArgs) ProtoReflect() protoreflect.Message {
-	mi := &file_seeder_with_size_proto_msgTypes[8]
+func (x *MetaArgs) ProtoReflect() protoreflect.Message {
+	mi := &file_seeder_with_meta_proto_msgTypes[8]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -400,36 +400,37 @@ func (x *SizeArgs) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use SizeArgs.ProtoReflect.Descriptor instead.
-func (*SizeArgs) Descriptor() ([]byte, []int) {
-	return file_seeder_with_size_proto_rawDescGZIP(), []int{8}
+// Deprecated: Use MetaArgs.ProtoReflect.Descriptor instead.
+func (*MetaArgs) Descriptor() ([]byte, []int) {
+	return file_seeder_with_meta_proto_rawDescGZIP(), []int{8}
 }
 
-type SizeReply struct {
+type MetaReply struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Size int64 `protobuf:"varint,1,opt,name=Size,proto3" json:"Size,omitempty"`
+	Size           int64  `protobuf:"varint,1,opt,name=Size,proto3" json:"Size,omitempty"`
+	AgentVSockPort uint32 `protobuf:"varint,2,opt,name=AgentVSockPort,proto3" json:"AgentVSockPort,omitempty"`
 }
 
-func (x *SizeReply) Reset() {
-	*x = SizeReply{}
+func (x *MetaReply) Reset() {
+	*x = MetaReply{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_seeder_with_size_proto_msgTypes[9]
+		mi := &file_seeder_with_meta_proto_msgTypes[9]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
 }
 
-func (x *SizeReply) String() string {
+func (x *MetaReply) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*SizeReply) ProtoMessage() {}
+func (*MetaReply) ProtoMessage() {}
 
-func (x *SizeReply) ProtoReflect() protoreflect.Message {
-	mi := &file_seeder_with_size_proto_msgTypes[9]
+func (x *MetaReply) ProtoReflect() protoreflect.Message {
+	mi := &file_seeder_with_meta_proto_msgTypes[9]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -440,23 +441,30 @@ func (x *SizeReply) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use SizeReply.ProtoReflect.Descriptor instead.
-func (*SizeReply) Descriptor() ([]byte, []int) {
-	return file_seeder_with_size_proto_rawDescGZIP(), []int{9}
+// Deprecated: Use MetaReply.ProtoReflect.Descriptor instead.
+func (*MetaReply) Descriptor() ([]byte, []int) {
+	return file_seeder_with_meta_proto_rawDescGZIP(), []int{9}
 }
 
-func (x *SizeReply) GetSize() int64 {
+func (x *MetaReply) GetSize() int64 {
 	if x != nil {
 		return x.Size
 	}
 	return 0
 }
 
-var File_seeder_with_size_proto protoreflect.FileDescriptor
+func (x *MetaReply) GetAgentVSockPort() uint32 {
+	if x != nil {
+		return x.AgentVSockPort
+	}
+	return 0
+}
 
-var file_seeder_with_size_proto_rawDesc = []byte{
-	0x0a, 0x16, 0x73, 0x65, 0x65, 0x64, 0x65, 0x72, 0x5f, 0x77, 0x69, 0x74, 0x68, 0x5f, 0x73, 0x69,
-	0x7a, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x12, 0x26, 0x69, 0x6f, 0x2e, 0x6c, 0x6f, 0x6f,
+var File_seeder_with_meta_proto protoreflect.FileDescriptor
+
+var file_seeder_with_meta_proto_rawDesc = []byte{
+	0x0a, 0x16, 0x73, 0x65, 0x65, 0x64, 0x65, 0x72, 0x5f, 0x77, 0x69, 0x74, 0x68, 0x5f, 0x6d, 0x65,
+	0x74, 0x61, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x12, 0x26, 0x69, 0x6f, 0x2e, 0x6c, 0x6f, 0x6f,
 	0x70, 0x68, 0x6f, 0x6c, 0x65, 0x6c, 0x61, 0x62, 0x73, 0x2e, 0x61, 0x72, 0x63, 0x68, 0x69, 0x74,
 	0x65, 0x6b, 0x74, 0x2e, 0x6d, 0x69, 0x67, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x2e, 0x76, 0x31,
 	0x22, 0x36, 0x0a, 0x0a, 0x52, 0x65, 0x61, 0x64, 0x41, 0x74, 0x41, 0x72, 0x67, 0x73, 0x12, 0x16,
@@ -472,67 +480,69 @@ var file_seeder_with_size_proto_rawDesc = []byte{
 	0x4f, 0x66, 0x66, 0x73, 0x65, 0x74, 0x73, 0x18, 0x01, 0x20, 0x03, 0x28, 0x03, 0x52, 0x0c, 0x44,
 	0x69, 0x72, 0x74, 0x79, 0x4f, 0x66, 0x66, 0x73, 0x65, 0x74, 0x73, 0x22, 0x0b, 0x0a, 0x09, 0x43,
 	0x6c, 0x6f, 0x73, 0x65, 0x41, 0x72, 0x67, 0x73, 0x22, 0x0c, 0x0a, 0x0a, 0x43, 0x6c, 0x6f, 0x73,
-	0x65, 0x52, 0x65, 0x70, 0x6c, 0x79, 0x22, 0x0a, 0x0a, 0x08, 0x53, 0x69, 0x7a, 0x65, 0x41, 0x72,
-	0x67, 0x73, 0x22, 0x1f, 0x0a, 0x09, 0x53, 0x69, 0x7a, 0x65, 0x52, 0x65, 0x70, 0x6c, 0x79, 0x12,
+	0x65, 0x52, 0x65, 0x70, 0x6c, 0x79, 0x22, 0x0a, 0x0a, 0x08, 0x4d, 0x65, 0x74, 0x61, 0x41, 0x72,
+	0x67, 0x73, 0x22, 0x47, 0x0a, 0x09, 0x4d, 0x65, 0x74, 0x61, 0x52, 0x65, 0x70, 0x6c, 0x79, 0x12,
 	0x12, 0x0a, 0x04, 0x53, 0x69, 0x7a, 0x65, 0x18, 0x01, 0x20, 0x01, 0x28, 0x03, 0x52, 0x04, 0x53,
-	0x69, 0x7a, 0x65, 0x32, 0xc7, 0x04, 0x0a, 0x0e, 0x53, 0x65, 0x65, 0x64, 0x65, 0x72, 0x57, 0x69,
-	0x74, 0x68, 0x53, 0x69, 0x7a, 0x65, 0x12, 0x73, 0x0a, 0x06, 0x52, 0x65, 0x61, 0x64, 0x41, 0x74,
-	0x12, 0x32, 0x2e, 0x69, 0x6f, 0x2e, 0x6c, 0x6f, 0x6f, 0x70, 0x68, 0x6f, 0x6c, 0x65, 0x6c, 0x61,
+	0x69, 0x7a, 0x65, 0x12, 0x26, 0x0a, 0x0e, 0x41, 0x67, 0x65, 0x6e, 0x74, 0x56, 0x53, 0x6f, 0x63,
+	0x6b, 0x50, 0x6f, 0x72, 0x74, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0d, 0x52, 0x0e, 0x41, 0x67, 0x65,
+	0x6e, 0x74, 0x56, 0x53, 0x6f, 0x63, 0x6b, 0x50, 0x6f, 0x72, 0x74, 0x32, 0xc7, 0x04, 0x0a, 0x0e,
+	0x53, 0x65, 0x65, 0x64, 0x65, 0x72, 0x57, 0x69, 0x74, 0x68, 0x4d, 0x65, 0x74, 0x61, 0x12, 0x73,
+	0x0a, 0x06, 0x52, 0x65, 0x61, 0x64, 0x41, 0x74, 0x12, 0x32, 0x2e, 0x69, 0x6f, 0x2e, 0x6c, 0x6f,
+	0x6f, 0x70, 0x68, 0x6f, 0x6c, 0x65, 0x6c, 0x61, 0x62, 0x73, 0x2e, 0x61, 0x72, 0x63, 0x68, 0x69,
+	0x74, 0x65, 0x6b, 0x74, 0x2e, 0x6d, 0x69, 0x67, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x2e, 0x76,
+	0x31, 0x2e, 0x52, 0x65, 0x61, 0x64, 0x41, 0x74, 0x41, 0x72, 0x67, 0x73, 0x1a, 0x33, 0x2e, 0x69,
+	0x6f, 0x2e, 0x6c, 0x6f, 0x6f, 0x70, 0x68, 0x6f, 0x6c, 0x65, 0x6c, 0x61, 0x62, 0x73, 0x2e, 0x61,
+	0x72, 0x63, 0x68, 0x69, 0x74, 0x65, 0x6b, 0x74, 0x2e, 0x6d, 0x69, 0x67, 0x72, 0x61, 0x74, 0x69,
+	0x6f, 0x6e, 0x2e, 0x76, 0x31, 0x2e, 0x52, 0x65, 0x61, 0x64, 0x41, 0x74, 0x52, 0x65, 0x70, 0x6c,
+	0x79, 0x22, 0x00, 0x12, 0x70, 0x0a, 0x05, 0x54, 0x72, 0x61, 0x63, 0x6b, 0x12, 0x31, 0x2e, 0x69,
+	0x6f, 0x2e, 0x6c, 0x6f, 0x6f, 0x70, 0x68, 0x6f, 0x6c, 0x65, 0x6c, 0x61, 0x62, 0x73, 0x2e, 0x61,
+	0x72, 0x63, 0x68, 0x69, 0x74, 0x65, 0x6b, 0x74, 0x2e, 0x6d, 0x69, 0x67, 0x72, 0x61, 0x74, 0x69,
+	0x6f, 0x6e, 0x2e, 0x76, 0x31, 0x2e, 0x54, 0x72, 0x61, 0x63, 0x6b, 0x41, 0x72, 0x67, 0x73, 0x1a,
+	0x32, 0x2e, 0x69, 0x6f, 0x2e, 0x6c, 0x6f, 0x6f, 0x70, 0x68, 0x6f, 0x6c, 0x65, 0x6c, 0x61, 0x62,
+	0x73, 0x2e, 0x61, 0x72, 0x63, 0x68, 0x69, 0x74, 0x65, 0x6b, 0x74, 0x2e, 0x6d, 0x69, 0x67, 0x72,
+	0x61, 0x74, 0x69, 0x6f, 0x6e, 0x2e, 0x76, 0x31, 0x2e, 0x54, 0x72, 0x61, 0x63, 0x6b, 0x52, 0x65,
+	0x70, 0x6c, 0x79, 0x22, 0x00, 0x12, 0x6d, 0x0a, 0x04, 0x53, 0x79, 0x6e, 0x63, 0x12, 0x30, 0x2e,
+	0x69, 0x6f, 0x2e, 0x6c, 0x6f, 0x6f, 0x70, 0x68, 0x6f, 0x6c, 0x65, 0x6c, 0x61, 0x62, 0x73, 0x2e,
+	0x61, 0x72, 0x63, 0x68, 0x69, 0x74, 0x65, 0x6b, 0x74, 0x2e, 0x6d, 0x69, 0x67, 0x72, 0x61, 0x74,
+	0x69, 0x6f, 0x6e, 0x2e, 0x76, 0x31, 0x2e, 0x53, 0x79, 0x6e, 0x63, 0x41, 0x72, 0x67, 0x73, 0x1a,
+	0x31, 0x2e, 0x69, 0x6f, 0x2e, 0x6c, 0x6f, 0x6f, 0x70, 0x68, 0x6f, 0x6c, 0x65, 0x6c, 0x61, 0x62,
+	0x73, 0x2e, 0x61, 0x72, 0x63, 0x68, 0x69, 0x74, 0x65, 0x6b, 0x74, 0x2e, 0x6d, 0x69, 0x67, 0x72,
+	0x61, 0x74, 0x69, 0x6f, 0x6e, 0x2e, 0x76, 0x31, 0x2e, 0x53, 0x79, 0x6e, 0x63, 0x52, 0x65, 0x70,
+	0x6c, 0x79, 0x22, 0x00, 0x12, 0x70, 0x0a, 0x05, 0x43, 0x6c, 0x6f, 0x73, 0x65, 0x12, 0x31, 0x2e,
+	0x69, 0x6f, 0x2e, 0x6c, 0x6f, 0x6f, 0x70, 0x68, 0x6f, 0x6c, 0x65, 0x6c, 0x61, 0x62, 0x73, 0x2e,
+	0x61, 0x72, 0x63, 0x68, 0x69, 0x74, 0x65, 0x6b, 0x74, 0x2e, 0x6d, 0x69, 0x67, 0x72, 0x61, 0x74,
+	0x69, 0x6f, 0x6e, 0x2e, 0x76, 0x31, 0x2e, 0x43, 0x6c, 0x6f, 0x73, 0x65, 0x41, 0x72, 0x67, 0x73,
+	0x1a, 0x32, 0x2e, 0x69, 0x6f, 0x2e, 0x6c, 0x6f, 0x6f, 0x70, 0x68, 0x6f, 0x6c, 0x65, 0x6c, 0x61,
 	0x62, 0x73, 0x2e, 0x61, 0x72, 0x63, 0x68, 0x69, 0x74, 0x65, 0x6b, 0x74, 0x2e, 0x6d, 0x69, 0x67,
-	0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x2e, 0x76, 0x31, 0x2e, 0x52, 0x65, 0x61, 0x64, 0x41, 0x74,
-	0x41, 0x72, 0x67, 0x73, 0x1a, 0x33, 0x2e, 0x69, 0x6f, 0x2e, 0x6c, 0x6f, 0x6f, 0x70, 0x68, 0x6f,
-	0x6c, 0x65, 0x6c, 0x61, 0x62, 0x73, 0x2e, 0x61, 0x72, 0x63, 0x68, 0x69, 0x74, 0x65, 0x6b, 0x74,
-	0x2e, 0x6d, 0x69, 0x67, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x2e, 0x76, 0x31, 0x2e, 0x52, 0x65,
-	0x61, 0x64, 0x41, 0x74, 0x52, 0x65, 0x70, 0x6c, 0x79, 0x22, 0x00, 0x12, 0x70, 0x0a, 0x05, 0x54,
-	0x72, 0x61, 0x63, 0x6b, 0x12, 0x31, 0x2e, 0x69, 0x6f, 0x2e, 0x6c, 0x6f, 0x6f, 0x70, 0x68, 0x6f,
-	0x6c, 0x65, 0x6c, 0x61, 0x62, 0x73, 0x2e, 0x61, 0x72, 0x63, 0x68, 0x69, 0x74, 0x65, 0x6b, 0x74,
-	0x2e, 0x6d, 0x69, 0x67, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x2e, 0x76, 0x31, 0x2e, 0x54, 0x72,
-	0x61, 0x63, 0x6b, 0x41, 0x72, 0x67, 0x73, 0x1a, 0x32, 0x2e, 0x69, 0x6f, 0x2e, 0x6c, 0x6f, 0x6f,
-	0x70, 0x68, 0x6f, 0x6c, 0x65, 0x6c, 0x61, 0x62, 0x73, 0x2e, 0x61, 0x72, 0x63, 0x68, 0x69, 0x74,
-	0x65, 0x6b, 0x74, 0x2e, 0x6d, 0x69, 0x67, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x2e, 0x76, 0x31,
-	0x2e, 0x54, 0x72, 0x61, 0x63, 0x6b, 0x52, 0x65, 0x70, 0x6c, 0x79, 0x22, 0x00, 0x12, 0x6d, 0x0a,
-	0x04, 0x53, 0x79, 0x6e, 0x63, 0x12, 0x30, 0x2e, 0x69, 0x6f, 0x2e, 0x6c, 0x6f, 0x6f, 0x70, 0x68,
-	0x6f, 0x6c, 0x65, 0x6c, 0x61, 0x62, 0x73, 0x2e, 0x61, 0x72, 0x63, 0x68, 0x69, 0x74, 0x65, 0x6b,
-	0x74, 0x2e, 0x6d, 0x69, 0x67, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x2e, 0x76, 0x31, 0x2e, 0x53,
-	0x79, 0x6e, 0x63, 0x41, 0x72, 0x67, 0x73, 0x1a, 0x31, 0x2e, 0x69, 0x6f, 0x2e, 0x6c, 0x6f, 0x6f,
-	0x70, 0x68, 0x6f, 0x6c, 0x65, 0x6c, 0x61, 0x62, 0x73, 0x2e, 0x61, 0x72, 0x63, 0x68, 0x69, 0x74,
-	0x65, 0x6b, 0x74, 0x2e, 0x6d, 0x69, 0x67, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x2e, 0x76, 0x31,
-	0x2e, 0x53, 0x79, 0x6e, 0x63, 0x52, 0x65, 0x70, 0x6c, 0x79, 0x22, 0x00, 0x12, 0x70, 0x0a, 0x05,
-	0x43, 0x6c, 0x6f, 0x73, 0x65, 0x12, 0x31, 0x2e, 0x69, 0x6f, 0x2e, 0x6c, 0x6f, 0x6f, 0x70, 0x68,
-	0x6f, 0x6c, 0x65, 0x6c, 0x61, 0x62, 0x73, 0x2e, 0x61, 0x72, 0x63, 0x68, 0x69, 0x74, 0x65, 0x6b,
-	0x74, 0x2e, 0x6d, 0x69, 0x67, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x2e, 0x76, 0x31, 0x2e, 0x43,
-	0x6c, 0x6f, 0x73, 0x65, 0x41, 0x72, 0x67, 0x73, 0x1a, 0x32, 0x2e, 0x69, 0x6f, 0x2e, 0x6c, 0x6f,
-	0x6f, 0x70, 0x68, 0x6f, 0x6c, 0x65, 0x6c, 0x61, 0x62, 0x73, 0x2e, 0x61, 0x72, 0x63, 0x68, 0x69,
-	0x74, 0x65, 0x6b, 0x74, 0x2e, 0x6d, 0x69, 0x67, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x2e, 0x76,
-	0x31, 0x2e, 0x43, 0x6c, 0x6f, 0x73, 0x65, 0x52, 0x65, 0x70, 0x6c, 0x79, 0x22, 0x00, 0x12, 0x6d,
-	0x0a, 0x04, 0x53, 0x69, 0x7a, 0x65, 0x12, 0x30, 0x2e, 0x69, 0x6f, 0x2e, 0x6c, 0x6f, 0x6f, 0x70,
-	0x68, 0x6f, 0x6c, 0x65, 0x6c, 0x61, 0x62, 0x73, 0x2e, 0x61, 0x72, 0x63, 0x68, 0x69, 0x74, 0x65,
-	0x6b, 0x74, 0x2e, 0x6d, 0x69, 0x67, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x2e, 0x76, 0x31, 0x2e,
-	0x53, 0x69, 0x7a, 0x65, 0x41, 0x72, 0x67, 0x73, 0x1a, 0x31, 0x2e, 0x69, 0x6f, 0x2e, 0x6c, 0x6f,
-	0x6f, 0x70, 0x68, 0x6f, 0x6c, 0x65, 0x6c, 0x61, 0x62, 0x73, 0x2e, 0x61, 0x72, 0x63, 0x68, 0x69,
-	0x74, 0x65, 0x6b, 0x74, 0x2e, 0x6d, 0x69, 0x67, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x2e, 0x76,
-	0x31, 0x2e, 0x53, 0x69, 0x7a, 0x65, 0x52, 0x65, 0x70, 0x6c, 0x79, 0x22, 0x00, 0x42, 0x3e, 0x5a,
-	0x3c, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x6c, 0x6f, 0x6f, 0x70,
-	0x68, 0x6f, 0x6c, 0x65, 0x6c, 0x61, 0x62, 0x73, 0x2f, 0x61, 0x72, 0x63, 0x68, 0x69, 0x74, 0x65,
-	0x6b, 0x74, 0x2f, 0x70, 0x6b, 0x67, 0x2f, 0x61, 0x70, 0x69, 0x2f, 0x70, 0x72, 0x6f, 0x74, 0x6f,
-	0x2f, 0x6d, 0x69, 0x67, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x2f, 0x76, 0x31, 0x62, 0x06, 0x70,
-	0x72, 0x6f, 0x74, 0x6f, 0x33,
+	0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x2e, 0x76, 0x31, 0x2e, 0x43, 0x6c, 0x6f, 0x73, 0x65, 0x52,
+	0x65, 0x70, 0x6c, 0x79, 0x22, 0x00, 0x12, 0x6d, 0x0a, 0x04, 0x4d, 0x65, 0x74, 0x61, 0x12, 0x30,
+	0x2e, 0x69, 0x6f, 0x2e, 0x6c, 0x6f, 0x6f, 0x70, 0x68, 0x6f, 0x6c, 0x65, 0x6c, 0x61, 0x62, 0x73,
+	0x2e, 0x61, 0x72, 0x63, 0x68, 0x69, 0x74, 0x65, 0x6b, 0x74, 0x2e, 0x6d, 0x69, 0x67, 0x72, 0x61,
+	0x74, 0x69, 0x6f, 0x6e, 0x2e, 0x76, 0x31, 0x2e, 0x4d, 0x65, 0x74, 0x61, 0x41, 0x72, 0x67, 0x73,
+	0x1a, 0x31, 0x2e, 0x69, 0x6f, 0x2e, 0x6c, 0x6f, 0x6f, 0x70, 0x68, 0x6f, 0x6c, 0x65, 0x6c, 0x61,
+	0x62, 0x73, 0x2e, 0x61, 0x72, 0x63, 0x68, 0x69, 0x74, 0x65, 0x6b, 0x74, 0x2e, 0x6d, 0x69, 0x67,
+	0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x2e, 0x76, 0x31, 0x2e, 0x4d, 0x65, 0x74, 0x61, 0x52, 0x65,
+	0x70, 0x6c, 0x79, 0x22, 0x00, 0x42, 0x3e, 0x5a, 0x3c, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e,
+	0x63, 0x6f, 0x6d, 0x2f, 0x6c, 0x6f, 0x6f, 0x70, 0x68, 0x6f, 0x6c, 0x65, 0x6c, 0x61, 0x62, 0x73,
+	0x2f, 0x61, 0x72, 0x63, 0x68, 0x69, 0x74, 0x65, 0x6b, 0x74, 0x2f, 0x70, 0x6b, 0x67, 0x2f, 0x61,
+	0x70, 0x69, 0x2f, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x2f, 0x6d, 0x69, 0x67, 0x72, 0x61, 0x74, 0x69,
+	0x6f, 0x6e, 0x2f, 0x76, 0x31, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
 }
 
 var (
-	file_seeder_with_size_proto_rawDescOnce sync.Once
-	file_seeder_with_size_proto_rawDescData = file_seeder_with_size_proto_rawDesc
+	file_seeder_with_meta_proto_rawDescOnce sync.Once
+	file_seeder_with_meta_proto_rawDescData = file_seeder_with_meta_proto_rawDesc
 )
 
-func file_seeder_with_size_proto_rawDescGZIP() []byte {
-	file_seeder_with_size_proto_rawDescOnce.Do(func() {
-		file_seeder_with_size_proto_rawDescData = protoimpl.X.CompressGZIP(file_seeder_with_size_proto_rawDescData)
+func file_seeder_with_meta_proto_rawDescGZIP() []byte {
+	file_seeder_with_meta_proto_rawDescOnce.Do(func() {
+		file_seeder_with_meta_proto_rawDescData = protoimpl.X.CompressGZIP(file_seeder_with_meta_proto_rawDescData)
 	})
-	return file_seeder_with_size_proto_rawDescData
+	return file_seeder_with_meta_proto_rawDescData
 }
 
-var file_seeder_with_size_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
-var file_seeder_with_size_proto_goTypes = []interface{}{
+var file_seeder_with_meta_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
+var file_seeder_with_meta_proto_goTypes = []interface{}{
 	(*ReadAtArgs)(nil),  // 0: io.loopholelabs.architekt.migration.v1.ReadAtArgs
 	(*ReadAtReply)(nil), // 1: io.loopholelabs.architekt.migration.v1.ReadAtReply
 	(*TrackArgs)(nil),   // 2: io.loopholelabs.architekt.migration.v1.TrackArgs
@@ -541,20 +551,20 @@ var file_seeder_with_size_proto_goTypes = []interface{}{
 	(*SyncReply)(nil),   // 5: io.loopholelabs.architekt.migration.v1.SyncReply
 	(*CloseArgs)(nil),   // 6: io.loopholelabs.architekt.migration.v1.CloseArgs
 	(*CloseReply)(nil),  // 7: io.loopholelabs.architekt.migration.v1.CloseReply
-	(*SizeArgs)(nil),    // 8: io.loopholelabs.architekt.migration.v1.SizeArgs
-	(*SizeReply)(nil),   // 9: io.loopholelabs.architekt.migration.v1.SizeReply
+	(*MetaArgs)(nil),    // 8: io.loopholelabs.architekt.migration.v1.MetaArgs
+	(*MetaReply)(nil),   // 9: io.loopholelabs.architekt.migration.v1.MetaReply
 }
-var file_seeder_with_size_proto_depIdxs = []int32{
-	0, // 0: io.loopholelabs.architekt.migration.v1.SeederWithSize.ReadAt:input_type -> io.loopholelabs.architekt.migration.v1.ReadAtArgs
-	2, // 1: io.loopholelabs.architekt.migration.v1.SeederWithSize.Track:input_type -> io.loopholelabs.architekt.migration.v1.TrackArgs
-	4, // 2: io.loopholelabs.architekt.migration.v1.SeederWithSize.Sync:input_type -> io.loopholelabs.architekt.migration.v1.SyncArgs
-	6, // 3: io.loopholelabs.architekt.migration.v1.SeederWithSize.Close:input_type -> io.loopholelabs.architekt.migration.v1.CloseArgs
-	8, // 4: io.loopholelabs.architekt.migration.v1.SeederWithSize.Size:input_type -> io.loopholelabs.architekt.migration.v1.SizeArgs
-	1, // 5: io.loopholelabs.architekt.migration.v1.SeederWithSize.ReadAt:output_type -> io.loopholelabs.architekt.migration.v1.ReadAtReply
-	3, // 6: io.loopholelabs.architekt.migration.v1.SeederWithSize.Track:output_type -> io.loopholelabs.architekt.migration.v1.TrackReply
-	5, // 7: io.loopholelabs.architekt.migration.v1.SeederWithSize.Sync:output_type -> io.loopholelabs.architekt.migration.v1.SyncReply
-	7, // 8: io.loopholelabs.architekt.migration.v1.SeederWithSize.Close:output_type -> io.loopholelabs.architekt.migration.v1.CloseReply
-	9, // 9: io.loopholelabs.architekt.migration.v1.SeederWithSize.Size:output_type -> io.loopholelabs.architekt.migration.v1.SizeReply
+var file_seeder_with_meta_proto_depIdxs = []int32{
+	0, // 0: io.loopholelabs.architekt.migration.v1.SeederWithMeta.ReadAt:input_type -> io.loopholelabs.architekt.migration.v1.ReadAtArgs
+	2, // 1: io.loopholelabs.architekt.migration.v1.SeederWithMeta.Track:input_type -> io.loopholelabs.architekt.migration.v1.TrackArgs
+	4, // 2: io.loopholelabs.architekt.migration.v1.SeederWithMeta.Sync:input_type -> io.loopholelabs.architekt.migration.v1.SyncArgs
+	6, // 3: io.loopholelabs.architekt.migration.v1.SeederWithMeta.Close:input_type -> io.loopholelabs.architekt.migration.v1.CloseArgs
+	8, // 4: io.loopholelabs.architekt.migration.v1.SeederWithMeta.Meta:input_type -> io.loopholelabs.architekt.migration.v1.MetaArgs
+	1, // 5: io.loopholelabs.architekt.migration.v1.SeederWithMeta.ReadAt:output_type -> io.loopholelabs.architekt.migration.v1.ReadAtReply
+	3, // 6: io.loopholelabs.architekt.migration.v1.SeederWithMeta.Track:output_type -> io.loopholelabs.architekt.migration.v1.TrackReply
+	5, // 7: io.loopholelabs.architekt.migration.v1.SeederWithMeta.Sync:output_type -> io.loopholelabs.architekt.migration.v1.SyncReply
+	7, // 8: io.loopholelabs.architekt.migration.v1.SeederWithMeta.Close:output_type -> io.loopholelabs.architekt.migration.v1.CloseReply
+	9, // 9: io.loopholelabs.architekt.migration.v1.SeederWithMeta.Meta:output_type -> io.loopholelabs.architekt.migration.v1.MetaReply
 	5, // [5:10] is the sub-list for method output_type
 	0, // [0:5] is the sub-list for method input_type
 	0, // [0:0] is the sub-list for extension type_name
@@ -562,13 +572,13 @@ var file_seeder_with_size_proto_depIdxs = []int32{
 	0, // [0:0] is the sub-list for field type_name
 }
 
-func init() { file_seeder_with_size_proto_init() }
-func file_seeder_with_size_proto_init() {
-	if File_seeder_with_size_proto != nil {
+func init() { file_seeder_with_meta_proto_init() }
+func file_seeder_with_meta_proto_init() {
+	if File_seeder_with_meta_proto != nil {
 		return
 	}
 	if !protoimpl.UnsafeEnabled {
-		file_seeder_with_size_proto_msgTypes[0].Exporter = func(v interface{}, i int) interface{} {
+		file_seeder_with_meta_proto_msgTypes[0].Exporter = func(v interface{}, i int) interface{} {
 			switch v := v.(*ReadAtArgs); i {
 			case 0:
 				return &v.state
@@ -580,7 +590,7 @@ func file_seeder_with_size_proto_init() {
 				return nil
 			}
 		}
-		file_seeder_with_size_proto_msgTypes[1].Exporter = func(v interface{}, i int) interface{} {
+		file_seeder_with_meta_proto_msgTypes[1].Exporter = func(v interface{}, i int) interface{} {
 			switch v := v.(*ReadAtReply); i {
 			case 0:
 				return &v.state
@@ -592,7 +602,7 @@ func file_seeder_with_size_proto_init() {
 				return nil
 			}
 		}
-		file_seeder_with_size_proto_msgTypes[2].Exporter = func(v interface{}, i int) interface{} {
+		file_seeder_with_meta_proto_msgTypes[2].Exporter = func(v interface{}, i int) interface{} {
 			switch v := v.(*TrackArgs); i {
 			case 0:
 				return &v.state
@@ -604,7 +614,7 @@ func file_seeder_with_size_proto_init() {
 				return nil
 			}
 		}
-		file_seeder_with_size_proto_msgTypes[3].Exporter = func(v interface{}, i int) interface{} {
+		file_seeder_with_meta_proto_msgTypes[3].Exporter = func(v interface{}, i int) interface{} {
 			switch v := v.(*TrackReply); i {
 			case 0:
 				return &v.state
@@ -616,7 +626,7 @@ func file_seeder_with_size_proto_init() {
 				return nil
 			}
 		}
-		file_seeder_with_size_proto_msgTypes[4].Exporter = func(v interface{}, i int) interface{} {
+		file_seeder_with_meta_proto_msgTypes[4].Exporter = func(v interface{}, i int) interface{} {
 			switch v := v.(*SyncArgs); i {
 			case 0:
 				return &v.state
@@ -628,7 +638,7 @@ func file_seeder_with_size_proto_init() {
 				return nil
 			}
 		}
-		file_seeder_with_size_proto_msgTypes[5].Exporter = func(v interface{}, i int) interface{} {
+		file_seeder_with_meta_proto_msgTypes[5].Exporter = func(v interface{}, i int) interface{} {
 			switch v := v.(*SyncReply); i {
 			case 0:
 				return &v.state
@@ -640,7 +650,7 @@ func file_seeder_with_size_proto_init() {
 				return nil
 			}
 		}
-		file_seeder_with_size_proto_msgTypes[6].Exporter = func(v interface{}, i int) interface{} {
+		file_seeder_with_meta_proto_msgTypes[6].Exporter = func(v interface{}, i int) interface{} {
 			switch v := v.(*CloseArgs); i {
 			case 0:
 				return &v.state
@@ -652,7 +662,7 @@ func file_seeder_with_size_proto_init() {
 				return nil
 			}
 		}
-		file_seeder_with_size_proto_msgTypes[7].Exporter = func(v interface{}, i int) interface{} {
+		file_seeder_with_meta_proto_msgTypes[7].Exporter = func(v interface{}, i int) interface{} {
 			switch v := v.(*CloseReply); i {
 			case 0:
 				return &v.state
@@ -664,8 +674,8 @@ func file_seeder_with_size_proto_init() {
 				return nil
 			}
 		}
-		file_seeder_with_size_proto_msgTypes[8].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*SizeArgs); i {
+		file_seeder_with_meta_proto_msgTypes[8].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*MetaArgs); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -676,8 +686,8 @@ func file_seeder_with_size_proto_init() {
 				return nil
 			}
 		}
-		file_seeder_with_size_proto_msgTypes[9].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*SizeReply); i {
+		file_seeder_with_meta_proto_msgTypes[9].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*MetaReply); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -693,18 +703,18 @@ func file_seeder_with_size_proto_init() {
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: file_seeder_with_size_proto_rawDesc,
+			RawDescriptor: file_seeder_with_meta_proto_rawDesc,
 			NumEnums:      0,
 			NumMessages:   10,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
-		GoTypes:           file_seeder_with_size_proto_goTypes,
-		DependencyIndexes: file_seeder_with_size_proto_depIdxs,
-		MessageInfos:      file_seeder_with_size_proto_msgTypes,
+		GoTypes:           file_seeder_with_meta_proto_goTypes,
+		DependencyIndexes: file_seeder_with_meta_proto_depIdxs,
+		MessageInfos:      file_seeder_with_meta_proto_msgTypes,
 	}.Build()
-	File_seeder_with_size_proto = out.File
-	file_seeder_with_size_proto_rawDesc = nil
-	file_seeder_with_size_proto_goTypes = nil
-	file_seeder_with_size_proto_depIdxs = nil
+	File_seeder_with_meta_proto = out.File
+	file_seeder_with_meta_proto_rawDesc = nil
+	file_seeder_with_meta_proto_goTypes = nil
+	file_seeder_with_meta_proto_depIdxs = nil
 }

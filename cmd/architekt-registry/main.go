@@ -36,9 +36,14 @@ func main() {
 	}
 	defer f.Close()
 
+	packageConfig, err := utils.ReadPackageConfigFromEXT4Filesystem(f)
+	if err != nil {
+		panic(err)
+	}
+
 	b := backend.NewFileBackend(f)
 
-	svc := iservices.NewSeederWithSizeService(
+	svc := iservices.NewSeederWithMetaService(
 		services.NewSeederService(
 			b,
 			*verbose,
@@ -54,12 +59,13 @@ func main() {
 			services.MaxChunkSize,
 		),
 		b,
+		packageConfig.AgentVSockPort,
 		*verbose,
 	)
 
 	server := grpc.NewServer()
 
-	v1.RegisterSeederWithSizeServer(server, iservices.NewSeederWithSizeServiceGrpc(svc))
+	v1.RegisterSeederWithMetaServer(server, iservices.NewSeederWithMetaServiceGrpc(svc))
 
 	lis, err := net.Listen("tcp", *laddr)
 	if err != nil {

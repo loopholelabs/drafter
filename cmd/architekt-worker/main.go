@@ -47,8 +47,6 @@ func main() {
 	numaNode := flag.Int("numa-node", 0, "NUMA node to run Firecracker in")
 	cgroupVersion := flag.Int("cgroup-version", 2, "Cgroup version to use for Jailer")
 
-	agentVSockPort := flag.Uint("agent-vsock-port", 26, "Agent VSock port")
-
 	verbose := flag.Bool("verbose", false, "Whether to enable verbose logging")
 
 	flag.Parse()
@@ -112,9 +110,6 @@ func main() {
 
 			EnableOutput: *enableOutput,
 			EnableInput:  *enableInput,
-		},
-		utils.AgentConfiguration{
-			AgentVSockPort: uint32(*agentVSockPort),
 		},
 	)
 

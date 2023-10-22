@@ -8,17 +8,17 @@ import (
 
 //go:generate sh -c "mkdir -p ../api/proto/migration/v1 && protoc --go_out=../api/proto/migration/v1 --go_opt=paths=source_relative --go-grpc_out=../api/proto/migration/v1 --go-grpc_opt=paths=source_relative --proto_path=../../api/proto/migration/v1 ../../api/proto/migration/v1/*.proto"
 
-type SeederWithSizeServiceGrpc struct {
-	v1.UnimplementedSeederWithSizeServer
+type SeederWithMetaServiceGrpc struct {
+	v1.UnimplementedSeederWithMetaServer
 
-	svc *SeederWithSizeService
+	svc *SeederWithMetaService
 }
 
-func NewSeederWithSizeServiceGrpc(svc *SeederWithSizeService) *SeederWithSizeServiceGrpc {
-	return &SeederWithSizeServiceGrpc{v1.UnimplementedSeederWithSizeServer{}, svc}
+func NewSeederWithMetaServiceGrpc(svc *SeederWithMetaService) *SeederWithMetaServiceGrpc {
+	return &SeederWithMetaServiceGrpc{v1.UnimplementedSeederWithMetaServer{}, svc}
 }
 
-func (s *SeederWithSizeServiceGrpc) ReadAt(ctx context.Context, args *v1.ReadAtArgs) (*v1.ReadAtReply, error) {
+func (s *SeederWithMetaServiceGrpc) ReadAt(ctx context.Context, args *v1.ReadAtArgs) (*v1.ReadAtReply, error) {
 	res, err := s.svc.ReadAt(ctx, int(args.GetLength()), args.GetOff())
 	if err != nil {
 		return nil, err
@@ -30,7 +30,7 @@ func (s *SeederWithSizeServiceGrpc) ReadAt(ctx context.Context, args *v1.ReadAtA
 	}, nil
 }
 
-func (s *SeederWithSizeServiceGrpc) Track(ctx context.Context, args *v1.TrackArgs) (*v1.TrackReply, error) {
+func (s *SeederWithMetaServiceGrpc) Track(ctx context.Context, args *v1.TrackArgs) (*v1.TrackReply, error) {
 	if err := s.svc.Track(ctx); err != nil {
 		return nil, err
 	}
@@ -38,7 +38,7 @@ func (s *SeederWithSizeServiceGrpc) Track(ctx context.Context, args *v1.TrackArg
 	return &v1.TrackReply{}, nil
 }
 
-func (s *SeederWithSizeServiceGrpc) Sync(ctx context.Context, args *v1.SyncArgs) (*v1.SyncReply, error) {
+func (s *SeederWithMetaServiceGrpc) Sync(ctx context.Context, args *v1.SyncArgs) (*v1.SyncReply, error) {
 	dirtyOffsets, err := s.svc.Sync(ctx)
 	if err != nil {
 		return nil, err
@@ -49,7 +49,7 @@ func (s *SeederWithSizeServiceGrpc) Sync(ctx context.Context, args *v1.SyncArgs)
 	}, nil
 }
 
-func (s *SeederWithSizeServiceGrpc) Close(ctx context.Context, args *v1.CloseArgs) (*v1.CloseReply, error) {
+func (s *SeederWithMetaServiceGrpc) Close(ctx context.Context, args *v1.CloseArgs) (*v1.CloseReply, error) {
 	if err := s.svc.Close(ctx); err != nil {
 		return nil, err
 	}
@@ -57,13 +57,14 @@ func (s *SeederWithSizeServiceGrpc) Close(ctx context.Context, args *v1.CloseArg
 	return &v1.CloseReply{}, nil
 }
 
-func (s *SeederWithSizeServiceGrpc) Size(ctx context.Context, args *v1.SizeArgs) (*v1.SizeReply, error) {
-	size, err := s.svc.Size(ctx)
+func (s *SeederWithMetaServiceGrpc) Meta(ctx context.Context, args *v1.MetaArgs) (*v1.MetaReply, error) {
+	size, agentVSockPort, err := s.svc.Meta(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	return &v1.SizeReply{
-		Size: size,
+	return &v1.MetaReply{
+		Size:           size,
+		AgentVSockPort: agentVSockPort,
 	}, nil
 }

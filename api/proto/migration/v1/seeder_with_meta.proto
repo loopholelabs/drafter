@@ -4,12 +4,12 @@ package io.loopholelabs.architekt.migration.v1;
 
 option go_package = "github.com/loopholelabs/architekt/pkg/api/proto/migration/v1";
 
-service SeederWithSize {
+service SeederWithMeta {
   rpc ReadAt(ReadAtArgs) returns (ReadAtReply) {};
   rpc Track(TrackArgs) returns (TrackReply) {};
   rpc Sync(SyncArgs) returns (SyncReply) {};
   rpc Close(CloseArgs) returns (CloseReply) {};
-  rpc Size(SizeArgs) returns (SizeReply) {};
+  rpc Meta(MetaArgs) returns (MetaReply) {};
 }
 
 message ReadAtArgs {
@@ -34,6 +34,9 @@ message CloseArgs {}
 
 message CloseReply {}
 
-message SizeArgs {}
+message MetaArgs {}
 
-message SizeReply { int64 Size = 1; }
+message MetaReply {
+  int64 Size = 1;
+  uint32 AgentVSockPort = 2;
+}

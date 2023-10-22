@@ -7,30 +7,30 @@ import (
 	"github.com/pojntfx/r3map/pkg/services"
 )
 
-type SeederWithSizeRemoteGrpc struct {
-	client v1.SeederWithSizeClient
+type SeederWithMetaRemoteGrpc struct {
+	client v1.SeederWithMetaClient
 }
 
-func NewSeederWithSizeRemoteGrpc(
-	client v1.SeederWithSizeClient,
-) (*services.SeederRemote, *SeederWithSizeRemote) {
-	l := &SeederWithSizeRemoteGrpc{client}
+func NewSeederWithMetaRemoteGrpc(
+	client v1.SeederWithMetaClient,
+) (*services.SeederRemote, *SeederWithMetaRemote) {
+	l := &SeederWithMetaRemoteGrpc{client}
 
 	return &services.SeederRemote{
 			ReadAt: l.ReadAt,
 			Track:  l.Track,
 			Sync:   l.Sync,
 			Close:  l.Close,
-		}, &SeederWithSizeRemote{
+		}, &SeederWithMetaRemote{
 			ReadAt: l.ReadAt,
 			Track:  l.Track,
 			Sync:   l.Sync,
 			Close:  l.Close,
-			Size:   l.Size,
+			Meta:   l.Meta,
 		}
 }
 
-func (l *SeederWithSizeRemoteGrpc) ReadAt(ctx context.Context, length int, off int64) (r services.ReadAtResponse, err error) {
+func (l *SeederWithMetaRemoteGrpc) ReadAt(ctx context.Context, length int, off int64) (r services.ReadAtResponse, err error) {
 	res, err := l.client.ReadAt(ctx, &v1.ReadAtArgs{
 		Length: int32(length),
 		Off:    off,
@@ -45,7 +45,7 @@ func (l *SeederWithSizeRemoteGrpc) ReadAt(ctx context.Context, length int, off i
 	}, err
 }
 
-func (l *SeederWithSizeRemoteGrpc) Track(ctx context.Context) error {
+func (l *SeederWithMetaRemoteGrpc) Track(ctx context.Context) error {
 	if _, err := l.client.Track(ctx, &v1.TrackArgs{}); err != nil {
 		return err
 	}
@@ -53,7 +53,7 @@ func (l *SeederWithSizeRemoteGrpc) Track(ctx context.Context) error {
 	return nil
 }
 
-func (l *SeederWithSizeRemoteGrpc) Sync(ctx context.Context) ([]int64, error) {
+func (l *SeederWithMetaRemoteGrpc) Sync(ctx context.Context) ([]int64, error) {
 	res, err := l.client.Sync(ctx, &v1.SyncArgs{})
 	if err != nil {
 		return []int64{}, err
@@ -62,7 +62,7 @@ func (l *SeederWithSizeRemoteGrpc) Sync(ctx context.Context) ([]int64, error) {
 	return res.GetDirtyOffsets(), nil
 }
 
-func (l *SeederWithSizeRemoteGrpc) Close(ctx context.Context) error {
+func (l *SeederWithMetaRemoteGrpc) Close(ctx context.Context) error {
 	if _, err := l.client.Close(ctx, &v1.CloseArgs{}); err != nil {
 		return err
 	}
@@ -70,11 +70,11 @@ func (l *SeederWithSizeRemoteGrpc) Close(ctx context.Context) error {
 	return nil
 }
 
-func (l *SeederWithSizeRemoteGrpc) Size(ctx context.Context) (int64, error) {
-	res, err := l.client.Size(ctx, &v1.SizeArgs{})
+func (l *SeederWithMetaRemoteGrpc) Meta(ctx context.Context) (size int64, agentVSockPort uint32, err error) {
+	res, err := l.client.Meta(ctx, &v1.MetaArgs{})
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 
-	return res.GetSize(), nil
+	return res.GetSize(), res.GetAgentVSockPort(), nil
 }
