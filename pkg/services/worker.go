@@ -22,10 +22,9 @@ type HypervisorConfiguration struct {
 }
 
 type WorkerRemote struct {
-	ListInstances   func(ctx context.Context) ([]string, error)
-	CreateInstance  func(ctx context.Context, packageRaddr string) (string, error)
-	DeleteInstance  func(ctx context.Context, instanceID string) error
-	MigrateInstance func(ctx context.Context, instanceID string, sourceNodeID string) error
+	ListInstances  func(ctx context.Context) ([]string, error)
+	CreateInstance func(ctx context.Context, packageRaddr string) (string, error)
+	DeleteInstance func(ctx context.Context, packageRaddr string) error
 }
 
 type Worker struct {
@@ -71,17 +70,9 @@ func (w *Worker) CreateInstance(ctx context.Context, packageRaddr string) (strin
 	return "", nil
 }
 
-func (w *Worker) DeleteInstance(ctx context.Context, instanceID string) error {
+func (w *Worker) DeleteInstance(ctx context.Context, packageRaddr string) error {
 	if w.verbose {
-		log.Printf("CreateInstance(instanceID = %v)", instanceID)
-	}
-
-	return nil
-}
-
-func (w *Worker) MigrateInstance(ctx context.Context, instanceID string, sourceNodeID string) error {
-	if w.verbose {
-		log.Printf("MigrateInstance(instanceID = %v, sourceNodeID = %v)", instanceID, sourceNodeID)
+		log.Printf("DeleteInstance(packageRaddr = %v)", packageRaddr)
 	}
 
 	return nil

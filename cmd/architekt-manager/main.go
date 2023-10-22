@@ -18,13 +18,12 @@ import (
 )
 
 var (
-	errCouldNotEncode          = errors.New("could not encode")
-	errCouldNotFetchNodes      = errors.New("could not fetch nodes")
-	errCouldNotFetchInstances  = errors.New("could not fetch instances")
-	errNodeNotFound            = errors.New("node not found")
-	errCouldNotCreateInstance  = errors.New("could not create instance")
-	errCouldNotDeleteInstance  = errors.New("could not delete instance")
-	errCouldNotMigrateInstance = errors.New("could not migrate instance")
+	errCouldNotEncode         = errors.New("could not encode")
+	errCouldNotFetchNodes     = errors.New("could not fetch nodes")
+	errCouldNotFetchInstances = errors.New("could not fetch instances")
+	errNodeNotFound           = errors.New("node not found")
+	errCouldNotCreateInstance = errors.New("could not create instance")
+	errCouldNotDeleteInstance = errors.New("could not delete instance")
 )
 
 func main() {
@@ -109,15 +108,15 @@ func main() {
 				log.Println("Listing instances on node", nodeID)
 			}
 
-			var instances []string
+			var packageRaddrs []string
 			if err := registry.ForRemotes(func(remoteID string, remote services.WorkerRemote) error {
 				if remoteID == nodeID {
-					i, err := remote.ListInstances(r.Context())
+					r, err := remote.ListInstances(r.Context())
 					if err != nil {
 						return err
 					}
 
-					instances = i
+					packageRaddrs = r
 				}
 
 				return nil
@@ -129,7 +128,7 @@ func main() {
 				return
 			}
 
-			if instances == nil {
+			if packageRaddrs == nil {
 				log.Println(errNodeNotFound)
 
 				w.WriteHeader(http.StatusNotFound)
@@ -139,7 +138,7 @@ func main() {
 
 			w.Header().Set("Content-Type", "application/json")
 
-			if err := json.NewEncoder(w).Encode(instances); err != nil {
+			if err := json.NewEncoder(w).Encode(packageRaddrs); err != nil {
 				log.Println(fmt.Errorf("%w: %w", errCouldNotEncode, err))
 
 				w.WriteHeader(http.StatusInternalServerError)
@@ -150,9 +149,9 @@ func main() {
 	).Methods("GET")
 
 	r.HandleFunc(
-		"/nodes/{nodeID}/instances",
+		"/nodes/{nodeID}/instances/{packageRaddr}",
 		func(w http.ResponseWriter, r *http.Request) {
-			nodeID, packageRaddr := mux.Vars(r)["nodeID"], r.URL.Query().Get("packageRaddr")
+			nodeID, packageRaddr := mux.Vars(r)["nodeID"], mux.Vars(r)["packageRaddr"]
 			if nodeID == "" || packageRaddr == "" {
 				w.WriteHeader(http.StatusUnprocessableEntity)
 
@@ -163,7 +162,7 @@ func main() {
 				log.Println("Creating instance on node", nodeID, "from package raddr", packageRaddr)
 			}
 
-			instanceID := ""
+			outputPackageRaddr := ""
 			if err := registry.ForRemotes(func(remoteID string, remote services.WorkerRemote) error {
 				if remoteID == nodeID {
 					i, err := remote.CreateInstance(r.Context(), packageRaddr)
@@ -171,7 +170,7 @@ func main() {
 						return err
 					}
 
-					instanceID = i
+					outputPackageRaddr = i
 				}
 
 				return nil
@@ -183,7 +182,7 @@ func main() {
 				return
 			}
 
-			if instanceID == "" {
+			if outputPackageRaddr == "" {
 				log.Println(errNodeNotFound)
 
 				w.WriteHeader(http.StatusNotFound)
@@ -193,7 +192,7 @@ func main() {
 
 			w.Header().Set("Content-Type", "application/json")
 
-			if err := json.NewEncoder(w).Encode(instanceID); err != nil {
+			if err := json.NewEncoder(w).Encode(outputPackageRaddr); err != nil {
 				log.Println(fmt.Errorf("%w: %w", errCouldNotEncode, err))
 
 				w.WriteHeader(http.StatusInternalServerError)
@@ -204,25 +203,25 @@ func main() {
 	).Methods("POST")
 
 	r.HandleFunc(
-		"/nodes/{nodeID}/instances/{instanceID}",
+		"/nodes/{nodeID}/instances/{packageRaddr}",
 		func(w http.ResponseWriter, r *http.Request) {
 			vars := mux.Vars(r)
 
-			nodeID, instanceID := vars["nodeID"], vars["instanceID"]
-			if nodeID == "" || instanceID == "" {
+			nodeID, packageRaddr := vars["nodeID"], vars["packageRaddr"]
+			if nodeID == "" || packageRaddr == "" {
 				w.WriteHeader(http.StatusUnprocessableEntity)
 
 				return
 			}
 
 			if *verbose {
-				log.Println("Deleting instance", instanceID, "from node", nodeID)
+				log.Println("Deleting instance", packageRaddr, "from node", nodeID)
 			}
 
 			found := false
 			if err := registry.ForRemotes(func(remoteID string, remote services.WorkerRemote) error {
 				if remoteID == nodeID {
-					if err := remote.DeleteInstance(r.Context(), instanceID); err != nil {
+					if err := remote.DeleteInstance(r.Context(), packageRaddr); err != nil {
 						return err
 					}
 
@@ -247,51 +246,6 @@ func main() {
 			}
 		},
 	).Methods("DELETE")
-
-	r.HandleFunc(
-		"/nodes/{destinationNodeID}/instances/{instanceID}",
-		func(w http.ResponseWriter, r *http.Request) {
-			vars := mux.Vars(r)
-
-			instanceID, sourceNodeID, destinationNodeID := vars["instanceID"], r.URL.Query().Get("sourceNodeID"), vars["destinationNodeID"]
-			if destinationNodeID == "" || instanceID == "" || sourceNodeID == "" {
-				w.WriteHeader(http.StatusUnprocessableEntity)
-
-				return
-			}
-
-			if *verbose {
-				log.Println("Migrating instance", instanceID, "from source node", sourceNodeID, "to destination node", destinationNodeID)
-			}
-
-			found := false
-			if err := registry.ForRemotes(func(remoteID string, remote services.WorkerRemote) error {
-				if remoteID == destinationNodeID {
-					if err := remote.MigrateInstance(r.Context(), instanceID, sourceNodeID); err != nil {
-						return err
-					}
-
-					found = true
-				}
-
-				return nil
-			}); err != nil {
-				log.Println(fmt.Errorf("%w: %w", errCouldNotMigrateInstance, err))
-
-				w.WriteHeader(http.StatusInternalServerError)
-
-				return
-			}
-
-			if !found {
-				log.Println(errNodeNotFound)
-
-				w.WriteHeader(http.StatusNotFound)
-
-				return
-			}
-		},
-	).Methods("POST")
 
 	lis, err := net.Listen("tcp", *controlPlaneLaddr)
 	if err != nil {

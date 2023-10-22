@@ -254,19 +254,19 @@ curl -v http://localhost:1400/nodes | jq
 
 curl -v http://localhost:1400/nodes/1/instances | jq
 
-curl -v -X POST http://localhost:1400/nodes/1/instances?packageRaddr="localhost:1337" | jq
+curl -v -X POST http://localhost:1400/nodes/1/instances/localhost:1337 | jq
 
 curl -v http://localhost:1400/nodes/1/instances | jq
 
-curl -v -X POST http://localhost:1400/nodes/2/instances/1?sourceNodeID="1"
+curl -v -X POST http://localhost:1400/nodes/2/instances/localhost:1338 | jq
 
 curl -v http://localhost:1400/nodes/2/instances | jq
 
-curl -v -X POST http://localhost:1400/nodes/1/instances/1?sourceNodeID="2"
+curl -v -X POST http://localhost:1400/nodes/1/instances/localhost:1338 | jq
 
 curl -v http://localhost:1400/nodes/1/instances | jq
 
-curl -v -X DELETE http://localhost:1400/nodes/1/instances/1
+curl -v -X DELETE http://localhost:1400/nodes/1/instances/localhost:1338
 
 curl -v http://localhost:1400/nodes/1/instances |jq
 ```
