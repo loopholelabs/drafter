@@ -51,27 +51,27 @@ type instance struct {
 	releaseNamespace func(namespace string) error
 	conn             *grpc.ClientConn
 	runner           *roles.Runner
-	dir              string
+	cacheFile        *os.File
 	mgr              *migration.PathMigrator
 	lis              net.Listener
 	server           *grpc.Server
-	wg               *sync.WaitGroup
+	runnerWg         *sync.WaitGroup
+	mgrWg            *sync.WaitGroup
+	serverWg         *sync.WaitGroup
 }
 
 func (i *instance) close() error {
 	i.instanceLock.Lock()
 	defer i.instanceLock.Unlock()
 
-	if i.server != nil {
-		i.server.GracefulStop()
+	if i.runner != nil {
+		_ = i.runner.Close()
 
-		i.server = nil
+		i.runner = nil
 	}
 
-	if i.lis != nil {
-		_ = i.lis.Close()
-
-		i.lis = nil
+	if i.runnerWg != nil {
+		i.runnerWg.Wait()
 	}
 
 	if i.mgr != nil {
@@ -80,16 +80,32 @@ func (i *instance) close() error {
 		i.mgr = nil
 	}
 
-	if i.dir != "" {
-		_ = os.RemoveAll(i.dir)
-
-		i.dir = ""
+	if i.mgrWg != nil {
+		i.mgrWg.Wait()
 	}
 
-	if i.runner != nil {
-		_ = i.runner.Close()
+	if i.cacheFile != nil {
+		_ = i.cacheFile.Close()
 
-		i.runner = nil
+		_ = os.Remove(i.cacheFile.Name())
+
+		i.cacheFile = nil
+	}
+
+	if i.server != nil {
+		i.server.GracefulStop()
+
+		i.server = nil
+	}
+
+	if i.serverWg != nil {
+		i.serverWg.Wait()
+	}
+
+	if i.lis != nil {
+		_ = i.lis.Close()
+
+		i.lis = nil
 	}
 
 	if i.conn != nil {
@@ -104,8 +120,6 @@ func (i *instance) close() error {
 		i.netns = ""
 		i.releaseNamespace = nil
 	}
-
-	i.wg.Wait()
 
 	return nil
 }
@@ -179,10 +193,7 @@ func (w *Worker) CreateInstance(ctx context.Context, packageRaddr string) (outpu
 		log.Printf("CreateInstance(packageRaddr = %v)", packageRaddr)
 	}
 
-	var wg sync.WaitGroup
-	i := &instance{
-		wg: &wg,
-	}
+	i := &instance{}
 
 	defer func() {
 		if re := recover(); re != nil {
@@ -247,10 +258,11 @@ func (w *Worker) CreateInstance(ctx context.Context, packageRaddr string) (outpu
 		},
 	)
 
-	wg.Add(1)
+	var runnerWg sync.WaitGroup
+	runnerWg.Add(1)
 	go func() {
 		if err := runner.Wait(); err != nil {
-			wg.Done()
+			runnerWg.Done()
 
 			log.Printf("%v: %v", ErrCouldNotWaitForRunner, err)
 
@@ -265,17 +277,18 @@ func (w *Worker) CreateInstance(ctx context.Context, packageRaddr string) (outpu
 			return
 		}
 
-		wg.Done()
+		runnerWg.Done()
 	}()
 
 	i.runner = runner
+	i.runnerWg = &runnerWg
 
 	f, err := os.CreateTemp("", "")
 	if err != nil {
 		panic(err)
 	}
 
-	i.dir = f.Name()
+	i.cacheFile = f
 
 	if err := f.Truncate(size); err != nil {
 		panic(err)
@@ -381,10 +394,11 @@ func (w *Worker) CreateInstance(ctx context.Context, packageRaddr string) (outpu
 	)
 
 	cancelled := make(chan struct{})
-	wg.Add(1)
+	var mgrWg sync.WaitGroup
+	mgrWg.Add(1)
 	go func() {
 		if err := mgr.Wait(); err != nil {
-			wg.Done()
+			mgrWg.Done()
 
 			log.Printf("%v: %v", ErrCouldNotWaitForManager, err)
 
@@ -401,7 +415,7 @@ func (w *Worker) CreateInstance(ctx context.Context, packageRaddr string) (outpu
 			return
 		}
 
-		wg.Done()
+		mgrWg.Done()
 	}()
 
 	if w.verbose {
@@ -409,6 +423,7 @@ func (w *Worker) CreateInstance(ctx context.Context, packageRaddr string) (outpu
 	}
 
 	i.mgr = mgr
+	i.mgrWg = &mgrWg
 
 	finalize, _, err := mgr.Leech(remote)
 	if err != nil {
@@ -467,10 +482,11 @@ func (w *Worker) CreateInstance(ctx context.Context, packageRaddr string) (outpu
 		log.Println("Seeding on", lis.Addr())
 	}
 
-	wg.Add(1)
+	var serverWg sync.WaitGroup
+	serverWg.Add(1)
 	go func() {
 		if err := server.Serve(lis); err != nil && !utils.IsClosedErr(err) {
-			wg.Done()
+			serverWg.Done()
 
 			log.Printf("%v: %v", ErrCouldNotServeSeeder, err)
 
@@ -485,10 +501,11 @@ func (w *Worker) CreateInstance(ctx context.Context, packageRaddr string) (outpu
 			return
 		}
 
-		wg.Done()
+		serverWg.Done()
 	}()
 
 	i.server = server
+	i.serverWg = &serverWg
 
 	_, port, err := net.SplitHostPort(lis.Addr().String())
 	if err != nil {

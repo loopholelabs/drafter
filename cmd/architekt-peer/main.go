@@ -100,13 +100,12 @@ func main() {
 		}
 	}()
 
-	defer runner.Close()
-
 	f, err := os.CreateTemp("", "")
 	if err != nil {
 		panic(err)
 	}
-	defer os.RemoveAll(f.Name())
+	defer f.Close()
+	defer os.Remove(f.Name())
 
 	if err := f.Truncate(size); err != nil {
 		panic(err)
@@ -243,6 +242,8 @@ func main() {
 	if err := runner.Resume(ctx, file); err != nil {
 		panic(err)
 	}
+
+	defer runner.Close()
 
 	log.Println("Resume:", time.Since(before))
 
