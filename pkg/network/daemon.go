@@ -10,7 +10,13 @@ import (
 var (
 	ErrNotEnoughAvailableIPsInHostCIDR      = errors.New("not enough available IPs in host CIDR")
 	ErrNotEnoughAvailableIPsInNamespaceCIDR = errors.New("not enough available IPs in namespace CIDR")
+	ErrAllNamespacesClaimed                 = errors.New("all namespaces claimed")
 )
+
+type claimableNamespace struct {
+	namespace *Namespace
+	claimed   bool
+}
 
 type Daemon struct {
 	hostInterface string
@@ -32,7 +38,7 @@ type Daemon struct {
 	namespaceVeths     []*IP
 	namespaceVethsLock sync.Mutex
 
-	namespaces     []*Namespace
+	namespaces     map[string]claimableNamespace
 	namespacesLock sync.Mutex
 
 	namespaceVethIPs *IPTable
@@ -75,7 +81,7 @@ func NewDaemon(
 		namespaceVeths:     []*IP{},
 		namespaceVethsLock: sync.Mutex{},
 
-		namespaces:     []*Namespace{},
+		namespaces:     map[string]claimableNamespace{},
 		namespacesLock: sync.Mutex{},
 
 		namespaceVethIPs: NewIPTable(namespaceVethCIDR),
@@ -161,7 +167,9 @@ func (d *Daemon) Open(ctx context.Context) error {
 			}
 
 			d.namespacesLock.Lock()
-			d.namespaces = append(d.namespaces, namespace)
+			d.namespaces[id] = claimableNamespace{
+				namespace: namespace,
+			}
 			d.namespacesLock.Unlock()
 
 			if hook := d.onBeforeCreateNamespace; hook != nil {
@@ -225,7 +233,7 @@ func (d *Daemon) Close(ctx context.Context) error {
 					return
 				}
 			}
-		}(namespace)
+		}(namespace.namespace)
 	}
 
 	go func() {
@@ -241,4 +249,34 @@ func (d *Daemon) Close(ctx context.Context) error {
 	}
 
 	return RemoveNAT(d.hostInterface)
+}
+
+func (d *Daemon) ClaimNamespace() (string, error) {
+	d.namespacesLock.Lock()
+	defer d.namespacesLock.Unlock()
+
+	for _, namespace := range d.namespaces {
+		if !namespace.claimed {
+			namespace.claimed = true
+
+			return namespace.namespace.id, nil
+		}
+	}
+
+	return "", ErrAllNamespacesClaimed
+}
+
+func (d *Daemon) ReleaseNamespace(namespace string) error {
+	d.namespacesLock.Lock()
+	defer d.namespacesLock.Unlock()
+
+	ns, ok := d.namespaces[namespace]
+	if !ok {
+		// Releasing non-claimed namespaces is a no-op
+		return nil
+	}
+
+	ns.claimed = false
+
+	return nil
 }

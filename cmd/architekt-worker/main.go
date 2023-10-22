@@ -90,14 +90,8 @@ func main() {
 	svc := services.NewWorker(
 		*verbose,
 
-		func() (string, error) {
-			// TODO: Claim namespace prefix here
-			return *namespacePrefix + "0", nil
-		},
-		func(namespace string) error {
-			// TODO: Release namespace prefix here
-			return nil
-		},
+		daemon.ClaimNamespace,
+		daemon.ReleaseNamespace,
 
 		services.HypervisorConfiguration{
 			FirecrackerBin: *firecrackerBin,

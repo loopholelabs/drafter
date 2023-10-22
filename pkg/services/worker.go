@@ -116,8 +116,8 @@ type WorkerRemote struct {
 type Worker struct {
 	verbose bool
 
-	claimNetworkNamespace   func() (string, error)
-	releaseNetworkNamespace func(namespace string) error
+	claimNamespace   func() (string, error)
+	releaseNamespace func(namespace string) error
 
 	hypervisorConfiguration HypervisorConfiguration
 
@@ -131,8 +131,8 @@ type Worker struct {
 func NewWorker(
 	verbose bool,
 
-	claimNetworkNamespace func() (string, error),
-	releaseNetworkNamespace func(namespace string) error,
+	claimNamespace func() (string, error),
+	releaseNamespace func(namespace string) error,
 
 	hypervisorConfiguration HypervisorConfiguration,
 
@@ -142,8 +142,8 @@ func NewWorker(
 	return &Worker{
 		verbose: verbose,
 
-		claimNetworkNamespace:   claimNetworkNamespace,
-		releaseNetworkNamespace: releaseNetworkNamespace,
+		claimNamespace:   claimNamespace,
+		releaseNamespace: releaseNamespace,
 
 		hypervisorConfiguration: hypervisorConfiguration,
 
@@ -197,13 +197,13 @@ func (w *Worker) CreateInstance(ctx context.Context, packageRaddr string) (outpu
 		}
 	}()
 
-	netns, err := w.claimNetworkNamespace()
+	netns, err := w.claimNamespace()
 	if err != nil {
 		panic(err)
 	}
 
 	i.netns = netns
-	i.releaseNetworkNamespace = w.releaseNetworkNamespace
+	i.releaseNetworkNamespace = w.releaseNamespace
 
 	conn, err := grpc.Dial(packageRaddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
