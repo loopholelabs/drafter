@@ -260,9 +260,19 @@ curl -v http://localhost:1400/nodes/${NODE_ID}/instances | jq
 
 export PACKAGE_RADDR=$(curl -v -X POST http://localhost:1400/nodes/${NODE_ID}/instances/${PACKAGE_RADDR} | jq -r)
 
-export PACKAGE_RADDR=$(curl -v -X POST http://localhost:1400/nodes/${NODE_ID}/instances/${PACKAGE_RADDR} | jq -r)
+# export PACKAGE_RADDR=$(curl -v -X POST http://localhost:1400/nodes/${NODE_ID}/instances/${PACKAGE_RADDR} | jq -r)
 
 curl -v -X DELETE http://localhost:1400/nodes/${NODE_ID}/instances/${PACKAGE_RADDR}
 
 curl -v http://localhost:1400/nodes/${NODE_ID}/instances | jq
+```
+
+```shell
+export NODE_ID=$(curl -v http://localhost:1400/nodes | jq -r .[0])
+
+export PACKAGE_RADDR=$(curl -v -X POST http://localhost:1400/nodes/${NODE_ID}/instances/localhost:1337 | jq -r)
+
+curl -v -X DELETE http://localhost:1400/nodes/${NODE_ID}/instances/${PACKAGE_RADDR}
+
+export PACKAGE_RADDR=$(curl -v -X POST http://localhost:1400/nodes/${NODE_ID}/instances/localhost:1337 | jq -r)
 ```

@@ -46,15 +46,16 @@ type HypervisorConfiguration struct {
 }
 
 type instance struct {
-	instanceLock            sync.Mutex
-	netns                   string
-	releaseNetworkNamespace func(namespace string) error
-	conn                    *grpc.ClientConn
-	runner                  *roles.Runner
-	dir                     string
-	mgr                     *migration.PathMigrator
-	lis                     net.Listener
-	server                  *grpc.Server
+	instanceLock     sync.Mutex
+	netns            string
+	releaseNamespace func(namespace string) error
+	conn             *grpc.ClientConn
+	runner           *roles.Runner
+	dir              string
+	mgr              *migration.PathMigrator
+	lis              net.Listener
+	server           *grpc.Server
+	wg               *sync.WaitGroup
 }
 
 func (i *instance) close() error {
@@ -97,12 +98,14 @@ func (i *instance) close() error {
 		i.conn = nil
 	}
 
-	if i.netns != "" && i.releaseNetworkNamespace != nil {
-		_ = i.releaseNetworkNamespace(i.netns)
+	if i.netns != "" && i.releaseNamespace != nil {
+		_ = i.releaseNamespace(i.netns)
 
 		i.netns = ""
-		i.releaseNetworkNamespace = nil
+		i.releaseNamespace = nil
 	}
+
+	i.wg.Wait()
 
 	return nil
 }
@@ -176,7 +179,10 @@ func (w *Worker) CreateInstance(ctx context.Context, packageRaddr string) (outpu
 		log.Printf("CreateInstance(packageRaddr = %v)", packageRaddr)
 	}
 
-	i := &instance{}
+	var wg sync.WaitGroup
+	i := &instance{
+		wg: &wg,
+	}
 
 	defer func() {
 		if re := recover(); re != nil {
@@ -203,7 +209,7 @@ func (w *Worker) CreateInstance(ctx context.Context, packageRaddr string) (outpu
 	}
 
 	i.netns = netns
-	i.releaseNetworkNamespace = w.releaseNamespace
+	i.releaseNamespace = w.releaseNamespace
 
 	conn, err := grpc.Dial(packageRaddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
@@ -241,8 +247,11 @@ func (w *Worker) CreateInstance(ctx context.Context, packageRaddr string) (outpu
 		},
 	)
 
+	wg.Add(1)
 	go func() {
 		if err := runner.Wait(); err != nil {
+			wg.Done()
+
 			log.Printf("%v: %v", ErrCouldNotWaitForRunner, err)
 
 			if outputRaddr != "" {
@@ -252,7 +261,11 @@ func (w *Worker) CreateInstance(ctx context.Context, packageRaddr string) (outpu
 			}
 
 			_ = i.close()
+
+			return
 		}
+
+		wg.Done()
 	}()
 
 	i.runner = runner
@@ -368,8 +381,11 @@ func (w *Worker) CreateInstance(ctx context.Context, packageRaddr string) (outpu
 	)
 
 	cancelled := make(chan struct{})
+	wg.Add(1)
 	go func() {
 		if err := mgr.Wait(); err != nil {
+			wg.Done()
+
 			log.Printf("%v: %v", ErrCouldNotWaitForManager, err)
 
 			if outputRaddr != "" {
@@ -381,7 +397,11 @@ func (w *Worker) CreateInstance(ctx context.Context, packageRaddr string) (outpu
 			_ = i.close()
 
 			close(cancelled)
+
+			return
 		}
+
+		wg.Done()
 	}()
 
 	if w.verbose {
@@ -447,8 +467,11 @@ func (w *Worker) CreateInstance(ctx context.Context, packageRaddr string) (outpu
 		log.Println("Seeding on", lis.Addr())
 	}
 
+	wg.Add(1)
 	go func() {
 		if err := server.Serve(lis); err != nil && !utils.IsClosedErr(err) {
+			wg.Done()
+
 			log.Printf("%v: %v", ErrCouldNotServeSeeder, err)
 
 			if outputRaddr != "" {
@@ -458,7 +481,11 @@ func (w *Worker) CreateInstance(ctx context.Context, packageRaddr string) (outpu
 			}
 
 			_ = i.close()
+
+			return
 		}
+
+		wg.Done()
 	}()
 
 	i.server = server
