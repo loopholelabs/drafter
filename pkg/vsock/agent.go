@@ -6,7 +6,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/loopholelabs/architekt/pkg/services"
 	"github.com/loopholelabs/architekt/pkg/utils"
 	"github.com/mdlayher/vsock"
 	"github.com/pojntfx/dudirekta/pkg/rpc"
@@ -67,7 +66,7 @@ func (s *Agent) Wait() error {
 }
 
 func (s *Agent) Open(ctx context.Context) error {
-	svc := services.NewAgent(
+	svc := utils.NewAgent(
 		s.beforeSuspend,
 		s.afterResume,
 

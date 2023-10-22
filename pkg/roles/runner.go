@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/loopholelabs/architekt/pkg/firecracker"
-	"github.com/loopholelabs/architekt/pkg/services"
 	"github.com/loopholelabs/architekt/pkg/utils"
 	"github.com/loopholelabs/architekt/pkg/vsock"
 )
@@ -32,7 +31,7 @@ type Runner struct {
 	srv     *firecracker.Server
 	client  *http.Client
 	handler *vsock.Handler
-	remote  services.AgentRemote
+	remote  utils.AgentRemote
 
 	vmPath string
 

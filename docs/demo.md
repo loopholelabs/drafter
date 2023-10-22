@@ -246,27 +246,21 @@ go run ./cmd/architekt-manager/ --verbose
 ```shell
 make -j$(nproc) && sudo make install -j$(nproc) && sudo architekt-worker --verbose
 
-make -j$(nproc) && sudo make install -j$(nproc) && sudo architekt-worker --verbose
+# make -j$(nproc) && sudo make install -j$(nproc) && sudo architekt-worker --verbose
 ```
 
 ```shell
 curl -v http://localhost:1400/nodes | jq
 
-curl -v http://localhost:1400/nodes/1/instances | jq
+curl -v http://localhost:1400/nodes/a3718137-9017-41ad-866b-a4494c34cd57/instances | jq
 
-curl -v -X POST http://localhost:1400/nodes/1/instances/localhost:1337 | jq
+curl -v -X POST http://localhost:1400/nodes/a3718137-9017-41ad-866b-a4494c34cd57/instances/localhost:1337 | jq
 
-curl -v http://localhost:1400/nodes/1/instances | jq
+curl -v http://localhost:1400/nodes/a3718137-9017-41ad-866b-a4494c34cd57/instances | jq
 
-curl -v -X POST http://localhost:1400/nodes/2/instances/localhost:1338 | jq
+# curl -v -X POST http://localhost:1400/nodes/a3718137-9017-41ad-866b-a4494c34cd57/instances/localhost:33073 | jq
 
-curl -v http://localhost:1400/nodes/2/instances | jq
+curl -v -X DELETE http://localhost:1400/nodes/a3718137-9017-41ad-866b-a4494c34cd57/instances/localhost:33073
 
-curl -v -X POST http://localhost:1400/nodes/1/instances/localhost:1338 | jq
-
-curl -v http://localhost:1400/nodes/1/instances | jq
-
-curl -v -X DELETE http://localhost:1400/nodes/1/instances/localhost:1338
-
-curl -v http://localhost:1400/nodes/1/instances |jq
+curl -v http://localhost:1400/nodes/a3718137-9017-41ad-866b-a4494c34cd57/instances | jq
 ```

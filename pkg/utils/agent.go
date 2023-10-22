@@ -1,14 +1,9 @@
-package services
+package utils
 
 import (
 	"context"
 	"log"
 )
-
-type AgentRemote struct {
-	BeforeSuspend func(ctx context.Context) error
-	AfterResume   func(ctx context.Context) error
-}
 
 type Agent struct {
 	beforeSuspend func(ctx context.Context) error

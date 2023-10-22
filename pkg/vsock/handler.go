@@ -12,7 +12,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/loopholelabs/architekt/pkg/services"
 	"github.com/loopholelabs/architekt/pkg/utils"
 	iutils "github.com/loopholelabs/architekt/pkg/utils"
 	"github.com/pojntfx/dudirekta/pkg/rpc"
@@ -66,12 +65,12 @@ func (s *Handler) Open(
 	ctx context.Context,
 	connectDeadline time.Duration,
 	retryDeadline time.Duration,
-) (services.AgentRemote, error) {
+) (utils.AgentRemote, error) {
 	ready := make(chan string)
 
 	registry := rpc.NewRegistry(
 		struct{}{},
-		services.AgentRemote{},
+		utils.AgentRemote{},
 
 		s.timeout,
 		ctx,
@@ -138,14 +137,14 @@ func (s *Handler) Open(
 
 	for {
 		if time.Since(before) > retryDeadline {
-			return services.AgentRemote{}, ErrCouldNotConnectToVSock
+			return utils.AgentRemote{}, ErrCouldNotConnectToVSock
 		}
 
 		retry, err := connectToService()
 		if err != nil {
 			log.Println(err)
 
-			return services.AgentRemote{}, err
+			return utils.AgentRemote{}, err
 		}
 
 		if !retry {
@@ -174,10 +173,10 @@ func (s *Handler) Open(
 
 	remoteID := <-ready
 	var (
-		remote services.AgentRemote
+		remote utils.AgentRemote
 		ok     bool
 	)
-	_ = registry.ForRemotes(func(candidateID string, candidate services.AgentRemote) error {
+	_ = registry.ForRemotes(func(candidateID string, candidate utils.AgentRemote) error {
 		if candidateID == remoteID {
 			remote = candidate
 			ok = true
@@ -186,7 +185,7 @@ func (s *Handler) Open(
 		return nil
 	})
 	if !ok {
-		return services.AgentRemote{}, ErrRemoteNotFound
+		return utils.AgentRemote{}, ErrRemoteNotFound
 	}
 
 	return remote, nil

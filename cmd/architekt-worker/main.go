@@ -47,6 +47,9 @@ func main() {
 	numaNode := flag.Int("numa-node", 0, "NUMA node to run Firecracker in")
 	cgroupVersion := flag.Int("cgroup-version", 2, "Cgroup version to use for Jailer")
 
+	lhost := flag.String("lhost", "localhost", "Hostname or IP to listen on")
+	ahost := flag.String("ahost", "localhost", "Hostname or IP to advertise")
+
 	verbose := flag.Bool("verbose", false, "Whether to enable verbose logging")
 
 	flag.Parse()
@@ -111,6 +114,9 @@ func main() {
 			EnableOutput: *enableOutput,
 			EnableInput:  *enableInput,
 		},
+
+		*lhost,
+		*ahost,
 	)
 
 	clients := 0
@@ -168,6 +174,8 @@ func main() {
 	<-done
 
 	log.Println("Exiting gracefully")
+
+	_ = services.CloseWorker(svc)
 
 	if err := daemon.Close(ctx); err != nil {
 		panic(err)

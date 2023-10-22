@@ -44,7 +44,7 @@ func main() {
 		struct{}{},
 		services.WorkerRemote{},
 
-		time.Second*10,
+		time.Minute*10, // Increased timeout since this includes `CreateInstance` RPCs, which might pull for a long time
 		ctx,
 		&rpc.Options{
 			OnClientConnect: func(remoteID string) {
