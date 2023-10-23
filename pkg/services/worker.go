@@ -138,6 +138,8 @@ type Worker struct {
 
 	hypervisorConfiguration HypervisorConfiguration
 
+	cacheBaseDir string
+
 	lhost string
 	ahost string
 
@@ -153,6 +155,8 @@ func NewWorker(
 
 	hypervisorConfiguration HypervisorConfiguration,
 
+	cacheBaseDir string,
+
 	lhost string,
 	ahost string,
 ) *Worker {
@@ -163,6 +167,8 @@ func NewWorker(
 		releaseNamespace: releaseNamespace,
 
 		hypervisorConfiguration: hypervisorConfiguration,
+
+		cacheBaseDir: cacheBaseDir,
 
 		lhost: lhost,
 		ahost: ahost,
@@ -236,6 +242,21 @@ func (w *Worker) CreateInstance(ctx context.Context, packageRaddr string) (outpu
 		panic(err)
 	}
 
+	if err := os.MkdirAll(w.cacheBaseDir, os.ModePerm); err != nil {
+		panic(err)
+	}
+
+	cache, err := os.CreateTemp(w.cacheBaseDir, "*.ark")
+	if err != nil {
+		panic(err)
+	}
+
+	i.cacheFile = cache
+
+	if err := cache.Truncate(size); err != nil {
+		panic(err)
+	}
+
 	runner := roles.NewRunner(
 		utils.HypervisorConfiguration{
 			FirecrackerBin: w.hypervisorConfiguration.FirecrackerBin,
@@ -279,17 +300,6 @@ func (w *Worker) CreateInstance(ctx context.Context, packageRaddr string) (outpu
 	i.runner = runner
 	i.runnerWg = &runnerWg
 
-	f, err := os.CreateTemp("", "")
-	if err != nil {
-		panic(err)
-	}
-
-	i.cacheFile = f
-
-	if err := f.Truncate(size); err != nil {
-		panic(err)
-	}
-
 	var (
 		bar           *progressbar.ProgressBar
 		pulledOffsets = atomic.Int64{}
@@ -322,7 +332,7 @@ func (w *Worker) CreateInstance(ctx context.Context, packageRaddr string) (outpu
 
 	continueCh := make(chan struct{})
 
-	b := backend.NewFileBackend(f)
+	b := backend.NewFileBackend(cache)
 	mgr := migration.NewPathMigrator(
 		ctx,
 

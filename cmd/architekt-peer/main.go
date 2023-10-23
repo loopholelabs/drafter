@@ -31,6 +31,7 @@ func main() {
 	jailerBin := flag.String("jailer-bin", filepath.Join("/usr", "local", "bin", "jailer"), "Jailer binary (from Firecracker)")
 
 	chrootBaseDir := flag.String("chroot-base-dir", filepath.Join("out", "vms"), "`chroot` base directory")
+	cacheBaseDir := flag.String("cache-base-dir", filepath.Join("out", "cache"), "Cache base directory")
 
 	uid := flag.Int("uid", 0, "User ID for the Firecracker process")
 	gid := flag.Int("gid", 0, "Group ID for the Firecracker process")
@@ -63,6 +64,21 @@ func main() {
 
 	size, agentVSockPort, err := remoteWithMeta.Meta(ctx)
 	if err != nil {
+		panic(err)
+	}
+
+	if err := os.MkdirAll(*cacheBaseDir, os.ModePerm); err != nil {
+		panic(err)
+	}
+
+	cache, err := os.CreateTemp(*cacheBaseDir, "*.ark")
+	if err != nil {
+		panic(err)
+	}
+	defer cache.Close()
+	defer os.Remove(cache.Name())
+
+	if err := cache.Truncate(size); err != nil {
 		panic(err)
 	}
 
@@ -100,17 +116,6 @@ func main() {
 		}
 	}()
 
-	f, err := os.CreateTemp("", "")
-	if err != nil {
-		panic(err)
-	}
-	defer f.Close()
-	defer os.Remove(f.Name())
-
-	if err := f.Truncate(size); err != nil {
-		panic(err)
-	}
-
 	bar := progressbar.NewOptions64(
 		size,
 		progressbar.OptionSetDescription("Pulling"),
@@ -135,7 +140,7 @@ func main() {
 
 	bar.Add(client.MaximumBlockSize)
 
-	b := backend.NewFileBackend(f)
+	b := backend.NewFileBackend(cache)
 	mgr := migration.NewPathMigrator(
 		ctx,
 

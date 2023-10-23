@@ -193,7 +193,6 @@ architekt-registry
 ```
 
 ```shell
-sudo mount -o remount,size=24G,noatime /tmp # Potentially increase /tmp disk space (where the r3map cache files are stored)
 sudo architekt-peer --raddr localhost:1337 --enable-input # If --enable-input is specified, CTRL-C is forwarded to the VM, so to stop the VM use `sudo pkill -2 architekt-peer` instead
 ```
 
@@ -224,6 +223,7 @@ sudo pkill -9 firecracker
 sudo umount out/redis.ark
 sudo rm -f out/redis.ark
 sudo rm -rf out/vms
+sudo rm -rf out/cache
 ```
 
 ## Uninstalling Firecracker and Architekt

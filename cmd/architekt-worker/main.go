@@ -37,6 +37,7 @@ func main() {
 	jailerBin := flag.String("jailer-bin", filepath.Join("/usr", "local", "bin", "jailer"), "Jailer binary (from Firecracker)")
 
 	chrootBaseDir := flag.String("chroot-base-dir", filepath.Join("out", "vms"), "`chroot` base directory")
+	cacheBaseDir := flag.String("cache-base-dir", filepath.Join("out", "cache"), "Cache base directory")
 
 	uid := flag.Int("uid", 0, "User ID for the Firecracker process")
 	gid := flag.Int("gid", 0, "Group ID for the Firecracker process")
@@ -108,6 +109,8 @@ func main() {
 			EnableOutput: *enableOutput,
 			EnableInput:  *enableInput,
 		},
+
+		*cacheBaseDir,
 
 		*lhost,
 		*ahost,
