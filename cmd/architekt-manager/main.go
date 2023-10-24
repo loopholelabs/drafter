@@ -24,6 +24,7 @@ var (
 	errNodeNotFound           = errors.New("node not found")
 	errCouldNotCreateInstance = errors.New("could not create instance")
 	errCouldNotDeleteInstance = errors.New("could not delete instance")
+	errCouldNotListInstances  = errors.New("could not list instances")
 )
 
 func main() {
@@ -108,32 +109,33 @@ func main() {
 				log.Println("Listing instances on node", nodeID)
 			}
 
-			var packageRaddrs []string
-			if err := registry.ForRemotes(func(remoteID string, remote services.WorkerRemote) error {
-				if remoteID == nodeID {
-					r, err := remote.ListInstances(r.Context())
-					if err != nil {
-						return err
-					}
-
-					packageRaddrs = r
+			var (
+				remote services.WorkerRemote
+				ok     bool
+			)
+			// We can safely ignore the errors here, since errors are bubbled up from `cb`,
+			// which can never return an error here
+			_ = registry.ForRemotes(func(candidateID string, candidate services.WorkerRemote) error {
+				if candidateID == nodeID {
+					remote = candidate
+					ok = true
 				}
 
 				return nil
-			}); err != nil {
-				log.Println(fmt.Errorf("%w: %w", errCouldNotFetchInstances, err))
-
-				w.WriteHeader(http.StatusInternalServerError)
-
-				return
-			}
-
-			if packageRaddrs == nil {
+			})
+			if !ok {
 				log.Println(errNodeNotFound)
 
 				w.WriteHeader(http.StatusNotFound)
 
 				return
+			}
+
+			packageRaddrs, err := remote.ListInstances(r.Context())
+			if err != nil {
+				log.Println(fmt.Errorf("%w: %w", errCouldNotListInstances, err))
+
+				w.WriteHeader(http.StatusInternalServerError)
 			}
 
 			w.Header().Set("Content-Type", "application/json")
@@ -162,32 +164,33 @@ func main() {
 				log.Println("Creating instance on node", nodeID, "from package raddr", packageRaddr)
 			}
 
-			outputPackageRaddr := ""
-			if err := registry.ForRemotes(func(remoteID string, remote services.WorkerRemote) error {
-				if remoteID == nodeID {
-					i, err := remote.CreateInstance(r.Context(), packageRaddr)
-					if err != nil {
-						return err
-					}
-
-					outputPackageRaddr = i
+			var (
+				remote services.WorkerRemote
+				ok     bool
+			)
+			// We can safely ignore the errors here, since errors are bubbled up from `cb`,
+			// which can never return an error here
+			_ = registry.ForRemotes(func(candidateID string, candidate services.WorkerRemote) error {
+				if candidateID == nodeID {
+					remote = candidate
+					ok = true
 				}
 
 				return nil
-			}); err != nil {
-				log.Println(fmt.Errorf("%w: %w", errCouldNotCreateInstance, err))
-
-				w.WriteHeader(http.StatusInternalServerError)
-
-				return
-			}
-
-			if outputPackageRaddr == "" {
+			})
+			if !ok {
 				log.Println(errNodeNotFound)
 
 				w.WriteHeader(http.StatusNotFound)
 
 				return
+			}
+
+			outputPackageRaddr, err := remote.CreateInstance(r.Context(), packageRaddr)
+			if err != nil {
+				log.Println(fmt.Errorf("%w: %w", errCouldNotCreateInstance, err))
+
+				w.WriteHeader(http.StatusInternalServerError)
 			}
 
 			w.Header().Set("Content-Type", "application/json")
@@ -218,31 +221,32 @@ func main() {
 				log.Println("Deleting instance", packageRaddr, "from node", nodeID)
 			}
 
-			found := false
-			if err := registry.ForRemotes(func(remoteID string, remote services.WorkerRemote) error {
-				if remoteID == nodeID {
-					if err := remote.DeleteInstance(r.Context(), packageRaddr); err != nil {
-						return err
-					}
-
-					found = true
+			var (
+				remote services.WorkerRemote
+				ok     bool
+			)
+			// We can safely ignore the errors here, since errors are bubbled up from `cb`,
+			// which can never return an error here
+			_ = registry.ForRemotes(func(candidateID string, candidate services.WorkerRemote) error {
+				if candidateID == nodeID {
+					remote = candidate
+					ok = true
 				}
 
 				return nil
-			}); err != nil {
-				log.Println(fmt.Errorf("%w: %w", errCouldNotDeleteInstance, err))
-
-				w.WriteHeader(http.StatusInternalServerError)
-
-				return
-			}
-
-			if !found {
+			})
+			if !ok {
 				log.Println(errNodeNotFound)
 
 				w.WriteHeader(http.StatusNotFound)
 
 				return
+			}
+
+			if err := remote.DeleteInstance(r.Context(), packageRaddr); err != nil {
+				log.Println(fmt.Errorf("%w: %w", errCouldNotDeleteInstance, err))
+
+				w.WriteHeader(http.StatusInternalServerError)
 			}
 		},
 	).Methods("DELETE")

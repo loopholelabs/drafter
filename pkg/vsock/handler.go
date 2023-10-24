@@ -172,10 +172,13 @@ func (s *Handler) Open(
 	}()
 
 	remoteID := <-ready
+
 	var (
 		remote utils.AgentRemote
 		ok     bool
 	)
+	// We can safely ignore the errors here, since errors are bubbled up from `cb`,
+	// which can never return an error here
 	_ = registry.ForRemotes(func(candidateID string, candidate utils.AgentRemote) error {
 		if candidateID == remoteID {
 			remote = candidate
