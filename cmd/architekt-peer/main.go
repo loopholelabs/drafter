@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"sync"
@@ -27,8 +28,8 @@ import (
 )
 
 func main() {
-	firecrackerBin := flag.String("firecracker-bin", filepath.Join("/usr", "local", "bin", "firecracker"), "Firecracker binary")
-	jailerBin := flag.String("jailer-bin", filepath.Join("/usr", "local", "bin", "jailer"), "Jailer binary (from Firecracker)")
+	rawFirecrackerBin := flag.String("firecracker-bin", "firecracker", "Firecracker binary")
+	rawJailerBin := flag.String("jailer-bin", "jailer", "Jailer binary (from Firecracker)")
 
 	chrootBaseDir := flag.String("chroot-base-dir", filepath.Join("out", "vms"), "`chroot` base directory")
 	cacheBaseDir := flag.String("cache-base-dir", filepath.Join("out", "cache"), "Cache base directory")
@@ -53,6 +54,16 @@ func main() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	firecrackerBin, err := exec.LookPath(*rawFirecrackerBin)
+	if err != nil {
+		panic(err)
+	}
+
+	jailerBin, err := exec.LookPath(*rawJailerBin)
+	if err != nil {
+		panic(err)
+	}
 
 	conn, err := grpc.Dial(*raddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
@@ -84,8 +95,8 @@ func main() {
 
 	runner := roles.NewRunner(
 		utils.HypervisorConfiguration{
-			FirecrackerBin: *firecrackerBin,
-			JailerBin:      *jailerBin,
+			FirecrackerBin: firecrackerBin,
+			JailerBin:      jailerBin,
 
 			ChrootBaseDir: *chrootBaseDir,
 
@@ -115,6 +126,8 @@ func main() {
 			panic(err)
 		}
 	}()
+
+	defer runner.Close()
 
 	bar := progressbar.NewOptions64(
 		size,

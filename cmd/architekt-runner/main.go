@@ -5,6 +5,7 @@ import (
 	"flag"
 	"log"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"sync"
@@ -15,8 +16,8 @@ import (
 )
 
 func main() {
-	firecrackerBin := flag.String("firecracker-bin", filepath.Join("/usr", "local", "bin", "firecracker"), "Firecracker binary")
-	jailerBin := flag.String("jailer-bin", filepath.Join("/usr", "local", "bin", "jailer"), "Jailer binary (from Firecracker)")
+	rawFirecrackerBin := flag.String("firecracker-bin", "firecracker", "Firecracker binary")
+	rawJailerBin := flag.String("jailer-bin", "jailer", "Jailer binary (from Firecracker)")
 
 	chrootBaseDir := flag.String("chroot-base-dir", filepath.Join("out", "vms"), "`chroot` base directory")
 
@@ -37,6 +38,16 @@ func main() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	firecrackerBin, err := exec.LookPath(*rawFirecrackerBin)
+	if err != nil {
+		panic(err)
+	}
+
+	jailerBin, err := exec.LookPath(*rawJailerBin)
+	if err != nil {
+		panic(err)
+	}
 
 	loop := utils.NewLoop(*packagePath)
 
@@ -60,8 +71,8 @@ func main() {
 
 	runner := roles.NewRunner(
 		utils.HypervisorConfiguration{
-			FirecrackerBin: *firecrackerBin,
-			JailerBin:      *jailerBin,
+			FirecrackerBin: firecrackerBin,
+			JailerBin:      jailerBin,
 
 			ChrootBaseDir: *chrootBaseDir,
 

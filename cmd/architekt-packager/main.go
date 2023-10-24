@@ -3,16 +3,16 @@ package main
 import (
 	"context"
 	"flag"
+	"os/exec"
 	"path/filepath"
-	"sync"
 
 	"github.com/loopholelabs/architekt/pkg/roles"
 	"github.com/loopholelabs/architekt/pkg/utils"
 )
 
 func main() {
-	firecrackerBin := flag.String("firecracker-bin", filepath.Join("/usr", "local", "bin", "firecracker"), "Firecracker binary")
-	jailerBin := flag.String("jailer-bin", filepath.Join("/usr", "local", "bin", "jailer"), "Jailer binary (from Firecracker)")
+	rawFirecrackerBin := flag.String("firecracker-bin", "firecracker", "Firecracker binary")
+	rawJailerBin := flag.String("jailer-bin", "jailer", "Jailer binary (from Firecracker)")
 
 	chrootBaseDir := flag.String("chroot-base-dir", filepath.Join("out", "vms"), "`chroot` base directory")
 
@@ -39,7 +39,7 @@ func main() {
 	cpuCount := flag.Int("cpu-count", 1, "CPU count")
 	memorySize := flag.Int("memory-size", 1024, "Memory size (in MB)")
 
-	packageOutputPath := flag.String("package-output-path", filepath.Join("out", "redis.ark"), "Path to write package file to")
+	packageOutputPath := flag.String("package-output-path", filepath.Join("/tmp", "redis.ark"), "Path to write package file to")
 	packagePaddingSize := flag.Int("package-padding-size", 128, "Padding to add to package for state file and file system metadata (in MB)")
 
 	flag.Parse()
@@ -47,15 +47,19 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	firecrackerBin, err := exec.LookPath(*rawFirecrackerBin)
+	if err != nil {
+		panic(err)
+	}
+
+	jailerBin, err := exec.LookPath(*rawJailerBin)
+	if err != nil {
+		panic(err)
+	}
+
 	packager := roles.NewPackager()
 
-	var wg sync.WaitGroup
-	defer wg.Wait()
-
-	wg.Add(1)
 	go func() {
-		defer wg.Done()
-
 		if err := packager.Wait(); err != nil {
 			panic(err)
 		}
@@ -80,8 +84,8 @@ func main() {
 		},
 
 		utils.HypervisorConfiguration{
-			FirecrackerBin: *firecrackerBin,
-			JailerBin:      *jailerBin,
+			FirecrackerBin: firecrackerBin,
+			JailerBin:      jailerBin,
 
 			ChrootBaseDir: *chrootBaseDir,
 

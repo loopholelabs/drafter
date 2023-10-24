@@ -24,7 +24,6 @@ const (
 )
 
 type Packager struct {
-	wg   sync.WaitGroup
 	errs chan error
 }
 
@@ -48,12 +47,9 @@ func (p *Packager) CreatePackage(
 	networkConfiguration utils.NetworkConfiguration,
 	agentConfiguration utils.AgentConfiguration,
 ) error {
-	p.wg = sync.WaitGroup{}
 	p.errs = make(chan error)
 
 	defer func() {
-		p.wg.Wait()
-
 		close(p.errs)
 	}()
 
@@ -263,8 +259,6 @@ func (r *Packager) Wait() error {
 			return err
 		}
 	}
-
-	r.wg.Wait()
 
 	return nil
 }
