@@ -19,7 +19,7 @@ import (
 func main() {
 	packagePath := flag.String("package-path", filepath.Join("out", "redis.ark"), "Path to package to serve")
 
-	laddr := flag.String("laddr", "localhost:1337", "Listen address")
+	laddr := flag.String("laddr", ":1337", "Listen address")
 
 	verbose := flag.Bool("verbose", false, "Whether to enable verbose logging")
 

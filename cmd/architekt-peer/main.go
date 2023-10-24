@@ -46,7 +46,7 @@ func main() {
 	cgroupVersion := flag.Int("cgroup-version", 2, "Cgroup version to use for Jailer")
 
 	raddr := flag.String("raddr", "localhost:1338", "Remote address")
-	laddr := flag.String("laddr", "localhost:1338", "Listen address")
+	laddr := flag.String("laddr", ":1338", "Listen address")
 
 	verbose := flag.Bool("verbose", false, "Whether to enable verbose logging")
 

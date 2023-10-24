@@ -205,14 +205,66 @@ sudo architekt-peer --netns ark1 --enable-input # Migrates to this peer; be sure
 sudo architekt-peer # Migrates to this peer without enabling input; CTRL-C to flush the snapshot and stop the VM
 ```
 
+## Using the Control Plane
+
+```shell
+export REGISTRY_IP="186.233.186.43"
+export CONTROL_PLANE_IP="186.233.186.43"
+export NODE_1_IP="186.233.186.43"
+export NODE_2_IP="160.202.128.189"
+```
+
+```shell
+architekt-registry # On ${REGISTRY_IP}
+```
+
+```shell
+architekt-manager --verbose # On ${CONTROL_PLANE_IP}
+```
+
+```shell
+sudo architekt-worker --verbose --host-interface enp1s0f0 --ahost ${NODE_1_IP} --control-plane-raddr ${CONTROL_PLANE_IP}:1399 # On ${NODE_1_IP}
+```
+
+```shell
+sudo architekt-worker --verbose --host-interface enp1s0f0 --ahost ${NODE_2_IP} --control-plane-raddr ${CONTROL_PLANE_IP}:1399 # On ${NODE_2_IP}
+```
+
+```shell
+readarray -t NODE_IDS < <(curl -s http://${CONTROL_PLANE_IP}:1400/nodes | jq -r '.[]') && export NODE_ID_1=${NODE_IDS[0]} && export NODE_ID_2=${NODE_IDS[1]}
+
+curl -v http://${CONTROL_PLANE_IP}:1400/nodes/${NODE_ID_1}/instances | jq
+curl -v http://${CONTROL_PLANE_IP}:1400/nodes/${NODE_ID_2}/instances | jq
+
+export PACKAGE_RADDR=$(curl -v -X POST http://${CONTROL_PLANE_IP}:1400/nodes/${NODE_ID_1}/instances/${REGISTRY_IP}:1337 | jq -r) # Create VM on node 1
+
+curl -v http://${CONTROL_PLANE_IP}:1400/nodes/${NODE_ID_1}/instances | jq
+curl -v http://${CONTROL_PLANE_IP}:1400/nodes/${NODE_ID_2}/instances | jq
+
+export PACKAGE_RADDR=$(curl -v -X POST http://${CONTROL_PLANE_IP}:1400/nodes/${NODE_ID_2}/instances/${PACKAGE_RADDR} | jq -r) # Migrate VM from node 1 to node 2
+
+curl -v http://${CONTROL_PLANE_IP}:1400/nodes/${NODE_ID_1}/instances | jq
+curl -v http://${CONTROL_PLANE_IP}:1400/nodes/${NODE_ID_2}/instances | jq
+
+export PACKAGE_RADDR=$(curl -v -X POST http://${CONTROL_PLANE_IP}:1400/nodes/${NODE_ID_1}/instances/${PACKAGE_RADDR} | jq -r) # Migrate VM from node 2 to node 1
+
+curl -v http://${CONTROL_PLANE_IP}:1400/nodes/${NODE_ID_1}/instances | jq
+curl -v http://${CONTROL_PLANE_IP}:1400/nodes/${NODE_ID_2}/instances | jq
+
+curl -v -X DELETE http://${CONTROL_PLANE_IP}:1400/nodes/${NODE_ID_1}/instances/${PACKAGE_RADDR} # Delete VM from node 2
+
+curl -v http://${CONTROL_PLANE_IP}:1400/nodes/${NODE_ID}/instances | jq
+```
+
 ## Tearing Down Workstation and Server Dependencies
 
 ```shell
 sudo pkill -2 architekt-peer
 sudo pkill -2 architekt-registry
 sudo pkill -2 architekt-daemon
+sudo pkill -2 architekt-worker
 
-# Completely reseting the network configuration (should not be necessary)
+# Completely resetting the network configuration (should not be necessary)
 sudo iptables -X
 sudo iptables -F
 for ns in $(ip netns list | awk '{print $1}'); do
@@ -234,38 +286,4 @@ sudo rm /usr/local/bin/{firecracker,jailer}
 
 cd /tmp/architekt
 sudo make uninstall
-```
-
-## Using the Control Plane
-
-> TODO: Normalize docs with the rest above
-
-```shell
-go run ./cmd/architekt-manager/ --verbose
-```
-
-```shell
-make -j$(nproc) && sudo make install -j$(nproc) && sudo architekt-worker --verbose
-
-# make -j$(nproc) && sudo make install -j$(nproc) && sudo architekt-worker --verbose
-```
-
-```shell
-export NODE_ID=$(curl -v http://localhost:1400/nodes | jq -r .[0])
-
-curl -v http://localhost:1400/nodes/${NODE_ID}/instances | jq
-
-export PACKAGE_RADDR=$(curl -v -X POST http://localhost:1400/nodes/${NODE_ID}/instances/localhost:1337 | jq -r)
-
-curl -v http://localhost:1400/nodes/${NODE_ID}/instances | jq
-
-export PACKAGE_RADDR=$(curl -v -X POST http://localhost:1400/nodes/${NODE_ID}/instances/${PACKAGE_RADDR} | jq -r)
-
-curl -v http://localhost:1400/nodes/${NODE_ID}/instances | jq
-
-export PACKAGE_RADDR=$(curl -v -X POST http://localhost:1400/nodes/${NODE_ID}/instances/${PACKAGE_RADDR} | jq -r)
-
-curl -v -X DELETE http://localhost:1400/nodes/${NODE_ID}/instances/${PACKAGE_RADDR}
-
-curl -v http://localhost:1400/nodes/${NODE_ID}/instances | jq
 ```

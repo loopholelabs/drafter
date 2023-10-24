@@ -39,7 +39,7 @@ func main() {
 	cpuCount := flag.Int("cpu-count", 1, "CPU count")
 	memorySize := flag.Int("memory-size", 1024, "Memory size (in MB)")
 
-	packageOutputPath := flag.String("package-output-path", filepath.Join("/tmp", "redis.ark"), "Path to write package file to")
+	packageOutputPath := flag.String("package-output-path", filepath.Join("out", "redis.ark"), "Path to write package file to")
 	packagePaddingSize := flag.Int("package-padding-size", 128, "Padding to add to package for state file and file system metadata (in MB)")
 
 	flag.Parse()
