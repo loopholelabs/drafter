@@ -187,25 +187,89 @@ sudo architekt-packager
 sudo architekt-runner # CTRL-C to flush the snapshot and run again to resume
 ```
 
-## Distributing, Running and Migrating Packages between Servers
+## Distributing, Running and Migrating Packages
+
+### On a Workstation
 
 ```shell
 architekt-registry
 ```
 
 ```shell
-sudo architekt-peer --raddr localhost:1337 --enable-input # If --enable-input is specified, CTRL-C is forwarded to the VM, so to stop the VM use `sudo pkill -2 architekt-peer` instead
+sudo architekt-peer --netns ark0 --raddr localhost:1337 --enable-input # If --enable-input is specified, CTRL-C is forwarded to the VM, so to stop the VM use `sudo pkill -2 architekt-peer` instead (be sure to use a free namespace)
 ```
 
 ```shell
-sudo architekt-peer --netns ark1 --enable-input # Migrates to this peer; be sure to use a different namespace (i.e. ark1, the default is ark0) if you're migrating on the same machine
+sudo architekt-peer --netns ark1 --enable-input # Migrates to this peer; be sure to use a different namespace (i.e. ark1) since you're migrating on the same machine
 ```
 
 ```shell
-sudo architekt-peer # Migrates to this peer without enabling input; CTRL-C to flush the snapshot and stop the VM
+sudo architekt-peer --netns ark0 # Migrates to this peer without enabling input; CTRL-C to flush the snapshot and stop the VM (be sure to use a free namespace)
+```
+
+### On a Cluster
+
+```shell
+export REGISTRY_IP="186.233.186.43"
+export NODE_1_IP="186.233.186.43"
+export NODE_2_IP="160.202.128.189"
+```
+
+```shell
+architekt-registry # On ${REGISTRY_IP}
+```
+
+```shell
+sudo architekt-peer --netns ark0 --raddr ${REGISTRY_IP}:1337 --enable-input # On ${NODE_1_IP}: If --enable-input is specified, CTRL-C is forwarded to the VM, so to stop the VM use `sudo pkill -2 architekt-peer` instead (be sure to use a free namespace)
+```
+
+```shell
+sudo architekt-peer --netns ark0 --raddr ${NODE_1_IP}:1337 --enable-input # On ${NODE_2_IP}: Migrates to this peer (be sure to use a free namespace)
+```
+
+```shell
+sudo architekt-peer --netns ark0 --raddr ${NODE_2_IP}:1338 # On ${NODE_1_IP}: Migrates to this peer without enabling input; CTRL-C to flush the snapshot and stop the VM (be sure to use a free namespace)
 ```
 
 ## Using the Control Plane
+
+### On a Workstation
+
+```shell
+architekt-registry
+```
+
+```shell
+architekt-manager --verbose
+```
+
+```shell
+sudo architekt-worker --verbose --host-interface wlp0s20f3
+```
+
+```shell
+export NODE_ID=$(curl -v http://localhost:1400/nodes | jq -r .[0])
+
+curl -v http://localhost:1400/nodes/${NODE_ID}/instances | jq
+
+export PACKAGE_RADDR=$(curl -v -X POST http://localhost:1400/nodes/${NODE_ID}/instances/localhost:1337 | jq -r) # Create VM
+
+curl -v http://localhost:1400/nodes/${NODE_ID}/instances | jq
+
+export PACKAGE_RADDR=$(curl -v -X POST http://localhost:1400/nodes/${NODE_ID}/instances/${PACKAGE_RADDR} | jq -r) # Migrate VM
+
+curl -v http://localhost:1400/nodes/${NODE_ID}/instances | jq
+
+export PACKAGE_RADDR=$(curl -v -X POST http://localhost:1400/nodes/${NODE_ID}/instances/${PACKAGE_RADDR} | jq -r) # Migrate VM again
+
+curl -v http://localhost:1400/nodes/${NODE_ID}/instances | jq
+
+curl -v -X DELETE http://localhost:1400/nodes/${NODE_ID}/instances/${PACKAGE_RADDR} # Delete VM
+
+curl -v http://localhost:1400/nodes/${NODE_ID}/instances | jq
+```
+
+### On a Cluster
 
 ```shell
 export REGISTRY_IP="186.233.186.43"
@@ -253,7 +317,8 @@ curl -v http://${CONTROL_PLANE_IP}:1400/nodes/${NODE_ID_2}/instances | jq
 
 curl -v -X DELETE http://${CONTROL_PLANE_IP}:1400/nodes/${NODE_ID_1}/instances/${PACKAGE_RADDR} # Delete VM from node 2
 
-curl -v http://${CONTROL_PLANE_IP}:1400/nodes/${NODE_ID}/instances | jq
+curl -v http://${CONTROL_PLANE_IP}:1400/nodes/${NODE_ID_1}/instances | jq
+curl -v http://${CONTROL_PLANE_IP}:1400/nodes/${NODE_ID_2}/instances | jq
 ```
 
 ## Tearing Down Workstation and Server Dependencies
