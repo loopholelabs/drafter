@@ -52,12 +52,16 @@ func main() {
 	lhost := flag.String("lhost", ":", "Hostname or IP to listen on")
 	ahost := flag.String("ahost", "localhost", "Hostname or IP to advertise")
 
+	name := flag.String("name", "node-1", "Name to register for")
+
 	verbose := flag.Bool("verbose", false, "Whether to enable verbose logging")
 
 	flag.Parse()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	errs := make(chan error)
 
 	firecrackerBin, err := exec.LookPath(*rawFirecrackerBin)
 	if err != nil {
@@ -131,7 +135,7 @@ func main() {
 
 	registry := rpc.NewRegistry(
 		svc,
-		struct{}{},
+		services.ManagerRemote{},
 
 		time.Second*10,
 		ctx,
@@ -140,6 +144,14 @@ func main() {
 				clients++
 
 				log.Printf("%v clients connected to worker", clients)
+
+				go func() {
+					if err := services.WorkerRegister(svc, ctx, *name); err != nil {
+						errs <- err
+
+						return
+					}
+				}()
 			},
 			OnClientDisconnect: func(remoteID string) {
 				clients--
@@ -148,6 +160,7 @@ func main() {
 			},
 		},
 	)
+	svc.ForRemotes = registry.ForRemotes
 
 	if err := daemon.Open(ctx); err != nil {
 		panic(err)
@@ -172,14 +185,27 @@ func main() {
 			json.Marshal,
 			json.Unmarshal,
 		); err != nil && !utils.IsClosedErr(err) {
-			panic(err)
+			errs <- err
+
+			return
 		}
 	}()
 
 	done := make(chan os.Signal, 1)
 	signal.Notify(done, os.Interrupt)
 
-	<-done
+l:
+	for {
+		select {
+		case <-done:
+			break l
+
+		case err := <-errs:
+			if err != nil {
+				panic(err)
+			}
+		}
+	}
 
 	log.Println("Exiting gracefully")
 

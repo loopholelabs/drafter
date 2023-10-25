@@ -19,8 +19,6 @@ import (
 
 var (
 	errCouldNotEncode         = errors.New("could not encode")
-	errCouldNotFetchNodes     = errors.New("could not fetch nodes")
-	errCouldNotFetchInstances = errors.New("could not fetch instances")
 	errNodeNotFound           = errors.New("node not found")
 	errCouldNotCreateInstance = errors.New("could not create instance")
 	errCouldNotDeleteInstance = errors.New("could not delete instance")
@@ -41,8 +39,9 @@ func main() {
 
 	clients := 0
 
+	svc := services.NewManager(*verbose)
 	registry := rpc.NewRegistry(
-		struct{}{},
+		svc,
 		services.WorkerRemote{},
 
 		time.Minute*10, // Increased timeout since this includes `CreateInstance` RPCs, which might pull for a long time
@@ -56,10 +55,13 @@ func main() {
 			OnClientDisconnect: func(remoteID string) {
 				clients--
 
+				services.ManagerUnregister(svc, remoteID)
+
 				log.Printf("%v clients connected to control plane", clients)
 			},
 		},
 	)
+	svc.ForRemotes = registry.ForRemotes
 
 	r := mux.NewRouter()
 
@@ -70,18 +72,7 @@ func main() {
 				log.Println("Listing nodes")
 			}
 
-			nodes := []string{}
-			if err := registry.ForRemotes(func(remoteID string, remote services.WorkerRemote) error {
-				nodes = append(nodes, remoteID)
-
-				return nil
-			}); err != nil {
-				log.Println(fmt.Errorf("%w: %w", errCouldNotFetchNodes, err))
-
-				w.WriteHeader(http.StatusInternalServerError)
-
-				return
-			}
+			nodes := services.ManagerGetWorkerNames(svc)
 
 			w.Header().Set("Content-Type", "application/json")
 
@@ -96,34 +87,21 @@ func main() {
 	).Methods("GET")
 
 	r.HandleFunc(
-		"/nodes/{nodeID}/instances",
+		"/nodes/{nodeName}/instances",
 		func(w http.ResponseWriter, r *http.Request) {
-			nodeID := mux.Vars(r)["nodeID"]
-			if nodeID == "" {
+			nodeName := mux.Vars(r)["nodeName"]
+			if nodeName == "" {
 				w.WriteHeader(http.StatusUnprocessableEntity)
 
 				return
 			}
 
 			if *verbose {
-				log.Println("Listing instances on node", nodeID)
+				log.Println("Listing instances on node", nodeName)
 			}
 
-			var (
-				remote services.WorkerRemote
-				ok     bool
-			)
-			// We can safely ignore the errors here, since errors are bubbled up from `cb`,
-			// which can never return an error here
-			_ = registry.ForRemotes(func(candidateID string, candidate services.WorkerRemote) error {
-				if candidateID == nodeID {
-					remote = candidate
-					ok = true
-				}
-
-				return nil
-			})
-			if !ok {
+			remote := services.ManagerGetWorker(svc, nodeName)
+			if remote == nil {
 				log.Println(errNodeNotFound)
 
 				w.WriteHeader(http.StatusNotFound)
@@ -151,34 +129,21 @@ func main() {
 	).Methods("GET")
 
 	r.HandleFunc(
-		"/nodes/{nodeID}/instances/{packageRaddr}",
+		"/nodes/{nodeName}/instances/{packageRaddr}",
 		func(w http.ResponseWriter, r *http.Request) {
-			nodeID, packageRaddr := mux.Vars(r)["nodeID"], mux.Vars(r)["packageRaddr"]
-			if nodeID == "" || packageRaddr == "" {
+			nodeName, packageRaddr := mux.Vars(r)["nodeName"], mux.Vars(r)["packageRaddr"]
+			if nodeName == "" || packageRaddr == "" {
 				w.WriteHeader(http.StatusUnprocessableEntity)
 
 				return
 			}
 
 			if *verbose {
-				log.Println("Creating instance on node", nodeID, "from package raddr", packageRaddr)
+				log.Println("Creating instance on node", nodeName, "from package raddr", packageRaddr)
 			}
 
-			var (
-				remote services.WorkerRemote
-				ok     bool
-			)
-			// We can safely ignore the errors here, since errors are bubbled up from `cb`,
-			// which can never return an error here
-			_ = registry.ForRemotes(func(candidateID string, candidate services.WorkerRemote) error {
-				if candidateID == nodeID {
-					remote = candidate
-					ok = true
-				}
-
-				return nil
-			})
-			if !ok {
+			remote := services.ManagerGetWorker(svc, nodeName)
+			if remote == nil {
 				log.Println(errNodeNotFound)
 
 				w.WriteHeader(http.StatusNotFound)
@@ -206,36 +171,23 @@ func main() {
 	).Methods("POST")
 
 	r.HandleFunc(
-		"/nodes/{nodeID}/instances/{packageRaddr}",
+		"/nodes/{nodeName}/instances/{packageRaddr}",
 		func(w http.ResponseWriter, r *http.Request) {
 			vars := mux.Vars(r)
 
-			nodeID, packageRaddr := vars["nodeID"], vars["packageRaddr"]
-			if nodeID == "" || packageRaddr == "" {
+			nodeName, packageRaddr := vars["nodeName"], vars["packageRaddr"]
+			if nodeName == "" || packageRaddr == "" {
 				w.WriteHeader(http.StatusUnprocessableEntity)
 
 				return
 			}
 
 			if *verbose {
-				log.Println("Deleting instance", packageRaddr, "from node", nodeID)
+				log.Println("Deleting instance", packageRaddr, "from node", nodeName)
 			}
 
-			var (
-				remote services.WorkerRemote
-				ok     bool
-			)
-			// We can safely ignore the errors here, since errors are bubbled up from `cb`,
-			// which can never return an error here
-			_ = registry.ForRemotes(func(candidateID string, candidate services.WorkerRemote) error {
-				if candidateID == nodeID {
-					remote = candidate
-					ok = true
-				}
-
-				return nil
-			})
-			if !ok {
+			remote := services.ManagerGetWorker(svc, nodeName)
+			if remote == nil {
 				log.Println(errNodeNotFound)
 
 				w.WriteHeader(http.StatusNotFound)

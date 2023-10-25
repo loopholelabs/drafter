@@ -244,29 +244,29 @@ architekt-manager --verbose
 ```
 
 ```shell
-sudo architekt-worker --verbose --host-interface wlp0s20f3
+sudo architekt-worker --verbose --name node-1 --host-interface wlp0s20f3
 ```
 
 ```shell
-export NODE_ID=$(curl -v http://localhost:1400/nodes | jq -r .[0])
+curl -v http://localhost:1400/nodes | jq
 
-curl -v http://localhost:1400/nodes/${NODE_ID}/instances | jq
+curl -v http://localhost:1400/nodes/node-1/instances | jq
 
-export PACKAGE_RADDR=$(curl -v -X POST http://localhost:1400/nodes/${NODE_ID}/instances/localhost:1337 | jq -r) # Create VM
+export PACKAGE_RADDR=$(curl -v -X POST http://localhost:1400/nodes/node-1/instances/localhost:1337 | jq -r) # Create VM
 
-curl -v http://localhost:1400/nodes/${NODE_ID}/instances | jq
+curl -v http://localhost:1400/nodes/node-1/instances | jq
 
-export PACKAGE_RADDR=$(curl -v -X POST http://localhost:1400/nodes/${NODE_ID}/instances/${PACKAGE_RADDR} | jq -r) # Migrate VM
+export PACKAGE_RADDR=$(curl -v -X POST http://localhost:1400/nodes/node-1/instances/${PACKAGE_RADDR} | jq -r) # Migrate VM
 
-curl -v http://localhost:1400/nodes/${NODE_ID}/instances | jq
+curl -v http://localhost:1400/nodes/node-1/instances | jq
 
-export PACKAGE_RADDR=$(curl -v -X POST http://localhost:1400/nodes/${NODE_ID}/instances/${PACKAGE_RADDR} | jq -r) # Migrate VM again
+export PACKAGE_RADDR=$(curl -v -X POST http://localhost:1400/nodes/node-1/instances/${PACKAGE_RADDR} | jq -r) # Migrate VM again
 
-curl -v http://localhost:1400/nodes/${NODE_ID}/instances | jq
+curl -v http://localhost:1400/nodes/node-1/instances | jq
 
-curl -v -X DELETE http://localhost:1400/nodes/${NODE_ID}/instances/${PACKAGE_RADDR} # Delete VM
+curl -v -X DELETE http://localhost:1400/nodes/node-1/instances/${PACKAGE_RADDR} # Delete VM
 
-curl -v http://localhost:1400/nodes/${NODE_ID}/instances | jq
+curl -v http://localhost:1400/nodes/node-1/instances | jq
 ```
 
 ### On a Cluster
@@ -287,38 +287,36 @@ architekt-manager --verbose # On ${CONTROL_PLANE_IP}
 ```
 
 ```shell
-sudo architekt-worker --verbose --host-interface enp1s0f0 --ahost ${NODE_1_IP} --control-plane-raddr ${CONTROL_PLANE_IP}:1399 # On ${NODE_1_IP}
+sudo architekt-worker --verbose --name node-1 --host-interface enp1s0f0 --ahost ${NODE_1_IP} --control-plane-raddr ${CONTROL_PLANE_IP}:1399 # On ${NODE_1_IP}
 ```
 
 ```shell
-sudo architekt-worker --verbose --host-interface enp1s0f0 --ahost ${NODE_2_IP} --control-plane-raddr ${CONTROL_PLANE_IP}:1399 # On ${NODE_2_IP}
+sudo architekt-worker --verbose --name node-2 --host-interface enp1s0f0 --ahost ${NODE_2_IP} --control-plane-raddr ${CONTROL_PLANE_IP}:1399 # On ${NODE_2_IP}
 ```
 
 ```shell
-readarray -t NODE_IDS < <(curl -s http://${CONTROL_PLANE_IP}:1400/nodes | jq -r '.[]') && export NODE_ID_1=${NODE_IDS[0]} && export NODE_ID_2=${NODE_IDS[1]}
+curl -v http://${CONTROL_PLANE_IP}:1400/nodes/node-1/instances | jq
+curl -v http://${CONTROL_PLANE_IP}:1400/nodes/node-2/instances | jq
 
-curl -v http://${CONTROL_PLANE_IP}:1400/nodes/${NODE_ID_1}/instances | jq
-curl -v http://${CONTROL_PLANE_IP}:1400/nodes/${NODE_ID_2}/instances | jq
+export PACKAGE_RADDR=$(curl -v -X POST http://${CONTROL_PLANE_IP}:1400/nodes/node-1/instances/${REGISTRY_IP}:1337 | jq -r) # Create VM on node 1
 
-export PACKAGE_RADDR=$(curl -v -X POST http://${CONTROL_PLANE_IP}:1400/nodes/${NODE_ID_1}/instances/${REGISTRY_IP}:1337 | jq -r) # Create VM on node 1
+curl -v http://${CONTROL_PLANE_IP}:1400/nodes/node-1/instances | jq
+curl -v http://${CONTROL_PLANE_IP}:1400/nodes/node-2/instances | jq
 
-curl -v http://${CONTROL_PLANE_IP}:1400/nodes/${NODE_ID_1}/instances | jq
-curl -v http://${CONTROL_PLANE_IP}:1400/nodes/${NODE_ID_2}/instances | jq
+export PACKAGE_RADDR=$(curl -v -X POST http://${CONTROL_PLANE_IP}:1400/nodes/node-2/instances/${PACKAGE_RADDR} | jq -r) # Migrate VM from node 1 to node 2
 
-export PACKAGE_RADDR=$(curl -v -X POST http://${CONTROL_PLANE_IP}:1400/nodes/${NODE_ID_2}/instances/${PACKAGE_RADDR} | jq -r) # Migrate VM from node 1 to node 2
+curl -v http://${CONTROL_PLANE_IP}:1400/nodes/node-1/instances | jq
+curl -v http://${CONTROL_PLANE_IP}:1400/nodes/node-2/instances | jq
 
-curl -v http://${CONTROL_PLANE_IP}:1400/nodes/${NODE_ID_1}/instances | jq
-curl -v http://${CONTROL_PLANE_IP}:1400/nodes/${NODE_ID_2}/instances | jq
+export PACKAGE_RADDR=$(curl -v -X POST http://${CONTROL_PLANE_IP}:1400/nodes/node-1/instances/${PACKAGE_RADDR} | jq -r) # Migrate VM from node 2 to node 1
 
-export PACKAGE_RADDR=$(curl -v -X POST http://${CONTROL_PLANE_IP}:1400/nodes/${NODE_ID_1}/instances/${PACKAGE_RADDR} | jq -r) # Migrate VM from node 2 to node 1
+curl -v http://${CONTROL_PLANE_IP}:1400/nodes/node-1/instances | jq
+curl -v http://${CONTROL_PLANE_IP}:1400/nodes/node-2/instances | jq
 
-curl -v http://${CONTROL_PLANE_IP}:1400/nodes/${NODE_ID_1}/instances | jq
-curl -v http://${CONTROL_PLANE_IP}:1400/nodes/${NODE_ID_2}/instances | jq
+curl -v -X DELETE http://${CONTROL_PLANE_IP}:1400/nodes/node-1/instances/${PACKAGE_RADDR} # Delete VM from node 2
 
-curl -v -X DELETE http://${CONTROL_PLANE_IP}:1400/nodes/${NODE_ID_1}/instances/${PACKAGE_RADDR} # Delete VM from node 2
-
-curl -v http://${CONTROL_PLANE_IP}:1400/nodes/${NODE_ID_1}/instances | jq
-curl -v http://${CONTROL_PLANE_IP}:1400/nodes/${NODE_ID_2}/instances | jq
+curl -v http://${CONTROL_PLANE_IP}:1400/nodes/node-1/instances | jq
+curl -v http://${CONTROL_PLANE_IP}:1400/nodes/node-2/instances | jq
 ```
 
 ## Tearing Down Workstation and Server Dependencies

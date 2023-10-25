@@ -131,6 +131,10 @@ type WorkerRemote struct {
 }
 
 type Worker struct {
+	ForRemotes func(
+		cb func(remoteID string, remote ManagerRemote) error,
+	) error
+
 	verbose bool
 
 	claimNamespace   func() (string, error)
@@ -552,4 +556,10 @@ func CloseWorker(w *Worker) error {
 	w.instances = map[string]*instance{}
 
 	return nil
+}
+
+func WorkerRegister(w *Worker, ctx context.Context, name string) error {
+	return w.ForRemotes(func(remoteID string, remote ManagerRemote) error {
+		return remote.Register(ctx, name)
+	})
 }
