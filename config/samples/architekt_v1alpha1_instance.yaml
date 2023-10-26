@@ -1,0 +1,10 @@
+apiVersion: io.loopholelabs.architekt/v1alpha1
+kind: Instance
+metadata:
+  name: redis
+spec:
+  packageRaddr: 186.233.186.43:1337
+  nodeName: node-1
+status:
+  packageRaddr: 160.202.128.189:1337
+  nodeName: node-2
