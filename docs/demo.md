@@ -295,6 +295,8 @@ sudo architekt-worker --verbose --name node-2 --host-interface enp1s0f0 --ahost 
 ```
 
 ```shell
+curl -v http://${CONTROL_PLANE_IP}:1400/nodes | jq
+
 curl -v http://${CONTROL_PLANE_IP}:1400/nodes/node-1/instances | jq
 curl -v http://${CONTROL_PLANE_IP}:1400/nodes/node-2/instances | jq
 
