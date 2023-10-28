@@ -18,6 +18,7 @@ import (
 const (
 	InstanceStateCreating = "creating"
 	InstanceStateRunning  = "running"
+	InstanceStateDeleting = "deleting"
 )
 
 type InstanceReconciler struct {
@@ -73,6 +74,32 @@ func (r *InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, nil
 	}
 
+	if instance.Status.State == InstanceStateDeleting {
+		log.Info("Instance deletion already in progress, skipping", "packageRaddr", instance.Spec.PackageRaddr, "nodeName", instance.Spec.NodeName)
+
+		return ctrl.Result{}, nil
+	}
+
+	if instance.GetDeletionTimestamp() != nil {
+		log.Info("Deleting instance", "packageRaddr", instance.Spec.PackageRaddr, "nodeName", instance.Spec.NodeName)
+
+		instance.Status.State = InstanceStateDeleting
+
+		if err := r.client.Status().Update(ctx, instance); err != nil {
+			log.Error(err, "Could not update instance status, retrying", "packageRaddr", instance.Spec.PackageRaddr, "nodeName", instance.Spec.NodeName)
+
+			return ctrl.Result{}, err
+		}
+
+		if err := r.managerRESTClient.DeleteInstance(instance.Spec.NodeName, instance.Spec.PackageRaddr); err != nil {
+			log.Error(err, "Could not delete instance, retrying", "packageRaddr", instance.Spec.PackageRaddr, "nodeName", instance.Spec.NodeName)
+
+			return ctrl.Result{}, err
+		}
+
+		return ctrl.Result{}, nil
+	}
+
 	if instance.Status.State == InstanceStateRunning && instance.Spec.PackageRaddr == instance.Status.LeechedRaddr {
 		log.Info("Instance already in desired state, skipping", "packageRaddr", instance.Spec.PackageRaddr, "nodeName", instance.Spec.NodeName, "leechedRaddr", instance.Spec.PackageRaddr)
 
@@ -84,7 +111,7 @@ func (r *InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	instance.Status.State = InstanceStateCreating
 
 	if err := r.client.Status().Update(ctx, instance); err != nil {
-		log.Error(err, "Could not update Instance status, retrying", "packageRaddr", instance.Spec.PackageRaddr, "nodeName", instance.Spec.NodeName)
+		log.Error(err, "Could not update instance status, retrying", "packageRaddr", instance.Spec.PackageRaddr, "nodeName", instance.Spec.NodeName)
 
 		return ctrl.Result{}, err
 	}
@@ -107,7 +134,7 @@ func (r *InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	instance.Status.State = InstanceStateRunning
 
 	if err := r.client.Status().Update(ctx, instance); err != nil {
-		log.Error(err, "Could not update Instance status, retrying", "packageRaddr", instance.Spec.PackageRaddr, "nodeName", instance.Spec.NodeName)
+		log.Error(err, "Could not update instance status, retrying", "packageRaddr", instance.Spec.PackageRaddr, "nodeName", instance.Spec.NodeName)
 
 		return ctrl.Result{}, err
 	}
