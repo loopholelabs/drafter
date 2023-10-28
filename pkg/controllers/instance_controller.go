@@ -9,6 +9,7 @@ import (
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	architectv1alpha1 "github.com/loopholelabs/architekt/pkg/api/k8s/v1alpha1"
@@ -19,6 +20,8 @@ const (
 	InstanceStateCreating = "creating"
 	InstanceStateRunning  = "running"
 	InstanceStateDeleting = "deleting"
+
+	instanceFinalizer = "io.loopholelabs.architekt/finalizer"
 )
 
 type InstanceReconciler struct {
@@ -80,19 +83,45 @@ func (r *InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, nil
 	}
 
-	if instance.GetDeletionTimestamp() != nil {
-		log.Info("Deleting instance", "packageRaddr", instance.Spec.PackageRaddr, "nodeName", instance.Spec.NodeName)
+	if !controllerutil.ContainsFinalizer(instance, instanceFinalizer) {
+		if ok := controllerutil.AddFinalizer(instance, instanceFinalizer); !ok {
+			log.Error(nil, "Could not add finalizer to instance", "packageRaddr", instance.Spec.PackageRaddr, "nodeName", instance.Spec.NodeName)
+
+			return ctrl.Result{Requeue: true}, nil
+		}
+
+		if err := r.client.Update(ctx, instance); err != nil {
+			log.Error(err, "Could not update instance, retrying", "packageRaddr", instance.Spec.PackageRaddr, "nodeName", instance.Spec.NodeName)
+
+			return ctrl.Result{}, err
+		}
+	}
+
+	if instance.GetDeletionTimestamp() != nil && controllerutil.ContainsFinalizer(instance, instanceFinalizer) {
+		log.Info("Deleting instance", "packageRaddr", instance.Spec.PackageRaddr, "nodeName", instance.Spec.NodeName, "packageLaddr", instance.Status.PackageLaddr)
 
 		instance.Status.State = InstanceStateDeleting
 
 		if err := r.client.Status().Update(ctx, instance); err != nil {
-			log.Error(err, "Could not update instance status, retrying", "packageRaddr", instance.Spec.PackageRaddr, "nodeName", instance.Spec.NodeName)
+			log.Error(err, "Could not update instance status, retrying", "packageRaddr", instance.Spec.PackageRaddr, "nodeName", instance.Spec.NodeName, "packageLaddr", instance.Status.PackageLaddr)
 
 			return ctrl.Result{}, err
 		}
 
-		if err := r.managerRESTClient.DeleteInstance(instance.Spec.NodeName, instance.Spec.PackageRaddr); err != nil {
-			log.Error(err, "Could not delete instance, retrying", "packageRaddr", instance.Spec.PackageRaddr, "nodeName", instance.Spec.NodeName)
+		if err := r.managerRESTClient.DeleteInstance(instance.Spec.NodeName, instance.Status.PackageLaddr); err != nil {
+			log.Error(err, "Could not delete instance, retrying", "packageRaddr", instance.Spec.PackageRaddr, "nodeName", instance.Spec.NodeName, "packageLaddr", instance.Status.PackageLaddr)
+
+			return ctrl.Result{}, err
+		}
+
+		if ok := controllerutil.RemoveFinalizer(instance, instanceFinalizer); !ok {
+			log.Error(nil, "Could not remove finalizer from instance", "packageRaddr", instance.Spec.PackageRaddr, "nodeName", instance.Spec.NodeName, "packageLaddr", instance.Status.PackageLaddr)
+
+			return ctrl.Result{Requeue: true}, nil
+		}
+
+		if err := r.client.Update(ctx, instance); err != nil {
+			log.Error(err, "Could not update instance, retrying", "packageRaddr", instance.Spec.PackageRaddr, "nodeName", instance.Spec.NodeName, "packageLaddr", instance.Status.PackageLaddr)
 
 			return ctrl.Result{}, err
 		}
@@ -101,7 +130,7 @@ func (r *InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	}
 
 	if instance.Status.State == InstanceStateRunning && instance.Spec.PackageRaddr == instance.Status.LeechedRaddr {
-		log.Info("Instance already in desired state, skipping", "packageRaddr", instance.Spec.PackageRaddr, "nodeName", instance.Spec.NodeName, "leechedRaddr", instance.Spec.PackageRaddr)
+		log.Info("Instance already in desired state, skipping", "packageRaddr", instance.Spec.PackageRaddr, "nodeName", instance.Spec.NodeName, "leechedRaddr", instance.Status.LeechedRaddr)
 
 		return ctrl.Result{}, nil
 	}
