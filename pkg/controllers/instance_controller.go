@@ -78,17 +78,19 @@ func (r *InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		instance.Status.State == InstanceStateMigrating ||
 		instance.Status.State == InstanceStateRecreating ||
 		instance.Status.State == InstanceStateDeleting {
-		log.Info("An instance operation is already in progress, skipping")
+		log.Info("An instance operation is already in progress, requeuing")
 
-		return ctrl.Result{}, nil
+		return ctrl.Result{
+			Requeue: true,
+		}, nil
 	}
 
-	reconstructActualState := func(packageRaddr, nodeName string) error {
+	reconstructActualState := func(packageRaddr, nodeName, packageLaddr string) error {
 		if err := r.client.Get(ctx, req.NamespacedName, instance); err != nil {
 			if apierrors.IsNotFound(err) {
 				log.Info("Could not find instance, skipping since object must have been deleted during an operation, trying to delete orphaned instance now")
 
-				if err := r.managerRESTClient.DeleteInstance(nodeName, packageRaddr); err != nil {
+				if err := r.managerRESTClient.DeleteInstance(nodeName, packageLaddr); err != nil {
 					log.Info("Could not delete instance, ignoring", "error", err)
 				}
 
@@ -115,6 +117,32 @@ func (r *InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 			log.Error(err, "Could not update instance, retrying")
 
 			return err
+		}
+
+		if instance.GetDeletionTimestamp() != nil && controllerutil.ContainsFinalizer(instance, instanceFinalizer) {
+			log.Info("Deleting instance since object must have been deleted during an operation, trying to delete orphaned instance now")
+
+			if packageLaddr != "" {
+				if err := r.managerRESTClient.DeleteInstance(nodeName, packageLaddr); err != nil {
+					log.Error(err, "Could not delete instance")
+
+					return err
+				}
+			}
+
+			if ok := controllerutil.RemoveFinalizer(instance, instanceFinalizer); !ok {
+				log.Error(nil, "Could not remove finalizer from instance")
+
+				return nil
+			}
+
+			if err := r.client.Update(ctx, instance); err != nil {
+				log.Error(err, "Could not update instance")
+
+				return err
+			}
+
+			return nil
 		}
 
 		return nil
@@ -144,14 +172,14 @@ func (r *InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		if err := r.client.Status().Update(ctx, instance); err != nil {
 			log.Error(err, "Could not update instance status")
 
-			return ctrl.Result{}, reconstructActualState(instance.Status.PackageRaddr, instance.Status.NodeName)
+			return ctrl.Result{}, reconstructActualState(instance.Status.PackageRaddr, instance.Status.NodeName, instance.Status.PackageLaddr)
 		}
 
 		if instance.Status.PackageLaddr != "" {
 			if err := r.managerRESTClient.DeleteInstance(instance.Status.NodeName, instance.Status.PackageLaddr); err != nil {
 				log.Error(err, "Could not delete instance")
 
-				return ctrl.Result{}, reconstructActualState(instance.Status.PackageRaddr, instance.Status.NodeName)
+				return ctrl.Result{}, reconstructActualState(instance.Status.PackageRaddr, instance.Status.NodeName, instance.Status.PackageLaddr)
 			}
 		}
 
@@ -166,7 +194,7 @@ func (r *InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		if err := r.client.Update(ctx, instance); err != nil {
 			log.Error(err, "Could not update instance")
 
-			return ctrl.Result{}, reconstructActualState(instance.Status.PackageRaddr, instance.Status.NodeName)
+			return ctrl.Result{}, reconstructActualState(instance.Status.PackageRaddr, instance.Status.NodeName, instance.Status.PackageLaddr)
 		}
 
 		return ctrl.Result{}, nil
@@ -180,14 +208,14 @@ func (r *InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		if err := r.client.Status().Update(ctx, instance); err != nil {
 			log.Error(err, "Could not update instance status")
 
-			return ctrl.Result{}, reconstructActualState(instance.Status.PackageRaddr, instance.Status.NodeName)
+			return ctrl.Result{}, reconstructActualState(instance.Status.PackageRaddr, instance.Status.NodeName, instance.Status.PackageLaddr)
 		}
 
 		newPackageLaddr, err := r.managerRESTClient.CreateInstance(instance.Spec.NodeName, instance.Spec.PackageRaddr)
 		if err != nil {
 			log.Error(err, "Could not create instance")
 
-			return ctrl.Result{}, reconstructActualState(instance.Status.PackageRaddr, instance.Status.NodeName)
+			return ctrl.Result{}, reconstructActualState(instance.Status.PackageRaddr, instance.Status.NodeName, instance.Status.PackageLaddr)
 		}
 
 		instance.Status.PackageRaddr = instance.Spec.PackageRaddr
@@ -198,7 +226,7 @@ func (r *InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		if err := r.client.Status().Update(ctx, instance); err != nil {
 			log.Error(err, "Could not update instance status")
 
-			return ctrl.Result{}, reconstructActualState(instance.Status.PackageRaddr, instance.Status.NodeName)
+			return ctrl.Result{}, reconstructActualState(instance.Status.PackageRaddr, instance.Status.NodeName, instance.Status.PackageLaddr)
 		}
 
 		return ctrl.Result{}, nil
@@ -212,14 +240,14 @@ func (r *InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		if err := r.client.Status().Update(ctx, instance); err != nil {
 			log.Error(err, "Could not update instance status")
 
-			return ctrl.Result{}, reconstructActualState(instance.Status.PackageRaddr, instance.Status.NodeName)
+			return ctrl.Result{}, reconstructActualState(instance.Status.PackageRaddr, instance.Status.NodeName, instance.Status.PackageLaddr)
 		}
 
 		newPackageLaddr, err := r.managerRESTClient.CreateInstance(instance.Spec.NodeName, instance.Status.PackageLaddr)
 		if err != nil {
 			log.Error(err, "Could not create instance")
 
-			return ctrl.Result{}, reconstructActualState(instance.Status.PackageRaddr, instance.Status.NodeName)
+			return ctrl.Result{}, reconstructActualState(instance.Status.PackageRaddr, instance.Status.NodeName, instance.Status.PackageLaddr)
 		}
 
 		instance.Status.PackageRaddr = instance.Spec.PackageRaddr
@@ -230,7 +258,7 @@ func (r *InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		if err := r.client.Status().Update(ctx, instance); err != nil {
 			log.Error(err, "Could not update instance status")
 
-			return ctrl.Result{}, reconstructActualState(instance.Status.PackageRaddr, instance.Status.NodeName)
+			return ctrl.Result{}, reconstructActualState(instance.Status.PackageRaddr, instance.Status.NodeName, instance.Status.PackageLaddr)
 		}
 
 		return ctrl.Result{}, nil
@@ -244,7 +272,7 @@ func (r *InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		if err := r.client.Status().Update(ctx, instance); err != nil {
 			log.Error(err, "Could not update instance status")
 
-			return ctrl.Result{}, reconstructActualState(instance.Status.PackageRaddr, instance.Status.NodeName)
+			return ctrl.Result{}, reconstructActualState(instance.Status.PackageRaddr, instance.Status.NodeName, instance.Status.PackageLaddr)
 		}
 
 		oldNodeName := instance.Status.NodeName
@@ -254,7 +282,7 @@ func (r *InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		if err != nil {
 			log.Error(err, "Could not create instance")
 
-			return ctrl.Result{}, reconstructActualState(instance.Status.PackageRaddr, instance.Status.NodeName)
+			return ctrl.Result{}, reconstructActualState(instance.Status.PackageRaddr, instance.Status.NodeName, instance.Status.PackageLaddr)
 		}
 
 		instance.Status.PackageRaddr = instance.Spec.PackageRaddr
@@ -264,7 +292,7 @@ func (r *InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		if err := r.client.Status().Update(ctx, instance); err != nil {
 			log.Error(err, "Could not update instance status")
 
-			return ctrl.Result{}, reconstructActualState(instance.Status.PackageRaddr, instance.Status.NodeName)
+			return ctrl.Result{}, reconstructActualState(instance.Status.PackageRaddr, instance.Status.NodeName, instance.Status.PackageLaddr)
 		}
 
 		// Delete the instance; if the new `packageRaddr` is a `packageLaddr` from an existing instance, this is a no-op since leeching an instance will lead to it being deleted automatically
@@ -278,7 +306,7 @@ func (r *InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		if err := r.client.Status().Update(ctx, instance); err != nil {
 			log.Error(err, "Could not update instance status")
 
-			return ctrl.Result{}, reconstructActualState(instance.Status.PackageRaddr, instance.Status.NodeName)
+			return ctrl.Result{}, reconstructActualState(instance.Status.PackageRaddr, instance.Status.NodeName, instance.Status.PackageLaddr)
 		}
 
 		return ctrl.Result{}, nil
