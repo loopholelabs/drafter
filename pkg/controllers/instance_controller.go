@@ -12,23 +12,35 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	architectv1alpha1 "github.com/loopholelabs/architekt/pkg/api/k8s/v1alpha1"
+	iclient "github.com/loopholelabs/architekt/pkg/client"
+)
+
+const (
+	InstanceStateCreating = "creating"
+	InstanceStateRunning  = "running"
 )
 
 type InstanceReconciler struct {
 	client   client.Client
 	scheme   *runtime.Scheme
 	recorder record.EventRecorder
+
+	managerRESTClient iclient.ManagerRESTClient
 }
 
 func NewInstanceReconciler(
 	client client.Client,
 	scheme *runtime.Scheme,
 	recorder record.EventRecorder,
+
+	managerRESTClient iclient.ManagerRESTClient,
 ) *InstanceReconciler {
 	return &InstanceReconciler{
 		client:   client,
 		scheme:   scheme,
 		recorder: recorder,
+
+		managerRESTClient: managerRESTClient,
 	}
 }
 
@@ -45,21 +57,51 @@ func (r *InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	instance := &architectv1alpha1.Instance{}
 	if err := r.client.Get(ctx, req.NamespacedName, instance); err != nil {
 		if apierrors.IsNotFound(err) {
-			log.Info("Could not find instance, skipping since object must have been deleted")
+			log.Info("Could not find instance, skipping since object must have been deleted", "packageRaddr", instance.Spec.PackageRaddr, "nodeName", instance.Spec.NodeName)
 
 			return ctrl.Result{}, nil
 		}
 
-		log.Error(err, "Could not get instance, retrying")
+		log.Error(err, "Could not get instance, retrying", "packageRaddr", instance.Spec.PackageRaddr, "nodeName", instance.Spec.NodeName)
 
 		return ctrl.Result{}, err
 	}
 
-	instance.Status.PackageRaddr = "Test package raddr"
-	instance.Status.NodeName = "Test node name"
+	if instance.Status.State == InstanceStateCreating {
+		log.Info("Instance creation already in progress, skipping", "packageRaddr", instance.Spec.PackageRaddr, "nodeName", instance.Spec.NodeName)
+
+		return ctrl.Result{}, nil
+	}
+
+	if instance.Status.State == InstanceStateRunning {
+		log.Info("Instance already exists, skipping", "packageRaddr", instance.Spec.PackageRaddr, "nodeName", instance.Spec.NodeName)
+
+		return ctrl.Result{}, nil
+	}
+
+	log.Info("Creating instance", "packageRaddr", instance.Spec.PackageRaddr, "nodeName", instance.Spec.NodeName)
+
+	instance.Status.State = InstanceStateCreating
 
 	if err := r.client.Status().Update(ctx, instance); err != nil {
-		log.Error(err, "Could not update Instance status, retrying")
+		log.Error(err, "Could not update Instance status, retrying", "packageRaddr", instance.Spec.PackageRaddr, "nodeName", instance.Spec.NodeName)
+
+		return ctrl.Result{}, err
+	}
+
+	outputPackageRaddr, err := r.managerRESTClient.CreateInstance(instance.Spec.NodeName, instance.Spec.PackageRaddr)
+	if err != nil {
+		log.Error(err, "Could not create instance, retrying", "packageRaddr", instance.Spec.PackageRaddr, "nodeName", instance.Spec.NodeName)
+
+		return ctrl.Result{}, err
+	}
+
+	instance.Status.PackageRaddr = outputPackageRaddr
+	instance.Status.NodeName = instance.Spec.NodeName
+	instance.Status.State = InstanceStateRunning
+
+	if err := r.client.Status().Update(ctx, instance); err != nil {
+		log.Error(err, "Could not update Instance status, retrying", "packageRaddr", instance.Spec.PackageRaddr, "nodeName", instance.Spec.NodeName)
 
 		return ctrl.Result{}, err
 	}

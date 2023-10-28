@@ -321,6 +321,37 @@ curl -v http://${CONTROL_PLANE_IP}:1400/nodes/node-1/instances | jq
 curl -v http://${CONTROL_PLANE_IP}:1400/nodes/node-2/instances | jq
 ```
 
+## Using the Operator
+
+### On a Workstation
+
+```shell
+architekt-registry
+```
+
+```shell
+architekt-manager --verbose
+```
+
+```shell
+sudo architekt-worker --verbose --name minikube --host-interface wlp0s20f3
+```
+
+```shell
+minikube start
+```
+
+```shell
+make depend
+make operator/install && go run ./cmd/architekt-operator/
+```
+
+```shell
+kubectl delete instance.io.loopholelabs.architekt/redis
+kubectl apply -f config/samples/architekt_v1alpha1_instance.yaml
+kubectl get -o yaml instance.io.loopholelabs.architekt/redis
+```
+
 ## Tearing Down Workstation and Server Dependencies
 
 ```shell

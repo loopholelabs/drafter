@@ -24,6 +24,10 @@ type InstanceStatus struct {
 	// NodeName is the name of the node that the instance is currently running on
 	// +operator-sdk:csv:customresourcedefinitions:type=status
 	NodeName string `json:"nodeName,omitempty"`
+
+	// State describes the current state of the instance
+	// +operator-sdk:csv:customresourcedefinitions:type=status
+	State string `json:"state,omitempty"`
 }
 
 //+kubebuilder:object:root=true

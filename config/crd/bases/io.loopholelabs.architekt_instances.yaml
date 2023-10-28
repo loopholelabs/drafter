@@ -52,6 +52,9 @@ spec:
               packageRaddr:
                 description: PackageAddr defines the current remote package address
                 type: string
+              state:
+                description: State describes the current state of the instance
+                type: string
             type: object
         type: object
     served: true

@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"net"
+	"net/url"
 	"os"
 	"strconv"
 
@@ -18,6 +19,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	architectv1alpha1 "github.com/loopholelabs/architekt/pkg/api/k8s/v1alpha1"
+	"github.com/loopholelabs/architekt/pkg/client"
 	"github.com/loopholelabs/architekt/pkg/controllers"
 	//+kubebuilder:scaffold:imports
 )
@@ -40,6 +42,7 @@ func main() {
 	webhookLaddr := flag.String("webhook-laddr", ":9443", "Listen address for Webhook server")
 	leaderElection := flag.Bool("leader-election", false, "Whether to enable leader election")
 	leaderElectionID := flag.String("leader-election-id", "46b4a8ff.io.loopholelabs.architekt", "Leader election ID to use")
+	rawManagerURL := flag.String("manager-url", "http://localhost:1400", "URL for manager API")
 
 	opts := zap.Options{
 		Development: true,
@@ -49,6 +52,13 @@ func main() {
 	flag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+
+	managerURL, err := url.Parse(*rawManagerURL)
+	if err != nil {
+		log.Error(err, "Could not to parse manager URL")
+
+		os.Exit(1)
+	}
 
 	webhookHost, rawWebhookPort, err := net.SplitHostPort(*webhookLaddr)
 	if err != nil {
@@ -87,6 +97,8 @@ func main() {
 		mgr.GetClient(),
 		mgr.GetScheme(),
 		mgr.GetEventRecorderFor("instance-controller"),
+
+		*client.NewManagerRESTClient(*managerURL),
 	).SetupWithManager(mgr); err != nil {
 		log.Error(err, "Could not to create controller", "controller", "Instance")
 

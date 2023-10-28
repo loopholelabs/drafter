@@ -7,18 +7,18 @@ import (
 	"net/url"
 )
 
-type RESTClient struct {
-	controlPlaneURL url.URL
+type ManagerRESTClient struct {
+	managerURL url.URL
 }
 
-func NewRestClient(controlPlaneURL url.URL) *RESTClient {
-	return &RESTClient{
-		controlPlaneURL: controlPlaneURL,
+func NewManagerRESTClient(managerURL url.URL) *ManagerRESTClient {
+	return &ManagerRESTClient{
+		managerURL: managerURL,
 	}
 }
 
-func (c *RESTClient) ListNodes() ([]string, error) {
-	u := c.controlPlaneURL.JoinPath("nodes")
+func (c *ManagerRESTClient) ListNodes() ([]string, error) {
+	u := c.managerURL.JoinPath("nodes")
 
 	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
 	if err != nil {
@@ -43,8 +43,8 @@ func (c *RESTClient) ListNodes() ([]string, error) {
 	return nodeNames, nil
 }
 
-func (c *RESTClient) ListInstances(nodeName string) ([]string, error) {
-	u := c.controlPlaneURL.JoinPath("nodes", nodeName, "instances")
+func (c *ManagerRESTClient) ListInstances(nodeName string) ([]string, error) {
+	u := c.managerURL.JoinPath("nodes", nodeName, "instances")
 
 	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
 	if err != nil {
@@ -69,8 +69,8 @@ func (c *RESTClient) ListInstances(nodeName string) ([]string, error) {
 	return packageRaddrs, nil
 }
 
-func (c *RESTClient) CreateInstance(nodeName, packageRaddr string) (string, error) {
-	u := c.controlPlaneURL.JoinPath("nodes", nodeName, "instances", packageRaddr)
+func (c *ManagerRESTClient) CreateInstance(nodeName, packageRaddr string) (string, error) {
+	u := c.managerURL.JoinPath("nodes", nodeName, "instances", packageRaddr)
 
 	req, err := http.NewRequest(http.MethodPost, u.String(), nil)
 	if err != nil {
@@ -95,8 +95,8 @@ func (c *RESTClient) CreateInstance(nodeName, packageRaddr string) (string, erro
 	return outputPackageRaddr, nil
 }
 
-func (c *RESTClient) DeleteInstance(nodeName, packageRaddr string) error {
-	u := c.controlPlaneURL.JoinPath("nodes", nodeName, "instances", packageRaddr)
+func (c *ManagerRESTClient) DeleteInstance(nodeName, packageRaddr string) error {
+	u := c.managerURL.JoinPath("nodes", nodeName, "instances", packageRaddr)
 
 	req, err := http.NewRequest(http.MethodDelete, u.String(), nil)
 	if err != nil {
