@@ -86,7 +86,9 @@ func (r *InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		if ok := controllerutil.AddFinalizer(instance, instanceFinalizer); !ok {
 			log.Error(nil, "Could not add finalizer to instance")
 
-			return ctrl.Result{Requeue: true}, nil
+			return ctrl.Result{
+				Requeue: true,
+			}, nil
 		}
 
 		if err := r.client.Update(ctx, instance); err != nil {
@@ -116,7 +118,9 @@ func (r *InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		if ok := controllerutil.RemoveFinalizer(instance, instanceFinalizer); !ok {
 			log.Error(nil, "Could not remove finalizer from instance")
 
-			return ctrl.Result{Requeue: true}, nil
+			return ctrl.Result{
+				Requeue: true,
+			}, nil
 		}
 
 		if err := r.client.Update(ctx, instance); err != nil {
@@ -150,7 +154,6 @@ func (r *InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		instance.Status.NodeName = instance.Spec.NodeName
 		instance.Status.PackageLaddr = newPackageLaddr
 		instance.Status.State = InstanceStateRunning
-		instance.Status.Message = ""
 
 		if err := r.client.Status().Update(ctx, instance); err != nil {
 			log.Error(err, "Could not update instance status, retrying")
@@ -183,7 +186,6 @@ func (r *InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		instance.Status.NodeName = instance.Spec.NodeName
 		instance.Status.PackageLaddr = newPackageLaddr
 		instance.Status.State = InstanceStateRunning
-		instance.Status.Message = ""
 
 		if err := r.client.Status().Update(ctx, instance); err != nil {
 			log.Error(err, "Could not update instance status, retrying")
@@ -232,7 +234,6 @@ func (r *InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		}
 
 		instance.Status.State = InstanceStateRunning
-		instance.Status.Message = ""
 
 		if err := r.client.Status().Update(ctx, instance); err != nil {
 			log.Error(err, "Could not update instance status, retrying")
