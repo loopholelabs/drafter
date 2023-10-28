@@ -477,7 +477,7 @@ func (w *Worker) CreateInstance(ctx context.Context, packageRaddr string) (outpu
 
 	v1.RegisterSeederWithMetaServer(server, NewSeederWithMetaServiceGrpc(NewSeederWithMetaService(svc, b, agentVSockPort, w.verbose)))
 
-	lis, err := net.Listen("tcp", net.JoinHostPort(w.lhost, "0"))
+	lis, err := net.Listen("tcp", w.lhost+":0") // We're not using `net.JoinHostPort` here since we can't listen on i.e. [:]:0
 	if err != nil {
 		panic(err)
 	}
@@ -514,7 +514,7 @@ func (w *Worker) CreateInstance(ctx context.Context, packageRaddr string) (outpu
 		panic(err)
 	}
 
-	outputRaddr = net.JoinHostPort(w.ahost, port)
+	outputRaddr = w.ahost + ":" + port // We're not using `net.JoinHostPort` here since we can't listen on i.e. [:]:0
 
 	w.instancesLock.Lock()
 	defer w.instancesLock.Unlock()
