@@ -73,8 +73,8 @@ func (r *InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, nil
 	}
 
-	if instance.Status.State == InstanceStateRunning {
-		log.Info("Instance already exists, skipping", "packageRaddr", instance.Spec.PackageRaddr, "nodeName", instance.Spec.NodeName)
+	if instance.Status.State == InstanceStateRunning && instance.Spec.PackageRaddr == instance.Status.LeechedRaddr {
+		log.Info("Instance already in desired state, skipping", "packageRaddr", instance.Spec.PackageRaddr, "nodeName", instance.Spec.NodeName, "leechedRaddr", instance.Spec.PackageRaddr)
 
 		return ctrl.Result{}, nil
 	}
@@ -96,7 +96,13 @@ func (r *InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, err
 	}
 
-	instance.Status.PackageRaddr = outputPackageRaddr
+	if instance.Status.PackageLaddr == "" {
+		instance.Status.LeechedRaddr = instance.Spec.PackageRaddr
+	} else {
+		instance.Status.LeechedRaddr = instance.Status.PackageLaddr
+	}
+
+	instance.Status.PackageLaddr = outputPackageRaddr
 	instance.Status.NodeName = instance.Spec.NodeName
 	instance.Status.State = InstanceStateRunning
 

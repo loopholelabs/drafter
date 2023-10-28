@@ -6,6 +6,7 @@ spec:
   packageRaddr: localhost:1337
   nodeName: minikube
 # status:
-#   packageRaddr: 160.202.128.189:1337
+#   packageLaddr: 186.233.186.43:1337
 #   nodeName: node-2
 #   state: running
+#   leechedRaddr: 160.202.128.189:1337

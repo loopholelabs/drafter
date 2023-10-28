@@ -39,18 +39,23 @@ spec:
                   run on
                 type: string
               packageRaddr:
-                description: PackageAddr defines the original remote package address
+                description: PackageAddr defines the package address
                 type: string
             type: object
           status:
             description: InstanceStatus defines the observed state of Instance
             properties:
+              leechedRaddr:
+                description: LeechedRaddr describes the remote package address that
+                  this instance was leeched from
+                type: string
               nodeName:
                 description: NodeName is the name of the node that the instance is
                   currently running on
                 type: string
-              packageRaddr:
-                description: PackageAddr defines the current remote package address
+              packageLaddr:
+                description: PackageLaddr describes the listen package address that
+                  this instance is being seeded on
                 type: string
               state:
                 description: State describes the current state of the instance

@@ -6,7 +6,7 @@ import (
 
 // InstanceSpec defines the desired state of Instance
 type InstanceSpec struct {
-	// PackageAddr defines the original remote package address
+	// PackageAddr defines the package address
 	// +operator-sdk:csv:customresourcedefinitions:type=spec
 	PackageRaddr string `json:"packageRaddr,omitempty"`
 
@@ -17,9 +17,9 @@ type InstanceSpec struct {
 
 // InstanceStatus defines the observed state of Instance
 type InstanceStatus struct {
-	// PackageAddr defines the current remote package address
+	// PackageLaddr describes the listen package address that this instance is being seeded on
 	// +operator-sdk:csv:customresourcedefinitions:type=status
-	PackageRaddr string `json:"packageRaddr,omitempty"`
+	PackageLaddr string `json:"packageLaddr,omitempty"`
 
 	// NodeName is the name of the node that the instance is currently running on
 	// +operator-sdk:csv:customresourcedefinitions:type=status
@@ -28,6 +28,10 @@ type InstanceStatus struct {
 	// State describes the current state of the instance
 	// +operator-sdk:csv:customresourcedefinitions:type=status
 	State string `json:"state,omitempty"`
+
+	// LeechedRaddr describes the remote package address that this instance was leeched from
+	// +operator-sdk:csv:customresourcedefinitions:type=status
+	LeechedRaddr string `json:"leechedRaddr,omitempty"`
 }
 
 //+kubebuilder:object:root=true
