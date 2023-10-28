@@ -157,6 +157,92 @@ func (r *InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 
 			return ctrl.Result{}, err
 		}
+
+		return ctrl.Result{}, nil
+	}
+
+	if instance.Status.PackageLaddr != "" && instance.Status.PackageRaddr == instance.Spec.PackageRaddr && instance.Status.NodeName != instance.Spec.NodeName {
+		log.Info("Migrating instance")
+
+		instance.Status.State = InstanceStateMigrating
+
+		if err := r.client.Status().Update(ctx, instance); err != nil {
+			log.Error(err, "Could not update instance status, retrying")
+
+			return ctrl.Result{}, err
+		}
+
+		newPackageLaddr, err := r.managerRESTClient.CreateInstance(instance.Spec.NodeName, instance.Status.PackageLaddr)
+		if err != nil {
+			log.Error(err, "Could not create instance, retrying")
+
+			return ctrl.Result{}, err
+		}
+
+		instance.Status.PackageRaddr = instance.Spec.PackageRaddr
+		instance.Status.NodeName = instance.Spec.NodeName
+		instance.Status.PackageLaddr = newPackageLaddr
+		instance.Status.State = InstanceStateRunning
+		instance.Status.Message = ""
+
+		if err := r.client.Status().Update(ctx, instance); err != nil {
+			log.Error(err, "Could not update instance status, retrying")
+
+			return ctrl.Result{}, err
+		}
+
+		return ctrl.Result{}, nil
+	}
+
+	if instance.Status.PackageLaddr != "" && instance.Status.PackageRaddr != instance.Spec.PackageRaddr {
+		log.Info("Recreating instance")
+
+		instance.Status.State = InstanceStateRecreating
+
+		if err := r.client.Status().Update(ctx, instance); err != nil {
+			log.Error(err, "Could not update instance status, retrying")
+
+			return ctrl.Result{}, err
+		}
+
+		oldNodeName := instance.Status.NodeName
+		oldPackageLaddr := instance.Status.PackageLaddr
+
+		newPackageLaddr, err := r.managerRESTClient.CreateInstance(instance.Spec.NodeName, instance.Spec.PackageRaddr)
+		if err != nil {
+			log.Error(err, "Could not create instance, retrying")
+
+			return ctrl.Result{}, err
+		}
+
+		instance.Status.PackageRaddr = instance.Spec.PackageRaddr
+		instance.Status.NodeName = instance.Spec.NodeName
+		instance.Status.PackageLaddr = newPackageLaddr
+
+		if err := r.client.Status().Update(ctx, instance); err != nil {
+			log.Error(err, "Could not update instance status, retrying")
+
+			return ctrl.Result{}, err
+		}
+
+		// Delete the instance; if the new `packageRaddr` is a `packageLaddr` from an existing instance, this is a no-op since leeching an instance will lead to it being deleted automatically
+		// This is however still necessary since the new `packageRaddr` can also be a package seeded from a registry, where this is not the case, and where the instance needs to be cleaned up manually here!
+		if err := r.managerRESTClient.DeleteInstance(oldNodeName, oldPackageLaddr); err != nil {
+			log.Info("Could not delete instance, ignoring", "error", err)
+		}
+
+		instance.Status.State = InstanceStateRunning
+		instance.Status.Message = ""
+
+		if err := r.client.Status().Update(ctx, instance); err != nil {
+			log.Error(err, "Could not update instance status, retrying")
+
+			return ctrl.Result{}, err
+		}
+
+		log.Info("Instance is already in desired state, skipping")
+
+		return ctrl.Result{}, nil
 	}
 
 	return ctrl.Result{}, nil
