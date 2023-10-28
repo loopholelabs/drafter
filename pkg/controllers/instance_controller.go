@@ -102,6 +102,9 @@ func (r *InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 			return err
 		}
 
+		instance.Status.PackageRaddr = packageRaddr
+		instance.Status.NodeName = nodeName
+		instance.Status.PackageLaddr = packageLaddr
 		instance.Status.State = InstanceStateUnknown
 
 		if err := r.client.Status().Update(ctx, instance); err != nil {
