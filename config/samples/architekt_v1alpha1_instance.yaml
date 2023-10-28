@@ -3,7 +3,7 @@ kind: Instance
 metadata:
   name: redis
 spec:
-  packageRaddr: localhost:1337 # If you change this, the VM is recreated from the new `packageRaddr`
+  packageRaddr: localhost:40183 # If you change this, the VM is recreated from the new `packageRaddr`
   nodeName: minikube # If you change this, the VM is migrated
 # status:
 #   packageRaddr: localhost:1337

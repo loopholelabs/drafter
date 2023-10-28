@@ -77,9 +77,11 @@ func (r *InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		instance.Status.State == InstanceStateMigrating ||
 		instance.Status.State == InstanceStateRecreating ||
 		instance.Status.State == InstanceStateDeleting {
-		log.Info("An instance operation is already in progress, skipping")
+		log.Info("An instance operation is already in progress, requeuing")
 
-		return ctrl.Result{}, nil
+		return ctrl.Result{
+			Requeue: true,
+		}, nil
 	}
 
 	if !controllerutil.ContainsFinalizer(instance, instanceFinalizer) {
@@ -146,6 +148,12 @@ func (r *InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 			return ctrl.Result{}, err
 		}
 
+		if err := r.client.Get(ctx, req.NamespacedName, instance); err != nil {
+			log.Error(err, "Could not re-fetch instance, retrying")
+
+			return ctrl.Result{}, err
+		}
+
 		instance.Status.PackageRaddr = instance.Spec.PackageRaddr
 		instance.Status.NodeName = instance.Spec.NodeName
 		instance.Status.PackageLaddr = newPackageLaddr
@@ -175,6 +183,12 @@ func (r *InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		newPackageLaddr, err := r.managerRESTClient.CreateInstance(instance.Spec.NodeName, instance.Status.PackageLaddr)
 		if err != nil {
 			log.Error(err, "Could not create instance, retrying")
+
+			return ctrl.Result{}, err
+		}
+
+		if err := r.client.Get(ctx, req.NamespacedName, instance); err != nil {
+			log.Error(err, "Could not re-fetch instance, retrying")
 
 			return ctrl.Result{}, err
 		}
@@ -215,6 +229,12 @@ func (r *InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 			return ctrl.Result{}, err
 		}
 
+		if err := r.client.Get(ctx, req.NamespacedName, instance); err != nil {
+			log.Error(err, "Could not re-fetch instance, retrying")
+
+			return ctrl.Result{}, err
+		}
+
 		instance.Status.PackageRaddr = instance.Spec.PackageRaddr
 		instance.Status.NodeName = instance.Spec.NodeName
 		instance.Status.PackageLaddr = newPackageLaddr
@@ -229,6 +249,12 @@ func (r *InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		// This is however still necessary since the new `packageRaddr` can also be a package seeded from a registry, where this is not the case, and where the instance needs to be cleaned up manually here!
 		if err := r.managerRESTClient.DeleteInstance(oldNodeName, oldPackageLaddr); err != nil {
 			log.Info("Could not delete instance, ignoring", "error", err)
+		}
+
+		if err := r.client.Get(ctx, req.NamespacedName, instance); err != nil {
+			log.Error(err, "Could not re-fetch instance, retrying")
+
+			return ctrl.Result{}, err
 		}
 
 		instance.Status.State = InstanceStateRunning
