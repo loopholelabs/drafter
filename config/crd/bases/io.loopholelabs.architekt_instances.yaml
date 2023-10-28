@@ -35,27 +35,32 @@ spec:
             description: InstanceSpec defines the desired state of Instance
             properties:
               nodeName:
-                description: NodeName is the name of the node that the instance should
+                description: NodeName defines the name of the node the instance should
                   run on
                 type: string
               packageRaddr:
-                description: PackageAddr defines the package address
+                description: PackageAddr defines the package address that the instance
+                  should use
                 type: string
             type: object
           status:
             description: InstanceStatus defines the observed state of Instance
             properties:
-              leechedRaddr:
-                description: LeechedRaddr describes the remote package address that
-                  this instance was leeched from
+              message:
+                description: Message describes the current (error) message of the
+                  instance
                 type: string
               nodeName:
-                description: NodeName is the name of the node that the instance is
+                description: NodeName defines the name of the node the instance is
                   currently running on
                 type: string
               packageLaddr:
-                description: PackageLaddr describes the listen package address that
-                  this instance is being seeded on
+                description: PackageLaddr describes the package address that the instance
+                  is currently seeding on
+                type: string
+              packageRaddr:
+                description: PackageAddr describes the package address that the instance
+                  is currently using
                 type: string
               state:
                 description: State describes the current state of the instance

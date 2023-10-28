@@ -17,9 +17,11 @@ import (
 )
 
 const (
-	InstanceStateCreating = "creating"
-	InstanceStateRunning  = "running"
-	InstanceStateDeleting = "deleting"
+	InstanceStateCreating   = "creating"
+	InstanceStateMigrating  = "migrating"
+	InstanceStateRecreating = "recreating"
+	InstanceStateDeleting   = "deleting"
+	InstanceStateRunning    = "running"
 
 	instanceFinalizer = "io.loopholelabs.architekt/finalizer"
 )
@@ -61,67 +63,64 @@ func (r *InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	instance := &architectv1alpha1.Instance{}
 	if err := r.client.Get(ctx, req.NamespacedName, instance); err != nil {
 		if apierrors.IsNotFound(err) {
-			log.Info("Could not find instance, skipping since object must have been deleted", "packageRaddr", instance.Spec.PackageRaddr, "nodeName", instance.Spec.NodeName)
+			log.Info("Could not find instance, skipping since object must have been deleted")
 
 			return ctrl.Result{}, nil
 		}
 
-		log.Error(err, "Could not get instance, retrying", "packageRaddr", instance.Spec.PackageRaddr, "nodeName", instance.Spec.NodeName)
+		log.Error(err, "Could not get instance, retrying")
 
 		return ctrl.Result{}, err
 	}
 
-	if instance.Status.State == InstanceStateCreating {
-		log.Info("Instance creation already in progress, skipping", "packageRaddr", instance.Spec.PackageRaddr, "nodeName", instance.Spec.NodeName)
-
-		return ctrl.Result{}, nil
-	}
-
-	if instance.Status.State == InstanceStateDeleting {
-		log.Info("Instance deletion already in progress, skipping", "packageRaddr", instance.Spec.PackageRaddr, "nodeName", instance.Spec.NodeName)
+	if instance.Status.State == InstanceStateCreating ||
+		instance.Status.State == InstanceStateMigrating ||
+		instance.Status.State == InstanceStateRecreating ||
+		instance.Status.State == InstanceStateDeleting {
+		log.Info("An instance operation is already in progress, skipping")
 
 		return ctrl.Result{}, nil
 	}
 
 	if !controllerutil.ContainsFinalizer(instance, instanceFinalizer) {
 		if ok := controllerutil.AddFinalizer(instance, instanceFinalizer); !ok {
-			log.Error(nil, "Could not add finalizer to instance", "packageRaddr", instance.Spec.PackageRaddr, "nodeName", instance.Spec.NodeName)
+			log.Error(nil, "Could not add finalizer to instance")
 
 			return ctrl.Result{Requeue: true}, nil
 		}
 
 		if err := r.client.Update(ctx, instance); err != nil {
-			log.Error(err, "Could not update instance, retrying", "packageRaddr", instance.Spec.PackageRaddr, "nodeName", instance.Spec.NodeName)
+			log.Error(err, "Could not update instance, retrying")
 
 			return ctrl.Result{}, err
 		}
 	}
 
 	if instance.GetDeletionTimestamp() != nil && controllerutil.ContainsFinalizer(instance, instanceFinalizer) {
-		log.Info("Deleting instance", "packageRaddr", instance.Spec.PackageRaddr, "nodeName", instance.Spec.NodeName, "packageLaddr", instance.Status.PackageLaddr)
+		log.Info("Deleting instance")
 
 		instance.Status.State = InstanceStateDeleting
 
 		if err := r.client.Status().Update(ctx, instance); err != nil {
-			log.Error(err, "Could not update instance status, retrying", "packageRaddr", instance.Spec.PackageRaddr, "nodeName", instance.Spec.NodeName, "packageLaddr", instance.Status.PackageLaddr)
+			log.Error(err, "Could not update instance status, retrying")
 
 			return ctrl.Result{}, err
 		}
 
-		if err := r.managerRESTClient.DeleteInstance(instance.Spec.NodeName, instance.Status.PackageLaddr); err != nil {
-			log.Error(err, "Could not delete instance, retrying", "packageRaddr", instance.Spec.PackageRaddr, "nodeName", instance.Spec.NodeName, "packageLaddr", instance.Status.PackageLaddr)
+		if err := r.managerRESTClient.DeleteInstance(instance.Status.NodeName, instance.Status.PackageLaddr); err != nil {
+			log.Error(err, "Could not delete instance, retrying")
 
 			return ctrl.Result{}, err
 		}
 
 		if ok := controllerutil.RemoveFinalizer(instance, instanceFinalizer); !ok {
-			log.Error(nil, "Could not remove finalizer from instance", "packageRaddr", instance.Spec.PackageRaddr, "nodeName", instance.Spec.NodeName, "packageLaddr", instance.Status.PackageLaddr)
+			log.Error(nil, "Could not remove finalizer from instance")
 
 			return ctrl.Result{Requeue: true}, nil
 		}
 
 		if err := r.client.Update(ctx, instance); err != nil {
-			log.Error(err, "Could not update instance, retrying", "packageRaddr", instance.Spec.PackageRaddr, "nodeName", instance.Spec.NodeName, "packageLaddr", instance.Status.PackageLaddr)
+			log.Error(err, "Could not update instance, retrying")
 
 			return ctrl.Result{}, err
 		}
@@ -129,43 +128,35 @@ func (r *InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, nil
 	}
 
-	if instance.Status.State == InstanceStateRunning && instance.Spec.PackageRaddr == instance.Status.LeechedRaddr {
-		log.Info("Instance already in desired state, skipping", "packageRaddr", instance.Spec.PackageRaddr, "nodeName", instance.Spec.NodeName, "leechedRaddr", instance.Status.LeechedRaddr)
-
-		return ctrl.Result{}, nil
-	}
-
-	log.Info("Creating instance", "packageRaddr", instance.Spec.PackageRaddr, "nodeName", instance.Spec.NodeName)
-
-	instance.Status.State = InstanceStateCreating
-
-	if err := r.client.Status().Update(ctx, instance); err != nil {
-		log.Error(err, "Could not update instance status, retrying", "packageRaddr", instance.Spec.PackageRaddr, "nodeName", instance.Spec.NodeName)
-
-		return ctrl.Result{}, err
-	}
-
-	outputPackageRaddr, err := r.managerRESTClient.CreateInstance(instance.Spec.NodeName, instance.Spec.PackageRaddr)
-	if err != nil {
-		log.Error(err, "Could not create instance, retrying", "packageRaddr", instance.Spec.PackageRaddr, "nodeName", instance.Spec.NodeName)
-
-		return ctrl.Result{}, err
-	}
-
 	if instance.Status.PackageLaddr == "" {
-		instance.Status.LeechedRaddr = instance.Spec.PackageRaddr
-	} else {
-		instance.Status.LeechedRaddr = instance.Status.PackageLaddr
-	}
+		log.Info("Creating instance")
 
-	instance.Status.PackageLaddr = outputPackageRaddr
-	instance.Status.NodeName = instance.Spec.NodeName
-	instance.Status.State = InstanceStateRunning
+		instance.Status.State = InstanceStateCreating
 
-	if err := r.client.Status().Update(ctx, instance); err != nil {
-		log.Error(err, "Could not update instance status, retrying", "packageRaddr", instance.Spec.PackageRaddr, "nodeName", instance.Spec.NodeName)
+		if err := r.client.Status().Update(ctx, instance); err != nil {
+			log.Error(err, "Could not update instance status, retrying")
 
-		return ctrl.Result{}, err
+			return ctrl.Result{}, err
+		}
+
+		newPackageLaddr, err := r.managerRESTClient.CreateInstance(instance.Spec.NodeName, instance.Spec.PackageRaddr)
+		if err != nil {
+			log.Error(err, "Could not create instance, retrying")
+
+			return ctrl.Result{}, err
+		}
+
+		instance.Status.PackageRaddr = instance.Spec.PackageRaddr
+		instance.Status.NodeName = instance.Spec.NodeName
+		instance.Status.PackageLaddr = newPackageLaddr
+		instance.Status.State = InstanceStateRunning
+		instance.Status.Message = ""
+
+		if err := r.client.Status().Update(ctx, instance); err != nil {
+			log.Error(err, "Could not update instance status, retrying")
+
+			return ctrl.Result{}, err
+		}
 	}
 
 	return ctrl.Result{}, nil

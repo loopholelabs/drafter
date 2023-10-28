@@ -6,32 +6,36 @@ import (
 
 // InstanceSpec defines the desired state of Instance
 type InstanceSpec struct {
-	// PackageAddr defines the package address
+	// PackageAddr defines the package address that the instance should use
 	// +operator-sdk:csv:customresourcedefinitions:type=spec
 	PackageRaddr string `json:"packageRaddr,omitempty"`
 
-	// NodeName is the name of the node that the instance should run on
+	// NodeName defines the name of the node the instance should run on
 	// +operator-sdk:csv:customresourcedefinitions:type=spec
 	NodeName string `json:"nodeName,omitempty"`
 }
 
 // InstanceStatus defines the observed state of Instance
 type InstanceStatus struct {
-	// PackageLaddr describes the listen package address that this instance is being seeded on
+	// PackageAddr describes the package address that the instance is currently using
 	// +operator-sdk:csv:customresourcedefinitions:type=status
-	PackageLaddr string `json:"packageLaddr,omitempty"`
+	PackageRaddr string `json:"packageRaddr,omitempty"`
 
-	// NodeName is the name of the node that the instance is currently running on
+	// NodeName defines the name of the node the instance is currently running on
 	// +operator-sdk:csv:customresourcedefinitions:type=status
 	NodeName string `json:"nodeName,omitempty"`
+
+	// PackageLaddr describes the package address that the instance is currently seeding on
+	// +operator-sdk:csv:customresourcedefinitions:type=status
+	PackageLaddr string `json:"packageLaddr,omitempty"`
 
 	// State describes the current state of the instance
 	// +operator-sdk:csv:customresourcedefinitions:type=status
 	State string `json:"state,omitempty"`
 
-	// LeechedRaddr describes the remote package address that this instance was leeched from
+	// Message describes the current (error) message of the instance
 	// +operator-sdk:csv:customresourcedefinitions:type=status
-	LeechedRaddr string `json:"leechedRaddr,omitempty"`
+	Message string `json:"message,omitempty"`
 }
 
 //+kubebuilder:object:root=true
