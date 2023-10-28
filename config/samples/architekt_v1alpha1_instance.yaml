@@ -10,4 +10,3 @@ spec:
 #   nodeName: node-1
 #   packageLaddr: localhost:41839
 #   state: running
-#   message: ""
