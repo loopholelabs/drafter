@@ -48,12 +48,12 @@ sudo architekt-daemon --host-interface enp1s0f0 # Sets up networking and keeps r
 
 ## Build a Blueprint on a Workstation
 
+### Base
+
 ```shell
 export DISK_SIZE="5G"
 export GATEWAY_IP="172.100.100.1"
 export GUEST_CIDR="172.100.100.2/30"
-export LIVENESS_VSOCK_PORT="25"
-export AGENT_VSOCK_PORT="26"
 
 rm -rf out/blueprint
 mkdir -p out/blueprint
@@ -65,7 +65,6 @@ curl -Lo /tmp/kernel.tar.xz https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-5
 tar Jxvf /tmp/kernel.tar.xz --strip-components=1 -C /tmp/kernel
 
 curl -Lo /tmp/kernel/.config https://raw.githubusercontent.com/loopholelabs/firecracker/live-migration-1.5/resources/guest_configs/microvm-kernel-ci-x86_64-5.10.config
-# curl -Lo /tmp/kernel/.config https://raw.githubusercontent.com/firecracker-microvm/firecracker/main/resources/guest_configs/microvm-kernel-ci-x86_64-5.10.config
 
 sh - <<'EOT'
 cd /tmp/kernel
@@ -103,7 +102,7 @@ iface eth0 inet static
 EOT
 
 sudo chroot /tmp/blueprint sh - <<'EOT'
-apk add alpine-base util-linux linux-virt linux-virt-dev coreutils binutils grep bzip2 chrony redis redis-openrc
+apk add alpine-base util-linux linux-virt linux-virt-dev coreutils binutils grep bzip2 chrony
 echo root:root | chpasswd
 
 ln -s agetty /etc/init.d/agetty.ttyS0
@@ -115,7 +114,6 @@ echo 'refclock PHC /dev/ptp0 poll 3 dpoll -2 offset 0' >> /etc/chrony/chrony.con
 
 rc-update add networking default
 rc-update add chronyd default
-rc-update add redis default
 EOT
 
 sudo cp /tmp/blueprint/boot/initramfs-virt out/blueprint/architekt.arkinitramfs
@@ -124,6 +122,37 @@ sudo chown ${USER} out/blueprint/architekt.arkinitramfs
 sync -f /tmp/blueprint
 sudo umount /tmp/blueprint || true
 rm -rf /tmp/blueprint
+```
+
+### Application
+
+#### Redis
+
+```shell
+sudo umount /tmp/blueprint || true
+rm -rf /tmp/blueprint
+mkdir -p /tmp/blueprint
+
+sudo mount out/blueprint/architekt.arkdisk /tmp/blueprint
+sudo chown ${USER} /tmp/blueprint
+
+sudo chroot /tmp/blueprint sh - <<'EOT'
+apk add redis redis-openrc
+
+rc-update add redis default
+EOT
+
+sync -f /tmp/blueprint
+sudo umount /tmp/blueprint || true
+rm -rf /tmp/blueprint
+```
+
+### Agent
+
+```shell
+export LIVENESS_VSOCK_PORT="25"
+export AGENT_VSOCK_PORT="26"
+export SERVICE_DEPENDENCY="redis" # Adjust this to your application's service
 
 sudo umount /tmp/blueprint || true
 rm -rf /tmp/blueprint
@@ -146,7 +175,7 @@ output_log="/dev/stdout"
 error_log="/dev/stderr"
 
 depend() {
-	need net redis architekt-agent
+	need net ${SERVICE_DEPENDENCY} architekt-agent
 }
 EOT
 chmod +x /tmp/blueprint/etc/init.d/architekt-liveness
@@ -166,7 +195,7 @@ output_log="/dev/stdout"
 error_log="/dev/stderr"
 
 depend() {
-	need net redis
+	need net ${SERVICE_DEPENDENCY}
 }
 EOT
 chmod +x /tmp/blueprint/etc/init.d/architekt-agent
