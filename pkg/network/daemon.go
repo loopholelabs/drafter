@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"sync"
 )
 
@@ -89,6 +90,11 @@ func NewDaemon(
 }
 
 func (d *Daemon) Open(ctx context.Context) error {
+	// Check if the host interface exists
+	if _, err := net.InterfaceByName(d.hostInterface); err != nil {
+		return err
+	}
+
 	if err := CreateNAT(d.hostInterface); err != nil {
 		return err
 	}
