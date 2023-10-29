@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 
+	"github.com/loopholelabs/architekt/pkg/firecracker"
 	"github.com/loopholelabs/architekt/pkg/roles"
 	"github.com/loopholelabs/architekt/pkg/utils"
 )
@@ -38,6 +39,7 @@ func main() {
 
 	cpuCount := flag.Int("cpu-count", 1, "CPU count")
 	memorySize := flag.Int("memory-size", 1024, "Memory size (in MB)")
+	bootArgs := flag.String("boot-args", firecracker.DefaultBootArgs, "Boot/kernel arguments")
 
 	packageOutputPath := flag.String("package-output-path", filepath.Join("out", "redis.ark"), "Path to write package file to")
 	packagePaddingSize := flag.Int("package-padding-size", 128, "Padding to add to package for state file and file system metadata (in MB)")
@@ -78,6 +80,7 @@ func main() {
 			CpuCount:           *cpuCount,
 			MemorySize:         *memorySize,
 			PackagePaddingSize: *packagePaddingSize,
+			BootArgs:           *bootArgs,
 		},
 		utils.LivenessConfiguration{
 			LivenessVSockPort: uint32(*livenessVSockPort),

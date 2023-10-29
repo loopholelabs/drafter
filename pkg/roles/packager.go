@@ -190,6 +190,7 @@ func (p *Packager) CreatePackage(
 
 		vmConfiguration.CpuCount,
 		vmConfiguration.MemorySize,
+		vmConfiguration.BootArgs,
 
 		networkConfiguration.Interface,
 		networkConfiguration.MAC,

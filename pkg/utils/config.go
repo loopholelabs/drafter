@@ -34,4 +34,5 @@ type VMConfiguration struct {
 	CpuCount           int
 	MemorySize         int
 	PackagePaddingSize int
+	BootArgs           string
 }
