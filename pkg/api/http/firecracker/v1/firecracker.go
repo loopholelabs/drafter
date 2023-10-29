@@ -8,7 +8,7 @@ type BootSource struct {
 
 type Drive struct {
 	DriveID      string `json:"drive_id"`
-	PathOnHost   string `json:"path_on_host"`
+	PathOnHost   string `json:"path_on_host"f`
 	IsRootDevice bool   `json:"is_root_device"`
 	IsReadOnly   bool   `json:"is_read_only"`
 }
@@ -36,7 +36,6 @@ type SnapshotCreateRequest struct {
 	SnapshotType   string `json:"snapshot_type"`
 	SnapshotPath   string `json:"snapshot_path"`
 	MemoryFilePath string `json:"mem_file_path"`
-	Version        string `json:"version"`
 }
 
 type SnapshotLoadRequest struct {
@@ -53,7 +52,6 @@ type SnapshotLoadRequestMemoryBackend struct {
 
 type SnapshotNoMemoryCreateRequest struct {
 	SnapshotPath string `json:"snapshot_path"`
-	Version      string `json:"version"`
 }
 
 type VSock struct {

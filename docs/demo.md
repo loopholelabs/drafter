@@ -64,7 +64,7 @@ mkdir -p /tmp/kernel
 curl -Lo /tmp/kernel.tar.xz https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-5.10.194.tar.xz
 tar Jxvf /tmp/kernel.tar.xz --strip-components=1 -C /tmp/kernel
 
-curl -Lo /tmp/kernel/.config https://raw.githubusercontent.com/loopholelabs/firecracker/live-migration-1.4/resources/guest_configs/microvm-kernel-x86_64-5.10.config
+curl -Lo /tmp/kernel/.config https://raw.githubusercontent.com/loopholelabs/firecracker/live-migration-1.5/resources/guest_configs/microvm-kernel-ci-x86_64-5.10.config
 # curl -Lo /tmp/kernel/.config https://raw.githubusercontent.com/firecracker-microvm/firecracker/main/resources/guest_configs/microvm-kernel-ci-x86_64-5.10.config
 
 sh - <<'EOT'

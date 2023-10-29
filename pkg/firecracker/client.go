@@ -31,8 +31,6 @@ const (
 	stateName  = "architekt.arkstate"
 	memoryName = "architekt.arkmemory"
 
-	snapshotVersion = "1.4.0"
-
 	MountName = "mount"
 )
 
@@ -194,7 +192,6 @@ func CreateSnapshot(client *http.Client) error {
 			SnapshotType:   "Full",
 			SnapshotPath:   filepath.Join(MountName, stateName),
 			MemoryFilePath: filepath.Join(MountName, memoryName),
-			Version:        snapshotVersion,
 		},
 		"snapshot/create",
 	); err != nil {
@@ -242,7 +239,6 @@ func FlushSnapshot(client *http.Client) error {
 		client,
 		&v1.SnapshotNoMemoryCreateRequest{
 			SnapshotPath: filepath.Join(MountName, stateName),
-			Version:      snapshotVersion,
 		},
 		"snapshot-nomemory/create",
 	); err != nil {
