@@ -43,7 +43,7 @@ EOT
 ```
 
 ```shell
-sudo architekt-daemon # Sets up networking and keeps running; CTRL-C to tear down networking
+sudo architekt-daemon --host-interface enp1s0f0 # Sets up networking and keeps running; CTRL-C to tear down networking. Be sure to adjust --host-interface to your local system.
 ```
 
 ## Build a Blueprint on a Workstation
@@ -224,7 +224,7 @@ sudo architekt-peer --netns ark0 --raddr ${REGISTRY_IP}:1337 --enable-input # On
 ```
 
 ```shell
-sudo architekt-peer --netns ark0 --raddr ${NODE_1_IP}:1337 --enable-input # On ${NODE_2_IP}: Migrates to this peer (be sure to use a free namespace)
+sudo architekt-peer --netns ark0 --raddr ${NODE_1_IP}:1338 --enable-input # On ${NODE_2_IP}: Migrates to this peer (be sure to use a free namespace)
 ```
 
 ```shell
@@ -291,7 +291,7 @@ sudo architekt-worker --verbose --name node-1 --host-interface enp1s0f0 --ahost 
 ```
 
 ```shell
-sudo architekt-worker --verbose --name node-2 --host-interface enp1s0f0 --ahost ${NODE_2_IP} --control-plane-raddr ${CONTROL_PLANE_IP}:1399 # On ${NODE_2_IP}
+sudo architekt-worker --verbose --name node-2 --host-interface enp1s0f1 --ahost ${NODE_2_IP} --control-plane-raddr ${CONTROL_PLANE_IP}:1399 # On ${NODE_2_IP}
 ```
 
 ```shell
