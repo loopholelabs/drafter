@@ -133,9 +133,8 @@ func main() {
 
 	clients := 0
 
-	registry := rpc.NewRegistry(
+	registry := rpc.NewRegistry[services.ManagerRemote, json.RawMessage](
 		svc,
-		services.ManagerRemote{},
 
 		time.Second*10,
 		ctx,
@@ -177,13 +176,29 @@ func main() {
 
 	log.Println("Connected to manager", conn.RemoteAddr())
 
+	encoder := json.NewEncoder(conn)
+	decoder := json.NewDecoder(conn)
+
 	go func() {
 		if err := registry.LinkStream(
-			json.NewEncoder(conn).Encode,
-			json.NewDecoder(conn).Decode,
+			func(v rpc.Message[json.RawMessage]) error {
+				return encoder.Encode(v)
+			},
+			func(v *rpc.Message[json.RawMessage]) error {
+				return decoder.Decode(v)
+			},
 
-			json.Marshal,
-			json.Unmarshal,
+			func(v any) (json.RawMessage, error) {
+				b, err := json.Marshal(v)
+				if err != nil {
+					return nil, err
+				}
+
+				return json.RawMessage(b), nil
+			},
+			func(data json.RawMessage, v any) error {
+				return json.Unmarshal([]byte(data), v)
+			},
 		); err != nil && !utils.IsClosedErr(err) {
 			errs <- err
 

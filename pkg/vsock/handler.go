@@ -68,9 +68,8 @@ func (s *Handler) Open(
 ) (utils.AgentRemote, error) {
 	ready := make(chan string)
 
-	registry := rpc.NewRegistry(
+	registry := rpc.NewRegistry[utils.AgentRemote, json.RawMessage](
 		struct{}{},
-		utils.AgentRemote{},
 
 		s.timeout,
 		ctx,
@@ -156,12 +155,28 @@ func (s *Handler) Open(
 	go func() {
 		defer s.wg.Done()
 
-		if err := registry.LinkStream(
-			json.NewEncoder(s.conn).Encode,
-			json.NewDecoder(s.conn).Decode,
+		encoder := json.NewEncoder(s.conn)
+		decoder := json.NewDecoder(s.conn)
 
-			json.Marshal,
-			json.Unmarshal,
+		if err := registry.LinkStream(
+			func(v rpc.Message[json.RawMessage]) error {
+				return encoder.Encode(v)
+			},
+			func(v *rpc.Message[json.RawMessage]) error {
+				return decoder.Decode(v)
+			},
+
+			func(v any) (json.RawMessage, error) {
+				b, err := json.Marshal(v)
+				if err != nil {
+					return nil, err
+				}
+
+				return json.RawMessage(b), nil
+			},
+			func(data json.RawMessage, v any) error {
+				return json.Unmarshal([]byte(data), v)
+			},
 		); err != nil && !utils.IsClosedErr(err) && !strings.HasSuffix(err.Error(), "use of closed network connection") {
 			s.errs <- err
 
