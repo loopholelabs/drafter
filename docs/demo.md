@@ -147,12 +147,71 @@ sudo umount /tmp/blueprint || true
 rm -rf /tmp/blueprint
 ```
 
+#### Minecraft
+
+```shell
+sudo umount /tmp/blueprint/proc || true
+sudo umount /tmp/blueprint || true
+rm -rf /tmp/blueprint
+mkdir -p /tmp/blueprint
+
+sudo mount out/blueprint/architekt.arkdisk /tmp/blueprint
+sudo chown ${USER} /tmp/blueprint
+
+sudo mount -t proc proc /tmp/blueprint/proc
+
+sudo chroot /tmp/blueprint sh - <<'EOT'
+apk add openjdk17 curl
+
+curl -L -o /usr/sbin/minecraft-server.jar https://piston-data.mojang.com/v1/objects/5b868151bd02b41319f54c8d4061b8cae84e665c/server.jar
+
+cd /root
+
+/usr/bin/java -Xmx1024M -Xms1024M -jar /usr/sbin/minecraft-server.jar nogui || true
+
+echo 'eula=true' > eula.txt
+echo 'online-mode=false' >> server.properties
+EOT
+
+sudo umount /tmp/blueprint/proc
+
+tee /tmp/blueprint/etc/init.d/minecraft-server <<EOT
+#!/sbin/openrc-run
+
+command="/usr/bin/java"
+command_args="-Xmx1024M -Xms1024M -jar /usr/sbin/minecraft-server.jar nogui"
+command_background=true
+pidfile="/run/\${RC_SVCNAME}.pid"
+output_log="/dev/stdout"
+error_log="/dev/stderr"
+directory="/root"
+
+depend() {
+	need net
+}
+EOT
+chmod +x /tmp/blueprint/etc/init.d/minecraft-server
+
+sudo chroot /tmp/blueprint sh - <<'EOT'
+rc-update add minecraft-server default
+EOT
+
+sync -f /tmp/blueprint
+sudo umount /tmp/blueprint || true
+rm -rf /tmp/blueprint
+```
+
 ### Agent
 
 ```shell
 export LIVENESS_VSOCK_PORT="25"
 export AGENT_VSOCK_PORT="26"
-export SERVICE_DEPENDENCY="redis" # Adjust this to your application's service
+
+# For Redis
+export SERVICE_DEPENDENCY="redis"
+
+# For Minecraft
+export SERVICE_DEPENDENCY="minecraft-server"
 
 sudo umount /tmp/blueprint || true
 rm -rf /tmp/blueprint
@@ -212,7 +271,12 @@ rm -rf /tmp/blueprint
 ## Creating and Running a Blueprint on a Workstation
 
 ```shell
+# For Redis
 sudo architekt-packager
+
+# For Minecraft (needs more RAM than the default 1024 MB)
+sudo architekt-packager --memory-size 2048
+
 sudo architekt-runner # CTRL-C to flush the snapshot and run again to resume
 ```
 
