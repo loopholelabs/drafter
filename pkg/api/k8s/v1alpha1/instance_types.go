@@ -32,6 +32,10 @@ type InstanceStatus struct {
 	// State describes the current state of the instance
 	// +operator-sdk:csv:customresourcedefinitions:type=status
 	State string `json:"state,omitempty"`
+
+	// Message describes the current (error) message of the instance
+	// +operator-sdk:csv:customresourcedefinitions:type=status
+	Message string `json:"message,omitempty"`
 }
 
 //+kubebuilder:object:root=true
