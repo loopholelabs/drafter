@@ -211,6 +211,7 @@ sudo architekt-peer --netns ark0 # Migrates to this peer without enabling input;
 
 ```shell
 export REGISTRY_IP="186.233.186.43"
+
 export NODE_1_IP="186.233.186.43"
 export NODE_2_IP="160.202.128.189"
 ```
@@ -274,6 +275,7 @@ curl -v http://localhost:1400/nodes/node-1/instances | jq
 ```shell
 export REGISTRY_IP="186.233.186.43"
 export CONTROL_PLANE_IP="186.233.186.43"
+
 export NODE_1_IP="186.233.186.43"
 export NODE_2_IP="160.202.128.189"
 ```
@@ -338,18 +340,84 @@ sudo architekt-worker --verbose --name minikube --host-interface wlp0s20f3
 ```
 
 ```shell
-minikube start
+make operator/install # Be sure to have access to a Kubernetes cluster running on localhost, i.e. one started with `minikube start`
 ```
 
 ```shell
-make depend
-make operator/install && go run ./cmd/architekt-operator/
+architekt-operator
 ```
 
 ```shell
-kubectl delete instance.io.loopholelabs.architekt/redis
-kubectl apply -f config/samples/architekt_v1alpha1_instance.yaml
-kubectl get -o yaml instance.io.loopholelabs.architekt/redis
+kubectl apply -f config/samples/architekt_v1alpha1_instance.yaml # Create VM
+```
+
+```shell
+kubectl get -o yaml instance.io.loopholelabs.architekt/redis # List VMs and watch for changes
+```
+
+```shell
+kubectl apply -f config/samples/architekt_v1alpha1_instance.yaml # Simulate VM migration on localhost (on workstation; be sure to have access to the Kubernetes cluster and change `spec.packageRaddr` to `status.packageLaddr` from the watch command after the VM has `spec.status.state == running`
+```
+
+```shell
+kubectl delete instance.io.loopholelabs.architekt/redis # Delete VM
+```
+
+### On a Cluster
+
+```shell
+export REGISTRY_IP="186.233.186.43"
+export CONTROL_PLANE_IP="186.233.186.43"
+
+export NODE_1_IP="186.233.186.43"
+export NODE_1_NAME="chicago" # Name of the Kubernetes node (Kubernetes API server) on ${NODE_1_IP}
+
+export NODE_2_IP="160.202.128.189"
+export NODE_2_NAME="nyc" # Name of the Kubernetes node (Kubernetes worker) on ${NODE_2_IP}
+```
+
+```shell
+architekt-registry # On ${REGISTRY_IP}
+```
+
+```shell
+architekt-manager --verbose # On ${CONTROL_PLANE_IP}
+```
+
+```shell
+sudo architekt-worker --verbose --name ${NODE_1_NAME} --host-interface enp1s0f0 --ahost ${NODE_1_IP} --control-plane-raddr ${CONTROL_PLANE_IP}:1399 # On ${NODE_1_IP}
+```
+
+```shell
+sudo architekt-worker --verbose --name ${NODE_2_NAME} --host-interface enp1s0f1 --ahost ${NODE_2_IP} --control-plane-raddr ${CONTROL_PLANE_IP}:1399 # On ${NODE_2_IP}
+```
+
+```shell
+make operator/install # On workstation; be sure to have access to the Kubernetes cluster
+```
+
+```shell
+KUBECONFIG="/etc/rancher/k3s/k3s.yaml" architekt-operator # On ${NODE_1_IP}/where Kubernetes API server runs; assuming k3s cluster, point to correct Kubeconfig location otherwise
+```
+
+```shell
+kubectl apply -f config/samples/architekt_v1alpha1_instance.yaml # Create VM (on workstation; be sure to have access to the Kubernetes cluster and change `packageRaddr` to ${REGISTRY_IP} and `nodeName` to ${NODE_1_NAME})
+```
+
+```shell
+kubectl get -o yaml instance.io.loopholelabs.architekt/redis # List VMs and watch for changes (on workstation; be sure to have access to the Kubernetes cluster)
+```
+
+```shell
+kubectl apply -f config/samples/architekt_v1alpha1_instance.yaml # Migrate VM from node 1 to node 2 (on workstation; be sure to have access to the Kubernetes cluster and change `nodeName` to ${NODE_2_NAME})
+```
+
+```shell
+kubectl apply -f config/samples/architekt_v1alpha1_instance.yaml # Migrate VM from node 2 to node 1 (on workstation; be sure to have access to the Kubernetes cluster and change `nodeName` to ${NODE_1_NAME})
+```
+
+```shell
+kubectl delete instance.io.loopholelabs.architekt/redis # Delete VM (on workstation; be sure to have access to the Kubernetes cluster and change `nodeName` to ${NODE_1_NAME})
 ```
 
 ## Tearing Down Workstation and Server Dependencies
@@ -359,6 +427,7 @@ sudo pkill -2 architekt-peer
 sudo pkill -2 architekt-registry
 sudo pkill -2 architekt-daemon
 sudo pkill -2 architekt-worker
+sudo pkill -2 architekt-operator
 
 # Completely resetting the network configuration (should not be necessary)
 sudo iptables -X
