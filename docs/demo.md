@@ -201,11 +201,10 @@ sudo umount /tmp/blueprint || true
 rm -rf /tmp/blueprint
 ```
 
-### Agent
+### Liveness
 
 ```shell
 export LIVENESS_VSOCK_PORT="25"
-export AGENT_VSOCK_PORT="26"
 
 # For Redis
 export SERVICE_DEPENDENCY="redis"
@@ -221,7 +220,6 @@ sudo mount out/blueprint/architekt.arkdisk /tmp/blueprint
 sudo chown ${USER} /tmp/blueprint
 
 CGO_ENABLED=0 go build -o /tmp/blueprint/usr/sbin/architekt-liveness ./cmd/architekt-liveness
-CGO_ENABLED=0 go build -o /tmp/blueprint/usr/sbin/architekt-agent ./cmd/architekt-agent
 
 tee /tmp/blueprint/etc/init.d/architekt-liveness <<EOT
 #!/sbin/openrc-run
@@ -242,6 +240,31 @@ chmod +x /tmp/blueprint/etc/init.d/architekt-liveness
 sudo chroot /tmp/blueprint sh - <<'EOT'
 rc-update add architekt-liveness default
 EOT
+
+sync -f /tmp/blueprint
+sudo umount /tmp/blueprint || true
+rm -rf /tmp/blueprint
+```
+
+### Agent
+
+```shell
+export AGENT_VSOCK_PORT="26"
+
+# For Redis
+export SERVICE_DEPENDENCY="redis"
+
+# For Minecraft
+export SERVICE_DEPENDENCY="minecraft-server"
+
+sudo umount /tmp/blueprint || true
+rm -rf /tmp/blueprint
+mkdir -p /tmp/blueprint
+
+sudo mount out/blueprint/architekt.arkdisk /tmp/blueprint
+sudo chown ${USER} /tmp/blueprint
+
+CGO_ENABLED=0 go build -o /tmp/blueprint/usr/sbin/architekt-agent ./cmd/architekt-agent
 
 tee /tmp/blueprint/etc/init.d/architekt-agent <<EOT
 #!/sbin/openrc-run
@@ -453,7 +476,7 @@ kubectl apply -f config/samples/architekt_v1alpha1_instance.yaml # Simulate VM m
 ```
 
 ```shell
-kubectl delete instance.io.loopholelabs.architekt/redis # Delete VM
+kubectl delete -f config/samples/architekt_v1alpha1_instance.yaml # Delete VM
 ```
 
 ### On a Cluster
@@ -510,7 +533,7 @@ kubectl apply -f config/samples/architekt_v1alpha1_instance.yaml # Migrate VM fr
 ```
 
 ```shell
-kubectl delete instance.io.loopholelabs.architekt/redis # Delete VM (on workstation; be sure to have access to the Kubernetes cluster and change `nodeName` to ${NODE_1_NAME})
+kubectl delete -f config/samples/architekt_v1alpha1_instance.yaml # Delete VM (on workstation; be sure to have access to the Kubernetes cluster and change `nodeName` to ${NODE_1_NAME})
 ```
 
 ## Tearing Down Workstation and Server Dependencies
