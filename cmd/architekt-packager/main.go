@@ -5,6 +5,7 @@ import (
 	"flag"
 	"os/exec"
 	"path/filepath"
+	"time"
 
 	"github.com/loopholelabs/architekt/pkg/firecracker"
 	"github.com/loopholelabs/architekt/pkg/roles"
@@ -22,6 +23,8 @@ func main() {
 
 	enableOutput := flag.Bool("enable-output", true, "Whether to enable VM stdout and stderr")
 	enableInput := flag.Bool("enable-input", false, "Whether to enable VM stdin")
+
+	resumeTimeout := flag.Duration("resume-timeout", time.Minute, "Maximum amount of time to wait for agent to resume")
 
 	netns := flag.String("netns", "ark0", "Network namespace to run Firecracker in")
 	iface := flag.String("interface", "tap0", "Name of the interface in the network namespace to use")
@@ -108,6 +111,7 @@ func main() {
 		},
 		utils.AgentConfiguration{
 			AgentVSockPort: uint32(*agentVSockPort),
+			ResumeTimeout:  *resumeTimeout,
 		},
 	); err != nil {
 		panic(err)
