@@ -51,7 +51,15 @@ sudo architekt-daemon --host-interface enp1s0f0 # Sets up networking and keeps r
 ### Base
 
 ```shell
-export DISK_SIZE="5G"
+# For Redis
+export DISK_SIZE="256M"
+
+# For Minecraft (Cuberite/1.12.2)
+export DISK_SIZE="512M"
+
+# For Minecraft (Official server)
+export DISK_SIZE="2G"
+
 export GATEWAY_IP="172.100.100.1"
 export GUEST_CIDR="172.100.100.2/30"
 
@@ -271,7 +279,7 @@ rm -rf /tmp/blueprint
 
 #### Minecraft (Official Server)
 
-> This is significantly more memory-intensive than Cuberite, leading to much higher migration times
+> This is significantly more memory-intensive than Cuberite, leading to much higher migration times.
 
 ```shell
 sudo umount /tmp/blueprint/proc || true
@@ -419,7 +427,7 @@ rm -rf /tmp/blueprint
 
 ```shell
 # For Redis & Minecraft (Cuberite/1.12.2)
-sudo architekt-packager
+sudo architekt-packager --memory-size 512
 
 # For Minecraft (Official server; needs more RAM than the default 1024 MB)
 sudo architekt-packager --memory-size 2048
