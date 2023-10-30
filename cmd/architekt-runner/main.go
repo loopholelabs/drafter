@@ -27,6 +27,8 @@ func main() {
 	enableOutput := flag.Bool("enable-output", true, "Whether to enable VM stdout and stderr")
 	enableInput := flag.Bool("enable-input", false, "Whether to enable VM stdin")
 
+	resumeTimeout := flag.Duration("resume-timeout", time.Minute, "Maximum amount of time to wait for agent to resume")
+
 	netns := flag.String("netns", "ark0", "Network namespace to run Firecracker in")
 
 	numaNode := flag.Int("numa-node", 0, "NUMA node to run Firecracker in")
@@ -88,6 +90,7 @@ func main() {
 		},
 		utils.AgentConfiguration{
 			AgentVSockPort: packageConfig.AgentVSockPort,
+			ResumeTimeout:  *resumeTimeout,
 		},
 	)
 

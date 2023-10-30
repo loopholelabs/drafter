@@ -147,6 +147,8 @@ type Worker struct {
 	lhost string
 	ahost string
 
+	resumeTimeout time.Duration
+
 	instances     map[string]*instance
 	instancesLock sync.Mutex
 }
@@ -163,6 +165,8 @@ func NewWorker(
 
 	lhost string,
 	ahost string,
+
+	resumeTimeout time.Duration,
 ) *Worker {
 	return &Worker{
 		verbose: verbose,
@@ -176,6 +180,8 @@ func NewWorker(
 
 		lhost: lhost,
 		ahost: ahost,
+
+		resumeTimeout: resumeTimeout,
 
 		instances: map[string]*instance{},
 	}
@@ -280,6 +286,7 @@ func (w *Worker) CreateInstance(ctx context.Context, packageRaddr string) (outpu
 		},
 		utils.AgentConfiguration{
 			AgentVSockPort: agentVSockPort,
+			ResumeTimeout:  w.resumeTimeout,
 		},
 	)
 

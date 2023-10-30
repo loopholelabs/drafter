@@ -46,6 +46,8 @@ func main() {
 	enableOutput := flag.Bool("enable-output", true, "Whether to enable VM stdout and stderr")
 	enableInput := flag.Bool("enable-input", false, "Whether to enable VM stdin")
 
+	resumeTimeout := flag.Duration("resume-timeout", time.Minute, "Maximum amount of time to wait for agent to resume")
+
 	numaNode := flag.Int("numa-node", 0, "NUMA node to run Firecracker in")
 	cgroupVersion := flag.Int("cgroup-version", 2, "Cgroup version to use for Jailer")
 
@@ -129,6 +131,8 @@ func main() {
 
 		*lhost,
 		*ahost,
+
+		*resumeTimeout,
 	)
 
 	clients := 0

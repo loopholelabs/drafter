@@ -135,7 +135,7 @@ func (r *Runner) Resume(ctx context.Context, packageDevicePath string) error {
 	r.handler = vsock.NewHandler(
 		filepath.Join(r.vmPath, VSockName),
 		r.agentConfiguration.AgentVSockPort,
-		time.Second*10,
+		r.agentConfiguration.ResumeTimeout,
 	)
 
 	r.wg.Add(1)
@@ -148,7 +148,7 @@ func (r *Runner) Resume(ctx context.Context, packageDevicePath string) error {
 	}()
 
 	var err error
-	r.remote, err = r.handler.Open(ctx, time.Millisecond*100, time.Second*10)
+	r.remote, err = r.handler.Open(ctx, time.Millisecond*100, r.agentConfiguration.ResumeTimeout)
 	if err != nil {
 		return err
 	}

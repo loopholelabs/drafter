@@ -1,5 +1,7 @@
 package utils
 
+import "time"
+
 type HypervisorConfiguration struct {
 	FirecrackerBin string
 	JailerBin      string
@@ -24,6 +26,7 @@ type NetworkConfiguration struct {
 
 type AgentConfiguration struct {
 	AgentVSockPort uint32
+	ResumeTimeout  time.Duration
 }
 
 type LivenessConfiguration struct {

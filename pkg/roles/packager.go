@@ -210,7 +210,7 @@ func (p *Packager) CreatePackage(
 		filepath.Join(vmPath, VSockName),
 		uint32(agentConfiguration.AgentVSockPort),
 
-		time.Second*10,
+		agentConfiguration.ResumeTimeout,
 	)
 
 	wg.Add(1)
@@ -223,7 +223,7 @@ func (p *Packager) CreatePackage(
 	}()
 
 	defer handler.Close()
-	remote, err := handler.Open(ctx, time.Millisecond*100, time.Second*10)
+	remote, err := handler.Open(ctx, time.Millisecond*100, agentConfiguration.ResumeTimeout)
 	if err != nil {
 		return err
 	}
