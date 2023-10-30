@@ -130,3 +130,5 @@ require (
 replace github.com/pojntfx/dudirekta => ../dudirekta
 
 replace github.com/pojntfx/r3map => ../r3map
+
+replace github.com/loopholelabs/voltools => ../voltools

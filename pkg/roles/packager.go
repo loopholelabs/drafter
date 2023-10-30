@@ -68,9 +68,9 @@ func (p *Packager) CreatePackage(
 		return err
 	}
 
-	packageSize := math.Ceil((float64(((initramfsSize+kernelSize+diskSize)/(1024*1024))+int64(vmConfiguration.MemorySize)+int64(vmConfiguration.PackagePaddingSize))/float64(1024))/float64(10)) * 10
+	packageSize := int64(math.Ceil((float64((initramfsSize + kernelSize + diskSize)) / float64(1024*1024)))) + int64(vmConfiguration.MemorySize) + int64(vmConfiguration.PackagePaddingSize)
 
-	if err := fsdata.CreateFile(int(packageSize), packageOutputPath); err != nil {
+	if err := fsdata.CreateNextLargestFile(int(packageSize), packageOutputPath); err != nil {
 		return err
 	}
 
