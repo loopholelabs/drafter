@@ -147,7 +147,131 @@ sudo umount /tmp/blueprint || true
 rm -rf /tmp/blueprint
 ```
 
-#### Minecraft
+#### Minecraft (Cuberite/1.12.2)
+
+```shell
+sudo umount /tmp/blueprint || true
+rm -rf /tmp/blueprint
+mkdir -p /tmp/blueprint
+
+sudo mount out/blueprint/architekt.arkdisk /tmp/blueprint
+sudo chown ${USER} /tmp/blueprint
+
+if [ ! -d /tmp/blueprint/root/cuberite ]; then
+    git clone --recursive https://github.com/cuberite/cuberite.git /tmp/blueprint/root/cuberite
+fi
+
+sudo chroot /tmp/blueprint sh - <<'EOT'
+apk add build-base git python3 perl clang cmake expect bash
+
+cd /root
+
+if [ ! -f /cuberite/Release/Server/Cuberite ]; then
+    mkdir -p cuberite/Release
+    cd cuberite/Release
+
+    cmake -DCMAKE_BUILD_TYPE=RELEASE .. -DCMAKE_CXX_COMPILER=/usr/bin/clang++
+    make -l
+
+    tee Server/settings.ini <<EOL
+; This is the main server configuration
+; Most of the settings here can be configured using the webadmin interface, if enabled in webadmin.ini
+
+[Authentication]
+Authenticate=0
+AllowBungeeCord=0
+OnlyAllowBungeeCord=0
+ProxySharedSecret=
+Server=sessionserver.mojang.com
+Address=/session/minecraft/hasJoined?username=%USERNAME%&serverId=%SERVERID%
+
+[MojangAPI]
+NameToUUIDServer=api.mojang.com
+NameToUUIDAddress=/profiles/minecraft
+UUIDToProfileServer=sessionserver.mojang.com
+UUIDToProfileAddress=/session/minecraft/profile/%UUID%?unsigned=false
+
+[Server]
+Description=Cuberite - in C++!
+ShutdownMessage=Server shutdown
+MaxPlayers=100
+HardcoreEnabled=0
+AllowMultiLogin=0
+RequireResourcePack=0
+ResourcePackUrl=
+CustomRedirectUrl=https://youtu.be/dQw4w9WgXcQ
+Ports=25565
+AllowMultiWorldTabCompletion=1
+DefaultViewDistance=10
+
+[RCON]
+Enabled=0
+
+[AntiCheat]
+LimitPlayerBlockChanges=1
+
+[Worlds]
+DefaultWorld=world
+World=world_nether
+World=world_the_end
+
+[WorldPaths]
+world=world
+world_nether=world_nether
+world_the_end=world_the_end
+
+[Plugins]
+Core=1
+ChatLog=1
+ProtectionAreas=0
+
+[DeadlockDetect]
+Enabled=1
+IntervalSec=20
+
+[Seed]
+Seed=775375601
+
+[SpawnPosition]
+MaxViewDistance=10
+X=0.500000
+Y=115.000000
+Z=0.500000
+PregenerateDistance=20
+EOL
+fi
+
+mkdir -p /root/.cache/
+EOT
+
+tee /tmp/blueprint/etc/init.d/minecraft-server <<EOT
+#!/sbin/openrc-run
+
+command="/bin/bash"
+command_args="-c 'cp -r /root/cuberite/Release/Server/* /run && cd /run && unbuffer ./Cuberite'"
+command_background=true
+pidfile="/run/\${RC_SVCNAME}.pid"
+output_log="/dev/stdout"
+error_log="/dev/stderr"
+
+depend() {
+	need net
+}
+EOT
+chmod +x /tmp/blueprint/etc/init.d/minecraft-server
+
+sudo chroot /tmp/blueprint sh - <<'EOT'
+rc-update add minecraft-server default
+EOT
+
+sync -f /tmp/blueprint
+sudo umount /tmp/blueprint || true
+rm -rf /tmp/blueprint
+```
+
+#### Minecraft (Official Server)
+
+> This is significantly more memory-intensive than Cuberite, leading to much higher migration times
 
 ```shell
 sudo umount /tmp/blueprint/proc || true
@@ -294,10 +418,10 @@ rm -rf /tmp/blueprint
 ## Creating and Running a Blueprint on a Workstation
 
 ```shell
-# For Redis
+# For Redis & Minecraft (Cuberite/1.12.2)
 sudo architekt-packager
 
-# For Minecraft (needs more RAM than the default 1024 MB)
+# For Minecraft (Official server; needs more RAM than the default 1024 MB)
 sudo architekt-packager --memory-size 2048
 
 sudo architekt-runner # CTRL-C to flush the snapshot and run again to resume
