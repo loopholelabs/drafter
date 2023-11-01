@@ -43,26 +43,14 @@ EOT
 ```
 
 ```shell
-sudo architekt-daemon --host-interface enp1s0f0 # Sets up networking and keeps running; CTRL-C to tear down networking. Be sure to adjust --host-interface to your local system.
+sudo architekt-daemon --host-interface bond0 # Sets up networking and keeps running; CTRL-C to tear down networking. Be sure to adjust --host-interface to your local system.
 ```
 
 ## Build a Blueprint on a Workstation
 
-### Base
+### Kernel
 
 ```shell
-# For Redis
-export DISK_SIZE="256M"
-
-# For Minecraft (Cuberite/1.12.2)
-export DISK_SIZE="512M"
-
-# For Minecraft (Official server)
-export DISK_SIZE="2G"
-
-export GATEWAY_IP="172.100.100.1"
-export GUEST_CIDR="172.100.100.2/30"
-
 rm -rf out/blueprint
 mkdir -p out/blueprint
 
@@ -81,6 +69,22 @@ make -j$(nproc) vmlinux
 EOT
 
 cp /tmp/kernel/vmlinux out/blueprint/architekt.arkkernel
+```
+
+### Base
+
+```shell
+# For Redis
+export DISK_SIZE="256M"
+
+# For Minecraft (Cuberite/1.12.2)
+export DISK_SIZE="1536M"
+
+# For Minecraft (Official server)
+export DISK_SIZE="2G"
+
+export GATEWAY_IP="172.100.100.1"
+export GUEST_CIDR="172.100.100.2/30"
 
 qemu-img create -f raw out/blueprint/architekt.arkdisk ${DISK_SIZE}
 mkfs.ext4 out/blueprint/architekt.arkdisk
@@ -110,7 +114,7 @@ iface eth0 inet static
 EOT
 
 sudo chroot /tmp/blueprint sh - <<'EOT'
-apk add alpine-base util-linux linux-virt linux-virt-dev coreutils binutils grep bzip2 chrony
+apk add alpine-base util-linux linux-virt linux-virt-dev coreutils binutils grep bzip2 chrony haveged
 echo root:root | chpasswd
 
 ln -s agetty /etc/init.d/agetty.ttyS0
@@ -122,6 +126,7 @@ echo 'refclock PHC /dev/ptp0 poll 3 dpoll -2 offset 0' >> /etc/chrony/chrony.con
 
 rc-update add networking default
 rc-update add chronyd default
+rc-update add haveged default
 EOT
 
 sudo cp /tmp/blueprint/boot/initramfs-virt out/blueprint/architekt.arkinitramfs
@@ -200,9 +205,9 @@ UUIDToProfileServer=sessionserver.mojang.com
 UUIDToProfileAddress=/session/minecraft/profile/%UUID%?unsigned=false
 
 [Server]
-Description=Cuberite - in C++!
+Description=Minecraft on Architekt
 ShutdownMessage=Server shutdown
-MaxPlayers=100
+MaxPlayers=20
 HardcoreEnabled=0
 AllowMultiLogin=0
 RequireResourcePack=0
@@ -426,13 +431,13 @@ rm -rf /tmp/blueprint
 ## Creating and Running a Blueprint on a Workstation
 
 ```shell
-# For Redis & Minecraft (Cuberite/1.12.2)
-sudo architekt-packager --memory-size 512
+# For Redis & Minecraft (Cuberite/1.12.2) (be sure to use a free namespace)
+sudo architekt-packager --netns ark0 --memory-size 512
 
-# For Minecraft (Official server; needs more RAM than the default 1024 MB)
-sudo architekt-packager --memory-size 2048
+# For Minecraft (Official server; needs more RAM than the default 1024 MB) (be sure to use a free namespace)
+sudo architekt-packager --netns ark0 --memory-size 2048
 
-sudo architekt-runner # CTRL-C to flush the snapshot and run again to resume
+sudo architekt-runner --netns ark0 # CTRL-C to flush the snapshot and run again to resume (be sure to use a free namespace)
 ```
 
 ## Distributing, Running and Migrating Packages
@@ -458,10 +463,10 @@ sudo architekt-peer --netns ark0 # Migrates to this peer without enabling input;
 ### On a Cluster
 
 ```shell
-export REGISTRY_IP="186.233.186.43"
+export REGISTRY_IP="93.187.218.239"
 
-export NODE_1_IP="186.233.186.43"
-export NODE_2_IP="160.202.128.189"
+export NODE_1_IP="93.187.218.239"
+export NODE_2_IP="147.75.198.143"
 ```
 
 ```shell
@@ -521,11 +526,11 @@ curl -v http://localhost:1400/nodes/node-1/instances | jq
 ### On a Cluster
 
 ```shell
-export REGISTRY_IP="186.233.186.43"
-export CONTROL_PLANE_IP="186.233.186.43"
+export REGISTRY_IP="93.187.218.239"
+export CONTROL_PLANE_IP="93.187.218.239"
 
-export NODE_1_IP="186.233.186.43"
-export NODE_2_IP="160.202.128.189"
+export NODE_1_IP="93.187.218.239"
+export NODE_2_IP="147.75.198.143"
 ```
 
 ```shell
@@ -537,11 +542,11 @@ architekt-manager --verbose # On ${CONTROL_PLANE_IP}
 ```
 
 ```shell
-sudo architekt-worker --verbose --name node-1 --host-interface enp1s0f0 --ahost ${NODE_1_IP} --control-plane-raddr ${CONTROL_PLANE_IP}:1399 # On ${NODE_1_IP}
+sudo architekt-worker --verbose --name node-1 --host-interface bond0 --ahost ${NODE_1_IP} --control-plane-raddr ${CONTROL_PLANE_IP}:1399 # On ${NODE_1_IP}
 ```
 
 ```shell
-sudo architekt-worker --verbose --name node-2 --host-interface enp1s0f1 --ahost ${NODE_2_IP} --control-plane-raddr ${CONTROL_PLANE_IP}:1399 # On ${NODE_2_IP}
+sudo architekt-worker --verbose --name node-2 --host-interface bond0 --ahost ${NODE_2_IP} --control-plane-raddr ${CONTROL_PLANE_IP}:1399 # On ${NODE_2_IP}
 ```
 
 ```shell
@@ -614,13 +619,13 @@ kubectl delete -f config/samples/architekt_v1alpha1_instance.yaml # Delete VM
 ### On a Cluster
 
 ```shell
-export REGISTRY_IP="186.233.186.43"
-export CONTROL_PLANE_IP="186.233.186.43"
+export REGISTRY_IP="93.187.218.239"
+export CONTROL_PLANE_IP="93.187.218.239"
 
-export NODE_1_IP="186.233.186.43"
+export NODE_1_IP="93.187.218.239"
 export NODE_1_NAME="chicago" # Name of the Kubernetes node (Kubernetes API server) on ${NODE_1_IP}
 
-export NODE_2_IP="160.202.128.189"
+export NODE_2_IP="147.75.198.143"
 export NODE_2_NAME="nyc" # Name of the Kubernetes node (Kubernetes worker) on ${NODE_2_IP}
 ```
 
@@ -633,11 +638,11 @@ architekt-manager --verbose # On ${CONTROL_PLANE_IP}
 ```
 
 ```shell
-sudo architekt-worker --verbose --name ${NODE_1_NAME} --host-interface enp1s0f0 --ahost ${NODE_1_IP} --control-plane-raddr ${CONTROL_PLANE_IP}:1399 # On ${NODE_1_IP}
+sudo architekt-worker --verbose --name ${NODE_1_NAME} --host-interface bond0 --ahost ${NODE_1_IP} --control-plane-raddr ${CONTROL_PLANE_IP}:1399 # On ${NODE_1_IP}
 ```
 
 ```shell
-sudo architekt-worker --verbose --name ${NODE_2_NAME} --host-interface enp1s0f1 --ahost ${NODE_2_IP} --control-plane-raddr ${CONTROL_PLANE_IP}:1399 # On ${NODE_2_IP}
+sudo architekt-worker --verbose --name ${NODE_2_NAME} --host-interface bond0 --ahost ${NODE_2_IP} --control-plane-raddr ${CONTROL_PLANE_IP}:1399 # On ${NODE_2_IP}
 ```
 
 ```shell
@@ -653,7 +658,7 @@ kubectl apply -f config/samples/architekt_v1alpha1_instance.yaml # Create VM (on
 ```
 
 ```shell
-kubectl get -o yaml instance.io.loopholelabs.architekt/redis # List VMs and watch for changes (on workstation; be sure to have access to the Kubernetes cluster)
+kubectl get -w -o yaml instance.io.loopholelabs.architekt/redis # List VMs and watch for changes (on workstation; be sure to have access to the Kubernetes cluster)
 ```
 
 ```shell

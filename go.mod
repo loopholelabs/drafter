@@ -8,7 +8,7 @@ require (
 	github.com/freddierice/go-losetup/v2 v2.0.1
 	github.com/google/uuid v1.3.0
 	github.com/gorilla/mux v1.8.0
-	github.com/loopholelabs/voltools v0.1.1
+	github.com/loopholelabs/voltools v0.2.0
 	github.com/mdlayher/vsock v1.2.1
 	github.com/metal-stack/go-ipam v1.11.3
 	github.com/pojntfx/dudirekta v0.5.2-0.20231017223940-51a2da658c81
@@ -130,5 +130,3 @@ require (
 replace github.com/pojntfx/dudirekta => ../dudirekta
 
 replace github.com/pojntfx/r3map => ../r3map
-
-replace github.com/loopholelabs/voltools => ../voltools
