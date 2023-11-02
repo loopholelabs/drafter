@@ -85,7 +85,7 @@ mkdir -p /tmp/kernel
 curl -Lo /tmp/kernel.tar.xz https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-5.10.194.tar.xz
 tar Jxvf /tmp/kernel.tar.xz --strip-components=1 -C /tmp/kernel
 
-curl -Lo /tmp/kernel/.config https://raw.githubusercontent.com/loopholelabs/firecracker/live-migration-1.5/resources/guest_configs/microvm-kernel-ci-x86_64-5.10.config
+curl -Lo /tmp/kernel/.config https://raw.githubusercontent.com/loopholelabs/firecracker/live-migration-1.6-main-1/resources/guest_configs/microvm-kernel-ci-x86_64-5.10.config
 
 sh - <<'EOT'
 cd /tmp/kernel
@@ -488,10 +488,10 @@ sudo architekt-peer --netns ark0 # Migrates to this peer without enabling input;
 ### On a Cluster
 
 ```shell
-export REGISTRY_IP="93.187.218.239"
+export REGISTRY_IP="136.144.59.97"
 
-export NODE_1_IP="93.187.218.239"
-export NODE_2_IP="147.75.198.143"
+export NODE_1_IP="136.144.59.97"
+export NODE_2_IP="145.40.75.137"
 ```
 
 ```shell
@@ -551,11 +551,11 @@ curl -v http://localhost:1400/nodes/node-1/instances | jq
 ### On a Cluster
 
 ```shell
-export REGISTRY_IP="93.187.218.239"
-export CONTROL_PLANE_IP="93.187.218.239"
+export REGISTRY_IP="136.144.59.97"
+export CONTROL_PLANE_IP="136.144.59.97"
 
-export NODE_1_IP="93.187.218.239"
-export NODE_2_IP="147.75.198.143"
+export NODE_1_IP="136.144.59.97"
+export NODE_2_IP="145.40.75.137"
 ```
 
 ```shell
@@ -644,14 +644,14 @@ kubectl delete -f config/samples/architekt_v1alpha1_instance.yaml # Delete VM
 ### On a Cluster
 
 ```shell
-export REGISTRY_IP="93.187.218.239"
-export CONTROL_PLANE_IP="93.187.218.239"
+export REGISTRY_IP="136.144.59.97"
+export CONTROL_PLANE_IP="136.144.59.97"
 
-export NODE_1_IP="93.187.218.239"
-export NODE_1_NAME="chicago" # Name of the Kubernetes node (Kubernetes API server) on ${NODE_1_IP}
+export NODE_1_IP="136.144.59.97"
+export NODE_1_NAME="nyc" # Name of the Kubernetes node (Kubernetes API server) on ${NODE_1_IP}
 
-export NODE_2_IP="147.75.198.143"
-export NODE_2_NAME="nyc" # Name of the Kubernetes node (Kubernetes worker) on ${NODE_2_IP}
+export NODE_2_IP="145.40.75.137"
+export NODE_2_NAME="chicago" # Name of the Kubernetes node (Kubernetes worker) on ${NODE_2_IP}
 ```
 
 ```shell
