@@ -50,6 +50,31 @@ sudo architekt-daemon --host-interface bond0 # Sets up networking and keeps runn
 
 ### Kernel
 
+#### 6.1
+
+```shell
+rm -rf out/blueprint
+mkdir -p out/blueprint
+
+rm -rf /tmp/kernel
+mkdir -p /tmp/kernel
+
+curl -Lo /tmp/kernel.tar.xz https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.1.60.tar.xz
+tar Jxvf /tmp/kernel.tar.xz --strip-components=1 -C /tmp/kernel
+
+curl -Lo /tmp/kernel/.config https://raw.githubusercontent.com/loopholelabs/firecracker/live-migration-1.6-main-1/resources/guest_configs/microvm-kernel-ci-x86_64-6.1.config
+
+sh - <<'EOT'
+cd /tmp/kernel
+
+make -j$(nproc) vmlinux
+EOT
+
+cp /tmp/kernel/vmlinux out/blueprint/architekt.arkkernel
+```
+
+#### 5.10
+
 ```shell
 rm -rf out/blueprint
 mkdir -p out/blueprint
@@ -96,7 +121,7 @@ mkdir -p /tmp/blueprint
 sudo mount out/blueprint/architekt.arkdisk /tmp/blueprint
 sudo chown ${USER} /tmp/blueprint
 
-curl -Lo /tmp/rootfs.tar.gz https://dl-cdn.alpinelinux.org/alpine/v3.18/releases/x86_64/alpine-minirootfs-3.18.3-x86_64.tar.gz
+curl -Lo /tmp/rootfs.tar.gz https://dl-cdn.alpinelinux.org/alpine/v3.18/releases/x86_64/alpine-minirootfs-3.18.4-x86_64.tar.gz
 tar zxvf /tmp/rootfs.tar.gz -C /tmp/blueprint
 
 tee /tmp/blueprint/etc/resolv.conf <<'EOT'
