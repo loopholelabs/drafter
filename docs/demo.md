@@ -250,7 +250,7 @@ DefaultViewDistance=10
 Enabled=0
 
 [AntiCheat]
-LimitPlayerBlockChanges=1
+LimitPlayerBlockChanges=0
 
 [Worlds]
 DefaultWorld=world
