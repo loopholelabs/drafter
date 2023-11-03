@@ -1,5 +1,7 @@
 # Architekt Demo
 
+> Use kernel 5.10 on _both_ the host and guest; newer kernel versions are known to cause freezes when restoring snapshots/migrating VMs
+
 ## Installing Firecracker and Architekt
 
 ```shell
@@ -51,6 +53,8 @@ sudo architekt-daemon --host-interface bond0 # Sets up networking and keeps runn
 ### Kernel
 
 #### 6.1
+
+> Unsupported; might freeze on snapshot restores
 
 ```shell
 rm -rf out/blueprint
@@ -456,13 +460,16 @@ rm -rf /tmp/blueprint
 ## Creating and Running a Blueprint on a Workstation
 
 ```shell
-# For Redis & Minecraft (Cuberite/1.12.2) (be sure to use a free namespace)
-sudo architekt-packager --netns ark0 --memory-size 512
+# For Redis (be sure to use a free namespace)
+sudo architekt-packager --netns ark0 --memory-size 512 --package-output-path out/redis.ark
+
+# For Minecraft (Cuberite/1.12.2) (be sure to use a free namespace)
+sudo architekt-packager --netns ark0 --memory-size 512 --package-output-path out/minecraft-cuberite.ark
 
 # For Minecraft (Official server; needs more RAM than the default 1024 MB) (be sure to use a free namespace)
-sudo architekt-packager --netns ark0 --memory-size 2048
+sudo architekt-packager --netns ark0 --memory-size 2048 --package-output-path out/minecraft-official.ark
 
-sudo architekt-runner --netns ark0 # CTRL-C to flush the snapshot and run again to resume (be sure to use a free namespace)
+sudo architekt-runner --netns ark0 --package-path out/redis.ark # CTRL-C to flush the snapshot and run again to resume (be sure to use a free namespace and adjust the package path)
 ```
 
 ## Distributing, Running and Migrating Packages
@@ -470,7 +477,7 @@ sudo architekt-runner --netns ark0 # CTRL-C to flush the snapshot and run again 
 ### On a Workstation
 
 ```shell
-architekt-registry
+architekt-registry --package-path out/redis.ark # Be sure to adjust the package path
 ```
 
 ```shell
@@ -495,7 +502,7 @@ export NODE_2_IP="145.40.75.137"
 ```
 
 ```shell
-architekt-registry # On ${REGISTRY_IP}
+architekt-registry --package-path out/redis.ark # On ${REGISTRY_IP}; be sure to adjust the package path
 ```
 
 ```shell
@@ -515,7 +522,7 @@ sudo architekt-peer --netns ark0 --raddr ${NODE_2_IP}:1338 # On ${NODE_1_IP}: Mi
 ### On a Workstation
 
 ```shell
-architekt-registry
+architekt-registry --package-path out/redis.ark # Be sure to adjust the package path
 ```
 
 ```shell
@@ -559,7 +566,7 @@ export NODE_2_IP="145.40.75.137"
 ```
 
 ```shell
-architekt-registry # On ${REGISTRY_IP}
+architekt-registry --package-path out/redis.ark # On ${REGISTRY_IP}; be sure to adjust the package path
 ```
 
 ```shell
@@ -606,7 +613,7 @@ curl -v http://${CONTROL_PLANE_IP}:1400/nodes/node-2/instances | jq
 ### On a Workstation
 
 ```shell
-architekt-registry
+architekt-registry --package-path out/redis.ark # Be sure to adjust the package path
 ```
 
 ```shell
@@ -655,7 +662,7 @@ export NODE_2_NAME="chicago" # Name of the Kubernetes node (Kubernetes worker) o
 ```
 
 ```shell
-architekt-registry # On ${REGISTRY_IP}
+architekt-registry --package-path out/redis.ark # On ${REGISTRY_IP}; be sure to adjust the package path
 ```
 
 ```shell
