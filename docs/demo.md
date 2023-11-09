@@ -499,6 +499,7 @@ export REGISTRY_IP="136.144.59.97"
 
 export NODE_1_IP="136.144.59.97"
 export NODE_2_IP="145.40.75.137"
+export NODE_3_IP="145.40.95.151"
 ```
 
 ```shell
@@ -514,7 +515,11 @@ sudo architekt-peer --netns ark0 --raddr ${NODE_1_IP}:1338 --enable-input # On $
 ```
 
 ```shell
-sudo architekt-peer --netns ark0 --raddr ${NODE_2_IP}:1338 # On ${NODE_1_IP}: Migrates to this peer without enabling input; CTRL-C to flush the snapshot and stop the VM (be sure to use a free namespace)
+sudo architekt-peer --netns ark0 --raddr ${NODE_2_IP}:1338 # On ${NODE_3_IP}: Migrates to this peer without enabling input; CTRL-C to flush the snapshot and stop the VM (be sure to use a free namespace)
+```
+
+```shell
+sudo architekt-peer --netns ark0 --raddr ${NODE_3_IP}:1338 # On ${NODE_1_IP}: Migrates to this peer without enabling input; CTRL-C to flush the snapshot and stop the VM (be sure to use a free namespace)
 ```
 
 ## Using the Control Plane
@@ -563,6 +568,7 @@ export CONTROL_PLANE_IP="136.144.59.97"
 
 export NODE_1_IP="136.144.59.97"
 export NODE_2_IP="145.40.75.137"
+export NODE_3_IP="145.40.95.151"
 ```
 
 ```shell
@@ -582,30 +588,45 @@ sudo architekt-worker --verbose --name node-2 --host-interface bond0 --ahost ${N
 ```
 
 ```shell
+sudo architekt-worker --verbose --name node-3 --host-interface bond0 --ahost ${NODE_3_IP} --control-plane-raddr ${CONTROL_PLANE_IP}:1399 # On ${NODE_3_IP}
+```
+
+```shell
 curl -v http://${CONTROL_PLANE_IP}:1400/nodes | jq
 
 curl -v http://${CONTROL_PLANE_IP}:1400/nodes/node-1/instances | jq
 curl -v http://${CONTROL_PLANE_IP}:1400/nodes/node-2/instances | jq
+curl -v http://${CONTROL_PLANE_IP}:1400/nodes/node-3/instances | jq
 
 export PACKAGE_RADDR=$(curl -v -X POST http://${CONTROL_PLANE_IP}:1400/nodes/node-1/instances/${REGISTRY_IP}:1337 | jq -r) # Create VM on node 1
 
 curl -v http://${CONTROL_PLANE_IP}:1400/nodes/node-1/instances | jq
 curl -v http://${CONTROL_PLANE_IP}:1400/nodes/node-2/instances | jq
+curl -v http://${CONTROL_PLANE_IP}:1400/nodes/node-3/instances | jq
 
 export PACKAGE_RADDR=$(curl -v -X POST http://${CONTROL_PLANE_IP}:1400/nodes/node-2/instances/${PACKAGE_RADDR} | jq -r) # Migrate VM from node 1 to node 2
 
 curl -v http://${CONTROL_PLANE_IP}:1400/nodes/node-1/instances | jq
 curl -v http://${CONTROL_PLANE_IP}:1400/nodes/node-2/instances | jq
+curl -v http://${CONTROL_PLANE_IP}:1400/nodes/node-3/instances | jq
 
-export PACKAGE_RADDR=$(curl -v -X POST http://${CONTROL_PLANE_IP}:1400/nodes/node-1/instances/${PACKAGE_RADDR} | jq -r) # Migrate VM from node 2 to node 1
-
-curl -v http://${CONTROL_PLANE_IP}:1400/nodes/node-1/instances | jq
-curl -v http://${CONTROL_PLANE_IP}:1400/nodes/node-2/instances | jq
-
-curl -v -X DELETE http://${CONTROL_PLANE_IP}:1400/nodes/node-1/instances/${PACKAGE_RADDR} # Delete VM from node 2
+export PACKAGE_RADDR=$(curl -v -X POST http://${CONTROL_PLANE_IP}:1400/nodes/node-3/instances/${PACKAGE_RADDR} | jq -r) # Migrate VM from node 2 to node 3
 
 curl -v http://${CONTROL_PLANE_IP}:1400/nodes/node-1/instances | jq
 curl -v http://${CONTROL_PLANE_IP}:1400/nodes/node-2/instances | jq
+curl -v http://${CONTROL_PLANE_IP}:1400/nodes/node-3/instances | jq
+
+export PACKAGE_RADDR=$(curl -v -X POST http://${CONTROL_PLANE_IP}:1400/nodes/node-1/instances/${PACKAGE_RADDR} | jq -r) # Migrate VM from node 3 to node 1
+
+curl -v http://${CONTROL_PLANE_IP}:1400/nodes/node-1/instances | jq
+curl -v http://${CONTROL_PLANE_IP}:1400/nodes/node-2/instances | jq
+curl -v http://${CONTROL_PLANE_IP}:1400/nodes/node-3/instances | jq
+
+curl -v -X DELETE http://${CONTROL_PLANE_IP}:1400/nodes/node-1/instances/${PACKAGE_RADDR} # Delete VM from node 1
+
+curl -v http://${CONTROL_PLANE_IP}:1400/nodes/node-1/instances | jq
+curl -v http://${CONTROL_PLANE_IP}:1400/nodes/node-2/instances | jq
+curl -v http://${CONTROL_PLANE_IP}:1400/nodes/node-3/instances | jq
 ```
 
 ## Using the Operator
@@ -659,6 +680,9 @@ export NODE_1_NAME="nyc" # Name of the Kubernetes node (Kubernetes API server) o
 
 export NODE_2_IP="145.40.75.137"
 export NODE_2_NAME="chicago" # Name of the Kubernetes node (Kubernetes worker) on ${NODE_2_IP}
+
+export NODE_3_IP="145.40.95.151"
+export NODE_3_NAME="frankfurt" # Name of the Kubernetes node (Kubernetes worker) on ${NODE_3_IP}
 ```
 
 ```shell
@@ -675,6 +699,10 @@ sudo architekt-worker --verbose --name ${NODE_1_NAME} --host-interface bond0 --a
 
 ```shell
 sudo architekt-worker --verbose --name ${NODE_2_NAME} --host-interface bond0 --ahost ${NODE_2_IP} --control-plane-raddr ${CONTROL_PLANE_IP}:1399 # On ${NODE_2_IP}
+```
+
+```shell
+sudo architekt-worker --verbose --name ${NODE_3_NAME} --host-interface bond0 --ahost ${NODE_3_IP} --control-plane-raddr ${CONTROL_PLANE_IP}:1399 # On ${NODE_3_IP}
 ```
 
 ```shell
@@ -698,7 +726,11 @@ kubectl apply -f config/samples/architekt_v1alpha1_instance.yaml # Migrate VM fr
 ```
 
 ```shell
-kubectl apply -f config/samples/architekt_v1alpha1_instance.yaml # Migrate VM from node 2 to node 1 (on workstation; be sure to have access to the Kubernetes cluster and change `nodeName` to ${NODE_1_NAME})
+kubectl apply -f config/samples/architekt_v1alpha1_instance.yaml # Migrate VM from node 2 to node 3 (on workstation; be sure to have access to the Kubernetes cluster and change `nodeName` to ${NODE_3_NAME})
+```
+
+```shell
+kubectl apply -f config/samples/architekt_v1alpha1_instance.yaml # Migrate VM from node 3 to node 1 (on workstation; be sure to have access to the Kubernetes cluster and change `nodeName` to ${NODE_1_NAME})
 ```
 
 ```shell
