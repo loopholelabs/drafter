@@ -11,7 +11,7 @@ require (
 	github.com/loopholelabs/voltools v0.2.0
 	github.com/mdlayher/vsock v1.2.1
 	github.com/metal-stack/go-ipam v1.11.3
-	github.com/pojntfx/dudirekta v0.5.2-0.20231017223940-51a2da658c81
+	github.com/pojntfx/dudirekta v0.6.1
 	github.com/pojntfx/go-nbd v0.3.2
 	github.com/pojntfx/r3map v0.0.0-20230823171045-28fc7f1e9dee
 	github.com/schollz/progressbar/v3 v3.13.1

@@ -16,6 +16,7 @@ import (
 	"github.com/loopholelabs/architekt/pkg/services"
 	"github.com/loopholelabs/architekt/pkg/utils"
 	"github.com/pojntfx/dudirekta/pkg/rpc"
+	"github.com/pojntfx/r3map/pkg/migration"
 )
 
 func main() {
@@ -55,6 +56,8 @@ func main() {
 	ahost := flag.String("ahost", "localhost", "Hostname or IP to advertise")
 
 	name := flag.String("name", "node-1", "Name to register for")
+
+	pullWorkers := flag.Int64("pull-workers", 4096, "Pull workers to launch in the background; pass in a negative value to disable preemptive pull")
 
 	verbose := flag.Bool("verbose", false, "Whether to enable verbose logging")
 
@@ -125,6 +128,10 @@ func main() {
 
 			EnableOutput: *enableOutput,
 			EnableInput:  *enableInput,
+		},
+		&migration.MigratorOptions{
+			Verbose:     *verbose,
+			PullWorkers: *pullWorkers,
 		},
 
 		*cacheBaseDir,

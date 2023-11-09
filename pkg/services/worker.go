@@ -141,6 +141,7 @@ type Worker struct {
 	releaseNamespace func(namespace string) error
 
 	hypervisorConfiguration HypervisorConfiguration
+	migratorOptions         *migration.MigratorOptions
 
 	cacheBaseDir string
 
@@ -160,6 +161,7 @@ func NewWorker(
 	releaseNamespace func(namespace string) error,
 
 	hypervisorConfiguration HypervisorConfiguration,
+	migratorOptions *migration.MigratorOptions,
 
 	cacheBaseDir string,
 
@@ -175,6 +177,7 @@ func NewWorker(
 		releaseNamespace: releaseNamespace,
 
 		hypervisorConfiguration: hypervisorConfiguration,
+		migratorOptions:         migratorOptions,
 
 		cacheBaseDir: cacheBaseDir,
 
@@ -349,9 +352,7 @@ func (w *Worker) CreateInstance(ctx context.Context, packageRaddr string) (outpu
 
 		b,
 
-		&migration.MigratorOptions{
-			Verbose: false,
-		},
+		w.migratorOptions,
 		&migration.MigratorHooks{
 			OnBeforeSync: func() error {
 				if w.verbose {

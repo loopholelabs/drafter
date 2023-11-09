@@ -50,6 +50,8 @@ func main() {
 	raddr := flag.String("raddr", "localhost:1338", "Remote address")
 	laddr := flag.String("laddr", ":1338", "Listen address")
 
+	pullWorkers := flag.Int64("pull-workers", 4096, "Pull workers to launch in the background; pass in a negative value to disable preemptive pull")
+
 	verbose := flag.Bool("verbose", false, "Whether to enable verbose logging")
 
 	flag.Parse()
@@ -163,7 +165,8 @@ func main() {
 		b,
 
 		&migration.MigratorOptions{
-			Verbose: *verbose,
+			Verbose:     *verbose,
+			PullWorkers: *pullWorkers,
 		},
 		&migration.MigratorHooks{
 			OnBeforeSync: func() error {
