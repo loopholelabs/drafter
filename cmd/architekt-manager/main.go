@@ -3,26 +3,14 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"flag"
-	"fmt"
 	"log"
 	"net"
-	"net/http"
 	"time"
 
-	"github.com/gorilla/mux"
 	"github.com/loopholelabs/architekt/pkg/services"
 	"github.com/loopholelabs/architekt/pkg/utils"
 	"github.com/pojntfx/dudirekta/pkg/rpc"
-)
-
-var (
-	errCouldNotEncode         = errors.New("could not encode")
-	errNodeNotFound           = errors.New("node not found")
-	errCouldNotCreateInstance = errors.New("could not create instance")
-	errCouldNotDeleteInstance = errors.New("could not delete instance")
-	errCouldNotListInstances  = errors.New("could not list instances")
 )
 
 func main() {
@@ -62,158 +50,18 @@ func main() {
 	)
 	svc.ForRemotes = registry.ForRemotes
 
-	r := mux.NewRouter()
-
-	r.HandleFunc(
-		"/nodes",
-		func(w http.ResponseWriter, r *http.Request) {
-			if *verbose {
-				log.Println("Listing nodes")
-			}
-
-			nodes := services.ManagerGetWorkerNames(svc)
-
-			w.Header().Set("Content-Type", "application/json")
-
-			if err := json.NewEncoder(w).Encode(nodes); err != nil {
-				log.Println(fmt.Errorf("%w: %w", errCouldNotEncode, err))
-
-				w.WriteHeader(http.StatusInternalServerError)
-
-				return
-			}
-		},
-	).Methods("GET")
-
-	r.HandleFunc(
-		"/nodes/{nodeName}/instances",
-		func(w http.ResponseWriter, r *http.Request) {
-			nodeName := mux.Vars(r)["nodeName"]
-			if nodeName == "" {
-				w.WriteHeader(http.StatusUnprocessableEntity)
-
-				return
-			}
-
-			if *verbose {
-				log.Println("Listing instances on node", nodeName)
-			}
-
-			remote := services.ManagerGetWorker(svc, nodeName)
-			if remote == nil {
-				log.Println(errNodeNotFound)
-
-				w.WriteHeader(http.StatusNotFound)
-
-				return
-			}
-
-			packageRaddrs, err := remote.ListInstances(r.Context())
-			if err != nil {
-				log.Println(fmt.Errorf("%w: %w", errCouldNotListInstances, err))
-
-				w.WriteHeader(http.StatusInternalServerError)
-			}
-
-			w.Header().Set("Content-Type", "application/json")
-
-			if err := json.NewEncoder(w).Encode(packageRaddrs); err != nil {
-				log.Println(fmt.Errorf("%w: %w", errCouldNotEncode, err))
-
-				w.WriteHeader(http.StatusInternalServerError)
-
-				return
-			}
-		},
-	).Methods("GET")
-
-	r.HandleFunc(
-		"/nodes/{nodeName}/instances/{packageRaddr}",
-		func(w http.ResponseWriter, r *http.Request) {
-			nodeName, packageRaddr := mux.Vars(r)["nodeName"], mux.Vars(r)["packageRaddr"]
-			if nodeName == "" || packageRaddr == "" {
-				w.WriteHeader(http.StatusUnprocessableEntity)
-
-				return
-			}
-
-			if *verbose {
-				log.Println("Creating instance on node", nodeName, "from package raddr", packageRaddr)
-			}
-
-			remote := services.ManagerGetWorker(svc, nodeName)
-			if remote == nil {
-				log.Println(errNodeNotFound)
-
-				w.WriteHeader(http.StatusNotFound)
-
-				return
-			}
-
-			outputPackageRaddr, err := remote.CreateInstance(r.Context(), packageRaddr)
-			if err != nil {
-				log.Println(fmt.Errorf("%w: %w", errCouldNotCreateInstance, err))
-
-				w.WriteHeader(http.StatusInternalServerError)
-			}
-
-			w.Header().Set("Content-Type", "application/json")
-
-			if err := json.NewEncoder(w).Encode(outputPackageRaddr); err != nil {
-				log.Println(fmt.Errorf("%w: %w", errCouldNotEncode, err))
-
-				w.WriteHeader(http.StatusInternalServerError)
-
-				return
-			}
-		},
-	).Methods("POST")
-
-	r.HandleFunc(
-		"/nodes/{nodeName}/instances/{packageRaddr}",
-		func(w http.ResponseWriter, r *http.Request) {
-			vars := mux.Vars(r)
-
-			nodeName, packageRaddr := vars["nodeName"], vars["packageRaddr"]
-			if nodeName == "" || packageRaddr == "" {
-				w.WriteHeader(http.StatusUnprocessableEntity)
-
-				return
-			}
-
-			if *verbose {
-				log.Println("Deleting instance", packageRaddr, "from node", nodeName)
-			}
-
-			remote := services.ManagerGetWorker(svc, nodeName)
-			if remote == nil {
-				log.Println(errNodeNotFound)
-
-				w.WriteHeader(http.StatusNotFound)
-
-				return
-			}
-
-			if err := remote.DeleteInstance(r.Context(), packageRaddr); err != nil {
-				log.Println(fmt.Errorf("%w: %w", errCouldNotDeleteInstance, err))
-
-				w.WriteHeader(http.StatusInternalServerError)
-			}
-		},
-	).Methods("DELETE")
-
-	lis, err := net.Listen("tcp", *controlPlaneLaddr)
+	controlPlaneLis, err := net.Listen("tcp", *controlPlaneLaddr)
 	if err != nil {
 		panic(err)
 	}
-	defer lis.Close()
+	defer controlPlaneLis.Close()
 
-	log.Println("Control plane listening on", lis.Addr())
+	log.Println("Control plane listening on", controlPlaneLis.Addr())
 
 	go func() {
 		for {
 			func() {
-				conn, err := lis.Accept()
+				conn, err := controlPlaneLis.Accept()
 				if err != nil {
 					log.Println("could not accept control plane connection, continuing:", err)
 
@@ -259,7 +107,13 @@ func main() {
 		}
 	}()
 
-	log.Println("API listening on", *apiLaddr)
+	apiLis, err := net.Listen("tcp", *apiLaddr)
+	if err != nil {
+		panic(err)
+	}
+	defer apiLis.Close()
 
-	panic(http.ListenAndServe(*apiLaddr, r))
+	log.Println("API listening on", apiLis.Addr())
+
+	panic(services.ServeManager(apiLis, svc, *verbose))
 }

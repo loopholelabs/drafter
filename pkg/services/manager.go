@@ -2,15 +2,26 @@ package services
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
+	"net"
+	"net/http"
 	"sync"
 
+	"github.com/gorilla/mux"
 	"github.com/pojntfx/dudirekta/pkg/rpc"
 )
 
 var (
 	ErrNameTaken = errors.New("this name has already been taken")
+
+	ErrCouldNotEncode         = errors.New("could not encode")
+	ErrNodeNotFound           = errors.New("node not found")
+	ErrCouldNotCreateInstance = errors.New("could not create instance")
+	ErrCouldNotDeleteInstance = errors.New("could not delete instance")
+	ErrCouldNotListInstances  = errors.New("could not list instances")
 )
 
 type ManagerRemote struct {
@@ -108,4 +119,148 @@ func ManagerGetWorkerNames(g *Manager) []string {
 	}
 
 	return names
+}
+
+func ServeManager(lis net.Listener, svc *Manager, verbose bool) error {
+	r := mux.NewRouter()
+
+	r.HandleFunc(
+		"/nodes",
+		func(w http.ResponseWriter, r *http.Request) {
+			if verbose {
+				log.Println("Listing nodes")
+			}
+
+			nodes := ManagerGetWorkerNames(svc)
+
+			w.Header().Set("Content-Type", "application/json")
+
+			if err := json.NewEncoder(w).Encode(nodes); err != nil {
+				log.Println(fmt.Errorf("%w: %w", ErrCouldNotEncode, err))
+
+				w.WriteHeader(http.StatusInternalServerError)
+
+				return
+			}
+		},
+	).Methods("GET")
+
+	r.HandleFunc(
+		"/nodes/{nodeName}/instances",
+		func(w http.ResponseWriter, r *http.Request) {
+			nodeName := mux.Vars(r)["nodeName"]
+			if nodeName == "" {
+				w.WriteHeader(http.StatusUnprocessableEntity)
+
+				return
+			}
+
+			if verbose {
+				log.Println("Listing instances on node", nodeName)
+			}
+
+			remote := ManagerGetWorker(svc, nodeName)
+			if remote == nil {
+				log.Println(ErrNodeNotFound)
+
+				w.WriteHeader(http.StatusNotFound)
+
+				return
+			}
+
+			packageRaddrs, err := remote.ListInstances(r.Context())
+			if err != nil {
+				log.Println(fmt.Errorf("%w: %w", ErrCouldNotListInstances, err))
+
+				w.WriteHeader(http.StatusInternalServerError)
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+
+			if err := json.NewEncoder(w).Encode(packageRaddrs); err != nil {
+				log.Println(fmt.Errorf("%w: %w", ErrCouldNotEncode, err))
+
+				w.WriteHeader(http.StatusInternalServerError)
+
+				return
+			}
+		},
+	).Methods("GET")
+
+	r.HandleFunc(
+		"/nodes/{nodeName}/instances/{packageRaddr}",
+		func(w http.ResponseWriter, r *http.Request) {
+			nodeName, packageRaddr := mux.Vars(r)["nodeName"], mux.Vars(r)["packageRaddr"]
+			if nodeName == "" || packageRaddr == "" {
+				w.WriteHeader(http.StatusUnprocessableEntity)
+
+				return
+			}
+
+			if verbose {
+				log.Println("Creating instance on node", nodeName, "from package raddr", packageRaddr)
+			}
+
+			remote := ManagerGetWorker(svc, nodeName)
+			if remote == nil {
+				log.Println(ErrNodeNotFound)
+
+				w.WriteHeader(http.StatusNotFound)
+
+				return
+			}
+
+			outputPackageRaddr, err := remote.CreateInstance(r.Context(), packageRaddr)
+			if err != nil {
+				log.Println(fmt.Errorf("%w: %w", ErrCouldNotCreateInstance, err))
+
+				w.WriteHeader(http.StatusInternalServerError)
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+
+			if err := json.NewEncoder(w).Encode(outputPackageRaddr); err != nil {
+				log.Println(fmt.Errorf("%w: %w", ErrCouldNotEncode, err))
+
+				w.WriteHeader(http.StatusInternalServerError)
+
+				return
+			}
+		},
+	).Methods("POST")
+
+	r.HandleFunc(
+		"/nodes/{nodeName}/instances/{packageRaddr}",
+		func(w http.ResponseWriter, r *http.Request) {
+			vars := mux.Vars(r)
+
+			nodeName, packageRaddr := vars["nodeName"], vars["packageRaddr"]
+			if nodeName == "" || packageRaddr == "" {
+				w.WriteHeader(http.StatusUnprocessableEntity)
+
+				return
+			}
+
+			if verbose {
+				log.Println("Deleting instance", packageRaddr, "from node", nodeName)
+			}
+
+			remote := ManagerGetWorker(svc, nodeName)
+			if remote == nil {
+				log.Println(ErrNodeNotFound)
+
+				w.WriteHeader(http.StatusNotFound)
+
+				return
+			}
+
+			if err := remote.DeleteInstance(r.Context(), packageRaddr); err != nil {
+				log.Println(fmt.Errorf("%w: %w", ErrCouldNotDeleteInstance, err))
+
+				w.WriteHeader(http.StatusInternalServerError)
+			}
+		},
+	).Methods("DELETE")
+
+	return http.Serve(lis, r)
 }
