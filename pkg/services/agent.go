@@ -1,8 +1,9 @@
-package vsock
+package services
 
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"sync"
 	"time"
 
@@ -12,6 +13,43 @@ import (
 )
 
 type Agent struct {
+	beforeSuspend func(ctx context.Context) error
+	afterResume   func(ctx context.Context) error
+
+	verbose bool
+}
+
+func NewAgent(
+	beforeSuspend func(ctx context.Context) error,
+	afterResume func(ctx context.Context) error,
+
+	verbose bool,
+) *Agent {
+	return &Agent{
+		beforeSuspend: beforeSuspend,
+		afterResume:   afterResume,
+
+		verbose: verbose,
+	}
+}
+
+func (a *Agent) BeforeSuspend(ctx context.Context) error {
+	if a.verbose {
+		log.Println("BeforeSuspend()")
+	}
+
+	return a.beforeSuspend(ctx)
+}
+
+func (a *Agent) AfterResume(ctx context.Context) error {
+	if a.verbose {
+		log.Println("AfterResume()")
+	}
+
+	return a.afterResume(ctx)
+}
+
+type AgentServer struct {
 	vsockCID  uint32
 	vsockPort uint32
 
@@ -28,7 +66,7 @@ type Agent struct {
 	verbose bool
 }
 
-func NewAgent(
+func NewAgentServer(
 	vsockCID uint32,
 	vsockPort uint32,
 
@@ -38,8 +76,8 @@ func NewAgent(
 	timeout time.Duration,
 
 	verbose bool,
-) *Agent {
-	return &Agent{
+) *AgentServer {
+	return &AgentServer{
 		vsockCID:  vsockCID,
 		vsockPort: vsockPort,
 
@@ -55,7 +93,7 @@ func NewAgent(
 	}
 }
 
-func (s *Agent) Wait() error {
+func (s *AgentServer) Wait() error {
 	for err := range s.errs {
 		if err != nil {
 			return err
@@ -65,8 +103,8 @@ func (s *Agent) Wait() error {
 	return nil
 }
 
-func (s *Agent) Open(ctx context.Context) error {
-	svc := utils.NewAgent(
+func (s *AgentServer) Open(ctx context.Context) error {
+	svc := NewAgent(
 		s.beforeSuspend,
 		s.afterResume,
 
@@ -142,7 +180,7 @@ func (s *Agent) Open(ctx context.Context) error {
 	return nil
 }
 
-func (s *Agent) Close() error {
+func (s *AgentServer) Close() error {
 	if s.lis != nil {
 		_ = s.lis.Close()
 	}

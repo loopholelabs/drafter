@@ -24,10 +24,6 @@ var (
 	ErrCouldNotListInstances  = errors.New("could not list instances")
 )
 
-type ManagerRemote struct {
-	Register func(ctx context.Context, name string) error
-}
-
 type Manager struct {
 	ForRemotes func(
 		cb func(remoteID string, remote WorkerRemote) error,

@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/loopholelabs/architekt/pkg/services"
 	"github.com/loopholelabs/architekt/pkg/vsock"
 )
 
@@ -27,7 +28,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	agent := vsock.NewAgent(
+	agent := services.NewAgentServer(
 		vsock.CIDGuest,
 		uint32(*vsockPort),
 

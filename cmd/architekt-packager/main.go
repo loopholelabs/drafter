@@ -7,9 +7,9 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/loopholelabs/architekt/pkg/config"
 	"github.com/loopholelabs/architekt/pkg/firecracker"
 	"github.com/loopholelabs/architekt/pkg/roles"
-	"github.com/loopholelabs/architekt/pkg/utils"
 )
 
 func main() {
@@ -79,17 +79,17 @@ func main() {
 
 		*packageOutputPath,
 
-		utils.VMConfiguration{
+		config.VMConfiguration{
 			CpuCount:           *cpuCount,
 			MemorySize:         *memorySize,
 			PackagePaddingSize: *packagePaddingSize,
 			BootArgs:           *bootArgs,
 		},
-		utils.LivenessConfiguration{
+		config.LivenessConfiguration{
 			LivenessVSockPort: uint32(*livenessVSockPort),
 		},
 
-		utils.HypervisorConfiguration{
+		config.HypervisorConfiguration{
 			FirecrackerBin: firecrackerBin,
 			JailerBin:      jailerBin,
 
@@ -105,11 +105,11 @@ func main() {
 			EnableOutput: *enableOutput,
 			EnableInput:  *enableInput,
 		},
-		utils.NetworkConfiguration{
+		config.NetworkConfiguration{
 			Interface: *iface,
 			MAC:       *mac,
 		},
-		utils.AgentConfiguration{
+		config.AgentConfiguration{
 			AgentVSockPort: uint32(*agentVSockPort),
 			ResumeTimeout:  *resumeTimeout,
 		},

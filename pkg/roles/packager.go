@@ -11,7 +11,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/loopholelabs/architekt/pkg/config"
 	"github.com/loopholelabs/architekt/pkg/firecracker"
+	"github.com/loopholelabs/architekt/pkg/mount"
 	"github.com/loopholelabs/architekt/pkg/utils"
 	"github.com/loopholelabs/architekt/pkg/vsock"
 	"github.com/loopholelabs/voltools/fsdata"
@@ -40,12 +42,12 @@ func (p *Packager) CreatePackage(
 
 	packageOutputPath string,
 
-	vmConfiguration utils.VMConfiguration,
-	livenessConfiguration utils.LivenessConfiguration,
+	vmConfiguration config.VMConfiguration,
+	livenessConfiguration config.LivenessConfiguration,
 
-	hypervisorConfiguration utils.HypervisorConfiguration,
-	networkConfiguration utils.NetworkConfiguration,
-	agentConfiguration utils.AgentConfiguration,
+	hypervisorConfiguration config.HypervisorConfiguration,
+	networkConfiguration config.NetworkConfiguration,
+	agentConfiguration config.AgentConfiguration,
 ) error {
 	p.errs = make(chan error)
 
@@ -74,7 +76,7 @@ func (p *Packager) CreatePackage(
 		return err
 	}
 
-	loop := utils.NewLoop(packageOutputPath)
+	loop := mount.NewLoopMount(packageOutputPath)
 
 	devicePath, err := loop.Open()
 	if err != nil {
@@ -150,7 +152,7 @@ func (p *Packager) CreatePackage(
 		return err
 	}
 
-	mount := utils.NewMount(devicePath, mountDir)
+	mount := mount.NewEXT4Mount(devicePath, mountDir)
 
 	if err := mount.Open(); err != nil {
 		return err

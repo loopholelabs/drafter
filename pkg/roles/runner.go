@@ -10,8 +10,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/loopholelabs/architekt/pkg/config"
 	"github.com/loopholelabs/architekt/pkg/firecracker"
-	"github.com/loopholelabs/architekt/pkg/utils"
+	"github.com/loopholelabs/architekt/pkg/mount"
+	"github.com/loopholelabs/architekt/pkg/remotes"
 	"github.com/loopholelabs/architekt/pkg/vsock"
 )
 
@@ -24,14 +26,14 @@ var (
 )
 
 type Runner struct {
-	hypervisorConfiguration utils.HypervisorConfiguration
-	agentConfiguration      utils.AgentConfiguration
+	hypervisorConfiguration config.HypervisorConfiguration
+	agentConfiguration      config.AgentConfiguration
 
-	mount   *utils.Mount
+	mount   *mount.EXT4Mount
 	srv     *firecracker.Server
 	client  *http.Client
 	handler *vsock.Handler
-	remote  utils.AgentRemote
+	remote  remotes.AgentRemote
 
 	vmPath string
 
@@ -43,8 +45,8 @@ type Runner struct {
 }
 
 func NewRunner(
-	hypervisorConfiguration utils.HypervisorConfiguration,
-	agentConfiguration utils.AgentConfiguration,
+	hypervisorConfiguration config.HypervisorConfiguration,
+	agentConfiguration config.AgentConfiguration,
 ) *Runner {
 	return &Runner{
 		hypervisorConfiguration: hypervisorConfiguration,
@@ -118,7 +120,7 @@ func (r *Runner) Resume(ctx context.Context, packageDevicePath string) error {
 			return err
 		}
 
-		r.mount = utils.NewMount(packageDevicePath, filepath.Join(r.vmPath, firecracker.MountName))
+		r.mount = mount.NewEXT4Mount(packageDevicePath, filepath.Join(r.vmPath, firecracker.MountName))
 		if err := r.mount.Open(); err != nil {
 			return err
 		}

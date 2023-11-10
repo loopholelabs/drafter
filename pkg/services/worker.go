@@ -12,6 +12,8 @@ import (
 	"time"
 
 	v1 "github.com/loopholelabs/architekt/pkg/api/proto/migration/v1"
+	"github.com/loopholelabs/architekt/pkg/config"
+	"github.com/loopholelabs/architekt/pkg/remotes"
 	"github.com/loopholelabs/architekt/pkg/roles"
 	"github.com/loopholelabs/architekt/pkg/utils"
 	"github.com/pojntfx/go-nbd/pkg/backend"
@@ -132,7 +134,7 @@ type WorkerRemote struct {
 
 type Worker struct {
 	ForRemotes func(
-		cb func(remoteID string, remote ManagerRemote) error,
+		cb func(remoteID string, remote remotes.ManagerRemote) error,
 	) error
 
 	verbose bool
@@ -271,7 +273,7 @@ func (w *Worker) CreateInstance(ctx context.Context, packageRaddr string) (outpu
 	}
 
 	runner := roles.NewRunner(
-		utils.HypervisorConfiguration{
+		config.HypervisorConfiguration{
 			FirecrackerBin: w.hypervisorConfiguration.FirecrackerBin,
 			JailerBin:      w.hypervisorConfiguration.JailerBin,
 
@@ -287,7 +289,7 @@ func (w *Worker) CreateInstance(ctx context.Context, packageRaddr string) (outpu
 			EnableOutput: w.hypervisorConfiguration.EnableOutput,
 			EnableInput:  w.hypervisorConfiguration.EnableInput,
 		},
-		utils.AgentConfiguration{
+		config.AgentConfiguration{
 			AgentVSockPort: agentVSockPort,
 			ResumeTimeout:  w.resumeTimeout,
 		},
@@ -567,7 +569,7 @@ func CloseWorker(w *Worker) error {
 }
 
 func WorkerRegister(w *Worker, ctx context.Context, name string) error {
-	return w.ForRemotes(func(remoteID string, remote ManagerRemote) error {
+	return w.ForRemotes(func(remoteID string, remote remotes.ManagerRemote) error {
 		return remote.Register(ctx, name)
 	})
 }

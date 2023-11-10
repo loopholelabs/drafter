@@ -11,6 +11,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/loopholelabs/architekt/pkg/config"
+	"github.com/loopholelabs/architekt/pkg/mount"
 	"github.com/loopholelabs/architekt/pkg/roles"
 	"github.com/loopholelabs/architekt/pkg/utils"
 )
@@ -51,7 +53,7 @@ func main() {
 		panic(err)
 	}
 
-	loop := utils.NewLoop(*packagePath)
+	loop := mount.NewLoopMount(*packagePath)
 
 	packageDevicePath, err := loop.Open()
 	if err != nil {
@@ -72,7 +74,7 @@ func main() {
 	_ = packageConfigFile.Close()
 
 	runner := roles.NewRunner(
-		utils.HypervisorConfiguration{
+		config.HypervisorConfiguration{
 			FirecrackerBin: firecrackerBin,
 			JailerBin:      jailerBin,
 
@@ -88,7 +90,7 @@ func main() {
 			EnableOutput: *enableOutput,
 			EnableInput:  *enableInput,
 		},
-		utils.AgentConfiguration{
+		config.AgentConfiguration{
 			AgentVSockPort: packageConfig.AgentVSockPort,
 			ResumeTimeout:  *resumeTimeout,
 		},

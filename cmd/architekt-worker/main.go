@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/loopholelabs/architekt/pkg/network"
+	"github.com/loopholelabs/architekt/pkg/remotes"
 	"github.com/loopholelabs/architekt/pkg/services"
 	"github.com/loopholelabs/architekt/pkg/utils"
 	"github.com/pojntfx/dudirekta/pkg/rpc"
@@ -144,7 +145,7 @@ func main() {
 
 	clients := 0
 
-	registry := rpc.NewRegistry[services.ManagerRemote, json.RawMessage](
+	registry := rpc.NewRegistry[remotes.ManagerRemote, json.RawMessage](
 		svc,
 
 		time.Second*10,

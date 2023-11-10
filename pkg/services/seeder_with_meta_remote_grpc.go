@@ -4,6 +4,7 @@ import (
 	"context"
 
 	v1 "github.com/loopholelabs/architekt/pkg/api/proto/migration/v1"
+	"github.com/loopholelabs/architekt/pkg/remotes"
 	"github.com/pojntfx/r3map/pkg/services"
 )
 
@@ -13,7 +14,7 @@ type SeederWithMetaRemoteGrpc struct {
 
 func NewSeederWithMetaRemoteGrpc(
 	client v1.SeederWithMetaClient,
-) (*services.SeederRemote, *SeederWithMetaRemote) {
+) (*services.SeederRemote, *remotes.SeederWithMetaRemote) {
 	l := &SeederWithMetaRemoteGrpc{client}
 
 	return &services.SeederRemote{
@@ -21,7 +22,7 @@ func NewSeederWithMetaRemoteGrpc(
 			Track:  l.Track,
 			Sync:   l.Sync,
 			Close:  l.Close,
-		}, &SeederWithMetaRemote{
+		}, &remotes.SeederWithMetaRemote{
 			ReadAt: l.ReadAt,
 			Track:  l.Track,
 			Sync:   l.Sync,

@@ -1,4 +1,4 @@
-package services
+package remotes
 
 import (
 	"context"

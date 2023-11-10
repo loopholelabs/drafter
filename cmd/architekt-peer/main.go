@@ -15,6 +15,7 @@ import (
 	"time"
 
 	v1 "github.com/loopholelabs/architekt/pkg/api/proto/migration/v1"
+	"github.com/loopholelabs/architekt/pkg/config"
 	"github.com/loopholelabs/architekt/pkg/roles"
 	"github.com/loopholelabs/architekt/pkg/utils"
 	"github.com/pojntfx/go-nbd/pkg/backend"
@@ -98,7 +99,7 @@ func main() {
 	}
 
 	runner := roles.NewRunner(
-		utils.HypervisorConfiguration{
+		config.HypervisorConfiguration{
 			FirecrackerBin: firecrackerBin,
 			JailerBin:      jailerBin,
 
@@ -114,7 +115,7 @@ func main() {
 			EnableOutput: *enableOutput,
 			EnableInput:  *enableInput,
 		},
-		utils.AgentConfiguration{
+		config.AgentConfiguration{
 			AgentVSockPort: agentVSockPort,
 			ResumeTimeout:  *resumeTimeout,
 		},

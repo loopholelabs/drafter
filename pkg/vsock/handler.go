@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/loopholelabs/architekt/pkg/remotes"
 	"github.com/loopholelabs/architekt/pkg/utils"
 	iutils "github.com/loopholelabs/architekt/pkg/utils"
 	"github.com/pojntfx/dudirekta/pkg/rpc"
@@ -65,10 +66,10 @@ func (s *Handler) Open(
 	ctx context.Context,
 	connectDeadline time.Duration,
 	retryDeadline time.Duration,
-) (utils.AgentRemote, error) {
+) (remotes.AgentRemote, error) {
 	ready := make(chan string)
 
-	registry := rpc.NewRegistry[utils.AgentRemote, json.RawMessage](
+	registry := rpc.NewRegistry[remotes.AgentRemote, json.RawMessage](
 		struct{}{},
 
 		s.timeout,
@@ -136,14 +137,14 @@ func (s *Handler) Open(
 
 	for {
 		if time.Since(before) > retryDeadline {
-			return utils.AgentRemote{}, ErrCouldNotConnectToVSock
+			return remotes.AgentRemote{}, ErrCouldNotConnectToVSock
 		}
 
 		retry, err := connectToService()
 		if err != nil {
 			log.Println(err)
 
-			return utils.AgentRemote{}, err
+			return remotes.AgentRemote{}, err
 		}
 
 		if !retry {
@@ -189,12 +190,12 @@ func (s *Handler) Open(
 	remoteID := <-ready
 
 	var (
-		remote utils.AgentRemote
+		remote remotes.AgentRemote
 		ok     bool
 	)
 	// We can safely ignore the errors here, since errors are bubbled up from `cb`,
 	// which can never return an error here
-	_ = registry.ForRemotes(func(candidateID string, candidate utils.AgentRemote) error {
+	_ = registry.ForRemotes(func(candidateID string, candidate remotes.AgentRemote) error {
 		if candidateID == remoteID {
 			remote = candidate
 			ok = true
@@ -203,7 +204,7 @@ func (s *Handler) Open(
 		return nil
 	})
 	if !ok {
-		return utils.AgentRemote{}, ErrRemoteNotFound
+		return remotes.AgentRemote{}, ErrRemoteNotFound
 	}
 
 	return remote, nil
