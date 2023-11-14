@@ -1,9 +1,11 @@
 package roles
 
 import (
+	"archive/tar"
 	"context"
 	"encoding/json"
-	"math"
+	"io"
+	"io/fs"
 	"net"
 	"net/http"
 	"os"
@@ -13,10 +15,8 @@ import (
 
 	"github.com/loopholelabs/architekt/pkg/config"
 	"github.com/loopholelabs/architekt/pkg/firecracker"
-	"github.com/loopholelabs/architekt/pkg/mount"
 	"github.com/loopholelabs/architekt/pkg/utils"
 	"github.com/loopholelabs/architekt/pkg/vsock"
-	"github.com/loopholelabs/voltools/fsdata"
 )
 
 const (
@@ -54,35 +54,6 @@ func (p *Packager) CreatePackage(
 	defer func() {
 		close(p.errs)
 	}()
-
-	initramfsSize, err := utils.GetFileSize(initramfsInputPath)
-	if err != nil {
-		return err
-	}
-
-	kernelSize, err := utils.GetFileSize(kernelInputPath)
-	if err != nil {
-		return err
-	}
-
-	diskSize, err := utils.GetFileSize(diskInputPath)
-	if err != nil {
-		return err
-	}
-
-	packageSize := int64(math.Ceil((float64((initramfsSize + kernelSize + diskSize)) / float64(1024*1024)))) + int64(vmConfiguration.MemorySize) + int64(vmConfiguration.PackagePaddingSize)
-
-	if err := fsdata.CreateNextLargestFile(int(packageSize), packageOutputPath); err != nil {
-		return err
-	}
-
-	loop := mount.NewLoopMount(packageOutputPath)
-
-	devicePath, err := loop.Open()
-	if err != nil {
-		return err
-	}
-	defer loop.Close()
 
 	if err := os.MkdirAll(hypervisorConfiguration.ChrootBaseDir, os.ModePerm); err != nil {
 		return err
@@ -152,12 +123,54 @@ func (p *Packager) CreatePackage(
 		return err
 	}
 
-	mount := mount.NewEXT4Mount(devicePath, mountDir)
-
-	if err := mount.Open(); err != nil {
+	packageOutputFile, err := os.OpenFile(packageOutputPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, os.ModePerm)
+	if err != nil {
 		return err
 	}
-	defer mount.Close()
+	defer packageOutputFile.Close()
+
+	packageOutputArchive := tar.NewWriter(packageOutputFile)
+	defer packageOutputArchive.Close()
+
+	defer func() {
+		if err := filepath.Walk(mountDir, func(path string, info fs.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+
+			name, err := filepath.Rel(mountDir, path)
+			if err != nil {
+				return err
+			}
+
+			header, err := tar.FileInfoHeader(info, path)
+			if err != nil {
+				return err
+			}
+			header.Name = name
+
+			if err := packageOutputArchive.WriteHeader(header); err != nil {
+				return err
+			}
+
+			if !info.Mode().IsDir() {
+				f, err := os.Open(path)
+				if err != nil {
+					return err
+				}
+				defer f.Close()
+
+				if _, err = io.Copy(packageOutputArchive, f); err != nil {
+					return err
+				}
+			}
+
+			return nil
+		}); err != nil {
+			p.errs <- err
+		}
+	}()
+
 	defer srv.Close() // We need to stop the Firecracker process from using the mount before we can unmount it
 
 	if err := os.Chown(mountDir, hypervisorConfiguration.UID, hypervisorConfiguration.GID); err != nil {

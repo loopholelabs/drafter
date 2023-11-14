@@ -8,7 +8,6 @@ require (
 	github.com/freddierice/go-losetup/v2 v2.0.1
 	github.com/google/uuid v1.3.0
 	github.com/gorilla/mux v1.8.0
-	github.com/loopholelabs/voltools v0.2.0
 	github.com/mdlayher/vsock v1.2.1
 	github.com/metal-stack/go-ipam v1.11.3
 	github.com/pojntfx/dudirekta v0.6.1

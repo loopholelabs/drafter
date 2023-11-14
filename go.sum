@@ -152,8 +152,6 @@ github.com/loopholelabs/polyglot-go v0.5.1 h1:21QVDELp+EodPUAL+Aw8GNXLyt2BFj9gYQ
 github.com/loopholelabs/polyglot-go v0.5.1/go.mod h1:Z0QiNv4KRuWjQWpUerMhmkvRh6ks1pYmEH4SGpG0EHQ=
 github.com/loopholelabs/testing v0.2.3 h1:4nVuK5ctaE6ua5Z0dYk2l7xTFmcpCYLUeGjRBp8keOA=
 github.com/loopholelabs/testing v0.2.3/go.mod h1:gqtGY91soYD1fQoKQt/6kP14OYpS7gcbcIgq5mc9m8Q=
-github.com/loopholelabs/voltools v0.2.0 h1:9LtK7kPI9hyuj0lhSUGT1he8/90sZ7DeoXuooX6CmAg=
-github.com/loopholelabs/voltools v0.2.0/go.mod h1:SpFRTP+ydMKymaNwtnCFmv7PAq/anUpvDCLm1RKJXgs=
 github.com/magiconair/properties v1.8.6 h1:5ibWZ6iY0NctNGWo87LalDlEZ6R41TqbbDamhfG/Qzo=
 github.com/magiconair/properties v1.8.6/go.mod h1:y3VJvCyxH9uVvJTWEGAELF3aiYNyPKd5NZ3oSwXrF60=
 github.com/mailru/easyjson v0.7.7 h1:UGYAvKxe3sBsEDzO8ZeWOSlIQfWFlxbzLZe7hwFURr0=
