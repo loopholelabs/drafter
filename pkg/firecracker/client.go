@@ -28,8 +28,8 @@ var (
 )
 
 const (
-	stateName  = "architekt.arkstate"
-	memoryName = "architekt.arkmemory"
+	StateName  = "architekt.arkstate"
+	MemoryName = "architekt.arkmemory"
 
 	MountName = "mount"
 
@@ -193,8 +193,8 @@ func CreateSnapshot(client *http.Client) error {
 		client,
 		&v1.SnapshotCreateRequest{
 			SnapshotType:   "Full",
-			SnapshotPath:   filepath.Join(MountName, stateName),
-			MemoryFilePath: filepath.Join(MountName, memoryName),
+			SnapshotPath:   filepath.Join(MountName, StateName),
+			MemoryFilePath: filepath.Join(MountName, MemoryName),
 		},
 		"snapshot/create",
 	); err != nil {
@@ -209,10 +209,10 @@ func ResumeSnapshot(client *http.Client) error {
 		http.MethodPut,
 		client,
 		&v1.SnapshotLoadRequest{
-			SnapshotPath: filepath.Join(MountName, stateName),
+			SnapshotPath: filepath.Join(MountName, StateName),
 			MemoryBackend: v1.SnapshotLoadRequestMemoryBackend{
 				BackendType: "File",
-				BackendPath: filepath.Join(MountName, memoryName),
+				BackendPath: filepath.Join(MountName, MemoryName),
 			},
 			EnableDiffSnapshots:  false,
 			ResumeVirtualMachine: true,
@@ -241,7 +241,7 @@ func FlushSnapshot(client *http.Client) error {
 		http.MethodPut,
 		client,
 		&v1.SnapshotNoMemoryCreateRequest{
-			SnapshotPath: filepath.Join(MountName, stateName),
+			SnapshotPath: filepath.Join(MountName, StateName),
 		},
 		"snapshot-nomemory/create",
 	); err != nil {

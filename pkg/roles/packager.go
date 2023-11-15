@@ -138,6 +138,10 @@ func (p *Packager) CreatePackage(
 				return err
 			}
 
+			if !(info.Mode().IsDir() || info.Mode().IsRegular()) {
+				return nil
+			}
+
 			name, err := filepath.Rel(mountDir, path)
 			if err != nil {
 				return err

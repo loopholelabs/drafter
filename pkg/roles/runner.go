@@ -12,7 +12,6 @@ import (
 
 	"github.com/loopholelabs/architekt/pkg/config"
 	"github.com/loopholelabs/architekt/pkg/firecracker"
-	"github.com/loopholelabs/architekt/pkg/mount"
 	"github.com/loopholelabs/architekt/pkg/remotes"
 	"github.com/loopholelabs/architekt/pkg/vsock"
 )
@@ -29,7 +28,6 @@ type Runner struct {
 	hypervisorConfiguration config.HypervisorConfiguration
 	agentConfiguration      config.AgentConfiguration
 
-	mount   *mount.EXT4Mount
 	srv     *firecracker.Server
 	client  *http.Client
 	handler *vsock.Handler
@@ -69,10 +67,10 @@ func (r *Runner) Wait() error {
 	return nil
 }
 
-func (r *Runner) Resume(ctx context.Context, packageDevicePath string) error {
+func (r *Runner) Open() (string, error) {
 	if r.srv == nil {
 		if err := os.MkdirAll(r.hypervisorConfiguration.ChrootBaseDir, os.ModePerm); err != nil {
-			return err
+			return "", err
 		}
 
 		r.srv = firecracker.NewServer(
@@ -104,7 +102,16 @@ func (r *Runner) Resume(ctx context.Context, packageDevicePath string) error {
 		var err error
 		r.vmPath, err = r.srv.Open()
 		if err != nil {
-			return err
+			return "", err
+		}
+
+		mountDir := filepath.Join(r.vmPath, firecracker.MountName)
+		if err := os.MkdirAll(mountDir, os.ModePerm); err != nil {
+			return "", err
+		}
+
+		if err := os.Chown(mountDir, r.hypervisorConfiguration.UID, r.hypervisorConfiguration.GID); err != nil {
+			return "", err
 		}
 
 		r.client = &http.Client{
@@ -114,22 +121,12 @@ func (r *Runner) Resume(ctx context.Context, packageDevicePath string) error {
 				},
 			},
 		}
-
-		mountDir := filepath.Join(r.vmPath, firecracker.MountName)
-		if err := os.MkdirAll(mountDir, os.ModePerm); err != nil {
-			return err
-		}
-
-		r.mount = mount.NewEXT4Mount(packageDevicePath, filepath.Join(r.vmPath, firecracker.MountName))
-		if err := r.mount.Open(); err != nil {
-			return err
-		}
-
-		if err := os.Chown(mountDir, r.hypervisorConfiguration.UID, r.hypervisorConfiguration.GID); err != nil {
-			return err
-		}
 	}
 
+	return r.vmPath, nil
+}
+
+func (r *Runner) Resume(ctx context.Context) error {
 	if err := firecracker.ResumeSnapshot(r.client); err != nil {
 		return err
 	}
@@ -191,12 +188,6 @@ func (r *Runner) Close() error {
 	}
 
 	r.wg.Wait()
-
-	_ = os.Remove(filepath.Join(r.vmPath, VSockName))
-
-	if r.mount != nil {
-		_ = r.mount.Close()
-	}
 
 	_ = os.RemoveAll(filepath.Dir(r.vmPath)) // Remove `firecracker/$id`, not just `firecracker/$id/root`
 
