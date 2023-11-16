@@ -468,7 +468,7 @@ func (w *Worker) CreateInstance(ctx context.Context, packageRaddr string) (outpu
 		log.Println("Resuming VM on", file)
 	}
 
-	if err := runner.Resume(ctx, file); err != nil {
+	if err := runner.Resume(ctx); err != nil {
 		panic(err)
 	}
 
