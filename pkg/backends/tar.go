@@ -3,6 +3,7 @@ package backend
 import (
 	"errors"
 	"io"
+	"io/fs"
 	"sync"
 
 	"github.com/nlepage/go-tarfs"
@@ -16,7 +17,7 @@ var (
 type TarBackend struct {
 	reader io.Reader
 	path   string
-	file   io.Reader
+	file   fs.File
 	seeker io.Seeker
 	size   int64
 	lock   sync.Mutex
@@ -56,6 +57,14 @@ func (b *TarBackend) Open() (err error) {
 		return err
 	}
 	b.size = stat.Size()
+
+	return nil
+}
+
+func (b *TarBackend) Close() (err error) {
+	if b.file != nil {
+		return b.file.Close()
+	}
 
 	return nil
 }

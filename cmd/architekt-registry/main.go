@@ -15,6 +15,7 @@ import (
 	"github.com/loopholelabs/architekt/pkg/roles"
 	iservices "github.com/loopholelabs/architekt/pkg/services"
 	"github.com/loopholelabs/architekt/pkg/utils"
+	ibackend "github.com/pojntfx/go-nbd/pkg/backend"
 	"github.com/pojntfx/r3map/pkg/services"
 	"google.golang.org/grpc"
 )
@@ -35,6 +36,8 @@ func main() {
 	initramfsLaddr := flag.String("initramfs-laddr", ":1602", "Listen address for initramfs")
 	kernelLaddr := flag.String("kernel-laddr", ":1603", "Listen address for kernel")
 	diskLaddr := flag.String("disk-laddr", ":1604", "Listen address for disk")
+
+	poolSize := flag.Int("pool-size", 4096, "Size of the package reader pool")
 
 	verbose := flag.Bool("verbose", false, "Whether to enable verbose logging")
 
@@ -79,24 +82,33 @@ func main() {
 			path:  roles.DiskName,
 		},
 	}
-	for _, resource := range resources {
-		backendFile, err := os.OpenFile(*packagePath, os.O_RDWR, os.ModePerm)
-		if err != nil {
-			panic(err)
-		}
-		defer backendFile.Close()
+	for _, rsc := range resources {
+		r := rsc
 
-		b := backend.NewTarBackend(backendFile, resource.path)
+		backends := []ibackend.Backend{}
+		for i := 0; i < *poolSize; i++ {
+			backendFile, err := os.OpenFile(*packagePath, os.O_RDONLY, os.ModePerm)
+			if err != nil {
+				panic(err)
+			}
+			defer backendFile.Close()
 
-		if err := b.Open(); err != nil {
-			panic(err)
+			b := backend.NewTarBackend(backendFile, r.path)
+
+			defer b.Close()
+			if err := b.Open(); err != nil {
+				panic(err)
+			}
+
+			backends = append(backends, b)
 		}
+		b := backend.NewPoolBackend(backends)
 
 		size, err := b.Size()
 		if err != nil {
 			panic(err)
 		}
-		resource.size = size
+		r.size = size
 
 		svc := iservices.NewSeederWithMetaService(
 			services.NewSeederService(
@@ -119,29 +131,29 @@ func main() {
 		)
 
 		server := grpc.NewServer()
-		resource.server = server
+		r.server = server
 
 		v1.RegisterSeederWithMetaServer(server, iservices.NewSeederWithMetaServiceGrpc(svc))
 
-		lis, err := net.Listen("tcp", resource.laddr)
+		lis, err := net.Listen("tcp", r.laddr)
 		if err != nil {
 			panic(err)
 		}
 		defer lis.Close()
-		resource.lis = lis
+		r.lis = lis
 	}
 
 	var wg sync.WaitGroup
-	for _, resource := range resources {
-		resource := resource
+	for _, rsc := range resources {
+		r := rsc
 
-		log.Printf("Seeding %v (%v bytes) on %v", resource.path, resource.size, resource.laddr)
+		log.Printf("Seeding %v (%v bytes) on %v", r.path, r.size, r.laddr)
 
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 
-			if err := resource.server.Serve(resource.lis); err != nil {
+			if err := r.server.Serve(r.lis); err != nil {
 				if !utils.IsClosedErr(err) {
 					panic(err)
 				}
