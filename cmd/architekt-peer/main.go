@@ -423,10 +423,10 @@ func main() {
 		})
 	}
 
-	chosen, _, ok := reflect.Select(cases)
+	chosen, _, _ := reflect.Select(cases)
 	if chosen == 0 {
 		// continueCh was selected, continue
-	} else if ok {
+	} else {
 		// One of the finished channels was selected, return
 		return
 	}
@@ -574,11 +574,11 @@ func main() {
 		})
 	}
 
-	chosen, recv, ok := reflect.Select(cases)
+	chosen, recv, _ := reflect.Select(cases)
 	if chosen == 0 {
 		// errs was selected, panic
 		panic(recv)
-	} else if ok {
+	} else {
 		// One of the finished channels was selected, return
 		return
 	}
