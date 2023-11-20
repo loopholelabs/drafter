@@ -38,9 +38,12 @@ EOT
 ```
 
 ```shell
-sudo modprobe nbd
+sudo modprobe nbd nbds_max=4096
 sudo tee /etc/modules-load.d/nbd.conf <<EOT
 nbd
+EOT
+sudo tee /etc/modprobe.d/nbd.conf <<EOT
+options nbd nbds_max=4096
 EOT
 ```
 
