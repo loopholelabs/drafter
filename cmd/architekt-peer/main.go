@@ -528,6 +528,16 @@ func main() {
 	}
 	seedWg.Wait()
 
+	defer func() {
+		for _, rsc := range resources {
+			r := rsc
+
+			if r.lis != nil {
+				_ = r.lis.Close()
+			}
+		}
+	}()
+
 	for _, r := range resources {
 		if r.err != nil {
 			panic(r.err)
