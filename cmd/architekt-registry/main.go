@@ -15,7 +15,6 @@ import (
 	"github.com/loopholelabs/architekt/pkg/roles"
 	iservices "github.com/loopholelabs/architekt/pkg/services"
 	"github.com/loopholelabs/architekt/pkg/utils"
-	ibackend "github.com/pojntfx/go-nbd/pkg/backend"
 	"github.com/pojntfx/r3map/pkg/services"
 	"google.golang.org/grpc"
 )
@@ -37,13 +36,11 @@ func main() {
 	kernelLaddr := flag.String("kernel-laddr", ":1603", "Listen address for kernel")
 	diskLaddr := flag.String("disk-laddr", ":1604", "Listen address for disk")
 
-	poolSize := flag.Int("pool-size", 4096, "Size of the package reader pool")
-
 	verbose := flag.Bool("verbose", false, "Whether to enable verbose logging")
 
 	flag.Parse()
 
-	packageFile, err := os.OpenFile(*packagePath, os.O_RDWR, os.ModePerm)
+	packageFile, err := os.OpenFile(*packagePath, os.O_RDONLY, os.ModePerm)
 	if err != nil {
 		panic(err)
 	}
@@ -85,30 +82,19 @@ func main() {
 	for _, rsc := range resources {
 		r := rsc
 
-		backends := []ibackend.Backend{}
-		for i := 0; i < *poolSize; i++ {
-			backendFile, err := os.OpenFile(*packagePath, os.O_RDONLY, os.ModePerm)
-			if err != nil {
-				panic(err)
-			}
-			defer backendFile.Close()
-
-			b := backend.NewTarBackend(backendFile, r.path)
-
-			defer b.Close()
-			if err := b.Open(); err != nil {
-				panic(err)
-			}
-
-			backends = append(backends, b)
+		f, err := os.OpenFile(*packagePath, os.O_RDONLY, os.ModePerm)
+		if err != nil {
+			panic(err)
 		}
-		b := backend.NewPoolBackend(backends)
+		defer f.Close()
 
-		size, err := b.Size()
+		off, size, err := utils.FindSectionForPathInArchive(f, r.path)
 		if err != nil {
 			panic(err)
 		}
 		r.size = size
+
+		b := backend.NewReadOnlyBackend(utils.NewSectionReaderAt(f, off, size), r.size)
 
 		svc := iservices.NewSeederWithMetaService(
 			services.NewSeederService(
