@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"path"
-	"path/filepath"
 
 	v1 "github.com/loopholelabs/architekt/pkg/api/http/firecracker/v1"
 )
@@ -25,15 +24,6 @@ var (
 	ErrCouldNotCreateSnapshot       = errors.New("could not create snapshot")
 	ErrCouldNotResumeSnapshot       = errors.New("could not resume snapshot")
 	ErrCouldNotFlushSnapshot        = errors.New("could not flush snapshot")
-)
-
-const (
-	StateName  = "architekt.arkstate"
-	MemoryName = "architekt.arkmemory"
-
-	MountName = "mount"
-
-	DefaultBootArgs = "console=ttyS0 panic=1 pci=off modules=ext4 rootfstype=ext4 i8042.noaux i8042.nomux i8042.nopnp i8042.dumbkbd rootflags=rw"
 )
 
 func submitJSON(method string, client *http.Client, body any, resource string) error {
@@ -176,7 +166,12 @@ func StopVM(
 	return nil
 }
 
-func CreateSnapshot(client *http.Client) error {
+func CreateSnapshot(
+	client *http.Client,
+
+	statePath,
+	memoryPath string,
+) error {
 	if err := submitJSON(
 		http.MethodPatch,
 		client,
@@ -193,8 +188,8 @@ func CreateSnapshot(client *http.Client) error {
 		client,
 		&v1.SnapshotCreateRequest{
 			SnapshotType:   "Full",
-			SnapshotPath:   filepath.Join(MountName, StateName),
-			MemoryFilePath: filepath.Join(MountName, MemoryName),
+			SnapshotPath:   statePath,
+			MemoryFilePath: memoryPath,
 		},
 		"snapshot/create",
 	); err != nil {
@@ -204,15 +199,20 @@ func CreateSnapshot(client *http.Client) error {
 	return nil
 }
 
-func ResumeSnapshot(client *http.Client) error {
+func ResumeSnapshot(
+	client *http.Client,
+
+	statePath,
+	memoryPath string,
+) error {
 	if err := submitJSON(
 		http.MethodPut,
 		client,
 		&v1.SnapshotLoadRequest{
-			SnapshotPath: filepath.Join(MountName, StateName),
+			SnapshotPath: statePath,
 			MemoryBackend: v1.SnapshotLoadRequestMemoryBackend{
 				BackendType: "File",
-				BackendPath: filepath.Join(MountName, MemoryName),
+				BackendPath: memoryPath,
 			},
 			EnableDiffSnapshots:  false,
 			ResumeVirtualMachine: true,
@@ -225,7 +225,11 @@ func ResumeSnapshot(client *http.Client) error {
 	return nil
 }
 
-func FlushSnapshot(client *http.Client) error {
+func FlushSnapshot(
+	client *http.Client,
+
+	statePath string,
+) error {
 	if err := submitJSON(
 		http.MethodPatch,
 		client,
@@ -241,7 +245,7 @@ func FlushSnapshot(client *http.Client) error {
 		http.MethodPut,
 		client,
 		&v1.SnapshotNoMemoryCreateRequest{
-			SnapshotPath: filepath.Join(MountName, StateName),
+			SnapshotPath: statePath,
 		},
 		"snapshot-nomemory/create",
 	); err != nil {

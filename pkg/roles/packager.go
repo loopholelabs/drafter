@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"io"
-	"io/fs"
 	"net"
 	"net/http"
 	"os"
@@ -17,12 +16,6 @@ import (
 	"github.com/loopholelabs/architekt/pkg/firecracker"
 	"github.com/loopholelabs/architekt/pkg/utils"
 	"github.com/loopholelabs/architekt/pkg/vsock"
-)
-
-const (
-	InitramfsName = "architekt.arkinitramfs"
-	KernelName    = "architekt.arkkernel"
-	DiskName      = "architekt.arkdisk"
 )
 
 type Packager struct {
@@ -48,6 +41,8 @@ func (p *Packager) CreatePackage(
 	hypervisorConfiguration config.HypervisorConfiguration,
 	networkConfiguration config.NetworkConfiguration,
 	agentConfiguration config.AgentConfiguration,
+
+	packageConfiguration config.PackageConfiguration,
 ) error {
 	p.errs = make(chan error)
 
@@ -118,11 +113,6 @@ func (p *Packager) CreatePackage(
 		},
 	}
 
-	mountDir := filepath.Join(vmPath, firecracker.MountName)
-	if err := os.MkdirAll(mountDir, os.ModePerm); err != nil {
-		return err
-	}
-
 	packageOutputFile, err := os.OpenFile(packageOutputPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, os.ModePerm)
 	if err != nil {
 		return err
@@ -133,59 +123,75 @@ func (p *Packager) CreatePackage(
 	defer packageOutputArchive.Close()
 
 	defer func() {
-		if err := filepath.Walk(mountDir, func(path string, info fs.FileInfo, err error) error {
+		for _, name := range []string{
+			packageConfiguration.InitramfsName,
+			packageConfiguration.KernelName,
+			packageConfiguration.DiskName,
+
+			packageConfiguration.StateName,
+			packageConfiguration.MemoryName,
+
+			packageConfiguration.PackageConfigName,
+		} {
+			path := filepath.Join(vmPath, name)
+
+			info, err := os.Stat(path)
 			if err != nil {
-				return err
+				p.errs <- err
+
+				return
 			}
 
 			if !(info.Mode().IsDir() || info.Mode().IsRegular()) {
-				return nil
+				return
 			}
 
-			name, err := filepath.Rel(mountDir, path)
+			name, err := filepath.Rel(vmPath, path)
 			if err != nil {
-				return err
+				p.errs <- err
+
+				return
 			}
 
 			header, err := tar.FileInfoHeader(info, path)
 			if err != nil {
-				return err
+				p.errs <- err
+
+				return
 			}
 			header.Name = name
 
 			if err := packageOutputArchive.WriteHeader(header); err != nil {
-				return err
+				p.errs <- err
+
+				return
 			}
 
 			if !info.Mode().IsDir() {
 				f, err := os.Open(path)
 				if err != nil {
-					return err
+					p.errs <- err
+
+					return
 				}
 				defer f.Close()
 
 				if _, err = io.Copy(packageOutputArchive, f); err != nil {
-					return err
+					p.errs <- err
+
+					return
 				}
 			}
-
-			return nil
-		}); err != nil {
-			p.errs <- err
 		}
 	}()
 
 	defer srv.Close() // We need to stop the Firecracker process from using the mount before we can unmount it
 
-	if err := os.Chown(mountDir, hypervisorConfiguration.UID, hypervisorConfiguration.GID); err != nil {
-		return err
-	}
-
 	var (
-		initramfsOutputPath     = filepath.Join(vmPath, firecracker.MountName, InitramfsName)
-		kernelOutputPath        = filepath.Join(vmPath, firecracker.MountName, KernelName)
-		diskOutputPath          = filepath.Join(vmPath, firecracker.MountName, DiskName)
-		packageConfigOutputPath = filepath.Join(vmPath, firecracker.MountName, utils.PackageConfigName)
+		initramfsOutputPath     = filepath.Join(vmPath, packageConfiguration.InitramfsName)
+		kernelOutputPath        = filepath.Join(vmPath, packageConfiguration.KernelName)
+		diskOutputPath          = filepath.Join(vmPath, packageConfiguration.DiskName)
+		packageConfigOutputPath = filepath.Join(vmPath, packageConfiguration.PackageConfigName)
 	)
 
 	if _, err := utils.CopyFile(initramfsInputPath, initramfsOutputPath, hypervisorConfiguration.UID, hypervisorConfiguration.GID); err != nil {
@@ -203,9 +209,9 @@ func (p *Packager) CreatePackage(
 	if err := firecracker.StartVM(
 		client,
 
-		filepath.Join(firecracker.MountName, InitramfsName),
-		filepath.Join(firecracker.MountName, KernelName),
-		filepath.Join(firecracker.MountName, DiskName),
+		packageConfiguration.InitramfsName,
+		packageConfiguration.KernelName,
+		packageConfiguration.DiskName,
 
 		vmConfiguration.CpuCount,
 		vmConfiguration.MemorySize,
@@ -255,7 +261,12 @@ func (p *Packager) CreatePackage(
 	ping.Close()
 	_ = handler.Close()
 
-	if err := firecracker.CreateSnapshot(client); err != nil {
+	if err := firecracker.CreateSnapshot(
+		client,
+
+		packageConfiguration.StateName,
+		packageConfiguration.MemoryName,
+	); err != nil {
 		return err
 	}
 

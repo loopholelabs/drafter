@@ -28,6 +28,9 @@ type Runner struct {
 	hypervisorConfiguration config.HypervisorConfiguration
 	agentConfiguration      config.AgentConfiguration
 
+	stateName  string
+	memoryName string
+
 	srv     *firecracker.Server
 	client  *http.Client
 	handler *vsock.Handler
@@ -45,10 +48,16 @@ type Runner struct {
 func NewRunner(
 	hypervisorConfiguration config.HypervisorConfiguration,
 	agentConfiguration config.AgentConfiguration,
+
+	stateName string,
+	memoryName string,
 ) *Runner {
 	return &Runner{
 		hypervisorConfiguration: hypervisorConfiguration,
 		agentConfiguration:      agentConfiguration,
+
+		stateName:  stateName,
+		memoryName: memoryName,
 
 		wg:   sync.WaitGroup{},
 		errs: make(chan error),
@@ -105,15 +114,6 @@ func (r *Runner) Open() (string, error) {
 			return "", err
 		}
 
-		mountDir := filepath.Join(r.vmPath, firecracker.MountName)
-		if err := os.MkdirAll(mountDir, os.ModePerm); err != nil {
-			return "", err
-		}
-
-		if err := os.Chown(mountDir, r.hypervisorConfiguration.UID, r.hypervisorConfiguration.GID); err != nil {
-			return "", err
-		}
-
 		r.client = &http.Client{
 			Transport: &http.Transport{
 				DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
@@ -127,7 +127,12 @@ func (r *Runner) Open() (string, error) {
 }
 
 func (r *Runner) Resume(ctx context.Context) error {
-	if err := firecracker.ResumeSnapshot(r.client); err != nil {
+	if err := firecracker.ResumeSnapshot(
+		r.client,
+
+		r.stateName,
+		r.memoryName,
+	); err != nil {
 		return err
 	}
 
@@ -166,7 +171,7 @@ func (r *Runner) Suspend(ctx context.Context) error {
 
 	_ = r.handler.Close() // Connection needs to be closed before flushing the snapshot
 
-	if err := firecracker.FlushSnapshot(r.client); err != nil {
+	if err := firecracker.FlushSnapshot(r.client, r.stateName); err != nil {
 		return err
 	}
 

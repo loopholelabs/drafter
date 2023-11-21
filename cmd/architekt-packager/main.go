@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/loopholelabs/architekt/pkg/config"
-	"github.com/loopholelabs/architekt/pkg/firecracker"
 	"github.com/loopholelabs/architekt/pkg/roles"
 )
 
@@ -42,10 +41,9 @@ func main() {
 
 	cpuCount := flag.Int("cpu-count", 1, "CPU count")
 	memorySize := flag.Int("memory-size", 1024, "Memory size (in MB)")
-	bootArgs := flag.String("boot-args", firecracker.DefaultBootArgs, "Boot/kernel arguments")
+	bootArgs := flag.String("boot-args", config.DefaultBootArgs, "Boot/kernel arguments")
 
 	packageOutputPath := flag.String("package-output-path", filepath.Join("out", "redis.ark"), "Path to write package file to")
-	packagePaddingSize := flag.Int("package-padding-size", 128, "Padding to add to package for state file and file system metadata (in MB)")
 
 	flag.Parse()
 
@@ -80,10 +78,9 @@ func main() {
 		*packageOutputPath,
 
 		config.VMConfiguration{
-			CpuCount:           *cpuCount,
-			MemorySize:         *memorySize,
-			PackagePaddingSize: *packagePaddingSize,
-			BootArgs:           *bootArgs,
+			CpuCount:   *cpuCount,
+			MemorySize: *memorySize,
+			BootArgs:   *bootArgs,
 		},
 		config.LivenessConfiguration{
 			LivenessVSockPort: uint32(*livenessVSockPort),
@@ -112,6 +109,17 @@ func main() {
 		config.AgentConfiguration{
 			AgentVSockPort: uint32(*agentVSockPort),
 			ResumeTimeout:  *resumeTimeout,
+		},
+
+		config.PackageConfiguration{
+			InitramfsName: config.InitramfsName,
+			KernelName:    config.KernelName,
+			DiskName:      config.DiskName,
+
+			StateName:  config.StateName,
+			MemoryName: config.MemoryName,
+
+			PackageConfigName: config.PackageConfigName,
 		},
 	); err != nil {
 		panic(err)

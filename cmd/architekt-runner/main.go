@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/loopholelabs/architekt/pkg/config"
-	"github.com/loopholelabs/architekt/pkg/firecracker"
 	"github.com/loopholelabs/architekt/pkg/mount"
 	"github.com/loopholelabs/architekt/pkg/roles"
 	"github.com/loopholelabs/architekt/pkg/utils"
@@ -69,7 +68,7 @@ func main() {
 
 	packageArchive := tar.NewReader(packageFile)
 
-	packageConfig, packageConfigInfo, err := utils.ReadPackageConfigFromTar(packageArchive)
+	packageConfig, packageConfigInfo, err := utils.ReadPackageConfigFromTar(packageArchive, config.PackageConfigName)
 	if err != nil {
 		panic(err)
 	}
@@ -149,6 +148,9 @@ func main() {
 			AgentVSockPort: packageConfig.AgentVSockPort,
 			ResumeTimeout:  *resumeTimeout,
 		},
+
+		config.StateName,
+		config.MemoryName,
 	)
 
 	var wg sync.WaitGroup
@@ -169,13 +171,15 @@ func main() {
 		panic(err)
 	}
 
-	for _, file := range []string{
-		firecracker.StateName,
-		firecracker.MemoryName,
-		roles.InitramfsName,
-		roles.KernelName,
-		roles.DiskName,
-	} {
+	files := []string{
+		config.InitramfsName,
+		config.KernelName,
+		config.DiskName,
+
+		config.StateName,
+		config.MemoryName,
+	}
+	for _, file := range files {
 		mnt := mount.NewLoopMount(filepath.Join(cacheDir, file))
 
 		dev, err := mnt.Open()
@@ -184,7 +188,7 @@ func main() {
 		}
 		defer mnt.Close()
 
-		if err := unix.Mknod(filepath.Join(vmPath, firecracker.MountName, file), unix.S_IFBLK|0666, dev); err != nil {
+		if err := unix.Mknod(filepath.Join(vmPath, file), unix.S_IFBLK|0666, dev); err != nil {
 			panic(err)
 		}
 	}
@@ -210,13 +214,7 @@ func main() {
 			packageOutputArchive := tar.NewWriter(packageFile)
 			defer packageOutputArchive.Close()
 
-			for _, file := range []string{
-				firecracker.StateName,
-				firecracker.MemoryName,
-				roles.InitramfsName,
-				roles.KernelName,
-				roles.DiskName,
-			} {
+			for _, file := range files {
 				info, err := os.Stat(filepath.Join(cacheDir, file))
 				if err != nil {
 					panic(err)
@@ -243,11 +241,11 @@ func main() {
 				}
 			}
 
-			header, err := tar.FileInfoHeader(packageConfigInfo, filepath.Join(cacheDir, utils.PackageConfigName))
+			header, err := tar.FileInfoHeader(packageConfigInfo, filepath.Join(cacheDir, config.PackageConfigName))
 			if err != nil {
 				panic(err)
 			}
-			header.Name = utils.PackageConfigName
+			header.Name = config.PackageConfigName
 
 			if err := packageOutputArchive.WriteHeader(header); err != nil {
 				panic(err)

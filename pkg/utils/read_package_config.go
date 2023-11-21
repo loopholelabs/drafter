@@ -8,10 +8,6 @@ import (
 	"io/fs"
 )
 
-const (
-	PackageConfigName = "architekt.arkconfig"
-)
-
 var (
 	ErrPackageConfigFileNotFound = errors.New("package config file not found")
 )
@@ -20,7 +16,7 @@ type PackageConfig struct {
 	AgentVSockPort uint32 `json:"agentVSockPort"`
 }
 
-func ReadPackageConfigFromTar(archive *tar.Reader) (*PackageConfig, fs.FileInfo, error) {
+func ReadPackageConfigFromTar(archive *tar.Reader, packageConfigName string) (*PackageConfig, fs.FileInfo, error) {
 	for {
 		header, err := archive.Next()
 		if err == io.EOF {
@@ -30,7 +26,7 @@ func ReadPackageConfigFromTar(archive *tar.Reader) (*PackageConfig, fs.FileInfo,
 			return nil, nil, err
 		}
 
-		if header.Name == PackageConfigName {
+		if header.Name == packageConfigName {
 			var packageConfig PackageConfig
 			if err = json.NewDecoder(archive).Decode(&packageConfig); err != nil {
 				return nil, nil, err

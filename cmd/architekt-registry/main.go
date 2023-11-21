@@ -11,8 +11,7 @@ import (
 
 	v1 "github.com/loopholelabs/architekt/pkg/api/proto/migration/v1"
 	backend "github.com/loopholelabs/architekt/pkg/backends"
-	"github.com/loopholelabs/architekt/pkg/firecracker"
-	"github.com/loopholelabs/architekt/pkg/roles"
+	"github.com/loopholelabs/architekt/pkg/config"
 	iservices "github.com/loopholelabs/architekt/pkg/services"
 	"github.com/loopholelabs/architekt/pkg/utils"
 	"github.com/pojntfx/r3map/pkg/services"
@@ -48,7 +47,7 @@ func main() {
 
 	packageArchive := tar.NewReader(packageFile)
 
-	packageConfig, _, err := utils.ReadPackageConfigFromTar(packageArchive)
+	packageConfig, _, err := utils.ReadPackageConfigFromTar(packageArchive, config.PackageConfigName)
 	if err != nil {
 		panic(err)
 	}
@@ -59,24 +58,25 @@ func main() {
 
 	resources := []*resources{
 		{
-			laddr: *stateLaddr,
-			path:  firecracker.StateName,
-		},
-		{
-			laddr: *memoryLaddr,
-			path:  firecracker.MemoryName,
-		},
-		{
 			laddr: *initramfsLaddr,
-			path:  roles.InitramfsName,
+			path:  config.InitramfsName,
 		},
 		{
 			laddr: *kernelLaddr,
-			path:  roles.KernelName,
+			path:  config.KernelName,
 		},
 		{
 			laddr: *diskLaddr,
-			path:  roles.DiskName,
+			path:  config.DiskName,
+		},
+
+		{
+			laddr: *stateLaddr,
+			path:  config.StateName,
+		},
+		{
+			laddr: *memoryLaddr,
+			path:  config.MemoryName,
 		},
 	}
 	for _, rsc := range resources {

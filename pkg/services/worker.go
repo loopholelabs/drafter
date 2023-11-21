@@ -293,6 +293,9 @@ func (w *Worker) CreateInstance(ctx context.Context, packageRaddr string) (outpu
 			AgentVSockPort: agentVSockPort,
 			ResumeTimeout:  w.resumeTimeout,
 		},
+
+		config.StateName,
+		config.MemoryName,
 	)
 
 	var runnerWg sync.WaitGroup

@@ -18,7 +18,6 @@ import (
 
 	v1 "github.com/loopholelabs/architekt/pkg/api/proto/migration/v1"
 	"github.com/loopholelabs/architekt/pkg/config"
-	"github.com/loopholelabs/architekt/pkg/firecracker"
 	"github.com/loopholelabs/architekt/pkg/mount"
 	"github.com/loopholelabs/architekt/pkg/roles"
 	"github.com/loopholelabs/architekt/pkg/utils"
@@ -111,24 +110,8 @@ func main() {
 	var agentVSockPort uint32
 	resources := []*resource{
 		{
-			raddr: *stateRaddr,
-			path:  firecracker.StateName,
-
-			finished: make(chan struct{}),
-
-			laddr: *stateLaddr,
-		},
-		{
-			raddr: *memoryRaddr,
-			path:  firecracker.MemoryName,
-
-			finished: make(chan struct{}),
-
-			laddr: *memoryLaddr,
-		},
-		{
 			raddr: *initramfsRaddr,
-			path:  roles.InitramfsName,
+			path:  config.InitramfsName,
 
 			finished: make(chan struct{}),
 
@@ -136,7 +119,7 @@ func main() {
 		},
 		{
 			raddr: *kernelRaddr,
-			path:  roles.KernelName,
+			path:  config.KernelName,
 
 			finished: make(chan struct{}),
 
@@ -144,11 +127,28 @@ func main() {
 		},
 		{
 			raddr: *diskRaddr,
-			path:  roles.DiskName,
+			path:  config.DiskName,
 
 			finished: make(chan struct{}),
 
 			laddr: *diskLaddr,
+		},
+
+		{
+			raddr: *stateRaddr,
+			path:  config.StateName,
+
+			finished: make(chan struct{}),
+
+			laddr: *stateLaddr,
+		},
+		{
+			raddr: *memoryRaddr,
+			path:  config.MemoryName,
+
+			finished: make(chan struct{}),
+
+			laddr: *memoryLaddr,
 		},
 	}
 	for _, rsc := range resources {
@@ -209,6 +209,9 @@ func main() {
 			AgentVSockPort: agentVSockPort,
 			ResumeTimeout:  *resumeTimeout,
 		},
+
+		config.StateName,
+		config.MemoryName,
 	)
 
 	var wg sync.WaitGroup
@@ -469,7 +472,7 @@ func main() {
 
 			dev := int((major << 8) | minor)
 
-			if err := unix.Mknod(filepath.Join(vmPath, firecracker.MountName, r.path), unix.S_IFBLK|0666, dev); err != nil {
+			if err := unix.Mknod(filepath.Join(vmPath, r.path), unix.S_IFBLK|0666, dev); err != nil {
 				r.err = err
 
 				return
