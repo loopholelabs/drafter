@@ -23,8 +23,7 @@ type stage1 struct {
 }
 
 type stage2 struct {
-	name  string
-	laddr string
+	prev stage1
 
 	remote *iservices.SeederRemote
 	size   int64
@@ -115,8 +114,7 @@ func main() {
 	stage1Outputs, stage1Defers, stage1Errs := utils.ConcurrentMap(
 		stage1Inputs,
 		func(index int, input stage1, output *stage2, addDefer func(deferFunc func() error)) error {
-			output.name = input.name
-			output.laddr = input.laddr
+			output.prev = input
 
 			conn, err := grpc.Dial(input.raddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 			if err != nil {
@@ -159,8 +157,10 @@ func main() {
 		},
 	)
 
-	for _, deferFunc := range stage1Defers {
-		_ = deferFunc()
+	for _, deferFuncs := range stage1Defers {
+		for _, deferFunc := range deferFuncs {
+			_ = deferFunc()
+		}
 	}
 
 	for _, err := range stage1Errs {
