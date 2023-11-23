@@ -3,15 +3,24 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"sync"
+	"time"
 
 	v1 "github.com/loopholelabs/architekt/pkg/api/proto/migration/v1"
 	"github.com/loopholelabs/architekt/pkg/config"
+	"github.com/loopholelabs/architekt/pkg/roles"
 	"github.com/loopholelabs/architekt/pkg/services"
 	"github.com/loopholelabs/architekt/pkg/utils"
+	"github.com/pojntfx/go-nbd/pkg/backend"
+	"github.com/pojntfx/go-nbd/pkg/client"
+	"github.com/pojntfx/r3map/pkg/migration"
 	iservices "github.com/pojntfx/r3map/pkg/services"
+	"github.com/schollz/progressbar/v3"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -30,25 +39,35 @@ type stage2 struct {
 	cache  *os.File
 }
 
-func main() {
-	// rawFirecrackerBin := flag.String("firecracker-bin", "firecracker", "Firecracker binary")
-	// rawJailerBin := flag.String("jailer-bin", "jailer", "Jailer binary (from Firecracker)")
+type stage3 struct {
+	prev stage2
 
-	// chrootBaseDir := flag.String("chroot-base-dir", filepath.Join("out", "vms"), "`chroot` base directory")
+	bar      *progressbar.ProgressBar
+	local    backend.Backend
+	mgr      *migration.PathMigrator
+	finished chan struct{}
+	finalize func() (seed func() (svc *iservices.SeederService, err error), path string, err error)
+}
+
+func main() {
+	rawFirecrackerBin := flag.String("firecracker-bin", "firecracker", "Firecracker binary")
+	rawJailerBin := flag.String("jailer-bin", "jailer", "Jailer binary (from Firecracker)")
+
+	chrootBaseDir := flag.String("chroot-base-dir", filepath.Join("out", "vms"), "`chroot` base directory")
 	cacheBaseDir := flag.String("cache-base-dir", filepath.Join("out", "cache"), "Cache base directory")
 
-	// uid := flag.Int("uid", 0, "User ID for the Firecracker process")
-	// gid := flag.Int("gid", 0, "Group ID for the Firecracker process")
+	uid := flag.Int("uid", 0, "User ID for the Firecracker process")
+	gid := flag.Int("gid", 0, "Group ID for the Firecracker process")
 
-	// enableOutput := flag.Bool("enable-output", true, "Whether to enable VM stdout and stderr")
-	// enableInput := flag.Bool("enable-input", false, "Whether to enable VM stdin")
+	enableOutput := flag.Bool("enable-output", true, "Whether to enable VM stdout and stderr")
+	enableInput := flag.Bool("enable-input", false, "Whether to enable VM stdin")
 
-	// resumeTimeout := flag.Duration("resume-timeout", time.Minute, "Maximum amount of time to wait for agent to resume")
+	resumeTimeout := flag.Duration("resume-timeout", time.Minute, "Maximum amount of time to wait for agent to resume")
 
-	// netns := flag.String("netns", "ark0", "Network namespace to run Firecracker in")
+	netns := flag.String("netns", "ark0", "Network namespace to run Firecracker in")
 
-	// numaNode := flag.Int("numa-node", 0, "NUMA node to run Firecracker in")
-	// cgroupVersion := flag.Int("cgroup-version", 2, "Cgroup version to use for Jailer")
+	numaNode := flag.Int("numa-node", 0, "NUMA node to run Firecracker in")
+	cgroupVersion := flag.Int("cgroup-version", 2, "Cgroup version to use for Jailer")
 
 	stateRaddr := flag.String("state-raddr", "localhost:1500", "Remote address for state")
 	memoryRaddr := flag.String("memory-raddr", "localhost:1501", "Remote address for memory")
@@ -62,24 +81,24 @@ func main() {
 	kernelLaddr := flag.String("kernel-laddr", ":1503", "Listen address for kernel")
 	diskLaddr := flag.String("disk-laddr", ":1504", "Listen address for disk")
 
-	// pullWorkers := flag.Int64("pull-workers", 4096, "Pull workers to launch in the background; pass in a negative value to disable preemptive pull")
+	pullWorkers := flag.Int64("pull-workers", 4096, "Pull workers to launch in the background; pass in a negative value to disable preemptive pull")
 
-	// verbose := flag.Bool("verbose", false, "Whether to enable verbose logging")
+	verbose := flag.Bool("verbose", false, "Whether to enable verbose logging")
 
 	flag.Parse()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// firecrackerBin, err := exec.LookPath(*rawFirecrackerBin)
-	// if err != nil {
-	// 	panic(err)
-	// }
+	firecrackerBin, err := exec.LookPath(*rawFirecrackerBin)
+	if err != nil {
+		panic(err)
+	}
 
-	// jailerBin, err := exec.LookPath(*rawJailerBin)
-	// if err != nil {
-	// 	panic(err)
-	// }
+	jailerBin, err := exec.LookPath(*rawJailerBin)
+	if err != nil {
+		panic(err)
+	}
 
 	stage1Inputs := []stage1{
 		{
@@ -111,7 +130,7 @@ func main() {
 	}
 
 	var agentVSockPort uint32
-	stage1Outputs, stage1Defers, stage1Errs := utils.ConcurrentMap(
+	stage2Inputs, stage1Defers, stage1Errs := utils.ConcurrentMap(
 		stage1Inputs,
 		func(index int, input stage1, output *stage2, addDefer func(deferFunc func() error)) error {
 			output.prev = input
@@ -159,7 +178,7 @@ func main() {
 
 	for _, deferFuncs := range stage1Defers {
 		for _, deferFunc := range deferFuncs {
-			_ = deferFunc()
+			defer deferFunc()
 		}
 	}
 
@@ -169,5 +188,177 @@ func main() {
 		}
 	}
 
-	log.Println(agentVSockPort, stage1Outputs)
+	runner := roles.NewRunner(
+		config.HypervisorConfiguration{
+			FirecrackerBin: firecrackerBin,
+			JailerBin:      jailerBin,
+
+			ChrootBaseDir: *chrootBaseDir,
+
+			UID: *uid,
+			GID: *gid,
+
+			NetNS:         *netns,
+			NumaNode:      *numaNode,
+			CgroupVersion: *cgroupVersion,
+
+			EnableOutput: *enableOutput,
+			EnableInput:  *enableInput,
+		},
+		config.AgentConfiguration{
+			AgentVSockPort: agentVSockPort,
+			ResumeTimeout:  *resumeTimeout,
+		},
+
+		config.StateName,
+		config.MemoryName,
+	)
+
+	var wg sync.WaitGroup
+	defer wg.Wait()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+
+		if err := runner.Wait(); err != nil {
+			panic(err)
+		}
+	}()
+
+	defer runner.Close()
+	vmPath, err := runner.Open()
+	if err != nil {
+		panic(err)
+	}
+
+	suspendVM := sync.OnceValue(func() error {
+		before := time.Now()
+		defer func() {
+			log.Println("Suspend:", time.Since(before))
+		}()
+
+		log.Println("Suspending VM")
+
+		return runner.Suspend(ctx)
+	})
+
+	stopVM := sync.OnceValue(func() error {
+		log.Println("Stopping VM")
+
+		return runner.Close()
+	})
+
+	var nbdDevicesLock sync.Mutex
+	stage2Outputs, stage2Defers, stage2Errs := utils.ConcurrentMap(
+		stage2Inputs,
+		func(index int, input stage2, output *stage3, addDefer func(deferFunc func() error)) error {
+			output.prev = input
+			output.finished = make(chan struct{})
+
+			output.bar = progressbar.NewOptions64(
+				input.size,
+				progressbar.OptionSetDescription("Pulling "+input.prev.name),
+				progressbar.OptionShowBytes(true),
+				progressbar.OptionOnCompletion(func() {
+					fmt.Fprint(os.Stderr, "\n")
+				}),
+				progressbar.OptionSetWriter(os.Stderr),
+				progressbar.OptionThrottle(100*time.Millisecond),
+				progressbar.OptionShowCount(),
+				progressbar.OptionFullWidth(),
+				// VT-100 compatibility
+				progressbar.OptionUseANSICodes(true),
+				progressbar.OptionSetTheme(progressbar.Theme{
+					Saucer:        "=",
+					SaucerHead:    ">",
+					SaucerPadding: " ",
+					BarStart:      "[",
+					BarEnd:        "]",
+				}),
+			)
+
+			output.bar.Add(client.MaximumBlockSize)
+
+			output.local = backend.NewFileBackend(input.cache)
+			output.mgr = migration.NewPathMigrator(
+				ctx,
+
+				output.local,
+
+				&migration.MigratorOptions{
+					Verbose:     *verbose,
+					PullWorkers: *pullWorkers,
+				},
+				&migration.MigratorHooks{
+					OnBeforeSync: func() error {
+						return suspendVM()
+					},
+					OnAfterSync: func(dirtyOffsets []int64) error {
+						output.bar.Clear()
+
+						delta := (len(dirtyOffsets) * client.MaximumBlockSize)
+
+						log.Printf("Invalidated %v: %.2f MB (%.2f Mb)", input.prev.name, float64(delta)/(1024*1024), (float64(delta)/(1024*1024))*8)
+
+						output.bar.ChangeMax64(input.size + int64(delta))
+
+						output.bar.Describe("Finalizing " + input.prev.name)
+
+						return nil
+					},
+
+					OnBeforeClose: func() error {
+						return stopVM()
+					},
+
+					OnChunkIsLocal: func(off int64) error {
+						output.bar.Add(client.MaximumBlockSize)
+
+						return nil
+					},
+				},
+
+				nil,
+				nil,
+			)
+
+			go func() {
+				defer close(output.finished)
+
+				if err := output.mgr.Wait(); err != nil {
+					if !utils.IsClosedErr(err) {
+						panic(err)
+					}
+				}
+			}()
+
+			nbdDevicesLock.Lock() // We need to make sure that we call `FindUnusedNBDDevice` synchronously
+			defer nbdDevicesLock.Unlock()
+
+			addDefer(output.mgr.Close)
+			output.finalize, _, err = output.mgr.Leech(output.prev.remote)
+			if err != nil {
+				return err
+			}
+
+			log.Println("Leeching", input.prev.name, "from", input.prev.raddr)
+
+			return nil
+		},
+	)
+
+	for _, deferFuncs := range stage2Defers {
+		for _, deferFunc := range deferFuncs {
+			defer deferFunc()
+		}
+	}
+
+	for _, err := range stage2Errs {
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	log.Println(vmPath, stage2Outputs)
 }
