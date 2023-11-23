@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"sync"
 	"time"
@@ -250,6 +251,8 @@ func main() {
 	})
 
 	var nbdDevicesLock sync.Mutex
+	mgrs := []*migration.PathMigrator{}
+	var mgrsLock sync.Mutex
 	stage2Outputs, stage2Defers, stage2Errs := utils.ConcurrentMap(
 		stage2Inputs,
 		func(index int, input stage2, output *stage3, addDefer func(deferFunc func() error)) error {
@@ -332,6 +335,27 @@ func main() {
 					}
 				}
 			}()
+
+			mgrsLock.Lock()
+			mgrs = append(mgrs, output.mgr)
+			mgrsLock.Unlock()
+
+			if index == 0 {
+				done := make(chan os.Signal, 1)
+				signal.Notify(done, os.Interrupt)
+				go func() {
+					<-done
+
+					log.Println("Exiting gracefully")
+
+					mgrsLock.Lock()
+					defer mgrsLock.Unlock()
+
+					for _, m := range mgrs {
+						_ = m.Close()
+					}
+				}()
+			}
 
 			nbdDevicesLock.Lock() // We need to make sure that we call `FindUnusedNBDDevice` synchronously
 			defer nbdDevicesLock.Unlock()
