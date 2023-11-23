@@ -5,7 +5,7 @@ OUTPUT_DIR ?= out
 DST ?=
 
 # Private variables
-obj = architekt-daemon architekt-packager architekt-runner architekt-registry architekt-peer architekt-manager architekt-worker architekt-operator
+obj = architekt-daemon architekt-packager architekt-runner architekt-registry architekt-peer architekt-manager architekt-worker architekt-operator architekt-peer2
 all: $(addprefix build/,$(obj))
 
 # Build
