@@ -11,14 +11,13 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"sync"
 	"time"
 
 	"github.com/loopholelabs/architekt/pkg/config"
-	"github.com/loopholelabs/architekt/pkg/mount"
 	"github.com/loopholelabs/architekt/pkg/roles"
 	"github.com/loopholelabs/architekt/pkg/utils"
-	"golang.org/x/sys/unix"
 )
 
 func main() {
@@ -26,7 +25,6 @@ func main() {
 	rawJailerBin := flag.String("jailer-bin", "jailer", "Jailer binary (from Firecracker)")
 
 	chrootBaseDir := flag.String("chroot-base-dir", filepath.Join("out", "vms"), "`chroot` base directory")
-	cacheBaseDir := flag.String("cache-base-dir", filepath.Join("out", "cache"), "Cache base directory")
 
 	uid := flag.Int("uid", 0, "User ID for the Firecracker process")
 	gid := flag.Int("gid", 0, "Group ID for the Firecracker process")
@@ -78,54 +76,6 @@ func main() {
 	}
 
 	packageArchive = tar.NewReader(packageFile)
-
-	if err := os.MkdirAll(*cacheBaseDir, os.ModePerm); err != nil {
-		panic(err)
-	}
-
-	cacheDir, err := os.MkdirTemp(*cacheBaseDir, "")
-	if err != nil {
-		panic(err)
-	}
-	defer os.RemoveAll(cacheDir)
-
-	for {
-		header, err := packageArchive.Next()
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-
-			panic(err)
-		}
-
-		if err != nil {
-			panic(err)
-		}
-
-		target := filepath.Join(cacheDir, header.Name)
-
-		switch header.Typeflag {
-		case tar.TypeDir:
-			if err := os.MkdirAll(target, os.FileMode(header.Mode)); err != nil {
-				panic(err)
-			}
-
-		case tar.TypeReg:
-			f, err := os.Create(target)
-			if err != nil {
-				panic(err)
-			}
-
-			if _, err := io.Copy(f, packageArchive); err != nil {
-				_ = f.Close()
-
-				panic(err)
-			}
-
-			_ = f.Close()
-		}
-	}
 
 	runner := roles.NewRunner(
 		config.HypervisorConfiguration{
@@ -179,18 +129,42 @@ func main() {
 		config.StateName,
 		config.MemoryName,
 	}
-	for _, file := range files {
-		mnt := mount.NewLoopMount(filepath.Join(cacheDir, file))
+	for {
+		header, err := packageArchive.Next()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
 
-		dev, err := mnt.Open()
+			panic(err)
+		}
+
 		if err != nil {
 			panic(err)
 		}
-		defer mnt.Close()
 
-		if err := unix.Mknod(filepath.Join(vmPath, file), unix.S_IFBLK|0666, dev); err != nil {
+		if !slices.Contains(files, header.Name) {
+			continue
+		}
+
+		if header.Typeflag != tar.TypeReg {
+			continue
+		}
+
+		target := filepath.Join(vmPath, header.Name)
+
+		f, err := os.Create(target)
+		if err != nil {
 			panic(err)
 		}
+
+		if _, err := io.Copy(f, packageArchive); err != nil {
+			_ = f.Close()
+
+			panic(err)
+		}
+
+		_ = f.Close()
 	}
 
 	before := time.Now()
@@ -215,12 +189,12 @@ func main() {
 			defer packageOutputArchive.Close()
 
 			for _, file := range files {
-				info, err := os.Stat(filepath.Join(cacheDir, file))
+				info, err := os.Stat(filepath.Join(vmPath, file))
 				if err != nil {
 					panic(err)
 				}
 
-				header, err := tar.FileInfoHeader(info, filepath.Join(cacheDir, file))
+				header, err := tar.FileInfoHeader(info, filepath.Join(vmPath, file))
 				if err != nil {
 					panic(err)
 				}
@@ -230,7 +204,7 @@ func main() {
 					panic(err)
 				}
 
-				f, err := os.Open(filepath.Join(cacheDir, file))
+				f, err := os.Open(filepath.Join(vmPath, file))
 				if err != nil {
 					panic(err)
 				}
@@ -241,7 +215,7 @@ func main() {
 				}
 			}
 
-			header, err := tar.FileInfoHeader(packageConfigInfo, filepath.Join(cacheDir, config.PackageConfigName))
+			header, err := tar.FileInfoHeader(packageConfigInfo, filepath.Join(vmPath, config.PackageConfigName))
 			if err != nil {
 				panic(err)
 			}

@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -18,7 +19,6 @@ import (
 
 	v1 "github.com/loopholelabs/architekt/pkg/api/proto/migration/v1"
 	"github.com/loopholelabs/architekt/pkg/config"
-	"github.com/loopholelabs/architekt/pkg/mount"
 	"github.com/loopholelabs/architekt/pkg/roles"
 	"github.com/loopholelabs/architekt/pkg/services"
 	"github.com/loopholelabs/architekt/pkg/utils"
@@ -68,6 +68,10 @@ type stage5 struct {
 	server *grpc.Server
 	lis    net.Listener
 }
+
+var (
+	errCouldNotGetDeviceStat = errors.New("could not get device stat")
+)
 
 func main() {
 	rawFirecrackerBin := flag.String("firecracker-bin", "firecracker", "Firecracker binary")
@@ -393,7 +397,7 @@ func main() {
 
 			stat, ok := info.Sys().(*syscall.Stat_t)
 			if !ok {
-				return mount.ErrCouldNotGetDeviceStat
+				return errCouldNotGetDeviceStat
 			}
 
 			major := uint64(stat.Rdev / 256)
