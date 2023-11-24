@@ -20,37 +20,50 @@ import (
 	"github.com/loopholelabs/architekt/pkg/config"
 	"github.com/loopholelabs/architekt/pkg/mount"
 	"github.com/loopholelabs/architekt/pkg/roles"
+	"github.com/loopholelabs/architekt/pkg/services"
 	"github.com/loopholelabs/architekt/pkg/utils"
 	"github.com/pojntfx/go-nbd/pkg/backend"
 	"github.com/pojntfx/go-nbd/pkg/client"
 	"github.com/pojntfx/r3map/pkg/migration"
-	"golang.org/x/sys/unix"
-
-	"github.com/loopholelabs/architekt/pkg/services"
 	iservices "github.com/pojntfx/r3map/pkg/services"
 	"github.com/schollz/progressbar/v3"
+	"golang.org/x/sys/unix"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-type resource struct {
+type stage1 struct {
+	name  string
 	raddr string
-	path  string
-
-	bar    *progressbar.ProgressBar
-	local  backend.Backend
-	mgr    *migration.PathMigrator
-	size   int64
-	remote *iservices.SeederRemote
-	cache  *os.File
-
-	finalize func() (seed func() (svc *iservices.SeederService, err error), path string, err error)
-	finished chan struct{}
-
-	err  error
-	seed func() (svc *iservices.SeederService, err error)
-
 	laddr string
+}
+
+type stage2 struct {
+	prev stage1
+
+	remote *iservices.SeederRemote
+	size   int64
+	cache  *os.File
+}
+
+type stage3 struct {
+	prev stage2
+
+	bar      *progressbar.ProgressBar
+	local    backend.Backend
+	mgr      *migration.PathMigrator
+	finished chan struct{}
+	finalize func() (seed func() (svc *iservices.SeederService, err error), err error)
+}
+
+type stage4 struct {
+	prev stage3
+
+	seed func() (svc *iservices.SeederService, err error)
+}
+
+type stage5 struct {
+	prev stage4
 
 	server *grpc.Server
 	lis    net.Listener
@@ -107,83 +120,90 @@ func main() {
 		panic(err)
 	}
 
-	var agentVSockPort uint32
-	resources := []*resource{
+	stage1Inputs := []stage1{
 		{
+			name:  config.InitramfsName,
 			raddr: *initramfsRaddr,
-			path:  config.InitramfsName,
-
-			finished: make(chan struct{}),
-
 			laddr: *initramfsLaddr,
 		},
 		{
+			name:  config.KernelName,
 			raddr: *kernelRaddr,
-			path:  config.KernelName,
-
-			finished: make(chan struct{}),
-
 			laddr: *kernelLaddr,
 		},
 		{
+			name:  config.DiskName,
 			raddr: *diskRaddr,
-			path:  config.DiskName,
-
-			finished: make(chan struct{}),
-
 			laddr: *diskLaddr,
 		},
 
 		{
+			name:  config.StateName,
 			raddr: *stateRaddr,
-			path:  config.StateName,
-
-			finished: make(chan struct{}),
-
 			laddr: *stateLaddr,
 		},
 		{
+			name:  config.MemoryName,
 			raddr: *memoryRaddr,
-			path:  config.MemoryName,
-
-			finished: make(chan struct{}),
-
 			laddr: *memoryLaddr,
 		},
 	}
-	for _, rsc := range resources {
-		r := rsc
 
-		conn, err := grpc.Dial(r.raddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	var agentVSockPort uint32
+	stage2Inputs, stage1Defers, stage1Errs := utils.ConcurrentMap(
+		stage1Inputs,
+		func(index int, input stage1, output *stage2, addDefer func(deferFunc func() error)) error {
+			output.prev = input
+
+			conn, err := grpc.Dial(input.raddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+			if err != nil {
+				return err
+			}
+			addDefer(conn.Close)
+
+			remote, remoteWithMeta := services.NewSeederWithMetaRemoteGrpc(v1.NewSeederWithMetaClient(conn))
+			output.remote = remote
+
+			size, port, err := remoteWithMeta.Meta(ctx)
+			if err != nil {
+				return err
+			}
+			output.size = size
+
+			if index == 0 {
+				agentVSockPort = port
+			}
+
+			if err := os.MkdirAll(*cacheBaseDir, os.ModePerm); err != nil {
+				return err
+			}
+
+			cache, err := os.CreateTemp(*cacheBaseDir, "*.ark")
+			if err != nil {
+				return err
+			}
+			output.cache = cache
+			addDefer(cache.Close)
+			addDefer(func() error {
+				return os.Remove(cache.Name())
+			})
+
+			if err := cache.Truncate(size); err != nil {
+				return err
+			}
+
+			return nil
+		},
+	)
+
+	for _, deferFuncs := range stage1Defers {
+		for _, deferFunc := range deferFuncs {
+			defer deferFunc()
+		}
+	}
+
+	for _, err := range stage1Errs {
 		if err != nil {
-			panic(err)
-		}
-		defer conn.Close()
-
-		remote, remoteWithMeta := services.NewSeederWithMetaRemoteGrpc(v1.NewSeederWithMetaClient(conn))
-		r.remote = remote
-
-		size, port, err := remoteWithMeta.Meta(ctx)
-		if err != nil {
-			panic(err)
-		}
-		r.size = size
-
-		agentVSockPort = port
-
-		if err := os.MkdirAll(*cacheBaseDir, os.ModePerm); err != nil {
-			panic(err)
-		}
-
-		cache, err := os.CreateTemp(*cacheBaseDir, "*.ark")
-		if err != nil {
-			panic(err)
-		}
-		r.cache = cache
-		defer cache.Close()
-		defer os.Remove(cache.Name())
-
-		if err := cache.Truncate(size); err != nil {
 			panic(err)
 		}
 	}
@@ -232,23 +252,7 @@ func main() {
 		panic(err)
 	}
 
-	suspendStart := false
-	suspendStartWg := sync.NewCond(&sync.Mutex{})
-
-	var suspendErr error
-
-	var suspendEndWg sync.WaitGroup
-	suspendEndWg.Add(1)
-
-	go func() {
-		defer suspendEndWg.Done()
-
-		suspendStartWg.L.Lock()
-		if !suspendStart {
-			suspendStartWg.Wait()
-		}
-		suspendStartWg.L.Unlock()
-
+	suspendVM := sync.OnceValue(func() error {
 		before := time.Now()
 		defer func() {
 			log.Println("Suspend:", time.Since(before))
@@ -256,149 +260,164 @@ func main() {
 
 		log.Println("Suspending VM")
 
-		if err := runner.Suspend(ctx); err != nil {
-			suspendErr = err
-		}
-	}()
+		return runner.Suspend(ctx)
+	})
 
-	stopStart := false
-	stopStartWg := sync.NewCond(&sync.Mutex{})
-
-	var stopErr error
-
-	var stopEndWg sync.WaitGroup
-	stopEndWg.Add(1)
-
-	go func() {
-		defer stopEndWg.Done()
-
-		stopStartWg.L.Lock()
-		if !stopStart {
-			stopStartWg.Wait()
-		}
-		stopStartWg.L.Unlock()
-
+	stopVM := sync.OnceValue(func() error {
 		log.Println("Stopping VM")
 
-		if err := runner.Close(); err != nil {
-			stopErr = err
-		}
-	}()
+		return runner.Close()
+	})
 
-	for i, rsc := range resources {
-		r := rsc
+	var nbdDevicesLock sync.Mutex
+	mgrs := []*migration.PathMigrator{}
+	var mgrsLock sync.Mutex
+	stage3Inputs, stage2Defers, stage2Errs := utils.ConcurrentMap(
+		stage2Inputs,
+		func(index int, input stage2, output *stage3, addDefer func(deferFunc func() error)) error {
+			output.prev = input
+			output.finished = make(chan struct{})
 
-		r.bar = progressbar.NewOptions64(
-			r.size,
-			progressbar.OptionSetDescription("Pulling "+r.path),
-			progressbar.OptionShowBytes(true),
-			progressbar.OptionOnCompletion(func() {
-				fmt.Fprint(os.Stderr, "\n")
-			}),
-			progressbar.OptionSetWriter(os.Stderr),
-			progressbar.OptionThrottle(100*time.Millisecond),
-			progressbar.OptionShowCount(),
-			progressbar.OptionFullWidth(),
-			// VT-100 compatibility
-			progressbar.OptionUseANSICodes(true),
-			progressbar.OptionSetTheme(progressbar.Theme{
-				Saucer:        "=",
-				SaucerHead:    ">",
-				SaucerPadding: " ",
-				BarStart:      "[",
-				BarEnd:        "]",
-			}),
-		)
+			output.bar = progressbar.NewOptions64(
+				input.size,
+				progressbar.OptionSetDescription("Pulling "+input.prev.name),
+				progressbar.OptionShowBytes(true),
+				progressbar.OptionOnCompletion(func() {
+					fmt.Fprint(os.Stderr, "\n")
+				}),
+				progressbar.OptionSetWriter(os.Stderr),
+				progressbar.OptionThrottle(100*time.Millisecond),
+				progressbar.OptionShowCount(),
+				progressbar.OptionFullWidth(),
+				// VT-100 compatibility
+				progressbar.OptionUseANSICodes(true),
+				progressbar.OptionSetTheme(progressbar.Theme{
+					Saucer:        "=",
+					SaucerHead:    ">",
+					SaucerPadding: " ",
+					BarStart:      "[",
+					BarEnd:        "]",
+				}),
+			)
 
-		r.bar.Add(client.MaximumBlockSize)
+			output.bar.Add(client.MaximumBlockSize)
 
-		r.local = backend.NewFileBackend(r.cache)
-		r.mgr = migration.NewPathMigrator(
-			ctx,
+			output.local = backend.NewFileBackend(input.cache)
+			output.mgr = migration.NewPathMigrator(
+				ctx,
 
-			r.local,
+				output.local,
 
-			&migration.MigratorOptions{
-				Verbose:     *verbose,
-				PullWorkers: *pullWorkers,
-			},
-			&migration.MigratorHooks{
-				OnBeforeSync: func() error {
-					suspendStartWg.L.Lock()
-					suspendStart = true
-					suspendStartWg.Broadcast()
-					suspendStartWg.L.Unlock()
-
-					suspendEndWg.Wait()
-
-					return suspendErr
+				&migration.MigratorOptions{
+					Verbose:     *verbose,
+					PullWorkers: *pullWorkers,
 				},
-				OnAfterSync: func(dirtyOffsets []int64) error {
-					r.bar.Clear()
+				&migration.MigratorHooks{
+					OnBeforeSync: func() error {
+						return suspendVM()
+					},
+					OnAfterSync: func(dirtyOffsets []int64) error {
+						output.bar.Clear()
 
-					delta := (len(dirtyOffsets) * client.MaximumBlockSize)
+						delta := (len(dirtyOffsets) * client.MaximumBlockSize)
 
-					log.Printf("Invalidated %v: %.2f MB (%.2f Mb)", r.path, float64(delta)/(1024*1024), (float64(delta)/(1024*1024))*8)
+						log.Printf("Invalidated %v: %.2f MB (%.2f Mb)", input.prev.name, float64(delta)/(1024*1024), (float64(delta)/(1024*1024))*8)
 
-					r.bar.ChangeMax64(r.size + int64(delta))
+						output.bar.ChangeMax64(input.size + int64(delta))
 
-					r.bar.Describe("Finalizing " + r.path)
+						output.bar.Describe("Finalizing " + input.prev.name)
 
-					return nil
-				},
+						return nil
+					},
 
-				OnBeforeClose: func() error {
-					stopStartWg.L.Lock()
-					stopStart = true
-					stopStartWg.Broadcast()
-					stopStartWg.L.Unlock()
+					OnBeforeClose: func() error {
+						return stopVM()
+					},
 
-					stopEndWg.Wait()
+					OnChunkIsLocal: func(off int64) error {
+						output.bar.Add(client.MaximumBlockSize)
 
-					return stopErr
+						return nil
+					},
 				},
 
-				OnChunkIsLocal: func(off int64) error {
-					r.bar.Add(client.MaximumBlockSize)
+				nil,
+				nil,
+			)
 
-					return nil
-				},
-			},
-
-			nil,
-			nil,
-		)
-
-		go func(r *resource) {
-			defer close(r.finished)
-
-			if err := r.mgr.Wait(); err != nil {
-				panic(err)
-			}
-		}(r)
-
-		if i == 0 {
-			done := make(chan os.Signal, 1)
-			signal.Notify(done, os.Interrupt)
 			go func() {
-				<-done
+				defer close(output.finished)
 
-				log.Println("Exiting gracefully")
-
-				for _, rsc := range resources {
-					r := rsc
-
-					if r.mgr != nil {
-						_ = r.mgr.Close()
+				if err := output.mgr.Wait(); err != nil {
+					if !utils.IsClosedErr(err) {
+						panic(err)
 					}
 				}
 			}()
+
+			mgrsLock.Lock()
+			mgrs = append(mgrs, output.mgr)
+			mgrsLock.Unlock()
+
+			if index == 0 {
+				done := make(chan os.Signal, 1)
+				signal.Notify(done, os.Interrupt)
+				go func() {
+					<-done
+
+					log.Println("Exiting gracefully")
+
+					mgrsLock.Lock()
+					defer mgrsLock.Unlock()
+
+					for _, m := range mgrs {
+						_ = m.Close()
+					}
+				}()
+			}
+
+			nbdDevicesLock.Lock() // We need to make sure that we call `FindUnusedNBDDevice` synchronously
+			defer nbdDevicesLock.Unlock()
+
+			addDefer(output.mgr.Close)
+			finalize, file, _, err := output.mgr.Leech(output.prev.remote)
+			if err != nil {
+				return err
+			}
+			output.finalize = finalize
+
+			info, err := os.Stat(file)
+			if err != nil {
+				return err
+			}
+
+			stat, ok := info.Sys().(*syscall.Stat_t)
+			if !ok {
+				return mount.ErrCouldNotGetDeviceStat
+			}
+
+			major := uint64(stat.Rdev / 256)
+			minor := uint64(stat.Rdev % 256)
+
+			dev := int((major << 8) | minor)
+
+			if err := unix.Mknod(filepath.Join(vmPath, input.prev.name), unix.S_IFBLK|0666, dev); err != nil {
+				return err
+			}
+
+			log.Println("Leeching", input.prev.name, "from", input.prev.raddr, "to", file)
+
+			return nil
+		},
+	)
+
+	for _, deferFuncs := range stage2Defers {
+		for _, deferFunc := range deferFuncs {
+			defer deferFunc()
 		}
+	}
 
-		log.Println("Leeching", r.path, "from", r.raddr)
-
-		defer r.mgr.Close()
-		r.finalize, _, err = r.mgr.Leech(r.remote)
+	for _, err := range stage2Errs {
 		if err != nil {
 			panic(err)
 		}
@@ -419,10 +438,10 @@ func main() {
 			Chan: reflect.ValueOf(continueCh),
 		},
 	}
-	for _, r := range resources {
+	for _, stage := range stage3Inputs {
 		cases = append(cases, reflect.SelectCase{
 			Dir:  reflect.SelectRecv,
-			Chan: reflect.ValueOf(r.finished),
+			Chan: reflect.ValueOf(stage.finished),
 		})
 	}
 
@@ -434,134 +453,109 @@ func main() {
 		return
 	}
 
-	before := time.Now()
+	// Resume as soon as the underlying resources are unlocked
+	defer runner.Close()
+	resumeErrs := make(chan error)
+	go func() {
+		var err error
+		before := time.Now()
+		defer func() {
+			if err == nil {
+				log.Println("Resume:", time.Since(before))
+			}
 
-	var finalizeWg sync.WaitGroup
-	for _, rsc := range resources {
-		r := rsc
+			resumeErrs <- err
+		}()
 
-		finalizeWg.Add(1)
+		log.Println("Resuming VM on", vmPath)
 
-		go func(r *resource) {
-			defer finalizeWg.Done()
+		err = runner.Resume(ctx)
+	}()
 
-			seed, file, err := r.finalize()
+	stage4Inputs, stage3Defers, stage3Errs := utils.ConcurrentMap(
+		stage3Inputs,
+		func(index int, input stage3, output *stage4, addDefer func(deferFunc func() error)) error {
+			output.prev = input
+
+			seed, err := input.finalize()
 			if err != nil {
-				r.err = err
-
-				return
+				return err
 			}
-			r.seed = seed
+			output.seed = seed
 
-			info, err := os.Stat(file)
-			if err != nil {
-				r.err = err
+			input.bar.Clear()
 
-				return
-			}
+			return nil
+		},
+	)
 
-			stat, ok := info.Sys().(*syscall.Stat_t)
-			if !ok {
-				r.err = mount.ErrCouldNotGetDeviceStat
-
-				return
-			}
-
-			major := uint64(stat.Rdev / 256)
-			minor := uint64(stat.Rdev % 256)
-
-			dev := int((major << 8) | minor)
-
-			if err := unix.Mknod(filepath.Join(vmPath, r.path), unix.S_IFBLK|0666, dev); err != nil {
-				r.err = err
-
-				return
-			}
-
-			r.bar.Clear()
-		}(r)
-	}
-	finalizeWg.Wait()
-
-	for _, r := range resources {
-		if r.err != nil {
-			panic(r.err)
+	for _, deferFuncs := range stage3Defers {
+		for _, deferFunc := range deferFuncs {
+			defer deferFunc()
 		}
 	}
 
-	log.Println("Resuming VM on", vmPath)
+	for _, err := range stage3Errs {
+		if err != nil {
+			panic(err)
+		}
+	}
 
-	if err := runner.Resume(ctx); err != nil {
+	if err := <-resumeErrs; err != nil {
 		panic(err)
 	}
 
-	defer runner.Close()
+	stage5Inputs, stage4Defers, stage4Errs := utils.ConcurrentMap(
+		stage4Inputs,
+		func(index int, input stage4, output *stage5, addDefer func(deferFunc func() error)) error {
+			output.prev = input
 
-	log.Println("Resume:", time.Since(before))
-
-	var seedWg sync.WaitGroup
-	for _, rsc := range resources {
-		r := rsc
-
-		seedWg.Add(1)
-
-		go func(r *resource) {
-			defer seedWg.Done()
-
-			svc, err := r.seed()
+			svc, err := input.seed()
 			if err != nil {
-				r.err = err
-
-				return
+				return err
 			}
 
-			r.server = grpc.NewServer()
+			output.server = grpc.NewServer()
 
-			v1.RegisterSeederWithMetaServer(r.server, services.NewSeederWithMetaServiceGrpc(services.NewSeederWithMetaService(svc, r.local, agentVSockPort, *verbose)))
+			v1.RegisterSeederWithMetaServer(output.server, services.NewSeederWithMetaServiceGrpc(services.NewSeederWithMetaService(svc, input.prev.local, agentVSockPort, *verbose)))
 
-			r.lis, err = net.Listen("tcp", r.laddr)
+			output.lis, err = net.Listen("tcp", input.prev.prev.prev.laddr)
 			if err != nil {
-				r.err = err
-
-				return
+				return err
 			}
+			addDefer(output.lis.Close)
 
-			log.Println("Seeding", r.path, "on", r.laddr)
-		}(r)
-	}
-	seedWg.Wait()
+			log.Println("Seeding", input.prev.prev.prev.name, "on", input.prev.prev.prev.laddr)
 
-	defer func() {
-		for _, rsc := range resources {
-			r := rsc
+			return nil
+		},
+	)
 
-			if r.lis != nil {
-				_ = r.lis.Close()
-			}
+	for _, deferFuncs := range stage4Defers {
+		for _, deferFunc := range deferFuncs {
+			defer deferFunc()
 		}
-	}()
+	}
 
-	for _, r := range resources {
-		if r.err != nil {
-			panic(r.err)
+	for _, err := range stage4Errs {
+		if err != nil {
+			panic(err)
 		}
 	}
 
 	errs := make(chan error)
-	for _, rsc := range resources {
-		r := rsc
+	for _, stage := range stage5Inputs {
+		go func(stage stage5) {
+			defer stage.lis.Close()
 
-		go func(r *resource) {
-			defer r.lis.Close()
-
-			if err := r.server.Serve(r.lis); err != nil {
+			if err := stage.server.Serve(stage.lis); err != nil {
 				if !utils.IsClosedErr(err) {
 					errs <- err
 				}
 
 				return
 			}
-		}(r)
+		}(stage)
 	}
 
 	cases = []reflect.SelectCase{
@@ -570,10 +564,10 @@ func main() {
 			Chan: reflect.ValueOf(errs),
 		},
 	}
-	for _, r := range resources {
+	for _, stage := range stage5Inputs {
 		cases = append(cases, reflect.SelectCase{
 			Dir:  reflect.SelectRecv,
-			Chan: reflect.ValueOf(r.finished),
+			Chan: reflect.ValueOf(stage.prev.prev.finished),
 		})
 	}
 
