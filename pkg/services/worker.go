@@ -444,7 +444,7 @@ func (w *Worker) CreateInstance(ctx context.Context, packageRaddr string) (outpu
 	i.mgr = mgr
 	i.mgrWg = &mgrWg
 
-	finalize, _, err := mgr.Leech(remote)
+	finalize, file, _, err := mgr.Leech(remote)
 	if err != nil {
 		panic(err)
 	}
@@ -458,7 +458,7 @@ func (w *Worker) CreateInstance(ctx context.Context, packageRaddr string) (outpu
 
 	before := time.Now()
 
-	seed, file, err := finalize()
+	seed, err := finalize()
 	if err != nil {
 		panic(err)
 	}

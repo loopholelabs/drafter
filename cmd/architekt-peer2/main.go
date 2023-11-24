@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"flag"
 	"fmt"
@@ -9,11 +10,14 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"reflect"
 	"sync"
+	"syscall"
 	"time"
 
 	v1 "github.com/loopholelabs/architekt/pkg/api/proto/migration/v1"
 	"github.com/loopholelabs/architekt/pkg/config"
+	"github.com/loopholelabs/architekt/pkg/mount"
 	"github.com/loopholelabs/architekt/pkg/roles"
 	"github.com/loopholelabs/architekt/pkg/services"
 	"github.com/loopholelabs/architekt/pkg/utils"
@@ -22,6 +26,7 @@ import (
 	"github.com/pojntfx/r3map/pkg/migration"
 	iservices "github.com/pojntfx/r3map/pkg/services"
 	"github.com/schollz/progressbar/v3"
+	"golang.org/x/sys/unix"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -47,7 +52,13 @@ type stage3 struct {
 	local    backend.Backend
 	mgr      *migration.PathMigrator
 	finished chan struct{}
-	finalize func() (seed func() (svc *iservices.SeederService, err error), path string, err error)
+	finalize func() (seed func() (svc *iservices.SeederService, err error), err error)
+}
+
+type stage4 struct {
+	prev stage3
+
+	seed func() (svc *iservices.SeederService, err error)
 }
 
 func main() {
@@ -253,7 +264,7 @@ func main() {
 	var nbdDevicesLock sync.Mutex
 	mgrs := []*migration.PathMigrator{}
 	var mgrsLock sync.Mutex
-	stage2Outputs, stage2Defers, stage2Errs := utils.ConcurrentMap(
+	stage3Inputs, stage2Defers, stage2Errs := utils.ConcurrentMap(
 		stage2Inputs,
 		func(index int, input stage2, output *stage3, addDefer func(deferFunc func() error)) error {
 			output.prev = input
@@ -361,12 +372,32 @@ func main() {
 			defer nbdDevicesLock.Unlock()
 
 			addDefer(output.mgr.Close)
-			output.finalize, _, err = output.mgr.Leech(output.prev.remote)
+			finalize, file, _, err := output.mgr.Leech(output.prev.remote)
+			if err != nil {
+				return err
+			}
+			output.finalize = finalize
+
+			info, err := os.Stat(file)
 			if err != nil {
 				return err
 			}
 
-			log.Println("Leeching", input.prev.name, "from", input.prev.raddr)
+			stat, ok := info.Sys().(*syscall.Stat_t)
+			if !ok {
+				return mount.ErrCouldNotGetDeviceStat
+			}
+
+			major := uint64(stat.Rdev / 256)
+			minor := uint64(stat.Rdev % 256)
+
+			dev := int((major << 8) | minor)
+
+			if err := unix.Mknod(filepath.Join(vmPath, input.prev.name), unix.S_IFBLK|0666, dev); err != nil {
+				return err
+			}
+
+			log.Println("Leeching", input.prev.name, "from", input.prev.raddr, "to", file)
 
 			return nil
 		},
@@ -384,5 +415,75 @@ func main() {
 		}
 	}
 
-	log.Println(vmPath, stage2Outputs)
+	log.Println("Press <ENTER> to finalize migration")
+
+	continueCh := make(chan struct{})
+	go func() {
+		bufio.NewScanner(os.Stdin).Scan()
+
+		continueCh <- struct{}{}
+	}()
+
+	cases := []reflect.SelectCase{
+		{
+			Dir:  reflect.SelectRecv,
+			Chan: reflect.ValueOf(continueCh),
+		},
+	}
+	for _, r := range stage3Inputs {
+		cases = append(cases, reflect.SelectCase{
+			Dir:  reflect.SelectRecv,
+			Chan: reflect.ValueOf(r.finished),
+		})
+	}
+
+	chosen, _, _ := reflect.Select(cases)
+	if chosen == 0 {
+		// continueCh was selected, continue
+	} else {
+		// One of the finished channels was selected, return
+		return
+	}
+
+	before := time.Now()
+
+	stage4Inputs, stage3Defers, stage3Errs := utils.ConcurrentMap(
+		stage3Inputs,
+		func(index int, input stage3, output *stage4, addDefer func(deferFunc func() error)) error {
+			output.prev = input
+
+			seed, err := input.finalize()
+			if err != nil {
+				return err
+			}
+			output.seed = seed
+
+			input.bar.Clear()
+
+			return nil
+		},
+	)
+
+	for _, deferFuncs := range stage3Defers {
+		for _, deferFunc := range deferFuncs {
+			defer deferFunc()
+		}
+	}
+
+	for _, err := range stage3Errs {
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	log.Println("Resuming VM on", vmPath)
+
+	defer runner.Close()
+	if err := runner.Resume(ctx); err != nil {
+		panic(err)
+	}
+
+	log.Println("Resume:", time.Since(before))
+
+	log.Println(stage4Inputs)
 }
