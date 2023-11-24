@@ -438,10 +438,10 @@ func main() {
 			Chan: reflect.ValueOf(continueCh),
 		},
 	}
-	for _, r := range stage3Inputs {
+	for _, stage := range stage3Inputs {
 		cases = append(cases, reflect.SelectCase{
 			Dir:  reflect.SelectRecv,
-			Chan: reflect.ValueOf(r.finished),
+			Chan: reflect.ValueOf(stage.finished),
 		})
 	}
 
@@ -543,5 +543,40 @@ func main() {
 		}
 	}
 
-	log.Println(stage5Inputs)
+	errs := make(chan error)
+	for _, stage := range stage5Inputs {
+		go func(stage stage5) {
+			defer stage.lis.Close()
+
+			if err := stage.server.Serve(stage.lis); err != nil {
+				if !utils.IsClosedErr(err) {
+					errs <- err
+				}
+
+				return
+			}
+		}(stage)
+	}
+
+	cases = []reflect.SelectCase{
+		{
+			Dir:  reflect.SelectRecv,
+			Chan: reflect.ValueOf(errs),
+		},
+	}
+	for _, stage := range stage5Inputs {
+		cases = append(cases, reflect.SelectCase{
+			Dir:  reflect.SelectRecv,
+			Chan: reflect.ValueOf(stage.prev.prev.finished),
+		})
+	}
+
+	chosen, recv, _ := reflect.Select(cases)
+	if chosen == 0 {
+		// errs was selected, panic
+		panic(recv)
+	} else {
+		// One of the finished channels was selected, return
+		return
+	}
 }
