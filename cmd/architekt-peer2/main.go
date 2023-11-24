@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -59,6 +60,13 @@ type stage4 struct {
 	prev stage3
 
 	seed func() (svc *iservices.SeederService, err error)
+}
+
+type stage5 struct {
+	prev stage4
+
+	server *grpc.Server
+	lis    net.Listener
 }
 
 func main() {
@@ -445,7 +453,24 @@ func main() {
 		return
 	}
 
-	before := time.Now()
+	// Resume as soon as the underlying resources are unlocked
+	defer runner.Close()
+	resumeErrs := make(chan error)
+	go func() {
+		var err error
+		before := time.Now()
+		defer func() {
+			if err == nil {
+				log.Println("Resume:", time.Since(before))
+			}
+
+			resumeErrs <- err
+		}()
+
+		log.Println("Resuming VM on", vmPath)
+
+		err = runner.Resume(ctx)
+	}()
 
 	stage4Inputs, stage3Defers, stage3Errs := utils.ConcurrentMap(
 		stage3Inputs,
@@ -476,14 +501,47 @@ func main() {
 		}
 	}
 
-	log.Println("Resuming VM on", vmPath)
-
-	defer runner.Close()
-	if err := runner.Resume(ctx); err != nil {
+	if err := <-resumeErrs; err != nil {
 		panic(err)
 	}
 
-	log.Println("Resume:", time.Since(before))
+	stage5Inputs, stage4Defers, stage4Errs := utils.ConcurrentMap(
+		stage4Inputs,
+		func(index int, input stage4, output *stage5, addDefer func(deferFunc func() error)) error {
+			output.prev = input
 
-	log.Println(stage4Inputs)
+			svc, err := input.seed()
+			if err != nil {
+				return err
+			}
+
+			output.server = grpc.NewServer()
+
+			v1.RegisterSeederWithMetaServer(output.server, services.NewSeederWithMetaServiceGrpc(services.NewSeederWithMetaService(svc, input.prev.local, agentVSockPort, *verbose)))
+
+			output.lis, err = net.Listen("tcp", input.prev.prev.prev.laddr)
+			if err != nil {
+				return err
+			}
+			addDefer(output.lis.Close)
+
+			log.Println("Seeding", input.prev.prev.prev.name, "on", input.prev.prev.prev.laddr)
+
+			return nil
+		},
+	)
+
+	for _, deferFuncs := range stage4Defers {
+		for _, deferFunc := range deferFuncs {
+			defer deferFunc()
+		}
+	}
+
+	for _, err := range stage4Errs {
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	log.Println(stage5Inputs)
 }
