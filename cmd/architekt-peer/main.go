@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"flag"
@@ -14,6 +13,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -106,6 +106,8 @@ func main() {
 	diskLaddr := flag.String("disk-laddr", ":1504", "Listen address for disk")
 
 	pullWorkers := flag.Int64("pull-workers", 4096, "Pull workers to launch in the background; pass in a negative value to disable preemptive pull")
+
+	resumeThreshold := flag.Int64("resume-threshold", 0, "Amount of remaining data after which to start resuming the VM (in B; 0 means resuming the VM after it is 100% locally available)")
 
 	verbose := flag.Bool("verbose", false, "Whether to enable verbose logging")
 
@@ -276,6 +278,18 @@ func main() {
 	var nbdDevicesLock sync.Mutex
 	mgrs := []*migration.PathMigrator{}
 	var mgrsLock sync.Mutex
+
+	continueCh := make(chan struct{})
+	closeContinueCh := sync.OnceFunc(func() {
+		close(continueCh)
+	})
+
+	remainingDataSize := atomic.Int64{}
+	for _, stage := range stage2Inputs {
+		// Nearest lower multiple of the block size minus one chunk that is never being pulled automatically
+		remainingDataSize.Add(((stage.size / client.MaximumBlockSize) * client.MaximumBlockSize) - client.MaximumBlockSize)
+	}
+
 	stage3Inputs, stage2Defers, stage2Errs := utils.ConcurrentMap(
 		stage2Inputs,
 		func(index int, input stage2, output *stage3, addDefer func(deferFunc func() error)) error {
@@ -340,6 +354,12 @@ func main() {
 
 					OnChunkIsLocal: func(off int64) error {
 						output.bar.Add(client.MaximumBlockSize)
+
+						remainingDataSize.Add(-client.MaximumBlockSize)
+
+						if remainingDataSize.Load() <= *resumeThreshold {
+							closeContinueCh()
+						}
 
 						return nil
 					},
@@ -426,15 +446,6 @@ func main() {
 			panic(err)
 		}
 	}
-
-	log.Println("Press <ENTER> to finalize migration")
-
-	continueCh := make(chan struct{})
-	go func() {
-		bufio.NewScanner(os.Stdin).Scan()
-
-		continueCh <- struct{}{}
-	}()
 
 	cases := []reflect.SelectCase{
 		{
