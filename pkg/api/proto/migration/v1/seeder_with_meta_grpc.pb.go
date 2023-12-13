@@ -39,7 +39,7 @@ func NewSeederWithMetaClient(cc grpc.ClientConnInterface) SeederWithMetaClient {
 
 func (c *seederWithMetaClient) ReadAt(ctx context.Context, in *ReadAtArgs, opts ...grpc.CallOption) (*ReadAtReply, error) {
 	out := new(ReadAtReply)
-	err := c.cc.Invoke(ctx, "/io.loopholelabs.architekt.migration.v1.SeederWithMeta/ReadAt", in, out, opts...)
+	err := c.cc.Invoke(ctx, "/io.loopholelabs.drafter.migration.v1.SeederWithMeta/ReadAt", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -48,7 +48,7 @@ func (c *seederWithMetaClient) ReadAt(ctx context.Context, in *ReadAtArgs, opts 
 
 func (c *seederWithMetaClient) Track(ctx context.Context, in *TrackArgs, opts ...grpc.CallOption) (*TrackReply, error) {
 	out := new(TrackReply)
-	err := c.cc.Invoke(ctx, "/io.loopholelabs.architekt.migration.v1.SeederWithMeta/Track", in, out, opts...)
+	err := c.cc.Invoke(ctx, "/io.loopholelabs.drafter.migration.v1.SeederWithMeta/Track", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -57,7 +57,7 @@ func (c *seederWithMetaClient) Track(ctx context.Context, in *TrackArgs, opts ..
 
 func (c *seederWithMetaClient) Sync(ctx context.Context, in *SyncArgs, opts ...grpc.CallOption) (*SyncReply, error) {
 	out := new(SyncReply)
-	err := c.cc.Invoke(ctx, "/io.loopholelabs.architekt.migration.v1.SeederWithMeta/Sync", in, out, opts...)
+	err := c.cc.Invoke(ctx, "/io.loopholelabs.drafter.migration.v1.SeederWithMeta/Sync", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -66,7 +66,7 @@ func (c *seederWithMetaClient) Sync(ctx context.Context, in *SyncArgs, opts ...g
 
 func (c *seederWithMetaClient) Close(ctx context.Context, in *CloseArgs, opts ...grpc.CallOption) (*CloseReply, error) {
 	out := new(CloseReply)
-	err := c.cc.Invoke(ctx, "/io.loopholelabs.architekt.migration.v1.SeederWithMeta/Close", in, out, opts...)
+	err := c.cc.Invoke(ctx, "/io.loopholelabs.drafter.migration.v1.SeederWithMeta/Close", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -75,7 +75,7 @@ func (c *seederWithMetaClient) Close(ctx context.Context, in *CloseArgs, opts ..
 
 func (c *seederWithMetaClient) Meta(ctx context.Context, in *MetaArgs, opts ...grpc.CallOption) (*MetaReply, error) {
 	out := new(MetaReply)
-	err := c.cc.Invoke(ctx, "/io.loopholelabs.architekt.migration.v1.SeederWithMeta/Meta", in, out, opts...)
+	err := c.cc.Invoke(ctx, "/io.loopholelabs.drafter.migration.v1.SeederWithMeta/Meta", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -136,7 +136,7 @@ func _SeederWithMeta_ReadAt_Handler(srv interface{}, ctx context.Context, dec fu
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/io.loopholelabs.architekt.migration.v1.SeederWithMeta/ReadAt",
+		FullMethod: "/io.loopholelabs.drafter.migration.v1.SeederWithMeta/ReadAt",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(SeederWithMetaServer).ReadAt(ctx, req.(*ReadAtArgs))
@@ -154,7 +154,7 @@ func _SeederWithMeta_Track_Handler(srv interface{}, ctx context.Context, dec fun
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/io.loopholelabs.architekt.migration.v1.SeederWithMeta/Track",
+		FullMethod: "/io.loopholelabs.drafter.migration.v1.SeederWithMeta/Track",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(SeederWithMetaServer).Track(ctx, req.(*TrackArgs))
@@ -172,7 +172,7 @@ func _SeederWithMeta_Sync_Handler(srv interface{}, ctx context.Context, dec func
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/io.loopholelabs.architekt.migration.v1.SeederWithMeta/Sync",
+		FullMethod: "/io.loopholelabs.drafter.migration.v1.SeederWithMeta/Sync",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(SeederWithMetaServer).Sync(ctx, req.(*SyncArgs))
@@ -190,7 +190,7 @@ func _SeederWithMeta_Close_Handler(srv interface{}, ctx context.Context, dec fun
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/io.loopholelabs.architekt.migration.v1.SeederWithMeta/Close",
+		FullMethod: "/io.loopholelabs.drafter.migration.v1.SeederWithMeta/Close",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(SeederWithMetaServer).Close(ctx, req.(*CloseArgs))
@@ -208,7 +208,7 @@ func _SeederWithMeta_Meta_Handler(srv interface{}, ctx context.Context, dec func
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/io.loopholelabs.architekt.migration.v1.SeederWithMeta/Meta",
+		FullMethod: "/io.loopholelabs.drafter.migration.v1.SeederWithMeta/Meta",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(SeederWithMetaServer).Meta(ctx, req.(*MetaArgs))
@@ -220,7 +220,7 @@ func _SeederWithMeta_Meta_Handler(srv interface{}, ctx context.Context, dec func
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var SeederWithMeta_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "io.loopholelabs.architekt.migration.v1.SeederWithMeta",
+	ServiceName: "io.loopholelabs.drafter.migration.v1.SeederWithMeta",
 	HandlerType: (*SeederWithMetaServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{

@@ -12,9 +12,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/loopholelabs/architekt/pkg/remotes"
-	"github.com/loopholelabs/architekt/pkg/utils"
-	iutils "github.com/loopholelabs/architekt/pkg/utils"
+	"github.com/loopholelabs/drafter/pkg/remotes"
+	"github.com/loopholelabs/drafter/pkg/utils"
+	iutils "github.com/loopholelabs/drafter/pkg/utils"
 	"github.com/pojntfx/dudirekta/pkg/rpc"
 )
 

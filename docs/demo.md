@@ -1,8 +1,8 @@
-# Architekt Demo
+# Drafter Demo
 
 > Use kernel 5.10 on _both_ the host and guest; newer kernel versions are known to cause freezes when restoring snapshots/migrating VMs
 
-## Installing Firecracker and Architekt
+## Installing Firecracker and Drafter
 
 ```shell
 git clone https://github.com/loopholelabs/firecracker /tmp/firecracker
@@ -17,8 +17,8 @@ sudo install ./build/cargo_target/x86_64-unknown-linux-musl/release/{firecracker
 ```
 
 ```shell
-git clone https://github.com/loopholelabs/architekt.git /tmp/architekt
-cd /tmp/architekt
+git clone https://github.com/loopholelabs/drafter.git /tmp/drafter
+cd /tmp/drafter
 
 make depend
 make
@@ -48,7 +48,7 @@ EOT
 ```
 
 ```shell
-sudo architekt-daemon --host-interface bond0 # Sets up networking and keeps running; CTRL-C to tear down networking. Be sure to adjust --host-interface to your local system.
+sudo drafter-daemon --host-interface bond0 # Sets up networking and keeps running; CTRL-C to tear down networking. Be sure to adjust --host-interface to your local system.
 ```
 
 ## Build a Blueprint on a Workstation
@@ -77,7 +77,7 @@ cd /tmp/kernel
 make -j$(nproc) vmlinux
 EOT
 
-cp /tmp/kernel/vmlinux out/blueprint/architekt.arkkernel
+cp /tmp/kernel/vmlinux out/blueprint/drafter.drftkernel
 ```
 
 #### 5.10
@@ -100,32 +100,32 @@ cd /tmp/kernel
 make -j$(nproc) vmlinux
 EOT
 
-cp /tmp/kernel/vmlinux out/blueprint/architekt.arkkernel
+cp /tmp/kernel/vmlinux out/blueprint/drafter.drftkernel
 ```
 
 ### Base
 
 ```shell
 # For Redis
-export DISK_SIZE="256M"
+export DISK_SIZE="384M"
 
-# For Minecraft (Cuberite/1.12.2)
-export DISK_SIZE="1536M"
+# # For Minecraft (Cuberite/1.12.2)
+# export DISK_SIZE="1536M"
 
-# For Minecraft (Official server)
-export DISK_SIZE="2G"
+# # For Minecraft (Official server)
+# export DISK_SIZE="2G"
 
 export GATEWAY_IP="172.100.100.1"
 export GUEST_CIDR="172.100.100.2/30"
 
-qemu-img create -f raw out/blueprint/architekt.arkdisk ${DISK_SIZE}
-mkfs.ext4 out/blueprint/architekt.arkdisk
+qemu-img create -f raw out/blueprint/drafter.drftdisk ${DISK_SIZE}
+mkfs.ext4 out/blueprint/drafter.drftdisk
 
 sudo umount /tmp/blueprint || true
 rm -rf /tmp/blueprint
 mkdir -p /tmp/blueprint
 
-sudo mount out/blueprint/architekt.arkdisk /tmp/blueprint
+sudo mount out/blueprint/drafter.drftdisk /tmp/blueprint
 sudo chown ${USER} /tmp/blueprint
 
 curl -Lo /tmp/rootfs.tar.gz https://dl-cdn.alpinelinux.org/alpine/v3.18/releases/x86_64/alpine-minirootfs-3.18.4-x86_64.tar.gz
@@ -161,8 +161,8 @@ rc-update add chronyd default
 rc-update add haveged default
 EOT
 
-sudo cp /tmp/blueprint/boot/initramfs-virt out/blueprint/architekt.arkinitramfs
-sudo chown ${USER} out/blueprint/architekt.arkinitramfs
+sudo cp /tmp/blueprint/boot/initramfs-virt out/blueprint/drafter.drftinitramfs
+sudo chown ${USER} out/blueprint/drafter.drftinitramfs
 
 sync -f /tmp/blueprint
 sudo umount /tmp/blueprint || true
@@ -178,7 +178,7 @@ sudo umount /tmp/blueprint || true
 rm -rf /tmp/blueprint
 mkdir -p /tmp/blueprint
 
-sudo mount out/blueprint/architekt.arkdisk /tmp/blueprint
+sudo mount out/blueprint/drafter.drftdisk /tmp/blueprint
 sudo chown ${USER} /tmp/blueprint
 
 sudo chroot /tmp/blueprint sh - <<'EOT'
@@ -199,7 +199,7 @@ sudo umount /tmp/blueprint || true
 rm -rf /tmp/blueprint
 mkdir -p /tmp/blueprint
 
-sudo mount out/blueprint/architekt.arkdisk /tmp/blueprint
+sudo mount out/blueprint/drafter.drftdisk /tmp/blueprint
 sudo chown ${USER} /tmp/blueprint
 
 if [ ! -d /tmp/blueprint/root/cuberite ]; then
@@ -237,7 +237,7 @@ UUIDToProfileServer=sessionserver.mojang.com
 UUIDToProfileAddress=/session/minecraft/profile/%UUID%?unsigned=false
 
 [Server]
-Description=Minecraft on Architekt
+Description=Minecraft on Drafter
 ShutdownMessage=Server shutdown
 MaxPlayers=20
 HardcoreEnabled=0
@@ -324,7 +324,7 @@ sudo umount /tmp/blueprint || true
 rm -rf /tmp/blueprint
 mkdir -p /tmp/blueprint
 
-sudo mount out/blueprint/architekt.arkdisk /tmp/blueprint
+sudo mount out/blueprint/drafter.drftdisk /tmp/blueprint
 sudo chown ${USER} /tmp/blueprint
 
 sudo mount -t proc proc /tmp/blueprint/proc
@@ -379,21 +379,21 @@ export LIVENESS_VSOCK_PORT="25"
 export SERVICE_DEPENDENCY="redis"
 
 # For Minecraft
-export SERVICE_DEPENDENCY="minecraft-server"
+# export SERVICE_DEPENDENCY="minecraft-server"
 
 sudo umount /tmp/blueprint || true
 rm -rf /tmp/blueprint
 mkdir -p /tmp/blueprint
 
-sudo mount out/blueprint/architekt.arkdisk /tmp/blueprint
+sudo mount out/blueprint/drafter.drftdisk /tmp/blueprint
 sudo chown ${USER} /tmp/blueprint
 
-CGO_ENABLED=0 go build -o /tmp/blueprint/usr/sbin/architekt-liveness ./cmd/architekt-liveness
+CGO_ENABLED=0 go build -o /tmp/blueprint/usr/sbin/drafter-liveness ./cmd/drafter-liveness
 
-tee /tmp/blueprint/etc/init.d/architekt-liveness <<EOT
+tee /tmp/blueprint/etc/init.d/drafter-liveness <<EOT
 #!/sbin/openrc-run
 
-command="/usr/sbin/architekt-liveness"
+command="/usr/sbin/drafter-liveness"
 command_args="--vsock-port ${LIVENESS_VSOCK_PORT}"
 command_background=true
 pidfile="/run/\${RC_SVCNAME}.pid"
@@ -401,13 +401,13 @@ output_log="/dev/stdout"
 error_log="/dev/stderr"
 
 depend() {
-	need net ${SERVICE_DEPENDENCY} architekt-agent
+	need net ${SERVICE_DEPENDENCY} drafter-agent
 }
 EOT
-chmod +x /tmp/blueprint/etc/init.d/architekt-liveness
+chmod +x /tmp/blueprint/etc/init.d/drafter-liveness
 
 sudo chroot /tmp/blueprint sh - <<'EOT'
-rc-update add architekt-liveness default
+rc-update add drafter-liveness default
 EOT
 
 sync -f /tmp/blueprint
@@ -424,21 +424,21 @@ export AGENT_VSOCK_PORT="26"
 export SERVICE_DEPENDENCY="redis"
 
 # For Minecraft
-export SERVICE_DEPENDENCY="minecraft-server"
+# export SERVICE_DEPENDENCY="minecraft-server"
 
 sudo umount /tmp/blueprint || true
 rm -rf /tmp/blueprint
 mkdir -p /tmp/blueprint
 
-sudo mount out/blueprint/architekt.arkdisk /tmp/blueprint
+sudo mount out/blueprint/drafter.drftdisk /tmp/blueprint
 sudo chown ${USER} /tmp/blueprint
 
-CGO_ENABLED=0 go build -o /tmp/blueprint/usr/sbin/architekt-agent ./cmd/architekt-agent
+CGO_ENABLED=0 go build -o /tmp/blueprint/usr/sbin/drafter-agent ./cmd/drafter-agent
 
-tee /tmp/blueprint/etc/init.d/architekt-agent <<EOT
+tee /tmp/blueprint/etc/init.d/drafter-agent <<EOT
 #!/sbin/openrc-run
 
-command="/usr/sbin/architekt-agent"
+command="/usr/sbin/drafter-agent"
 command_args="--vsock-port ${AGENT_VSOCK_PORT}"
 command_background=true
 pidfile="/run/\${RC_SVCNAME}.pid"
@@ -449,10 +449,10 @@ depend() {
 	need net ${SERVICE_DEPENDENCY}
 }
 EOT
-chmod +x /tmp/blueprint/etc/init.d/architekt-agent
+chmod +x /tmp/blueprint/etc/init.d/drafter-agent
 
 sudo chroot /tmp/blueprint sh - <<'EOT'
-rc-update add architekt-agent default
+rc-update add drafter-agent default
 EOT
 
 sync -f /tmp/blueprint
@@ -464,15 +464,15 @@ rm -rf /tmp/blueprint
 
 ```shell
 # For Redis (be sure to use a free namespace)
-sudo architekt-packager --netns ark0 --memory-size 512 --package-output-path out/redis.ark
+sudo drafter-packager --netns ark0 --memory-size 512 --package-output-path out/redis.drft
 
 # For Minecraft (Cuberite/1.12.2) (be sure to use a free namespace)
-sudo architekt-packager --netns ark0 --memory-size 512 --package-output-path out/minecraft-cuberite.ark
+sudo drafter-packager --netns ark0 --memory-size 512 --package-output-path out/minecraft-cuberite.drft
 
 # For Minecraft (Official server; needs more RAM than the default 1024 MB) (be sure to use a free namespace)
-sudo architekt-packager --netns ark0 --memory-size 2048 --package-output-path out/minecraft-official.ark
+sudo drafter-packager --netns ark0 --memory-size 2048 --package-output-path out/minecraft-official.drft
 
-sudo architekt-runner --netns ark0 --package-path out/redis.ark # CTRL-C to flush the snapshot and run again to resume (be sure to use a free namespace and adjust the package path)
+sudo drafter-runner --netns ark0 --package-path out/redis.drft # CTRL-C to flush the snapshot and run again to resume (be sure to use a free namespace and adjust the package path)
 ```
 
 ## Distributing, Running and Migrating Packages
@@ -480,19 +480,19 @@ sudo architekt-runner --netns ark0 --package-path out/redis.ark # CTRL-C to flus
 ### On a Workstation
 
 ```shell
-architekt-registry --package-path out/redis.ark # Be sure to adjust the package path
+drafter-registry --package-path out/redis.drft # Be sure to adjust the package path
 ```
 
 ```shell
-sudo architekt-peer --netns ark0 --raddr localhost:1337 --enable-input # If --enable-input is specified, CTRL-C is forwarded to the VM, so to stop the VM use `sudo pkill -2 architekt-peer` instead (be sure to use a free namespace)
+sudo drafter-peer --netns ark0 --state-raddr localhost:1600 --memory-raddr localhost:1601 --initramfs-raddr localhost:1602 --kernel-raddr localhost:1603 --disk-raddr localhost:1604 --netns ark0 --enable-input # If --enable-input is specified, CTRL-C is forwarded to the VM, so to stop the VM use `sudo pkill -2 drafter-peer` instead (be sure to use a free namespace)
 ```
 
 ```shell
-sudo architekt-peer --netns ark1 --enable-input # Migrates to this peer; be sure to use a different namespace (i.e. ark1) since you're migrating on the same machine
+sudo drafter-peer --netns ark1 --enable-input # Migrates to this peer; be sure to use a different namespace (i.e. ark1) since you're migrating on the same machine
 ```
 
 ```shell
-sudo architekt-peer --netns ark0 # Migrates to this peer without enabling input; CTRL-C to flush the snapshot and stop the VM (be sure to use a free namespace)
+sudo drafter-peer --netns ark0 # Migrates to this peer without enabling input; CTRL-C to flush the snapshot and stop the VM (be sure to use a free namespace)
 ```
 
 ### On a Cluster
@@ -506,248 +506,31 @@ export NODE_3_IP="145.40.95.151"
 ```
 
 ```shell
-architekt-registry --package-path out/redis.ark # On ${REGISTRY_IP}; be sure to adjust the package path
+drafter-registry --package-path out/redis.drft # On ${REGISTRY_IP}; be sure to adjust the package path
 ```
 
 ```shell
-sudo architekt-peer --netns ark0 --raddr ${REGISTRY_IP}:1337 --enable-input # On ${NODE_1_IP}: If --enable-input is specified, CTRL-C is forwarded to the VM, so to stop the VM use `sudo pkill -2 architekt-peer` instead (be sure to use a free namespace)
+sudo drafter-peer --netns ark0 --raddr ${REGISTRY_IP}:1337 --enable-input # On ${NODE_1_IP}: If --enable-input is specified, CTRL-C is forwarded to the VM, so to stop the VM use `sudo pkill -2 drafter-peer` instead (be sure to use a free namespace)
 ```
 
 ```shell
-sudo architekt-peer --netns ark0 --raddr ${NODE_1_IP}:1338 --enable-input # On ${NODE_2_IP}: Migrates to this peer (be sure to use a free namespace)
+sudo drafter-peer --netns ark0 --raddr ${NODE_1_IP}:1338 --enable-input # On ${NODE_2_IP}: Migrates to this peer (be sure to use a free namespace)
 ```
 
 ```shell
-sudo architekt-peer --netns ark0 --raddr ${NODE_2_IP}:1338 # On ${NODE_3_IP}: Migrates to this peer without enabling input; CTRL-C to flush the snapshot and stop the VM (be sure to use a free namespace)
+sudo drafter-peer --netns ark0 --raddr ${NODE_2_IP}:1338 # On ${NODE_3_IP}: Migrates to this peer without enabling input; CTRL-C to flush the snapshot and stop the VM (be sure to use a free namespace)
 ```
 
 ```shell
-sudo architekt-peer --netns ark0 --raddr ${NODE_3_IP}:1338 # On ${NODE_1_IP}: Migrates to this peer without enabling input; CTRL-C to flush the snapshot and stop the VM (be sure to use a free namespace)
-```
-
-## Using the Control Plane
-
-### On a Workstation
-
-```shell
-architekt-registry --package-path out/redis.ark # Be sure to adjust the package path
-```
-
-```shell
-architekt-manager --verbose
-```
-
-```shell
-sudo architekt-worker --verbose --name node-1 --host-interface wlp0s20f3
-```
-
-```shell
-curl -v http://localhost:1400/nodes | jq
-
-curl -v http://localhost:1400/nodes/node-1/instances | jq
-
-export PACKAGE_RADDR=$(curl -v -X POST http://localhost:1400/nodes/node-1/instances/localhost:1337 | jq -r) # Create VM
-
-curl -v http://localhost:1400/nodes/node-1/instances | jq
-
-export PACKAGE_RADDR=$(curl -v -X POST http://localhost:1400/nodes/node-1/instances/${PACKAGE_RADDR} | jq -r) # Migrate VM
-
-curl -v http://localhost:1400/nodes/node-1/instances | jq
-
-export PACKAGE_RADDR=$(curl -v -X POST http://localhost:1400/nodes/node-1/instances/${PACKAGE_RADDR} | jq -r) # Migrate VM again
-
-curl -v http://localhost:1400/nodes/node-1/instances | jq
-
-curl -v -X DELETE http://localhost:1400/nodes/node-1/instances/${PACKAGE_RADDR} # Delete VM
-
-curl -v http://localhost:1400/nodes/node-1/instances | jq
-```
-
-### On a Cluster
-
-```shell
-export REGISTRY_IP="136.144.59.97"
-export CONTROL_PLANE_IP="136.144.59.97"
-
-export NODE_1_IP="136.144.59.97"
-export NODE_2_IP="145.40.75.137"
-export NODE_3_IP="145.40.95.151"
-```
-
-```shell
-architekt-registry --package-path out/redis.ark # On ${REGISTRY_IP}; be sure to adjust the package path
-```
-
-```shell
-architekt-manager --verbose # On ${CONTROL_PLANE_IP}
-```
-
-```shell
-sudo architekt-worker --verbose --name node-1 --host-interface bond0 --ahost ${NODE_1_IP} --control-plane-raddr ${CONTROL_PLANE_IP}:1399 # On ${NODE_1_IP}
-```
-
-```shell
-sudo architekt-worker --verbose --name node-2 --host-interface bond0 --ahost ${NODE_2_IP} --control-plane-raddr ${CONTROL_PLANE_IP}:1399 # On ${NODE_2_IP}
-```
-
-```shell
-sudo architekt-worker --verbose --name node-3 --host-interface bond0 --ahost ${NODE_3_IP} --control-plane-raddr ${CONTROL_PLANE_IP}:1399 # On ${NODE_3_IP}
-```
-
-```shell
-curl -v http://${CONTROL_PLANE_IP}:1400/nodes | jq
-
-curl -v http://${CONTROL_PLANE_IP}:1400/nodes/node-1/instances | jq
-curl -v http://${CONTROL_PLANE_IP}:1400/nodes/node-2/instances | jq
-curl -v http://${CONTROL_PLANE_IP}:1400/nodes/node-3/instances | jq
-
-export PACKAGE_RADDR=$(curl -v -X POST http://${CONTROL_PLANE_IP}:1400/nodes/node-1/instances/${REGISTRY_IP}:1337 | jq -r) # Create VM on node 1
-
-curl -v http://${CONTROL_PLANE_IP}:1400/nodes/node-1/instances | jq
-curl -v http://${CONTROL_PLANE_IP}:1400/nodes/node-2/instances | jq
-curl -v http://${CONTROL_PLANE_IP}:1400/nodes/node-3/instances | jq
-
-export PACKAGE_RADDR=$(curl -v -X POST http://${CONTROL_PLANE_IP}:1400/nodes/node-2/instances/${PACKAGE_RADDR} | jq -r) # Migrate VM from node 1 to node 2
-
-curl -v http://${CONTROL_PLANE_IP}:1400/nodes/node-1/instances | jq
-curl -v http://${CONTROL_PLANE_IP}:1400/nodes/node-2/instances | jq
-curl -v http://${CONTROL_PLANE_IP}:1400/nodes/node-3/instances | jq
-
-export PACKAGE_RADDR=$(curl -v -X POST http://${CONTROL_PLANE_IP}:1400/nodes/node-3/instances/${PACKAGE_RADDR} | jq -r) # Migrate VM from node 2 to node 3
-
-curl -v http://${CONTROL_PLANE_IP}:1400/nodes/node-1/instances | jq
-curl -v http://${CONTROL_PLANE_IP}:1400/nodes/node-2/instances | jq
-curl -v http://${CONTROL_PLANE_IP}:1400/nodes/node-3/instances | jq
-
-export PACKAGE_RADDR=$(curl -v -X POST http://${CONTROL_PLANE_IP}:1400/nodes/node-1/instances/${PACKAGE_RADDR} | jq -r) # Migrate VM from node 3 to node 1
-
-curl -v http://${CONTROL_PLANE_IP}:1400/nodes/node-1/instances | jq
-curl -v http://${CONTROL_PLANE_IP}:1400/nodes/node-2/instances | jq
-curl -v http://${CONTROL_PLANE_IP}:1400/nodes/node-3/instances | jq
-
-curl -v -X DELETE http://${CONTROL_PLANE_IP}:1400/nodes/node-1/instances/${PACKAGE_RADDR} # Delete VM from node 1
-
-curl -v http://${CONTROL_PLANE_IP}:1400/nodes/node-1/instances | jq
-curl -v http://${CONTROL_PLANE_IP}:1400/nodes/node-2/instances | jq
-curl -v http://${CONTROL_PLANE_IP}:1400/nodes/node-3/instances | jq
-```
-
-## Using the Operator
-
-### On a Workstation
-
-```shell
-architekt-registry --package-path out/redis.ark # Be sure to adjust the package path
-```
-
-```shell
-architekt-manager --verbose
-```
-
-```shell
-sudo architekt-worker --verbose --name minikube --host-interface wlp0s20f3
-```
-
-```shell
-make operator/install # Be sure to have access to a Kubernetes cluster running on localhost, i.e. one started with `minikube start`
-```
-
-```shell
-architekt-operator
-```
-
-```shell
-kubectl apply -f config/samples/architekt_v1alpha1_instance.yaml # Create VM
-```
-
-```shell
-kubectl get -o yaml instance.io.loopholelabs.architekt/redis # List VMs and watch for changes
-```
-
-```shell
-kubectl apply -f config/samples/architekt_v1alpha1_instance.yaml # Simulate VM migration on localhost (on workstation; be sure to have access to the Kubernetes cluster and change `spec.packageRaddr` to `status.packageLaddr` from the watch command after the VM has `spec.status.state == running`
-```
-
-```shell
-kubectl delete -f config/samples/architekt_v1alpha1_instance.yaml # Delete VM
-```
-
-### On a Cluster
-
-```shell
-export REGISTRY_IP="136.144.59.97"
-export CONTROL_PLANE_IP="136.144.59.97"
-
-export NODE_1_IP="136.144.59.97"
-export NODE_1_NAME="nyc" # Name of the Kubernetes node (Kubernetes API server) on ${NODE_1_IP}
-
-export NODE_2_IP="145.40.75.137"
-export NODE_2_NAME="chicago" # Name of the Kubernetes node (Kubernetes worker) on ${NODE_2_IP}
-
-export NODE_3_IP="145.40.95.151"
-export NODE_3_NAME="frankfurt" # Name of the Kubernetes node (Kubernetes worker) on ${NODE_3_IP}
-```
-
-```shell
-architekt-registry --package-path out/redis.ark # On ${REGISTRY_IP}; be sure to adjust the package path
-```
-
-```shell
-architekt-manager --verbose # On ${CONTROL_PLANE_IP}
-```
-
-```shell
-sudo architekt-worker --verbose --name ${NODE_1_NAME} --host-interface bond0 --ahost ${NODE_1_IP} --control-plane-raddr ${CONTROL_PLANE_IP}:1399 # On ${NODE_1_IP}
-```
-
-```shell
-sudo architekt-worker --verbose --name ${NODE_2_NAME} --host-interface bond0 --ahost ${NODE_2_IP} --control-plane-raddr ${CONTROL_PLANE_IP}:1399 # On ${NODE_2_IP}
-```
-
-```shell
-sudo architekt-worker --verbose --name ${NODE_3_NAME} --host-interface bond0 --ahost ${NODE_3_IP} --control-plane-raddr ${CONTROL_PLANE_IP}:1399 # On ${NODE_3_IP}
-```
-
-```shell
-make operator/install # On workstation; be sure to have access to the Kubernetes cluster
-```
-
-```shell
-KUBECONFIG="/etc/rancher/k3s/k3s.yaml" architekt-operator # On ${NODE_1_IP}/where Kubernetes API server runs; assuming k3s cluster, point to correct Kubeconfig location otherwise
-```
-
-```shell
-kubectl apply -f config/samples/architekt_v1alpha1_instance.yaml # Create VM (on workstation; be sure to have access to the Kubernetes cluster and change `packageRaddr` to ${REGISTRY_IP} and `nodeName` to ${NODE_1_NAME})
-```
-
-```shell
-kubectl get -w -o yaml instance.io.loopholelabs.architekt/redis # List VMs and watch for changes (on workstation; be sure to have access to the Kubernetes cluster)
-```
-
-```shell
-kubectl apply -f config/samples/architekt_v1alpha1_instance.yaml # Migrate VM from node 1 to node 2 (on workstation; be sure to have access to the Kubernetes cluster and change `nodeName` to ${NODE_2_NAME})
-```
-
-```shell
-kubectl apply -f config/samples/architekt_v1alpha1_instance.yaml # Migrate VM from node 2 to node 3 (on workstation; be sure to have access to the Kubernetes cluster and change `nodeName` to ${NODE_3_NAME})
-```
-
-```shell
-kubectl apply -f config/samples/architekt_v1alpha1_instance.yaml # Migrate VM from node 3 to node 1 (on workstation; be sure to have access to the Kubernetes cluster and change `nodeName` to ${NODE_1_NAME})
-```
-
-```shell
-kubectl delete -f config/samples/architekt_v1alpha1_instance.yaml # Delete VM (on workstation; be sure to have access to the Kubernetes cluster and change `nodeName` to ${NODE_1_NAME})
+sudo drafter-peer --netns ark0 --raddr ${NODE_3_IP}:1338 # On ${NODE_1_IP}: Migrates to this peer without enabling input; CTRL-C to flush the snapshot and stop the VM (be sure to use a free namespace)
 ```
 
 ## Tearing Down Workstation and Server Dependencies
 
 ```shell
-sudo pkill -2 architekt-peer
-sudo pkill -2 architekt-registry
-sudo pkill -2 architekt-daemon
-sudo pkill -2 architekt-worker
-sudo pkill -2 architekt-operator
+sudo pkill -2 drafter-registry
+sudo pkill -2 drafter-peer
+sudo pkill -2 drafter-daemon
 
 # Completely resetting the network configuration (should not be necessary)
 sudo iptables -X
@@ -758,17 +541,17 @@ done
 
 # Completely cleaning up artifacts from failed runs (should not be necessary)
 sudo pkill -9 firecracker
-sudo umount out/redis.ark
-sudo rm -f out/redis.ark
+sudo umount out/redis.drft
+sudo rm -f out/redis.drft
 sudo rm -rf out/vms
 sudo rm -rf out/cache
 ```
 
-## Uninstalling Firecracker and Architekt
+## Uninstalling Firecracker and Drafter
 
 ```shell
 sudo rm /usr/local/bin/{firecracker,jailer}
 
-cd /tmp/architekt
+cd /tmp/drafter
 sudo make uninstall
 ```

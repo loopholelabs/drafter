@@ -12,10 +12,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/loopholelabs/architekt/pkg/config"
-	"github.com/loopholelabs/architekt/pkg/firecracker"
-	"github.com/loopholelabs/architekt/pkg/utils"
-	"github.com/loopholelabs/architekt/pkg/vsock"
+	"github.com/loopholelabs/drafter/pkg/config"
+	"github.com/loopholelabs/drafter/pkg/firecracker"
+	"github.com/loopholelabs/drafter/pkg/utils"
+	"github.com/loopholelabs/drafter/pkg/vsock"
 )
 
 type Packager struct {

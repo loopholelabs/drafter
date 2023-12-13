@@ -1,14 +1,14 @@
 package config
 
 const (
-	InitramfsName = "architekt.arkinitramfs"
-	KernelName    = "architekt.arkkernel"
-	DiskName      = "architekt.arkdisk"
+	InitramfsName = "drafter.drftinitramfs"
+	KernelName    = "drafter.drftkernel"
+	DiskName      = "drafter.drftdisk"
 
-	StateName  = "architekt.arkstate"
-	MemoryName = "architekt.arkmemory"
+	StateName  = "drafter.drftstate"
+	MemoryName = "drafter.drftmemory"
 
-	PackageConfigName = "architekt.arkconfig"
+	PackageConfigName = "drafter.drftconfig"
 )
 
 type PackageConfiguration struct {

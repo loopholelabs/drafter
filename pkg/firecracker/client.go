@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"path"
 
-	v1 "github.com/loopholelabs/architekt/pkg/api/http/firecracker/v1"
+	v1 "github.com/loopholelabs/drafter/pkg/api/http/firecracker/v1"
 )
 
 var (

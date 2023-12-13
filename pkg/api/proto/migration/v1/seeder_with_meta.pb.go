@@ -543,28 +543,28 @@ func file_seeder_with_meta_proto_rawDescGZIP() []byte {
 
 var file_seeder_with_meta_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
 var file_seeder_with_meta_proto_goTypes = []interface{}{
-	(*ReadAtArgs)(nil),  // 0: io.loopholelabs.architekt.migration.v1.ReadAtArgs
-	(*ReadAtReply)(nil), // 1: io.loopholelabs.architekt.migration.v1.ReadAtReply
-	(*TrackArgs)(nil),   // 2: io.loopholelabs.architekt.migration.v1.TrackArgs
-	(*TrackReply)(nil),  // 3: io.loopholelabs.architekt.migration.v1.TrackReply
-	(*SyncArgs)(nil),    // 4: io.loopholelabs.architekt.migration.v1.SyncArgs
-	(*SyncReply)(nil),   // 5: io.loopholelabs.architekt.migration.v1.SyncReply
-	(*CloseArgs)(nil),   // 6: io.loopholelabs.architekt.migration.v1.CloseArgs
-	(*CloseReply)(nil),  // 7: io.loopholelabs.architekt.migration.v1.CloseReply
-	(*MetaArgs)(nil),    // 8: io.loopholelabs.architekt.migration.v1.MetaArgs
-	(*MetaReply)(nil),   // 9: io.loopholelabs.architekt.migration.v1.MetaReply
+	(*ReadAtArgs)(nil),  // 0: io.loopholelabs.drafter.migration.v1.ReadAtArgs
+	(*ReadAtReply)(nil), // 1: io.loopholelabs.drafter.migration.v1.ReadAtReply
+	(*TrackArgs)(nil),   // 2: io.loopholelabs.drafter.migration.v1.TrackArgs
+	(*TrackReply)(nil),  // 3: io.loopholelabs.drafter.migration.v1.TrackReply
+	(*SyncArgs)(nil),    // 4: io.loopholelabs.drafter.migration.v1.SyncArgs
+	(*SyncReply)(nil),   // 5: io.loopholelabs.drafter.migration.v1.SyncReply
+	(*CloseArgs)(nil),   // 6: io.loopholelabs.drafter.migration.v1.CloseArgs
+	(*CloseReply)(nil),  // 7: io.loopholelabs.drafter.migration.v1.CloseReply
+	(*MetaArgs)(nil),    // 8: io.loopholelabs.drafter.migration.v1.MetaArgs
+	(*MetaReply)(nil),   // 9: io.loopholelabs.drafter.migration.v1.MetaReply
 }
 var file_seeder_with_meta_proto_depIdxs = []int32{
-	0, // 0: io.loopholelabs.architekt.migration.v1.SeederWithMeta.ReadAt:input_type -> io.loopholelabs.architekt.migration.v1.ReadAtArgs
-	2, // 1: io.loopholelabs.architekt.migration.v1.SeederWithMeta.Track:input_type -> io.loopholelabs.architekt.migration.v1.TrackArgs
-	4, // 2: io.loopholelabs.architekt.migration.v1.SeederWithMeta.Sync:input_type -> io.loopholelabs.architekt.migration.v1.SyncArgs
-	6, // 3: io.loopholelabs.architekt.migration.v1.SeederWithMeta.Close:input_type -> io.loopholelabs.architekt.migration.v1.CloseArgs
-	8, // 4: io.loopholelabs.architekt.migration.v1.SeederWithMeta.Meta:input_type -> io.loopholelabs.architekt.migration.v1.MetaArgs
-	1, // 5: io.loopholelabs.architekt.migration.v1.SeederWithMeta.ReadAt:output_type -> io.loopholelabs.architekt.migration.v1.ReadAtReply
-	3, // 6: io.loopholelabs.architekt.migration.v1.SeederWithMeta.Track:output_type -> io.loopholelabs.architekt.migration.v1.TrackReply
-	5, // 7: io.loopholelabs.architekt.migration.v1.SeederWithMeta.Sync:output_type -> io.loopholelabs.architekt.migration.v1.SyncReply
-	7, // 8: io.loopholelabs.architekt.migration.v1.SeederWithMeta.Close:output_type -> io.loopholelabs.architekt.migration.v1.CloseReply
-	9, // 9: io.loopholelabs.architekt.migration.v1.SeederWithMeta.Meta:output_type -> io.loopholelabs.architekt.migration.v1.MetaReply
+	0, // 0: io.loopholelabs.drafter.migration.v1.SeederWithMeta.ReadAt:input_type -> io.loopholelabs.drafter.migration.v1.ReadAtArgs
+	2, // 1: io.loopholelabs.drafter.migration.v1.SeederWithMeta.Track:input_type -> io.loopholelabs.drafter.migration.v1.TrackArgs
+	4, // 2: io.loopholelabs.drafter.migration.v1.SeederWithMeta.Sync:input_type -> io.loopholelabs.drafter.migration.v1.SyncArgs
+	6, // 3: io.loopholelabs.drafter.migration.v1.SeederWithMeta.Close:input_type -> io.loopholelabs.drafter.migration.v1.CloseArgs
+	8, // 4: io.loopholelabs.drafter.migration.v1.SeederWithMeta.Meta:input_type -> io.loopholelabs.drafter.migration.v1.MetaArgs
+	1, // 5: io.loopholelabs.drafter.migration.v1.SeederWithMeta.ReadAt:output_type -> io.loopholelabs.drafter.migration.v1.ReadAtReply
+	3, // 6: io.loopholelabs.drafter.migration.v1.SeederWithMeta.Track:output_type -> io.loopholelabs.drafter.migration.v1.TrackReply
+	5, // 7: io.loopholelabs.drafter.migration.v1.SeederWithMeta.Sync:output_type -> io.loopholelabs.drafter.migration.v1.SyncReply
+	7, // 8: io.loopholelabs.drafter.migration.v1.SeederWithMeta.Close:output_type -> io.loopholelabs.drafter.migration.v1.CloseReply
+	9, // 9: io.loopholelabs.drafter.migration.v1.SeederWithMeta.Meta:output_type -> io.loopholelabs.drafter.migration.v1.MetaReply
 	5, // [5:10] is the sub-list for method output_type
 	0, // [0:5] is the sub-list for method input_type
 	0, // [0:0] is the sub-list for extension type_name

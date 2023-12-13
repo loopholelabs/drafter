@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/loopholelabs/architekt/pkg/utils"
+	"github.com/loopholelabs/drafter/pkg/utils"
 	"github.com/mdlayher/vsock"
 	"github.com/pojntfx/dudirekta/pkg/rpc"
 )

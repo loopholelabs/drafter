@@ -10,14 +10,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/loopholelabs/architekt/pkg/config"
-	"github.com/loopholelabs/architekt/pkg/firecracker"
-	"github.com/loopholelabs/architekt/pkg/remotes"
-	"github.com/loopholelabs/architekt/pkg/vsock"
+	"github.com/loopholelabs/drafter/pkg/config"
+	"github.com/loopholelabs/drafter/pkg/firecracker"
+	"github.com/loopholelabs/drafter/pkg/remotes"
+	"github.com/loopholelabs/drafter/pkg/vsock"
 )
 
 const (
-	VSockName = "architekt.arksock"
+	VSockName = "drafter.drftsock"
 )
 
 var (

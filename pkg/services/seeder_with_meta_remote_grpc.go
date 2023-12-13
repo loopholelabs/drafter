@@ -3,8 +3,8 @@ package services
 import (
 	"context"
 
-	v1 "github.com/loopholelabs/architekt/pkg/api/proto/migration/v1"
-	"github.com/loopholelabs/architekt/pkg/remotes"
+	v1 "github.com/loopholelabs/drafter/pkg/api/proto/migration/v1"
+	"github.com/loopholelabs/drafter/pkg/remotes"
 	"github.com/pojntfx/r3map/pkg/services"
 )
 

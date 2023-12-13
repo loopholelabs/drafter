@@ -1,8 +1,8 @@
 syntax = "proto3";
 
-package io.loopholelabs.architekt.migration.v1;
+package io.loopholelabs.drafter.migration.v1;
 
-option go_package = "github.com/loopholelabs/architekt/pkg/api/proto/migration/v1";
+option go_package = "github.com/loopholelabs/drafter/pkg/api/proto/migration/v1";
 
 service SeederWithMeta {
   rpc ReadAt(ReadAtArgs) returns (ReadAtReply) {};

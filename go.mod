@@ -1,4 +1,4 @@
-module github.com/loopholelabs/architekt
+module github.com/loopholelabs/drafter
 
 go 1.21.0
 

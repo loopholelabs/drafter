@@ -5,7 +5,7 @@ OUTPUT_DIR ?= out
 DST ?=
 
 # Private variables
-obj = architekt-daemon architekt-packager architekt-runner architekt-registry architekt-peer architekt-manager architekt-worker architekt-operator
+obj = drafter-daemon drafter-packager drafter-runner drafter-registry drafter-peer
 all: $(addprefix build/,$(obj))
 
 # Build
@@ -39,22 +39,10 @@ test:
 benchmark:
 	go test -timeout 3600s -bench=./... ./...
 
-# Operator
-operator/install:
-	kustomize build config/crd | kubectl apply -f -
-
-operator/uninstall:
-	kustomize build config/crd | kubectl delete --ignore-not-found=false -f -
-
 # Clean
 clean:
 	rm -rf out
 
 # Dependencies
 depend:
-	go install sigs.k8s.io/controller-tools/cmd/controller-gen@latest
-
-	controller-gen rbac:roleName=manager-role crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
-	controller-gen object paths="./..."
-
-	go generate ./...
+	true

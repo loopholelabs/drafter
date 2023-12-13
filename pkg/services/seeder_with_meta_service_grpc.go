@@ -3,7 +3,7 @@ package services
 import (
 	"context"
 
-	v1 "github.com/loopholelabs/architekt/pkg/api/proto/migration/v1"
+	v1 "github.com/loopholelabs/drafter/pkg/api/proto/migration/v1"
 )
 
 //go:generate sh -c "mkdir -p ../api/proto/migration/v1 && protoc --go_out=../api/proto/migration/v1 --go_opt=paths=source_relative --go-grpc_out=../api/proto/migration/v1 --go-grpc_opt=paths=source_relative --proto_path=../../api/proto/migration/v1 ../../api/proto/migration/v1/*.proto"
