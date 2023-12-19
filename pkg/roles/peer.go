@@ -28,19 +28,13 @@ import (
 )
 
 type PeerHooks struct {
-	OnBeforeResume func(vmPath string) error
-	OnAfterResume  func() error
-
 	OnBeforeSuspend func() error
 	OnAfterSuspend  func() error
 
 	OnBeforeStop func() error
 	OnAfterStop  func() error
 
-	OnBeforeLeeching func(name string, raddr string, file string, size int64) error
-	OnLeechProgress  func(remainingDataSize int64) error
-	OnAfterSync      func(name string, delta int) error
-	OnAfterSeeding   func(name string, laddr string) error
+	OnLeechProgress func(remainingDataSize int64) error
 }
 
 var (
@@ -68,6 +62,7 @@ type stage3 struct {
 	mgr      *migration.PathMigrator
 	finished chan struct{}
 	finalize func() (seed func() (svc *iservices.SeederService, err error), err error)
+	delta    int
 }
 
 type stage4 struct {
@@ -81,6 +76,22 @@ type stage5 struct {
 
 	server *grpc.Server
 	lis    net.Listener
+}
+
+type Sizes struct {
+	State     int64
+	Memory    int64
+	Initramfs int64
+	Kernel    int64
+	Disk      int64
+}
+
+type Deltas struct {
+	State     int
+	Memory    int
+	Initramfs int
+	Kernel    int
+	Disk      int
 }
 
 type Peer struct {
@@ -102,8 +113,13 @@ type Peer struct {
 	raddrs config.ResourceAddresses
 	laddrs config.ResourceAddresses
 
+	stage2Inputs   []stage2
+	stage3Inputs   []stage3
+	runner         *Runner
+	vmPath         string
 	agentVSockPort uint32
 	stage4Inputs   []stage4
+	stage5Inputs   []stage5
 
 	deferFuncs [][]func() error
 
@@ -171,7 +187,7 @@ func (p *Peer) Wait() error {
 	return nil
 }
 
-func (p *Peer) Leech(ctx context.Context) error {
+func (p *Peer) Connect(ctx context.Context) (*Sizes, error) {
 	stage1Inputs := []stage1{
 		{
 			name:  config.InitramfsName,
@@ -247,22 +263,44 @@ func (p *Peer) Leech(ctx context.Context) error {
 		},
 	)
 	p.deferFuncs = append(p.deferFuncs, stage1Defers...)
+	p.stage2Inputs = stage2Inputs
 
 	for _, err := range stage1Errs {
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
 
+	sizes := &Sizes{}
+
+	for _, stage := range p.stage2Inputs {
+		switch stage.prev.name {
+		case config.InitramfsName:
+			sizes.Initramfs = stage.size
+		case config.KernelName:
+			sizes.Kernel = stage.size
+		case config.DiskName:
+			sizes.Disk = stage.size
+		case config.StateName:
+			sizes.State = stage.size
+		case config.MemoryName:
+			sizes.Memory = stage.size
+		}
+	}
+
+	return sizes, nil
+}
+
+func (p *Peer) Leech(ctx context.Context) (*Deltas, error) {
 	netns, err := p.claimNamespace()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	p.deferFuncs = append(p.deferFuncs, []func() error{func() error {
 		return p.releaseNamespace(netns)
 	}})
 
-	runner := NewRunner(
+	p.runner = NewRunner(
 		config.HypervisorConfiguration{
 			FirecrackerBin: p.hypervisorConfiguration.FirecrackerBin,
 			JailerBin:      p.hypervisorConfiguration.JailerBin,
@@ -292,15 +330,15 @@ func (p *Peer) Leech(ctx context.Context) error {
 	go func() {
 		defer p.wg.Done()
 
-		if err := runner.Wait(); err != nil {
+		if err := p.runner.Wait(); err != nil {
 			p.errs <- err
 		}
 	}()
 
-	p.deferFuncs = append(p.deferFuncs, []func() error{runner.Close})
-	vmPath, err := runner.Open()
+	p.deferFuncs = append(p.deferFuncs, []func() error{p.runner.Close})
+	p.vmPath, err = p.runner.Open()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	suspendVM := sync.OnceValue(func() error {
@@ -314,7 +352,7 @@ func (p *Peer) Leech(ctx context.Context) error {
 			defer hook()
 		}
 
-		return runner.Suspend(ctx)
+		return p.runner.Suspend(ctx)
 	})
 
 	stopVM := sync.OnceValue(func() error {
@@ -328,7 +366,7 @@ func (p *Peer) Leech(ctx context.Context) error {
 			defer hook()
 		}
 
-		return runner.Close()
+		return p.runner.Close()
 	})
 
 	var nbdDevicesLock sync.Mutex
@@ -341,13 +379,13 @@ func (p *Peer) Leech(ctx context.Context) error {
 	})
 
 	remainingDataSize := atomic.Int64{}
-	for _, stage := range stage2Inputs {
+	for _, stage := range p.stage2Inputs {
 		// Nearest lower multiple of the block size minus one chunk that is never being pulled automatically
 		remainingDataSize.Add(((stage.size / client.MaximumBlockSize) * client.MaximumBlockSize) - client.MaximumBlockSize)
 	}
 
 	stage3Inputs, stage2Defers, stage2Errs := utils.ConcurrentMap(
-		stage2Inputs,
+		p.stage2Inputs,
 		func(index int, input stage2, output *stage3, addDefer func(deferFunc func() error)) error {
 			output.prev = input
 			output.finished = make(chan struct{})
@@ -367,13 +405,7 @@ func (p *Peer) Leech(ctx context.Context) error {
 						return suspendVM()
 					},
 					OnAfterSync: func(dirtyOffsets []int64) error {
-						delta := (len(dirtyOffsets) * client.MaximumBlockSize)
-
-						if hook := p.hooks.OnAfterSync; hook != nil {
-							if err := hook(input.prev.name, delta); err != nil {
-								return err
-							}
-						}
+						output.delta = (len(dirtyOffsets) * client.MaximumBlockSize)
 
 						return nil
 					},
@@ -444,24 +476,19 @@ func (p *Peer) Leech(ctx context.Context) error {
 
 			dev := int((major << 8) | minor)
 
-			if err := unix.Mknod(filepath.Join(vmPath, input.prev.name), unix.S_IFBLK|0666, dev); err != nil {
+			if err := unix.Mknod(filepath.Join(p.vmPath, input.prev.name), unix.S_IFBLK|0666, dev); err != nil {
 				return err
-			}
-
-			if hook := p.hooks.OnBeforeLeeching; hook != nil {
-				if err := hook(input.prev.name, input.prev.raddr, file, input.size); err != nil {
-					return err
-				}
 			}
 
 			return nil
 		},
 	)
 	p.deferFuncs = append(p.deferFuncs, stage2Defers...)
+	p.stage3Inputs = stage3Inputs
 
 	for _, err := range stage2Errs {
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
 
@@ -479,15 +506,35 @@ func (p *Peer) Leech(ctx context.Context) error {
 	}
 
 	chosen, _, _ := reflect.Select(cases)
-	if chosen == 0 {
-		// continueCh was selected, continue
-	} else {
+	if chosen != 0 {
 		// One of the finished channels was selected, return
-		return io.EOF
+		return nil, io.EOF
 	}
 
+	// continueCh was selected, continue
+	deltas := &Deltas{}
+
+	for _, stage := range p.stage3Inputs {
+		switch stage.prev.prev.name {
+		case config.InitramfsName:
+			deltas.Initramfs = stage.delta
+		case config.KernelName:
+			deltas.Kernel = stage.delta
+		case config.DiskName:
+			deltas.Disk = stage.delta
+		case config.StateName:
+			deltas.State = stage.delta
+		case config.MemoryName:
+			deltas.Memory = stage.delta
+		}
+	}
+
+	return deltas, nil
+}
+
+func (p *Peer) Resume(ctx context.Context) (string, error) {
 	// Resume as soon as the underlying resources are unlocked
-	p.deferFuncs = append(p.deferFuncs, []func() error{runner.Close})
+	p.deferFuncs = append(p.deferFuncs, []func() error{p.runner.Close})
 	resumeErrs := make(chan error)
 	go func() {
 		var err error
@@ -495,22 +542,11 @@ func (p *Peer) Leech(ctx context.Context) error {
 			resumeErrs <- err
 		}()
 
-		if hook := p.hooks.OnBeforeResume; hook != nil {
-			err = hook(vmPath)
-			if err != nil {
-				return
-			}
-		}
-
-		if hook := p.hooks.OnAfterResume; hook != nil {
-			defer hook()
-		}
-
-		err = runner.Resume(ctx)
+		err = p.runner.Resume(ctx)
 	}()
 
 	stage4Inputs, stage3Defers, stage3Errs := utils.ConcurrentMap(
-		stage3Inputs,
+		p.stage3Inputs,
 		func(index int, input stage3, output *stage4, addDefer func(deferFunc func() error)) error {
 			output.prev = input
 
@@ -524,23 +560,22 @@ func (p *Peer) Leech(ctx context.Context) error {
 		},
 	)
 	p.deferFuncs = append(p.deferFuncs, stage3Defers...)
+	p.stage4Inputs = stage4Inputs
 
 	for _, err := range stage3Errs {
 		if err != nil {
-			return err
+			return "", err
 		}
 	}
 
 	if err := <-resumeErrs; err != nil {
-		return err
+		return "", err
 	}
 
-	p.stage4Inputs = stage4Inputs
-
-	return nil
+	return p.vmPath, nil
 }
 
-func (p *Peer) Seed() error {
+func (p *Peer) Seed() (*config.ResourceAddresses, error) {
 	stage5Inputs, stage4Defers, stage4Errs := utils.ConcurrentMap(
 		p.stage4Inputs,
 		func(index int, input stage4, output *stage5, addDefer func(deferFunc func() error)) error {
@@ -561,25 +596,41 @@ func (p *Peer) Seed() error {
 			}
 			addDefer(output.lis.Close)
 
-			if hook := p.hooks.OnAfterSeeding; hook != nil {
-				if err := hook(input.prev.prev.prev.name, input.prev.prev.prev.laddr); err != nil {
-					return err
-				}
-			}
-
 			return nil
 		},
 	)
 	p.deferFuncs = append(p.deferFuncs, stage4Defers...)
+	p.stage5Inputs = stage5Inputs
 
 	for _, err := range stage4Errs {
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
 
+	laddrs := &config.ResourceAddresses{}
+
+	for _, stage := range p.stage5Inputs {
+		switch stage.prev.prev.prev.prev.name {
+		case config.InitramfsName:
+			laddrs.Initramfs = stage.lis.Addr().String()
+		case config.KernelName:
+			laddrs.Kernel = stage.lis.Addr().String()
+		case config.DiskName:
+			laddrs.Disk = stage.lis.Addr().String()
+		case config.StateName:
+			laddrs.State = stage.lis.Addr().String()
+		case config.MemoryName:
+			laddrs.Memory = stage.lis.Addr().String()
+		}
+	}
+
+	return laddrs, nil
+}
+
+func (p *Peer) Serve() error {
 	errs := make(chan error)
-	for _, stage := range stage5Inputs {
+	for _, stage := range p.stage5Inputs {
 		go func(stage stage5) {
 			defer stage.lis.Close()
 
@@ -599,7 +650,7 @@ func (p *Peer) Seed() error {
 			Chan: reflect.ValueOf(errs),
 		},
 	}
-	for _, stage := range stage5Inputs {
+	for _, stage := range p.stage5Inputs {
 		cases = append(cases, reflect.SelectCase{
 			Dir:  reflect.SelectRecv,
 			Chan: reflect.ValueOf(stage.prev.prev.finished),

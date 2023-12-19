@@ -96,7 +96,6 @@ func main() {
 	bar.Clear()
 
 	var (
-		beforeResume  = time.Now()
 		beforeSuspend = time.Now()
 		beforeStop    = time.Now()
 	)
@@ -131,29 +130,6 @@ func main() {
 			PullWorkers: *pullWorkers,
 		},
 		roles.PeerHooks{
-			OnBeforeResume: func(vmPath string) error {
-				barLock.Lock()
-				defer barLock.Unlock()
-
-				bar.Clear()
-
-				log.Println("Resuming VM on", vmPath)
-
-				beforeResume = time.Now()
-
-				return nil
-			},
-			OnAfterResume: func() error {
-				barLock.Lock()
-				defer barLock.Unlock()
-
-				bar.Clear()
-
-				log.Println("Resumed VM in", time.Since(beforeResume))
-
-				return nil
-			},
-
 			OnBeforeSuspend: func() error {
 				barLock.Lock()
 				defer barLock.Unlock()
@@ -200,18 +176,6 @@ func main() {
 				return nil
 			},
 
-			OnBeforeLeeching: func(name, raddr, file string, size int64) error {
-				barLock.Lock()
-				defer barLock.Unlock()
-
-				bar.Clear()
-
-				log.Println("Leeching", name, "from", raddr, "to")
-
-				bar.ChangeMax64(bar.GetMax64() + size)
-
-				return nil
-			},
 			OnLeechProgress: func(remainingDataSize int64) error {
 				barLock.Lock()
 				defer barLock.Unlock()
@@ -219,30 +183,6 @@ func main() {
 				if diff := bar.GetMax64() - remainingDataSize; diff > 0 {
 					bar.Set64(diff)
 				}
-
-				return nil
-			},
-			OnAfterSync: func(name string, delta int) error {
-				barLock.Lock()
-				defer barLock.Unlock()
-
-				bar.Clear()
-
-				log.Printf("Invalidated %v: %.2f MB (%.2f Mb)", name, float64(delta)/(1024*1024), (float64(delta)/(1024*1024))*8)
-
-				bar.ChangeMax64(bar.GetMax64() + int64(delta))
-
-				bar.Describe("Finalizing")
-
-				return nil
-			},
-			OnAfterSeeding: func(name, laddr string) error {
-				barLock.Lock()
-				defer barLock.Unlock()
-
-				bar.Clear()
-
-				log.Println("Seeding", name, "on", laddr)
 
 				return nil
 			},
@@ -296,7 +236,8 @@ func main() {
 	}()
 
 	defer peer.Close()
-	if err := peer.Leech(ctx); err != nil {
+	sizes, err := peer.Connect(ctx)
+	if err != nil {
 		if !utils.IsClosedErr(err) {
 			panic(err)
 		}
@@ -304,7 +245,83 @@ func main() {
 		return
 	}
 
-	if err := peer.Seed(); err != nil {
+	func() {
+		barLock.Lock()
+		defer barLock.Unlock()
+
+		bar.Clear()
+
+		log.Printf("Leeching state (%v bytes)", sizes.State)
+		log.Printf("Leeching memory (%v bytes)", sizes.Memory)
+		log.Printf("Leeching initramfs (%v bytes)", sizes.Initramfs)
+		log.Printf("Leeching kernel (%v bytes)", sizes.Kernel)
+		log.Printf("Leeching disk (%v bytes)", sizes.Disk)
+
+		bar.ChangeMax64(bar.GetMax64() + sizes.State + sizes.Memory + sizes.Initramfs + sizes.Kernel + sizes.Disk)
+	}()
+
+	deltas, err := peer.Leech(ctx)
+	if err != nil {
+		if !utils.IsClosedErr(err) {
+			panic(err)
+		}
+
+		return
+	}
+
+	func() {
+		barLock.Lock()
+		defer barLock.Unlock()
+
+		bar.Clear()
+
+		log.Printf("Leeched state (%v bytes invalidated)", deltas.State)
+		log.Printf("Leeched memory (%v bytes invalidated)", deltas.Memory)
+		log.Printf("Leeched initramfs (%v bytes invalidated)", deltas.Initramfs)
+		log.Printf("Leeched kernel (%v bytes invalidated)", deltas.Kernel)
+		log.Printf("Leeched disk (%v bytes invalidated)", deltas.Disk)
+
+		bar.ChangeMax(bar.GetMax() + deltas.State + deltas.Memory + deltas.Initramfs + deltas.Kernel + deltas.Disk)
+	}()
+
+	log.Println("Resuming VM")
+
+	before := time.Now()
+
+	vmPath, err := peer.Resume(ctx)
+	if err != nil {
+		if !utils.IsClosedErr(err) {
+			panic(err)
+		}
+
+		return
+	}
+
+	log.Println("Resumed VM in", time.Since(before), "on", vmPath)
+
+	laddrs, err := peer.Seed()
+	if err != nil {
+		if !utils.IsClosedErr(err) {
+			panic(err)
+		}
+
+		return
+	}
+
+	func() {
+		barLock.Lock()
+		defer barLock.Unlock()
+
+		bar.Clear()
+
+		log.Println("Seeding state on", laddrs.State)
+		log.Println("Seeding memory on", laddrs.Memory)
+		log.Println("Seeding initramfs on", laddrs.Initramfs)
+		log.Println("Seeding kernel on", laddrs.Kernel)
+		log.Println("Seeding disk on", laddrs.Disk)
+	}()
+
+	if err := peer.Serve(); err != nil {
 		if !utils.IsClosedErr(err) {
 			panic(err)
 		}
