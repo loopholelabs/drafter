@@ -5,11 +5,10 @@ import (
 	"encoding/json"
 	"log"
 	"sync"
-	"time"
 
 	"github.com/loopholelabs/drafter/pkg/utils"
 	"github.com/mdlayher/vsock"
-	"github.com/pojntfx/dudirekta/pkg/rpc"
+	"github.com/pojntfx/ltsrpc/pkg/rpc"
 )
 
 type Agent struct {
@@ -56,8 +55,6 @@ type AgentServer struct {
 	beforeSuspend func(ctx context.Context) error
 	afterResume   func(ctx context.Context) error
 
-	timeout time.Duration
-
 	lis *vsock.Listener
 
 	wg   sync.WaitGroup
@@ -73,8 +70,6 @@ func NewAgentServer(
 	beforeSuspend func(ctx context.Context) error,
 	afterResume func(ctx context.Context) error,
 
-	timeout time.Duration,
-
 	verbose bool,
 ) *AgentServer {
 	return &AgentServer{
@@ -83,8 +78,6 @@ func NewAgentServer(
 
 		beforeSuspend: beforeSuspend,
 		afterResume:   afterResume,
-
-		timeout: timeout,
 
 		wg:   sync.WaitGroup{},
 		errs: make(chan error),
@@ -114,8 +107,8 @@ func (s *AgentServer) Open(ctx context.Context) error {
 	registry := rpc.NewRegistry[struct{}, json.RawMessage](
 		svc,
 
-		s.timeout,
 		ctx,
+
 		nil,
 	)
 

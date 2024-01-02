@@ -234,8 +234,6 @@ func (p *Packager) CreatePackage(
 	handler := vsock.NewHandler(
 		filepath.Join(vmPath, VSockName),
 		uint32(agentConfiguration.AgentVSockPort),
-
-		agentConfiguration.ResumeTimeout,
 	)
 
 	wg.Add(1)
@@ -253,8 +251,13 @@ func (p *Packager) CreatePackage(
 		return err
 	}
 
-	if err := remote.BeforeSuspend(ctx); err != nil {
-		return err
+	{
+		ctx, cancel := context.WithTimeout(ctx, agentConfiguration.ResumeTimeout)
+		defer cancel()
+
+		if err := remote.BeforeSuspend(ctx); err != nil {
+			return err
+		}
 	}
 
 	// Connections need to be closed before creating the snapshot

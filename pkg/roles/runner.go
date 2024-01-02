@@ -139,7 +139,6 @@ func (r *Runner) Resume(ctx context.Context) error {
 	r.handler = vsock.NewHandler(
 		filepath.Join(r.vmPath, VSockName),
 		r.agentConfiguration.AgentVSockPort,
-		r.agentConfiguration.ResumeTimeout,
 	)
 
 	r.wg.Add(1)
@@ -157,6 +156,9 @@ func (r *Runner) Resume(ctx context.Context) error {
 		return err
 	}
 
+	ctx, cancel := context.WithTimeout(ctx, r.agentConfiguration.ResumeTimeout)
+	defer cancel()
+
 	return r.remote.AfterResume(ctx)
 }
 
@@ -165,8 +167,13 @@ func (r *Runner) Suspend(ctx context.Context) error {
 		return ErrVMNotRunning
 	}
 
-	if err := r.remote.BeforeSuspend(ctx); err != nil {
-		return err
+	{
+		ctx, cancel := context.WithTimeout(ctx, r.agentConfiguration.ResumeTimeout)
+		defer cancel()
+
+		if err := r.remote.BeforeSuspend(ctx); err != nil {
+			return err
+		}
 	}
 
 	_ = r.handler.Close() // Connection needs to be closed before flushing the snapshot

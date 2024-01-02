@@ -15,7 +15,7 @@ import (
 	"github.com/loopholelabs/drafter/pkg/remotes"
 	"github.com/loopholelabs/drafter/pkg/utils"
 	iutils "github.com/loopholelabs/drafter/pkg/utils"
-	"github.com/pojntfx/dudirekta/pkg/rpc"
+	"github.com/pojntfx/ltsrpc/pkg/rpc"
 )
 
 var (
@@ -27,8 +27,6 @@ type Handler struct {
 	vsockPath string
 	vsockPort uint32
 
-	timeout time.Duration
-
 	conn net.Conn
 
 	wg   sync.WaitGroup
@@ -38,14 +36,10 @@ type Handler struct {
 func NewHandler(
 	vsockPath string,
 	vsockPort uint32,
-
-	timeout time.Duration,
 ) *Handler {
 	return &Handler{
 		vsockPath: vsockPath,
 		vsockPort: vsockPort,
-
-		timeout: timeout,
 
 		wg:   sync.WaitGroup{},
 		errs: make(chan error),
@@ -72,8 +66,8 @@ func (s *Handler) Open(
 	registry := rpc.NewRegistry[remotes.AgentRemote, json.RawMessage](
 		struct{}{},
 
-		s.timeout,
 		ctx,
+
 		&rpc.Options{
 			OnClientConnect: func(remoteID string) {
 				ready <- remoteID
