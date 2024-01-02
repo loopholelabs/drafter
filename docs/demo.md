@@ -115,6 +115,9 @@ export DISK_SIZE="384M"
 # # For Minecraft (Official server)
 # export DISK_SIZE="2G"
 
+# # For PostgreSQL
+# export DISK_SIZE="1536M"
+
 export GATEWAY_IP="172.100.100.1"
 export GUEST_CIDR="172.100.100.2/30"
 
@@ -366,6 +369,36 @@ rc-update add minecraft-server default
 EOT
 
 sync -f /tmp/blueprint
+sudo umount /tmp/blueprint/proc || true
+sudo umount /tmp/blueprint || true
+rm -rf /tmp/blueprint
+```
+
+#### PostgreSQL
+
+```shell
+sudo umount /tmp/blueprint || true
+rm -rf /tmp/blueprint
+mkdir -p /tmp/blueprint
+
+sudo mount out/blueprint/drafter.drftdisk /tmp/blueprint
+sudo chown ${USER} /tmp/blueprint
+
+sudo mount --bind /dev /tmp/blueprint/dev
+
+sudo chroot /tmp/blueprint sh - <<'EOT'
+apk add postgresql postgresql-client
+
+rc-update add postgresql default
+
+su postgres -c "initdb -D /var/lib/postgresql/data"
+
+echo "host all all 0.0.0.0/0 trust" > /var/lib/postgresql/data/pg_hba.conf
+echo "listen_addresses='*'" >> /var/lib/postgresql/data/postgresql.conf
+EOT
+
+sync -f /tmp/blueprint
+sudo umount /tmp/blueprint/dev || true
 sudo umount /tmp/blueprint || true
 rm -rf /tmp/blueprint
 ```
@@ -378,8 +411,11 @@ export LIVENESS_VSOCK_PORT="25"
 # For Redis
 export SERVICE_DEPENDENCY="redis"
 
-# For Minecraft
+# # For Minecraft
 # export SERVICE_DEPENDENCY="minecraft-server"
+
+# # For PostgreSQL
+# export SERVICE_DEPENDENCY="postgresql"
 
 sudo umount /tmp/blueprint || true
 rm -rf /tmp/blueprint
@@ -423,8 +459,11 @@ export AGENT_VSOCK_PORT="26"
 # For Redis
 export SERVICE_DEPENDENCY="redis"
 
-# For Minecraft
+# # For Minecraft
 # export SERVICE_DEPENDENCY="minecraft-server"
+
+# # For PostgreSQL
+# export SERVICE_DEPENDENCY="postgresql"
 
 sudo umount /tmp/blueprint || true
 rm -rf /tmp/blueprint
