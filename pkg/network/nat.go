@@ -13,7 +13,7 @@ func CreateNAT(hostInterface string) error {
 
 	iptable, err := iptables.New(
 		iptables.IPFamily(iptables.ProtocolIPv4),
-		iptables.Timeout(5),
+		iptables.Timeout(60),
 	)
 	if err != nil {
 		return err
@@ -29,7 +29,7 @@ func CreateNAT(hostInterface string) error {
 func RemoveNAT(hostInterface string) error {
 	iptable, err := iptables.New(
 		iptables.IPFamily(iptables.ProtocolIPv4),
-		iptables.Timeout(5),
+		iptables.Timeout(60),
 	)
 	if err != nil {
 		return err

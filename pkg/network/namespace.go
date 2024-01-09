@@ -250,7 +250,7 @@ func (n *Namespace) Open() error {
 }
 
 func (n *Namespace) Close() error {
-	iptable, err := iptables.New(iptables.IPFamily(iptables.ProtocolIPv4), iptables.Timeout(5))
+	iptable, err := iptables.New(iptables.IPFamily(iptables.ProtocolIPv4), iptables.Timeout(60))
 	if err != nil {
 		return err
 	}
