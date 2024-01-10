@@ -34,7 +34,11 @@ type PeerHooks struct {
 	OnBeforeStop func() error
 	OnAfterStop  func() error
 
-	OnLeechProgress func(remainingDataSize int64) error
+	OnStateLeechProgress     func(remainingDataSize int64) error
+	OnMemoryLeechProgress    func(remainingDataSize int64) error
+	OnInitramfsLeechProgress func(remainingDataSize int64) error
+	OnKernelLeechProgress    func(remainingDataSize int64) error
+	OnDiskLeechProgress      func(remainingDataSize int64) error
 }
 
 var (
@@ -42,9 +46,11 @@ var (
 )
 
 type stage1 struct {
-	name  string
-	raddr string
-	laddr string
+	name            string
+	raddr           string
+	laddr           string
+	resumeThreshold int64
+	onLeechProgress func(remainingDataSize int64) error
 }
 
 type stage2 struct {
@@ -107,11 +113,11 @@ type Peer struct {
 
 	cacheBaseDir string
 
-	resumeTimeout   time.Duration
-	resumeThreshold int64
+	resumeTimeout time.Duration
 
-	raddrs config.ResourceAddresses
-	laddrs config.ResourceAddresses
+	raddrs           config.ResourceAddresses
+	laddrs           config.ResourceAddresses
+	resumeThresholds config.ResourceResumeThresholds
 
 	stage2Inputs   []stage2
 	stage3Inputs   []stage3
@@ -145,9 +151,9 @@ func NewPeer(
 
 	raddrs config.ResourceAddresses,
 	laddrs config.ResourceAddresses,
+	resumeThresholds config.ResourceResumeThresholds,
 
 	resumeTimeout time.Duration,
-	resumeThreshold int64,
 ) *Peer {
 	return &Peer{
 		verbose: verbose,
@@ -162,11 +168,11 @@ func NewPeer(
 
 		cacheBaseDir: cacheBaseDir,
 
-		resumeTimeout:   resumeTimeout,
-		resumeThreshold: resumeThreshold,
+		resumeTimeout: resumeTimeout,
 
-		raddrs: raddrs,
-		laddrs: laddrs,
+		raddrs:           raddrs,
+		laddrs:           laddrs,
+		resumeThresholds: resumeThresholds,
 
 		deferFuncs: [][]func() error{},
 
@@ -190,30 +196,40 @@ func (p *Peer) Wait() error {
 func (p *Peer) Connect(ctx context.Context) (*Sizes, error) {
 	stage1Inputs := []stage1{
 		{
-			name:  config.InitramfsName,
-			raddr: p.raddrs.Initramfs,
-			laddr: p.laddrs.Initramfs,
+			name:            config.InitramfsName,
+			raddr:           p.raddrs.Initramfs,
+			laddr:           p.laddrs.Initramfs,
+			resumeThreshold: p.resumeThresholds.Initramfs,
+			onLeechProgress: p.hooks.OnInitramfsLeechProgress,
 		},
 		{
-			name:  config.KernelName,
-			raddr: p.raddrs.Kernel,
-			laddr: p.laddrs.Kernel,
+			name:            config.KernelName,
+			raddr:           p.raddrs.Kernel,
+			laddr:           p.laddrs.Kernel,
+			resumeThreshold: p.resumeThresholds.Kernel,
+			onLeechProgress: p.hooks.OnKernelLeechProgress,
 		},
 		{
-			name:  config.DiskName,
-			raddr: p.raddrs.Disk,
-			laddr: p.laddrs.Disk,
+			name:            config.DiskName,
+			raddr:           p.raddrs.Disk,
+			laddr:           p.laddrs.Disk,
+			resumeThreshold: p.resumeThresholds.Disk,
+			onLeechProgress: p.hooks.OnDiskLeechProgress,
 		},
 
 		{
-			name:  config.StateName,
-			raddr: p.raddrs.State,
-			laddr: p.laddrs.State,
+			name:            config.StateName,
+			raddr:           p.raddrs.State,
+			laddr:           p.laddrs.State,
+			resumeThreshold: p.resumeThresholds.State,
+			onLeechProgress: p.hooks.OnStateLeechProgress,
 		},
 		{
-			name:  config.MemoryName,
-			raddr: p.raddrs.Memory,
-			laddr: p.laddrs.Memory,
+			name:            config.MemoryName,
+			raddr:           p.raddrs.Memory,
+			laddr:           p.laddrs.Memory,
+			resumeThreshold: p.resumeThresholds.Memory,
+			onLeechProgress: p.hooks.OnMemoryLeechProgress,
 		},
 	}
 
@@ -373,22 +389,22 @@ func (p *Peer) Leech(ctx context.Context) (*Deltas, error) {
 	mgrs := []*migration.PathMigrator{}
 	var mgrsLock sync.Mutex
 
-	continueCh := make(chan struct{})
-	closeContinueCh := sync.OnceFunc(func() {
-		close(continueCh)
-	})
-
-	remainingDataSize := atomic.Int64{}
-	for _, stage := range p.stage2Inputs {
-		// Nearest lower multiple of the block size minus one chunk that is never being pulled automatically
-		remainingDataSize.Add(((stage.size / client.MaximumBlockSize) * client.MaximumBlockSize) - client.MaximumBlockSize)
-	}
+	var continueWg sync.WaitGroup
 
 	stage3Inputs, stage2Defers, stage2Errs := utils.ConcurrentMap(
 		p.stage2Inputs,
 		func(index int, input stage2, output *stage3, addDefer func(deferFunc func() error)) error {
 			output.prev = input
 			output.finished = make(chan struct{})
+
+			continueWg.Add(1)
+			markStageAsReady := sync.OnceFunc(func() {
+				continueWg.Done()
+			})
+
+			remainingDataSize := atomic.Int64{}
+			// Nearest lower multiple of the block size minus one chunk that is never being pulled automatically
+			remainingDataSize.Add(((input.size / client.MaximumBlockSize) * client.MaximumBlockSize) - client.MaximumBlockSize)
 
 			output.local = backend.NewFileBackend(input.cache)
 			output.mgr = migration.NewPathMigrator(
@@ -417,14 +433,14 @@ func (p *Peer) Leech(ctx context.Context) (*Deltas, error) {
 					OnChunkIsLocal: func(off int64) error {
 						s := remainingDataSize.Add(-client.MaximumBlockSize)
 
-						if hook := p.hooks.OnLeechProgress; hook != nil {
+						if hook := input.prev.onLeechProgress; hook != nil {
 							if err := hook(s); err != nil {
 								return err
 							}
 						}
 
-						if s <= p.resumeThreshold {
-							closeContinueCh()
+						if s <= input.prev.resumeThreshold {
+							markStageAsReady()
 						}
 
 						return nil
@@ -439,6 +455,7 @@ func (p *Peer) Leech(ctx context.Context) (*Deltas, error) {
 			go func() {
 				defer p.wg.Done()
 				defer close(output.finished)
+				defer markStageAsReady()
 
 				if err := output.mgr.Wait(); err != nil {
 					if !utils.IsClosedErr(err) {
@@ -491,6 +508,13 @@ func (p *Peer) Leech(ctx context.Context) (*Deltas, error) {
 			return nil, err
 		}
 	}
+
+	continueCh := make(chan struct{})
+	go func() {
+		continueWg.Wait() // This will always eventually return since markStageAsReady() is deferred in the `Wait()` goroutine
+
+		close(continueCh)
+	}()
 
 	cases := []reflect.SelectCase{
 		{

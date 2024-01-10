@@ -8,7 +8,6 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/loopholelabs/drafter/pkg/services"
 	"github.com/loopholelabs/drafter/pkg/vsock"
@@ -62,8 +61,6 @@ func main() {
 
 			return nil
 		},
-
-		time.Second*10,
 
 		*verbose,
 	)

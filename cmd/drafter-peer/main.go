@@ -33,7 +33,6 @@ func main() {
 	enableInput := flag.Bool("enable-input", false, "Whether to enable VM stdin")
 
 	resumeTimeout := flag.Duration("resume-timeout", time.Minute, "Maximum amount of time to wait for agent to resume")
-	resumeThreshold := flag.Int64("resume-threshold", 0, "Amount of remaining data after which to start resuming the VM (in B; 0 means resuming the VM after it is 100% locally available)")
 
 	netns := flag.String("netns", "ark0", "Network namespace to run Firecracker in")
 
@@ -51,6 +50,12 @@ func main() {
 	initramfsLaddr := flag.String("initramfs-laddr", ":1502", "Listen address for initramfs")
 	kernelLaddr := flag.String("kernel-laddr", ":1503", "Listen address for kernel")
 	diskLaddr := flag.String("disk-laddr", ":1504", "Listen address for disk")
+
+	stateResumeThreshold := flag.Int64("state-resume-threshold", 0, "Amount of remaining state data after which to start resuming the VM (in B; 0 means continuing to resume the VM after the state is 100% locally available)")
+	memoryResumeThreshold := flag.Int64("memory-resume-threshold", 0, "Amount of remaining memory data after which to start resuming the VM (in B; 0 means continuing to resume the VM after the memory is 100% locally available)")
+	initramfsResumeThreshold := flag.Int64("initramfs-resume-threshold", 0, "Amount of remaining initramfs data after which to start resuming the VM (in B; 0 means continuing to resume the VM after the initramfs is 100% locally available)")
+	kernelResumeThreshold := flag.Int64("kernel-resume-threshold", 0, "Amount of remaining kernel data after which to start resuming the VM (in B; 0 means continuing to resume the VM after the kernel is 100% locally available)")
+	diskResumeThreshold := flag.Int64("disk-resume-threshold", 0, "Amount of remaining disk data after which to start resuming the VM (in B; 0 means continuing to resume the VM after the disk is 100% locally available)")
 
 	pullWorkers := flag.Int64("pull-workers", 4096, "Pull workers to launch in the background; pass in a negative value to disable preemptive pull")
 
@@ -176,7 +181,47 @@ func main() {
 				return nil
 			},
 
-			OnLeechProgress: func(remainingDataSize int64) error {
+			OnStateLeechProgress: func(remainingDataSize int64) error {
+				barLock.Lock()
+				defer barLock.Unlock()
+
+				if diff := bar.GetMax64() - remainingDataSize; diff > 0 {
+					bar.Set64(diff)
+				}
+
+				return nil
+			},
+			OnMemoryLeechProgress: func(remainingDataSize int64) error {
+				barLock.Lock()
+				defer barLock.Unlock()
+
+				if diff := bar.GetMax64() - remainingDataSize; diff > 0 {
+					bar.Set64(diff)
+				}
+
+				return nil
+			},
+			OnInitramfsLeechProgress: func(remainingDataSize int64) error {
+				barLock.Lock()
+				defer barLock.Unlock()
+
+				if diff := bar.GetMax64() - remainingDataSize; diff > 0 {
+					bar.Set64(diff)
+				}
+
+				return nil
+			},
+			OnKernelLeechProgress: func(remainingDataSize int64) error {
+				barLock.Lock()
+				defer barLock.Unlock()
+
+				if diff := bar.GetMax64() - remainingDataSize; diff > 0 {
+					bar.Set64(diff)
+				}
+
+				return nil
+			},
+			OnDiskLeechProgress: func(remainingDataSize int64) error {
 				barLock.Lock()
 				defer barLock.Unlock()
 
@@ -204,9 +249,15 @@ func main() {
 			Kernel:    *kernelLaddr,
 			Disk:      *diskLaddr,
 		},
+		config.ResourceResumeThresholds{
+			State:     *stateResumeThreshold,
+			Memory:    *memoryResumeThreshold,
+			Initramfs: *initramfsResumeThreshold,
+			Kernel:    *kernelResumeThreshold,
+			Disk:      *diskResumeThreshold,
+		},
 
 		*resumeTimeout,
-		*resumeThreshold,
 	)
 
 	var wg sync.WaitGroup

@@ -7,3 +7,11 @@ type ResourceAddresses struct {
 	Kernel    string
 	Disk      string
 }
+
+type ResourceResumeThresholds struct {
+	State     int64
+	Memory    int64
+	Initramfs int64
+	Kernel    int64
+	Disk      int64
+}
