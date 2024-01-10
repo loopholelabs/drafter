@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"flag"
-	"fmt"
 	"log"
 	"os"
 	"os/exec"
@@ -16,7 +15,7 @@ import (
 	"github.com/loopholelabs/drafter/pkg/roles"
 	"github.com/loopholelabs/drafter/pkg/utils"
 	"github.com/pojntfx/r3map/pkg/migration"
-	"github.com/schollz/progressbar/v3"
+	"github.com/vbauerster/mpb/v8"
 )
 
 func main() {
@@ -76,29 +75,14 @@ func main() {
 		panic(err)
 	}
 
-	var barLock sync.Mutex
-	bar := progressbar.NewOptions64(
-		0,
-		progressbar.OptionSetDescription("Pulling"),
-		progressbar.OptionShowBytes(true),
-		progressbar.OptionOnCompletion(func() {
-			fmt.Fprint(os.Stderr, "\n")
-		}),
-		progressbar.OptionSetWriter(os.Stderr),
-		progressbar.OptionThrottle(100*time.Millisecond),
-		progressbar.OptionShowCount(),
-		progressbar.OptionFullWidth(),
-		// VT-100 compatibility
-		progressbar.OptionUseANSICodes(true),
-		progressbar.OptionSetTheme(progressbar.Theme{
-			Saucer:        "=",
-			SaucerHead:    ">",
-			SaucerPadding: " ",
-			BarStart:      "[",
-			BarEnd:        "]",
-		}),
+	p := mpb.New()
+	var (
+		stateBar     = utils.NewProgressBar(p, "Pulling state")
+		memoryBar    = utils.NewProgressBar(p, "Pulling memory")
+		initramfsBar = utils.NewProgressBar(p, "Pulling initramfs")
+		kernelBar    = utils.NewProgressBar(p, "Pulling kernel")
+		diskBar      = utils.NewProgressBar(p, "Pulling disk")
 	)
-	bar.Clear()
 
 	var (
 		beforeSuspend = time.Now()
@@ -136,10 +120,13 @@ func main() {
 		},
 		roles.PeerHooks{
 			OnBeforeSuspend: func() error {
-				barLock.Lock()
-				defer barLock.Unlock()
+				stateBar.Clear()
+				memoryBar.Clear()
+				initramfsBar.Clear()
+				kernelBar.Clear()
+				diskBar.Clear()
 
-				bar.Clear()
+				p.Wait()
 
 				log.Println("Suspending VM")
 
@@ -148,10 +135,13 @@ func main() {
 				return nil
 			},
 			OnAfterSuspend: func() error {
-				barLock.Lock()
-				defer barLock.Unlock()
+				stateBar.Clear()
+				memoryBar.Clear()
+				initramfsBar.Clear()
+				kernelBar.Clear()
+				diskBar.Clear()
 
-				bar.Clear()
+				p.Wait()
 
 				log.Println("Suspended VM in", time.Since(beforeSuspend))
 
@@ -159,10 +149,13 @@ func main() {
 			},
 
 			OnBeforeStop: func() error {
-				barLock.Lock()
-				defer barLock.Unlock()
+				stateBar.Clear()
+				memoryBar.Clear()
+				initramfsBar.Clear()
+				kernelBar.Clear()
+				diskBar.Clear()
 
-				bar.Clear()
+				p.Wait()
 
 				log.Println("Stopping VM")
 
@@ -171,10 +164,13 @@ func main() {
 				return nil
 			},
 			OnAfterStop: func() error {
-				barLock.Lock()
-				defer barLock.Unlock()
+				stateBar.Clear()
+				memoryBar.Clear()
+				initramfsBar.Clear()
+				kernelBar.Clear()
+				diskBar.Clear()
 
-				bar.Clear()
+				p.Wait()
 
 				log.Println("Stopped VM in", time.Since(beforeStop))
 
@@ -182,52 +178,27 @@ func main() {
 			},
 
 			OnStateLeechProgress: func(remainingDataSize int64) error {
-				barLock.Lock()
-				defer barLock.Unlock()
-
-				if diff := bar.GetMax64() - remainingDataSize; diff > 0 {
-					bar.Set64(diff)
-				}
+				stateBar.SetRemaining(remainingDataSize)
 
 				return nil
 			},
 			OnMemoryLeechProgress: func(remainingDataSize int64) error {
-				barLock.Lock()
-				defer barLock.Unlock()
-
-				if diff := bar.GetMax64() - remainingDataSize; diff > 0 {
-					bar.Set64(diff)
-				}
+				memoryBar.SetRemaining(remainingDataSize)
 
 				return nil
 			},
 			OnInitramfsLeechProgress: func(remainingDataSize int64) error {
-				barLock.Lock()
-				defer barLock.Unlock()
-
-				if diff := bar.GetMax64() - remainingDataSize; diff > 0 {
-					bar.Set64(diff)
-				}
+				initramfsBar.SetRemaining(remainingDataSize)
 
 				return nil
 			},
 			OnKernelLeechProgress: func(remainingDataSize int64) error {
-				barLock.Lock()
-				defer barLock.Unlock()
-
-				if diff := bar.GetMax64() - remainingDataSize; diff > 0 {
-					bar.Set64(diff)
-				}
+				kernelBar.SetRemaining(remainingDataSize)
 
 				return nil
 			},
 			OnDiskLeechProgress: func(remainingDataSize int64) error {
-				barLock.Lock()
-				defer barLock.Unlock()
-
-				if diff := bar.GetMax64() - remainingDataSize; diff > 0 {
-					bar.Set64(diff)
-				}
+				diskBar.SetRemaining(remainingDataSize)
 
 				return nil
 			},
@@ -297,18 +268,17 @@ func main() {
 	}
 
 	func() {
-		barLock.Lock()
-		defer barLock.Unlock()
-
-		bar.Clear()
-
 		log.Printf("Leeching state (%v bytes)", sizes.State)
 		log.Printf("Leeching memory (%v bytes)", sizes.Memory)
 		log.Printf("Leeching initramfs (%v bytes)", sizes.Initramfs)
 		log.Printf("Leeching kernel (%v bytes)", sizes.Kernel)
 		log.Printf("Leeching disk (%v bytes)", sizes.Disk)
 
-		bar.ChangeMax64(bar.GetMax64() + sizes.State + sizes.Memory + sizes.Initramfs + sizes.Kernel + sizes.Disk)
+		stateBar.SetTotal(sizes.State)
+		memoryBar.SetTotal(sizes.Memory)
+		initramfsBar.SetTotal(sizes.Initramfs)
+		kernelBar.SetTotal(sizes.Kernel)
+		diskBar.SetTotal(sizes.Disk)
 	}()
 
 	deltas, err := peer.Leech(ctx)
@@ -321,18 +291,17 @@ func main() {
 	}
 
 	func() {
-		barLock.Lock()
-		defer barLock.Unlock()
-
-		bar.Clear()
-
 		log.Printf("Leeched state (%v bytes invalidated)", deltas.State)
 		log.Printf("Leeched memory (%v bytes invalidated)", deltas.Memory)
 		log.Printf("Leeched initramfs (%v bytes invalidated)", deltas.Initramfs)
 		log.Printf("Leeched kernel (%v bytes invalidated)", deltas.Kernel)
 		log.Printf("Leeched disk (%v bytes invalidated)", deltas.Disk)
 
-		bar.ChangeMax(bar.GetMax() + deltas.State + deltas.Memory + deltas.Initramfs + deltas.Kernel + deltas.Disk)
+		stateBar.IncreaseTotal(int64(deltas.State))
+		memoryBar.IncreaseTotal(int64(deltas.Memory))
+		initramfsBar.IncreaseTotal(int64(deltas.Initramfs))
+		kernelBar.IncreaseTotal(int64(deltas.Kernel))
+		memoryBar.IncreaseTotal(int64(deltas.Disk))
 	}()
 
 	log.Println("Resuming VM")
@@ -359,18 +328,19 @@ func main() {
 		return
 	}
 
-	func() {
-		barLock.Lock()
-		defer barLock.Unlock()
+	stateBar.Clear()
+	memoryBar.Clear()
+	initramfsBar.Clear()
+	kernelBar.Clear()
+	diskBar.Clear()
 
-		bar.Clear()
+	p.Wait()
 
-		log.Println("Seeding state on", laddrs.State)
-		log.Println("Seeding memory on", laddrs.Memory)
-		log.Println("Seeding initramfs on", laddrs.Initramfs)
-		log.Println("Seeding kernel on", laddrs.Kernel)
-		log.Println("Seeding disk on", laddrs.Disk)
-	}()
+	log.Println("Seeding state on", laddrs.State)
+	log.Println("Seeding memory on", laddrs.Memory)
+	log.Println("Seeding initramfs on", laddrs.Initramfs)
+	log.Println("Seeding kernel on", laddrs.Kernel)
+	log.Println("Seeding disk on", laddrs.Disk)
 
 	if err := peer.Serve(); err != nil {
 		if !utils.IsClosedErr(err) {
