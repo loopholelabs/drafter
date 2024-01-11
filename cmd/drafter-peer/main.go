@@ -252,6 +252,14 @@ func main() {
 	go func() {
 		<-done
 
+		stateBar.Clear()
+		memoryBar.Clear()
+		initramfsBar.Clear()
+		kernelBar.Clear()
+		diskBar.Clear()
+
+		p.Wait()
+
 		log.Println("Exiting gracefully")
 
 		_ = peer.Close()
@@ -268,12 +276,20 @@ func main() {
 	}
 
 	func() {
+		defer stateBar.Pause()()
+		defer memoryBar.Pause()()
+		defer initramfsBar.Pause()()
+		defer kernelBar.Pause()()
+		defer diskBar.Pause()()
+
 		log.Printf("Leeching state (%v bytes)", sizes.State)
 		log.Printf("Leeching memory (%v bytes)", sizes.Memory)
 		log.Printf("Leeching initramfs (%v bytes)", sizes.Initramfs)
 		log.Printf("Leeching kernel (%v bytes)", sizes.Kernel)
 		log.Printf("Leeching disk (%v bytes)", sizes.Disk)
+	}()
 
+	func() {
 		stateBar.SetTotal(sizes.State)
 		memoryBar.SetTotal(sizes.Memory)
 		initramfsBar.SetTotal(sizes.Initramfs)
@@ -291,12 +307,20 @@ func main() {
 	}
 
 	func() {
+		defer stateBar.Pause()()
+		defer memoryBar.Pause()()
+		defer initramfsBar.Pause()()
+		defer kernelBar.Pause()()
+		defer diskBar.Pause()()
+
 		log.Printf("Leeched state (%v bytes invalidated)", deltas.State)
 		log.Printf("Leeched memory (%v bytes invalidated)", deltas.Memory)
 		log.Printf("Leeched initramfs (%v bytes invalidated)", deltas.Initramfs)
 		log.Printf("Leeched kernel (%v bytes invalidated)", deltas.Kernel)
 		log.Printf("Leeched disk (%v bytes invalidated)", deltas.Disk)
+	}()
 
+	func() {
 		stateBar.IncreaseTotal(int64(deltas.State))
 		memoryBar.IncreaseTotal(int64(deltas.Memory))
 		initramfsBar.IncreaseTotal(int64(deltas.Initramfs))
@@ -304,7 +328,15 @@ func main() {
 		memoryBar.IncreaseTotal(int64(deltas.Disk))
 	}()
 
-	log.Println("Resuming VM")
+	func() {
+		defer stateBar.Pause()()
+		defer memoryBar.Pause()()
+		defer initramfsBar.Pause()()
+		defer kernelBar.Pause()()
+		defer diskBar.Pause()()
+
+		log.Println("Resuming VM")
+	}()
 
 	before := time.Now()
 
@@ -317,7 +349,15 @@ func main() {
 		return
 	}
 
-	log.Println("Resumed VM in", time.Since(before), "on", vmPath)
+	func() {
+		defer stateBar.Pause()()
+		defer memoryBar.Pause()()
+		defer initramfsBar.Pause()()
+		defer kernelBar.Pause()()
+		defer diskBar.Pause()()
+
+		log.Println("Resumed VM in", time.Since(before), "on", vmPath)
+	}()
 
 	laddrs, err := peer.Seed()
 	if err != nil {
@@ -327,6 +367,8 @@ func main() {
 
 		return
 	}
+
+	log.Printf("\n\n\n\n\n") // Offset the progress bars to prevent accidentally removing regular outputs
 
 	stateBar.Clear()
 	memoryBar.Clear()

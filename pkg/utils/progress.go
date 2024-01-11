@@ -68,3 +68,9 @@ func (p *ProgressBar) Clear() {
 	p.bar.Abort(true)
 	p.bar.Wait()
 }
+
+func (p *ProgressBar) Pause() func() {
+	p.lock.Lock()
+
+	return p.lock.Unlock
+}
