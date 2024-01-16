@@ -15,7 +15,7 @@ import (
 	"github.com/loopholelabs/drafter/pkg/remotes"
 	"github.com/loopholelabs/drafter/pkg/utils"
 	iutils "github.com/loopholelabs/drafter/pkg/utils"
-	"github.com/pojntfx/ltsrpc/pkg/rpc"
+	"github.com/pojntfx/panrpc/pkg/rpc"
 )
 
 var (

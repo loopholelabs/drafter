@@ -8,7 +8,7 @@ import (
 
 	"github.com/loopholelabs/drafter/pkg/utils"
 	"github.com/mdlayher/vsock"
-	"github.com/pojntfx/ltsrpc/pkg/rpc"
+	"github.com/pojntfx/panrpc/pkg/rpc"
 )
 
 type Agent struct {
