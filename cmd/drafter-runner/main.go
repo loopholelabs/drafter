@@ -1,7 +1,6 @@
 package main
 
 import (
-	"archive/tar"
 	"context"
 	"encoding/json"
 	"flag"
@@ -11,13 +10,14 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
-	"slices"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/loopholelabs/drafter/pkg/config"
 	"github.com/loopholelabs/drafter/pkg/roles"
 	"github.com/loopholelabs/drafter/pkg/utils"
+	"golang.org/x/sys/unix"
 )
 
 func main() {
@@ -39,9 +39,15 @@ func main() {
 	numaNode := flag.Int("numa-node", 0, "NUMA node to run Firecracker in")
 	cgroupVersion := flag.Int("cgroup-version", 2, "Cgroup version to use for Jailer")
 
-	packagePath := flag.String("package-path", filepath.Join("out", "redis.drft"), "Path to package to use")
+	statePath := flag.String("state-path", filepath.Join("out", "package", "drafter.drftstate"), "State path")
+	memoryPath := flag.String("memory-path", filepath.Join("out", "package", "drafter.drftmemory"), "Memory path")
+	initramfsPath := flag.String("initramfs-path", filepath.Join("out", "package", "drafter.drftinitramfs"), "initramfs path")
+	kernelPath := flag.String("kernel-path", filepath.Join("out", "package", "drafter.drftkernel"), "Kernel path")
+	diskPath := flag.String("disk-path", filepath.Join("out", "package", "drafter.drftdisk"), "Disk path")
+	configPath := flag.String("config-path", filepath.Join("out", "package", "drafter.drftconfig"), "Config path")
 
-	persist := flag.Bool("persist", true, "Whether to write back changes after stopping the VM")
+	copy := flag.Bool("copy", false, "Whether to copy the package into the VM directory instead of using loop mounts")
+	persist := flag.Bool("persist", true, "Whether to write back changes to the package after stopping the VM (always true for loop mounts)")
 
 	flag.Parse()
 
@@ -58,24 +64,18 @@ func main() {
 		panic(err)
 	}
 
-	packageFile, err := os.OpenFile(*packagePath, os.O_RDWR, os.ModePerm)
+	configFile, err := os.Open(*configPath)
 	if err != nil {
 		panic(err)
 	}
-	defer packageFile.Close()
+	defer configFile.Close()
 
-	packageArchive := tar.NewReader(packageFile)
-
-	packageConfig, packageConfigInfo, err := utils.ReadPackageConfigFromTar(packageArchive, config.PackageConfigName)
-	if err != nil {
+	var packageConfig config.PackageConfiguration
+	if err := json.NewDecoder(configFile).Decode(&packageConfig); err != nil {
 		panic(err)
 	}
 
-	if _, err := packageFile.Seek(0, io.SeekStart); err != nil {
-		panic(err)
-	}
-
-	packageArchive = tar.NewReader(packageFile)
+	_ = configFile.Close()
 
 	runner := roles.NewRunner(
 		config.HypervisorConfiguration{
@@ -121,50 +121,108 @@ func main() {
 		panic(err)
 	}
 
-	files := []string{
-		config.InitramfsName,
-		config.KernelName,
-		config.DiskName,
+	resources := [][2]string{
+		{
+			config.InitramfsName,
+			*initramfsPath,
+		},
+		{
+			config.KernelName,
+			*kernelPath,
+		},
+		{
+			config.DiskName,
+			*diskPath,
+		},
 
-		config.StateName,
-		config.MemoryName,
+		{
+			config.StateName,
+			*statePath,
+		},
+		{
+			config.MemoryName,
+			*memoryPath,
+		},
 	}
-	for {
-		header, err := packageArchive.Next()
-		if err != nil {
-			if err == io.EOF {
-				break
+	for _, resource := range resources {
+		if *copy {
+			inputFile, err := os.Open(resource[1])
+			if err != nil {
+				panic(err)
+			}
+			defer inputFile.Close()
+
+			if err := os.MkdirAll(filepath.Dir(filepath.Join(vmPath, resource[0])), os.ModePerm); err != nil {
+				panic(err)
 			}
 
-			panic(err)
+			outputFile, err := os.OpenFile(filepath.Join(vmPath, resource[0]), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, os.ModePerm)
+			if err != nil {
+				panic(err)
+			}
+			defer outputFile.Close()
+
+			if _, err = io.Copy(outputFile, inputFile); err != nil {
+				panic(err)
+			}
+
+			_ = inputFile.Close()
+			_ = outputFile.Close()
+
+			if *persist {
+				defer func(resource [2]string) {
+					inputFile, err := os.Open(filepath.Join(vmPath, resource[0]))
+					if err != nil {
+						panic(err)
+					}
+					defer inputFile.Close()
+
+					if err := os.MkdirAll(filepath.Dir(resource[1]), os.ModePerm); err != nil {
+						panic(err)
+					}
+
+					outputFile, err := os.OpenFile(resource[1], os.O_CREATE|os.O_TRUNC|os.O_WRONLY, os.ModePerm)
+					if err != nil {
+						panic(err)
+					}
+					defer outputFile.Close()
+
+					if _, err = io.Copy(outputFile, inputFile); err != nil {
+						panic(err)
+					}
+
+					_ = inputFile.Close()
+					_ = outputFile.Close()
+				}(resource)
+			}
+		} else {
+			mnt := utils.NewLoopMount(resource[1])
+
+			defer mnt.Close()
+			file, err := mnt.Open()
+			if err != nil {
+				panic(err)
+			}
+
+			info, err := os.Stat(file)
+			if err != nil {
+				panic(err)
+			}
+
+			stat, ok := info.Sys().(*syscall.Stat_t)
+			if !ok {
+				panic(roles.ErrCouldNotGetDeviceStat)
+			}
+
+			major := uint64(stat.Rdev / 256)
+			minor := uint64(stat.Rdev % 256)
+
+			dev := int((major << 8) | minor)
+
+			if err := unix.Mknod(filepath.Join(vmPath, resource[0]), unix.S_IFBLK|0666, dev); err != nil {
+				panic(err)
+			}
 		}
-
-		if err != nil {
-			panic(err)
-		}
-
-		if !slices.Contains(files, header.Name) {
-			continue
-		}
-
-		if header.Typeflag != tar.TypeReg {
-			continue
-		}
-
-		target := filepath.Join(vmPath, header.Name)
-
-		f, err := os.Create(target)
-		if err != nil {
-			panic(err)
-		}
-
-		if _, err := io.Copy(f, packageArchive); err != nil {
-			_ = f.Close()
-
-			panic(err)
-		}
-
-		_ = f.Close()
 	}
 
 	before := time.Now()
@@ -174,69 +232,6 @@ func main() {
 	}
 
 	log.Println("Resume:", time.Since(before))
-
-	if *persist {
-		defer func() {
-			if err := packageFile.Truncate(0); err != nil {
-				panic(err)
-			}
-
-			if _, err := packageFile.Seek(0, io.SeekStart); err != nil {
-				panic(err)
-			}
-
-			packageOutputArchive := tar.NewWriter(packageFile)
-			defer packageOutputArchive.Close()
-
-			for _, file := range files {
-				info, err := os.Stat(filepath.Join(vmPath, file))
-				if err != nil {
-					panic(err)
-				}
-
-				header, err := tar.FileInfoHeader(info, filepath.Join(vmPath, file))
-				if err != nil {
-					panic(err)
-				}
-				header.Name = file
-
-				if err := packageOutputArchive.WriteHeader(header); err != nil {
-					panic(err)
-				}
-
-				f, err := os.Open(filepath.Join(vmPath, file))
-				if err != nil {
-					panic(err)
-				}
-				defer f.Close()
-
-				if _, err = io.Copy(packageOutputArchive, f); err != nil {
-					panic(err)
-				}
-			}
-
-			header, err := tar.FileInfoHeader(packageConfigInfo, filepath.Join(vmPath, config.PackageConfigName))
-			if err != nil {
-				panic(err)
-			}
-			header.Name = config.PackageConfigName
-
-			if err := packageOutputArchive.WriteHeader(header); err != nil {
-				panic(err)
-			}
-
-			packageConfig, err := json.Marshal(utils.PackageConfig{
-				AgentVSockPort: packageConfig.AgentVSockPort,
-			})
-			if err != nil {
-				panic(err)
-			}
-
-			if _, err := packageOutputArchive.Write(packageConfig); err != nil {
-				panic(err)
-			}
-		}()
-	}
 
 	done := make(chan os.Signal, 1)
 	signal.Notify(done, os.Interrupt)
