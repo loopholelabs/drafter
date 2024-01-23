@@ -39,7 +39,7 @@ func main() {
 
 	flag.Parse()
 
-	packageFile, err := os.OpenFile(*packagePath, os.O_RDONLY, os.ModePerm)
+	packageFile, err := os.Open(*packagePath)
 	if err != nil {
 		panic(err)
 	}
@@ -47,7 +47,7 @@ func main() {
 
 	packageArchive := tar.NewReader(packageFile)
 
-	packageConfig, _, err := utils.ReadPackageConfigFromTar(packageArchive, config.PackageConfigName)
+	packageConfig, _, err := utils.ReadPackageConfig(packageArchive, config.ConfigName)
 	if err != nil {
 		panic(err)
 	}
@@ -82,7 +82,7 @@ func main() {
 	for _, rsc := range resources {
 		r := rsc
 
-		f, err := os.OpenFile(*packagePath, os.O_RDONLY, os.ModePerm)
+		f, err := os.Open(*packagePath)
 		if err != nil {
 			panic(err)
 		}

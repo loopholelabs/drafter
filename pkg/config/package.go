@@ -8,10 +8,10 @@ const (
 	StateName  = "drafter.drftstate"
 	MemoryName = "drafter.drftmemory"
 
-	PackageConfigName = "drafter.drftconfig"
+	ConfigName = "drafter.drftconfig"
 )
 
-type PackageConfiguration struct {
+type KnownNamesConfiguration struct {
 	InitramfsName string
 	KernelName    string
 	DiskName      string
@@ -19,5 +19,9 @@ type PackageConfiguration struct {
 	StateName  string
 	MemoryName string
 
-	PackageConfigName string
+	ConfigName string
+}
+
+type PackageConfiguration struct {
+	AgentVSockPort uint32 `json:"agentVSockPort"`
 }
