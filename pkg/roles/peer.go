@@ -43,11 +43,13 @@ type PeerHooks struct {
 
 var (
 	ErrCouldNotGetDeviceStat = errors.New("could not get device stat")
+	ErrOnlyFallbacks         = errors.New("could not start with only fallbacks and no raddrs")
 )
 
 type stage1 struct {
 	name            string
 	raddr           string
+	fallback        string
 	laddr           string
 	resumeThreshold int64
 	onLeechProgress func(remainingDataSize int64) error
@@ -82,6 +84,7 @@ type stage5 struct {
 
 	server *grpc.Server
 	lis    net.Listener
+	raddr  string
 }
 
 type Sizes struct {
@@ -116,6 +119,7 @@ type Peer struct {
 	resumeTimeout time.Duration
 
 	raddrs           config.ResourceAddresses
+	fallbacks        config.ResourceAddresses
 	laddrs           config.ResourceAddresses
 	resumeThresholds config.ResourceResumeThresholds
 
@@ -150,6 +154,7 @@ func NewPeer(
 	cacheBaseDir string,
 
 	raddrs config.ResourceAddresses,
+	fallbacks config.ResourceAddresses,
 	laddrs config.ResourceAddresses,
 	resumeThresholds config.ResourceResumeThresholds,
 
@@ -171,6 +176,7 @@ func NewPeer(
 		resumeTimeout: resumeTimeout,
 
 		raddrs:           raddrs,
+		fallbacks:        fallbacks,
 		laddrs:           laddrs,
 		resumeThresholds: resumeThresholds,
 
@@ -198,6 +204,7 @@ func (p *Peer) Connect(ctx context.Context) (*Sizes, error) {
 		{
 			name:            config.InitramfsName,
 			raddr:           p.raddrs.Initramfs,
+			fallback:        p.fallbacks.Initramfs,
 			laddr:           p.laddrs.Initramfs,
 			resumeThreshold: p.resumeThresholds.Initramfs,
 			onLeechProgress: p.hooks.OnInitramfsLeechProgress,
@@ -205,6 +212,7 @@ func (p *Peer) Connect(ctx context.Context) (*Sizes, error) {
 		{
 			name:            config.KernelName,
 			raddr:           p.raddrs.Kernel,
+			fallback:        p.fallbacks.Kernel,
 			laddr:           p.laddrs.Kernel,
 			resumeThreshold: p.resumeThresholds.Kernel,
 			onLeechProgress: p.hooks.OnKernelLeechProgress,
@@ -212,6 +220,7 @@ func (p *Peer) Connect(ctx context.Context) (*Sizes, error) {
 		{
 			name:            config.DiskName,
 			raddr:           p.raddrs.Disk,
+			fallback:        p.fallbacks.Disk,
 			laddr:           p.laddrs.Disk,
 			resumeThreshold: p.resumeThresholds.Disk,
 			onLeechProgress: p.hooks.OnDiskLeechProgress,
@@ -220,6 +229,7 @@ func (p *Peer) Connect(ctx context.Context) (*Sizes, error) {
 		{
 			name:            config.StateName,
 			raddr:           p.raddrs.State,
+			fallback:        p.fallbacks.State,
 			laddr:           p.laddrs.State,
 			resumeThreshold: p.resumeThresholds.State,
 			onLeechProgress: p.hooks.OnStateLeechProgress,
@@ -227,16 +237,41 @@ func (p *Peer) Connect(ctx context.Context) (*Sizes, error) {
 		{
 			name:            config.MemoryName,
 			raddr:           p.raddrs.Memory,
+			fallback:        p.fallbacks.Memory,
 			laddr:           p.laddrs.Memory,
 			resumeThreshold: p.resumeThresholds.Memory,
 			onLeechProgress: p.hooks.OnMemoryLeechProgress,
 		},
 	}
 
+	includesRaddr := false
+	for _, stage := range stage1Inputs {
+		if stage.raddr != "" {
+			includesRaddr = true
+
+			break
+		}
+	}
+
+	if !includesRaddr {
+		return nil, ErrOnlyFallbacks
+	}
+
 	stage2Inputs, stage1Defers, stage1Errs := utils.ConcurrentMap(
 		stage1Inputs,
 		func(index int, input stage1, output *stage2, addDefer func(deferFunc func() error)) error {
 			output.prev = input
+
+			if input.raddr == "" {
+				info, err := os.Stat(input.fallback)
+				if err != nil {
+					return err
+				}
+
+				output.size = info.Size()
+
+				return nil
+			}
 
 			conn, err := grpc.Dial(input.raddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 			if err != nil {
@@ -253,9 +288,7 @@ func (p *Peer) Connect(ctx context.Context) (*Sizes, error) {
 			}
 			output.size = size
 
-			if index == 0 {
-				p.agentVSockPort = port
-			}
+			p.agentVSockPort = port
 
 			if err := os.MkdirAll(p.cacheBaseDir, os.ModePerm); err != nil {
 				return err
@@ -397,86 +430,107 @@ func (p *Peer) Leech(ctx context.Context) (*Deltas, error) {
 			output.prev = input
 			output.finished = make(chan struct{})
 
-			continueWg.Add(1)
-			markStageAsReady := sync.OnceFunc(func() {
-				continueWg.Done()
-			})
+			var file string
+			if input.prev.raddr == "" {
+				mnt := utils.NewLoopMount(input.prev.fallback)
 
-			remainingDataSize := atomic.Int64{}
-			// Nearest lower multiple of the block size minus one chunk that is never being pulled automatically
-			remainingDataSize.Add(((input.size / client.MaximumBlockSize) * client.MaximumBlockSize) - client.MaximumBlockSize)
+				addDefer(mnt.Close)
+				dev, err := mnt.Open()
+				if err != nil {
+					return err
+				}
+				file = dev
 
-			output.local = backend.NewFileBackend(input.cache)
-			output.mgr = migration.NewPathMigrator(
-				ctx,
+				addDefer(stopVM)
 
-				output.local,
-
-				&migration.MigratorOptions{
-					Verbose:     p.verbose,
-					PullWorkers: p.migratorOptions.PullWorkers,
-				},
-				&migration.MigratorHooks{
-					OnBeforeSync: func() error {
-						return suspendVM()
-					},
-					OnAfterSync: func(dirtyOffsets []int64) error {
-						output.delta = (len(dirtyOffsets) * client.MaximumBlockSize)
-
-						return nil
-					},
-
-					OnBeforeClose: func() error {
-						return stopVM()
-					},
-
-					OnChunkIsLocal: func(off int64) error {
-						s := remainingDataSize.Add(-client.MaximumBlockSize)
-
-						if hook := input.prev.onLeechProgress; hook != nil {
-							if err := hook(s); err != nil {
-								return err
-							}
-						}
-
-						if s <= input.prev.resumeThreshold {
-							markStageAsReady()
-						}
-
-						return nil
-					},
-				},
-
-				nil,
-				nil,
-			)
-
-			p.wg.Add(1)
-			go func() {
-				defer p.wg.Done()
-				defer close(output.finished)
-				defer markStageAsReady()
-
-				if err := output.mgr.Wait(); err != nil {
-					if !utils.IsClosedErr(err) {
-						p.errs <- err
+				if hook := input.prev.onLeechProgress; hook != nil {
+					if err := hook(0); err != nil {
+						return err
 					}
 				}
-			}()
+			} else {
+				continueWg.Add(1)
+				markStageAsReady := sync.OnceFunc(func() {
+					continueWg.Done()
+				})
 
-			mgrsLock.Lock()
-			mgrs = append(mgrs, output.mgr)
-			mgrsLock.Unlock()
+				remainingDataSize := atomic.Int64{}
+				// Nearest lower multiple of the block size minus one chunk that is never being pulled automatically
+				remainingDataSize.Add(((input.size / client.MaximumBlockSize) * client.MaximumBlockSize) - client.MaximumBlockSize)
 
-			nbdDevicesLock.Lock() // We need to make sure that we call `FindUnusedNBDDevice` synchronously
-			defer nbdDevicesLock.Unlock()
+				output.local = backend.NewFileBackend(input.cache)
+				output.mgr = migration.NewPathMigrator(
+					ctx,
 
-			addDefer(output.mgr.Close)
-			finalize, file, _, err := output.mgr.Leech(output.prev.remote)
-			if err != nil {
-				return err
+					output.local,
+
+					&migration.MigratorOptions{
+						Verbose:     p.verbose,
+						PullWorkers: p.migratorOptions.PullWorkers,
+					},
+					&migration.MigratorHooks{
+						OnBeforeSync: func() error {
+							return suspendVM()
+						},
+						OnAfterSync: func(dirtyOffsets []int64) error {
+							output.delta = (len(dirtyOffsets) * client.MaximumBlockSize)
+
+							return nil
+						},
+
+						OnBeforeClose: func() error {
+							return stopVM()
+						},
+
+						OnChunkIsLocal: func(off int64) error {
+							s := remainingDataSize.Add(-client.MaximumBlockSize)
+
+							if hook := input.prev.onLeechProgress; hook != nil {
+								if err := hook(s); err != nil {
+									return err
+								}
+							}
+
+							if s <= input.prev.resumeThreshold {
+								markStageAsReady()
+							}
+
+							return nil
+						},
+					},
+
+					nil,
+					nil,
+				)
+
+				p.wg.Add(1)
+				go func() {
+					defer p.wg.Done()
+					defer close(output.finished)
+					defer markStageAsReady()
+
+					if err := output.mgr.Wait(); err != nil {
+						if !utils.IsClosedErr(err) {
+							p.errs <- err
+						}
+					}
+				}()
+
+				mgrsLock.Lock()
+				mgrs = append(mgrs, output.mgr)
+				mgrsLock.Unlock()
+
+				nbdDevicesLock.Lock() // We need to make sure that we call `FindUnusedNBDDevice` synchronously
+				defer nbdDevicesLock.Unlock()
+
+				addDefer(output.mgr.Close)
+				finalize, dev, _, err := output.mgr.Leech(output.prev.remote)
+				if err != nil {
+					return err
+				}
+				file = dev
+				output.finalize = finalize
 			}
-			output.finalize = finalize
 
 			info, err := os.Stat(file)
 			if err != nil {
@@ -574,6 +628,10 @@ func (p *Peer) Resume(ctx context.Context) (string, error) {
 		func(index int, input stage3, output *stage4, addDefer func(deferFunc func() error)) error {
 			output.prev = input
 
+			if input.prev.prev.raddr == "" {
+				return nil
+			}
+
 			seed, err := input.finalize()
 			if err != nil {
 				return err
@@ -605,6 +663,12 @@ func (p *Peer) Seed() (*config.ResourceAddresses, error) {
 		func(index int, input stage4, output *stage5, addDefer func(deferFunc func() error)) error {
 			output.prev = input
 
+			if input.prev.prev.prev.raddr == "" {
+				output.raddr = input.prev.prev.prev.fallback
+
+				return nil
+			}
+
 			svc, err := input.seed()
 			if err != nil {
 				return err
@@ -619,6 +683,7 @@ func (p *Peer) Seed() (*config.ResourceAddresses, error) {
 				return err
 			}
 			addDefer(output.lis.Close)
+			output.raddr = output.lis.Addr().String()
 
 			return nil
 		},
@@ -637,15 +702,15 @@ func (p *Peer) Seed() (*config.ResourceAddresses, error) {
 	for _, stage := range p.stage5Inputs {
 		switch stage.prev.prev.prev.prev.name {
 		case config.InitramfsName:
-			laddrs.Initramfs = stage.lis.Addr().String()
+			laddrs.Initramfs = stage.raddr
 		case config.KernelName:
-			laddrs.Kernel = stage.lis.Addr().String()
+			laddrs.Kernel = stage.raddr
 		case config.DiskName:
-			laddrs.Disk = stage.lis.Addr().String()
+			laddrs.Disk = stage.raddr
 		case config.StateName:
-			laddrs.State = stage.lis.Addr().String()
+			laddrs.State = stage.raddr
 		case config.MemoryName:
-			laddrs.Memory = stage.lis.Addr().String()
+			laddrs.Memory = stage.raddr
 		}
 	}
 
@@ -656,6 +721,10 @@ func (p *Peer) Serve() error {
 	errs := make(chan error)
 	for _, stage := range p.stage5Inputs {
 		go func(stage stage5) {
+			if stage.prev.prev.prev.prev.raddr == "" {
+				return
+			}
+
 			defer stage.lis.Close()
 
 			if err := stage.server.Serve(stage.lis); err != nil {

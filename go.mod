@@ -4,11 +4,12 @@ go 1.21.0
 
 require (
 	github.com/coreos/go-iptables v0.6.0
+	github.com/freddierice/go-losetup/v2 v2.0.1
 	github.com/google/uuid v1.3.0
 	github.com/mdlayher/vsock v1.2.1
 	github.com/metal-stack/go-ipam v1.11.3
 	github.com/pojntfx/go-nbd v0.3.2
-	github.com/pojntfx/panrpc v0.6.2-0.20240115212816-c9ef59483c19
+	github.com/pojntfx/panrpc/go v0.6.2-0.20240115212816-c9ef59483c19
 	github.com/pojntfx/r3map v0.0.0-20230823171045-28fc7f1e9dee
 	github.com/vbauerster/mpb/v8 v8.7.2
 	github.com/vishvananda/netlink v1.1.1-0.20210330154013-f5de75959ad5
@@ -83,6 +84,6 @@ require (
 	gopkg.in/inf.v0 v0.9.1 // indirect
 )
 
-replace github.com/pojntfx/panrpc => ../panrpc
+replace github.com/pojntfx/panrpc/go => ../panrpc/go
 
 replace github.com/pojntfx/r3map => ../r3map

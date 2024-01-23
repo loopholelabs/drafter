@@ -38,11 +38,17 @@ func main() {
 	numaNode := flag.Int("numa-node", 0, "NUMA node to run Firecracker in")
 	cgroupVersion := flag.Int("cgroup-version", 2, "Cgroup version to use for Jailer")
 
-	stateRaddr := flag.String("state-raddr", "localhost:1500", "Remote address for state")
-	memoryRaddr := flag.String("memory-raddr", "localhost:1501", "Remote address for memory")
-	initramfsRaddr := flag.String("initramfs-raddr", "localhost:1502", "Remote address for initramfs")
-	kernelRaddr := flag.String("kernel-raddr", "localhost:1503", "Remote address for kernel")
-	diskRaddr := flag.String("disk-raddr", "localhost:1504", "Remote address for disk")
+	stateRaddr := flag.String("state-raddr", "localhost:1500", "Remote address for state (leave empty to use fallback path)")
+	memoryRaddr := flag.String("memory-raddr", "localhost:1501", "Remote address for memory (leave empty to use fallback path)")
+	initramfsRaddr := flag.String("initramfs-raddr", "localhost:1502", "Remote address for initramfs (leave empty to use fallback path)")
+	kernelRaddr := flag.String("kernel-raddr", "localhost:1503", "Remote address for kernel (leave empty to use fallback path)")
+	diskRaddr := flag.String("disk-raddr", "localhost:1504", "Remote address for disk (leave empty to use fallback path)")
+
+	stateFallback := flag.String("state-fallback", "", "Fallback path for state")
+	memoryFallback := flag.String("memory-fallback", "", "Fallback path for memory")
+	initramfsFallback := flag.String("initramfs-fallback", "", "Fallback path for initramfs")
+	kernelFallback := flag.String("kernel-fallback", "", "Fallback path for kernel")
+	diskFallback := flag.String("disk-fallback", "", "Fallback path for disk")
 
 	stateLaddr := flag.String("state-laddr", ":1500", "Listen address for state")
 	memoryLaddr := flag.String("memory-laddr", ":1501", "Listen address for memory")
@@ -212,6 +218,13 @@ func main() {
 			Initramfs: *initramfsRaddr,
 			Kernel:    *kernelRaddr,
 			Disk:      *diskRaddr,
+		},
+		config.ResourceAddresses{
+			State:     *stateFallback,
+			Memory:    *memoryFallback,
+			Initramfs: *initramfsFallback,
+			Kernel:    *kernelFallback,
+			Disk:      *diskFallback,
 		},
 		config.ResourceAddresses{
 			State:     *stateLaddr,
