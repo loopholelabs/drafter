@@ -6,6 +6,7 @@ type ResourceAddresses struct {
 	Initramfs string
 	Kernel    string
 	Disk      string
+	Config    string
 }
 
 type ResourceResumeThresholds struct {
@@ -14,4 +15,5 @@ type ResourceResumeThresholds struct {
 	Initramfs int64
 	Kernel    int64
 	Disk      int64
+	Config    int64
 }

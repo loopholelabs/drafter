@@ -43,24 +43,28 @@ func main() {
 	initramfsRaddr := flag.String("initramfs-raddr", "localhost:1502", "Remote address for initramfs (leave empty to use fallback path)")
 	kernelRaddr := flag.String("kernel-raddr", "localhost:1503", "Remote address for kernel (leave empty to use fallback path)")
 	diskRaddr := flag.String("disk-raddr", "localhost:1504", "Remote address for disk (leave empty to use fallback path)")
+	configRaddr := flag.String("config-raddr", "localhost:1505", "Remote address for config (leave empty to use fallback path)")
 
 	stateFallback := flag.String("state-fallback", "", "Fallback path for state")
 	memoryFallback := flag.String("memory-fallback", "", "Fallback path for memory")
 	initramfsFallback := flag.String("initramfs-fallback", "", "Fallback path for initramfs")
 	kernelFallback := flag.String("kernel-fallback", "", "Fallback path for kernel")
 	diskFallback := flag.String("disk-fallback", "", "Fallback path for disk")
+	configFallback := flag.String("config-fallback", "", "Fallback path for config")
 
 	stateLaddr := flag.String("state-laddr", ":1500", "Listen address for state")
 	memoryLaddr := flag.String("memory-laddr", ":1501", "Listen address for memory")
 	initramfsLaddr := flag.String("initramfs-laddr", ":1502", "Listen address for initramfs")
 	kernelLaddr := flag.String("kernel-laddr", ":1503", "Listen address for kernel")
 	diskLaddr := flag.String("disk-laddr", ":1504", "Listen address for disk")
+	configLaddr := flag.String("config-laddr", ":1505", "Listen address for config")
 
 	stateResumeThreshold := flag.Int64("state-resume-threshold", 0, "Amount of remaining state data after which to start resuming the VM (in B; 0 means continuing to resume the VM after the state is 100% locally available)")
 	memoryResumeThreshold := flag.Int64("memory-resume-threshold", 0, "Amount of remaining memory data after which to start resuming the VM (in B; 0 means continuing to resume the VM after the memory is 100% locally available)")
 	initramfsResumeThreshold := flag.Int64("initramfs-resume-threshold", 0, "Amount of remaining initramfs data after which to start resuming the VM (in B; 0 means continuing to resume the VM after the initramfs is 100% locally available)")
 	kernelResumeThreshold := flag.Int64("kernel-resume-threshold", 0, "Amount of remaining kernel data after which to start resuming the VM (in B; 0 means continuing to resume the VM after the kernel is 100% locally available)")
 	diskResumeThreshold := flag.Int64("disk-resume-threshold", 0, "Amount of remaining disk data after which to start resuming the VM (in B; 0 means continuing to resume the VM after the disk is 100% locally available)")
+	configResumeThreshold := flag.Int64("config-resume-threshold", 0, "Amount of remaining config data after which to start resuming the VM (in B; 0 means continuing to resume the VM after the config is 100% locally available)")
 
 	pullWorkers := flag.Int64("pull-workers", 4096, "Pull workers to launch in the background; pass in a negative value to disable preemptive pull")
 
@@ -88,6 +92,7 @@ func main() {
 		initramfsBar = utils.NewProgressBar(p, "Pulling initramfs")
 		kernelBar    = utils.NewProgressBar(p, "Pulling kernel")
 		diskBar      = utils.NewProgressBar(p, "Pulling disk")
+		configBar    = utils.NewProgressBar(p, "Pulling config")
 	)
 
 	var (
@@ -131,6 +136,7 @@ func main() {
 				initramfsBar.Clear()
 				kernelBar.Clear()
 				diskBar.Clear()
+				configBar.Clear()
 
 				p.Wait()
 
@@ -146,6 +152,7 @@ func main() {
 				initramfsBar.Clear()
 				kernelBar.Clear()
 				diskBar.Clear()
+				configBar.Clear()
 
 				p.Wait()
 
@@ -160,6 +167,7 @@ func main() {
 				initramfsBar.Clear()
 				kernelBar.Clear()
 				diskBar.Clear()
+				configBar.Clear()
 
 				p.Wait()
 
@@ -175,6 +183,7 @@ func main() {
 				initramfsBar.Clear()
 				kernelBar.Clear()
 				diskBar.Clear()
+				configBar.Clear()
 
 				p.Wait()
 
@@ -208,6 +217,11 @@ func main() {
 
 				return nil
 			},
+			OnConfigLeechProgress: func(remainingDataSize int64) error {
+				configBar.SetRemaining(remainingDataSize)
+
+				return nil
+			},
 		},
 
 		*cacheBaseDir,
@@ -218,6 +232,7 @@ func main() {
 			Initramfs: *initramfsRaddr,
 			Kernel:    *kernelRaddr,
 			Disk:      *diskRaddr,
+			Config:    *configRaddr,
 		},
 		config.ResourceAddresses{
 			State:     *stateFallback,
@@ -225,6 +240,7 @@ func main() {
 			Initramfs: *initramfsFallback,
 			Kernel:    *kernelFallback,
 			Disk:      *diskFallback,
+			Config:    *configFallback,
 		},
 		config.ResourceAddresses{
 			State:     *stateLaddr,
@@ -232,6 +248,7 @@ func main() {
 			Initramfs: *initramfsLaddr,
 			Kernel:    *kernelLaddr,
 			Disk:      *diskLaddr,
+			Config:    *configLaddr,
 		},
 		config.ResourceResumeThresholds{
 			State:     *stateResumeThreshold,
@@ -239,6 +256,7 @@ func main() {
 			Initramfs: *initramfsResumeThreshold,
 			Kernel:    *kernelResumeThreshold,
 			Disk:      *diskResumeThreshold,
+			Config:    *configResumeThreshold,
 		},
 
 		*resumeTimeout,
@@ -270,6 +288,7 @@ func main() {
 		initramfsBar.Clear()
 		kernelBar.Clear()
 		diskBar.Clear()
+		configBar.Clear()
 
 		p.Wait()
 
@@ -294,12 +313,14 @@ func main() {
 		defer initramfsBar.Pause()()
 		defer kernelBar.Pause()()
 		defer diskBar.Pause()()
+		defer configBar.Pause()()
 
 		log.Printf("Leeching state (%v bytes)", sizes.State)
 		log.Printf("Leeching memory (%v bytes)", sizes.Memory)
 		log.Printf("Leeching initramfs (%v bytes)", sizes.Initramfs)
 		log.Printf("Leeching kernel (%v bytes)", sizes.Kernel)
 		log.Printf("Leeching disk (%v bytes)", sizes.Disk)
+		log.Printf("Leeching config (%v bytes)", sizes.Config)
 	}()
 
 	func() {
@@ -308,6 +329,7 @@ func main() {
 		initramfsBar.SetTotal(sizes.Initramfs)
 		kernelBar.SetTotal(sizes.Kernel)
 		diskBar.SetTotal(sizes.Disk)
+		configBar.SetTotal(sizes.Config)
 	}()
 
 	deltas, err := peer.Leech(ctx)
@@ -325,12 +347,13 @@ func main() {
 		defer initramfsBar.Pause()()
 		defer kernelBar.Pause()()
 		defer diskBar.Pause()()
+		defer configBar.Pause()()
 
 		log.Printf("Leeched state (%v bytes invalidated)", deltas.State)
 		log.Printf("Leeched memory (%v bytes invalidated)", deltas.Memory)
 		log.Printf("Leeched initramfs (%v bytes invalidated)", deltas.Initramfs)
 		log.Printf("Leeched kernel (%v bytes invalidated)", deltas.Kernel)
-		log.Printf("Leeched disk (%v bytes invalidated)", deltas.Disk)
+		log.Printf("Leeched config (%v bytes invalidated)", deltas.Config)
 	}()
 
 	func() {
@@ -339,6 +362,7 @@ func main() {
 		initramfsBar.IncreaseTotal(int64(deltas.Initramfs))
 		kernelBar.IncreaseTotal(int64(deltas.Kernel))
 		memoryBar.IncreaseTotal(int64(deltas.Disk))
+		configBar.IncreaseTotal(int64(deltas.Config))
 	}()
 
 	func() {
@@ -347,6 +371,7 @@ func main() {
 		defer initramfsBar.Pause()()
 		defer kernelBar.Pause()()
 		defer diskBar.Pause()()
+		defer configBar.Pause()()
 
 		log.Println("Resuming VM")
 	}()
@@ -368,6 +393,7 @@ func main() {
 		defer initramfsBar.Pause()()
 		defer kernelBar.Pause()()
 		defer diskBar.Pause()()
+		defer configBar.Pause()()
 
 		log.Println("Resumed VM in", time.Since(before), "on", vmPath)
 	}()
@@ -381,13 +407,14 @@ func main() {
 		return
 	}
 
-	log.Printf("\n\n\n\n\n") // Offset the progress bars to prevent accidentally removing regular outputs
+	log.Printf("\n\n\n\n\n\n") // Offset the progress bars to prevent accidentally removing regular outputs
 
 	stateBar.Clear()
 	memoryBar.Clear()
 	initramfsBar.Clear()
 	kernelBar.Clear()
 	diskBar.Clear()
+	configBar.Clear()
 
 	p.Wait()
 
@@ -396,6 +423,7 @@ func main() {
 	log.Println("Seeding initramfs on", laddrs.Initramfs)
 	log.Println("Seeding kernel on", laddrs.Kernel)
 	log.Println("Seeding disk on", laddrs.Disk)
+	log.Println("Seeding config on", laddrs.Config)
 
 	if err := peer.Serve(); err != nil {
 		if !utils.IsClosedErr(err) {

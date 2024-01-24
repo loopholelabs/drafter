@@ -71,11 +71,11 @@ func (l *SeederWithMetaRemoteGrpc) Close(ctx context.Context) error {
 	return nil
 }
 
-func (l *SeederWithMetaRemoteGrpc) Meta(ctx context.Context) (size int64, agentVSockPort uint32, err error) {
+func (l *SeederWithMetaRemoteGrpc) Meta(ctx context.Context) (size int64, err error) {
 	res, err := l.client.Meta(ctx, &v1.MetaArgs{})
 	if err != nil {
-		return 0, 0, err
+		return 0, err
 	}
 
-	return res.GetSize(), res.GetAgentVSockPort(), nil
+	return res.GetSize(), nil
 }

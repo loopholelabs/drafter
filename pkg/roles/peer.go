@@ -2,6 +2,7 @@ package roles
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -39,11 +40,11 @@ type PeerHooks struct {
 	OnInitramfsLeechProgress func(remainingDataSize int64) error
 	OnKernelLeechProgress    func(remainingDataSize int64) error
 	OnDiskLeechProgress      func(remainingDataSize int64) error
+	OnConfigLeechProgress    func(remainingDataSize int64) error
 }
 
 var (
 	ErrCouldNotGetDeviceStat = errors.New("could not get device stat")
-	ErrOnlyFallbacks         = errors.New("could not start with only fallbacks and no raddrs")
 )
 
 type stage1 struct {
@@ -93,6 +94,7 @@ type Sizes struct {
 	Initramfs int64
 	Kernel    int64
 	Disk      int64
+	Config    int64
 }
 
 type Deltas struct {
@@ -101,6 +103,7 @@ type Deltas struct {
 	Initramfs int
 	Kernel    int
 	Disk      int
+	Config    int
 }
 
 type Peer struct {
@@ -123,13 +126,12 @@ type Peer struct {
 	laddrs           config.ResourceAddresses
 	resumeThresholds config.ResourceResumeThresholds
 
-	stage2Inputs   []stage2
-	stage3Inputs   []stage3
-	runner         *Runner
-	vmPath         string
-	agentVSockPort uint32
-	stage4Inputs   []stage4
-	stage5Inputs   []stage5
+	stage2Inputs []stage2
+	stage3Inputs []stage3
+	runner       *Runner
+	vmPath       string
+	stage4Inputs []stage4
+	stage5Inputs []stage5
 
 	deferFuncs [][]func() error
 
@@ -242,19 +244,15 @@ func (p *Peer) Connect(ctx context.Context) (*Sizes, error) {
 			resumeThreshold: p.resumeThresholds.Memory,
 			onLeechProgress: p.hooks.OnMemoryLeechProgress,
 		},
-	}
 
-	includesRaddr := false
-	for _, stage := range stage1Inputs {
-		if stage.raddr != "" {
-			includesRaddr = true
-
-			break
-		}
-	}
-
-	if !includesRaddr {
-		return nil, ErrOnlyFallbacks
+		{
+			name:            config.ConfigName,
+			raddr:           p.raddrs.Config,
+			fallback:        p.fallbacks.Config,
+			laddr:           p.laddrs.Config,
+			resumeThreshold: p.resumeThresholds.Config,
+			onLeechProgress: p.hooks.OnConfigLeechProgress,
+		},
 	}
 
 	stage2Inputs, stage1Defers, stage1Errs := utils.ConcurrentMap(
@@ -282,13 +280,11 @@ func (p *Peer) Connect(ctx context.Context) (*Sizes, error) {
 			remote, remoteWithMeta := services.NewSeederWithMetaRemoteGrpc(v1.NewSeederWithMetaClient(conn))
 			output.remote = remote
 
-			size, port, err := remoteWithMeta.Meta(ctx)
+			size, err := remoteWithMeta.Meta(ctx)
 			if err != nil {
 				return err
 			}
 			output.size = size
-
-			p.agentVSockPort = port
 
 			if err := os.MkdirAll(p.cacheBaseDir, os.ModePerm); err != nil {
 				return err
@@ -330,10 +326,14 @@ func (p *Peer) Connect(ctx context.Context) (*Sizes, error) {
 			sizes.Kernel = stage.size
 		case config.DiskName:
 			sizes.Disk = stage.size
+
 		case config.StateName:
 			sizes.State = stage.size
 		case config.MemoryName:
+
 			sizes.Memory = stage.size
+		case config.ConfigName:
+			sizes.Config = stage.size
 		}
 	}
 
@@ -366,10 +366,6 @@ func (p *Peer) Leech(ctx context.Context) (*Deltas, error) {
 			EnableOutput: p.hypervisorConfiguration.EnableOutput,
 			EnableInput:  p.hypervisorConfiguration.EnableInput,
 		},
-		config.AgentConfiguration{
-			AgentVSockPort: p.agentVSockPort,
-			ResumeTimeout:  p.resumeTimeout,
-		},
 
 		config.StateName,
 		config.MemoryName,
@@ -401,7 +397,7 @@ func (p *Peer) Leech(ctx context.Context) (*Deltas, error) {
 			defer hook()
 		}
 
-		return p.runner.Suspend(ctx)
+		return p.runner.Suspend(ctx, p.resumeTimeout)
 	})
 
 	stopVM := sync.OnceValue(func() error {
@@ -600,10 +596,14 @@ func (p *Peer) Leech(ctx context.Context) (*Deltas, error) {
 			deltas.Kernel = stage.delta
 		case config.DiskName:
 			deltas.Disk = stage.delta
+
 		case config.StateName:
 			deltas.State = stage.delta
 		case config.MemoryName:
 			deltas.Memory = stage.delta
+
+		case config.ConfigName:
+			deltas.Config = stage.delta
 		}
 	}
 
@@ -620,7 +620,34 @@ func (p *Peer) Resume(ctx context.Context) (string, error) {
 			resumeErrs <- err
 		}()
 
-		err = p.runner.Resume(ctx)
+		configPath := ""
+		for _, stage := range p.stage3Inputs {
+			if stage.prev.prev.name == config.ConfigName {
+				configPath = filepath.Join(p.vmPath, stage.prev.prev.name)
+				if configPath == "" {
+					configPath = stage.prev.prev.fallback
+				}
+
+				break
+			}
+		}
+
+		configFile, e := os.Open(configPath)
+		if e != nil {
+			err = e
+
+			return
+		}
+		defer configFile.Close()
+
+		var packageConfig config.PackageConfiguration
+		if e := json.NewDecoder(configFile).Decode(&packageConfig); e != nil {
+			err = e
+
+			return
+		}
+
+		err = p.runner.Resume(ctx, p.resumeTimeout, packageConfig.AgentVSockPort)
 	}()
 
 	stage4Inputs, stage3Defers, stage3Errs := utils.ConcurrentMap(
@@ -664,8 +691,6 @@ func (p *Peer) Seed() (*config.ResourceAddresses, error) {
 			output.prev = input
 
 			if input.prev.prev.prev.raddr == "" {
-				output.raddr = input.prev.prev.prev.fallback
-
 				return nil
 			}
 
@@ -676,7 +701,7 @@ func (p *Peer) Seed() (*config.ResourceAddresses, error) {
 
 			output.server = grpc.NewServer()
 
-			v1.RegisterSeederWithMetaServer(output.server, services.NewSeederWithMetaServiceGrpc(services.NewSeederWithMetaService(svc, input.prev.local, p.agentVSockPort, p.verbose)))
+			v1.RegisterSeederWithMetaServer(output.server, services.NewSeederWithMetaServiceGrpc(services.NewSeederWithMetaService(svc, input.prev.local, p.verbose)))
 
 			output.lis, err = net.Listen("tcp", input.prev.prev.prev.laddr)
 			if err != nil {
@@ -707,10 +732,14 @@ func (p *Peer) Seed() (*config.ResourceAddresses, error) {
 			laddrs.Kernel = stage.raddr
 		case config.DiskName:
 			laddrs.Disk = stage.raddr
+
 		case config.StateName:
 			laddrs.State = stage.raddr
 		case config.MemoryName:
 			laddrs.Memory = stage.raddr
+
+		case config.ConfigName:
+			laddrs.Config = stage.raddr
 		}
 	}
 

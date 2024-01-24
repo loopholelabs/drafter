@@ -26,7 +26,6 @@ var (
 
 type Runner struct {
 	hypervisorConfiguration config.HypervisorConfiguration
-	agentConfiguration      config.AgentConfiguration
 
 	stateName  string
 	memoryName string
@@ -47,14 +46,12 @@ type Runner struct {
 
 func NewRunner(
 	hypervisorConfiguration config.HypervisorConfiguration,
-	agentConfiguration config.AgentConfiguration,
 
 	stateName string,
 	memoryName string,
 ) *Runner {
 	return &Runner{
 		hypervisorConfiguration: hypervisorConfiguration,
-		agentConfiguration:      agentConfiguration,
 
 		stateName:  stateName,
 		memoryName: memoryName,
@@ -126,7 +123,11 @@ func (r *Runner) Open() (string, error) {
 	return r.vmPath, nil
 }
 
-func (r *Runner) Resume(ctx context.Context) error {
+func (r *Runner) Resume(
+	ctx context.Context,
+	resumeTimeout time.Duration,
+	agentVSockPort uint32,
+) error {
 	if err := firecracker.ResumeSnapshot(
 		r.client,
 
@@ -138,7 +139,7 @@ func (r *Runner) Resume(ctx context.Context) error {
 
 	r.handler = vsock.NewHandler(
 		filepath.Join(r.vmPath, VSockName),
-		r.agentConfiguration.AgentVSockPort,
+		agentVSockPort,
 	)
 
 	r.wg.Add(1)
@@ -151,24 +152,24 @@ func (r *Runner) Resume(ctx context.Context) error {
 	}()
 
 	var err error
-	r.remote, err = r.handler.Open(ctx, time.Millisecond*100, r.agentConfiguration.ResumeTimeout)
+	r.remote, err = r.handler.Open(ctx, time.Millisecond*100, resumeTimeout)
 	if err != nil {
 		return err
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, r.agentConfiguration.ResumeTimeout)
+	ctx, cancel := context.WithTimeout(ctx, resumeTimeout)
 	defer cancel()
 
 	return r.remote.AfterResume(ctx)
 }
 
-func (r *Runner) Suspend(ctx context.Context) error {
+func (r *Runner) Suspend(ctx context.Context, resumeTimeout time.Duration) error {
 	if r.handler == nil {
 		return ErrVMNotRunning
 	}
 
 	{
-		ctx, cancel := context.WithTimeout(ctx, r.agentConfiguration.ResumeTimeout)
+		ctx, cancel := context.WithTimeout(ctx, resumeTimeout)
 		defer cancel()
 
 		if err := r.remote.BeforeSuspend(ctx); err != nil {

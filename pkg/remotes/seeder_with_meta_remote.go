@@ -11,5 +11,5 @@ type SeederWithMetaRemote struct {
 	Track  func(context context.Context) error
 	Sync   func(context context.Context) ([]int64, error)
 	Close  func(context context.Context) error
-	Meta   func(context context.Context) (size int64, agentVSockPort uint32, err error)
+	Meta   func(context context.Context) (size int64, err error)
 }

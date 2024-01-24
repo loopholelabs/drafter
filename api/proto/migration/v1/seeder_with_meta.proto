@@ -36,7 +36,4 @@ message CloseReply {}
 
 message MetaArgs {}
 
-message MetaReply {
-  int64 Size = 1;
-  uint32 AgentVSockPort = 2;
-}
+message MetaReply { int64 Size = 1; }

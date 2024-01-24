@@ -94,10 +94,6 @@ func main() {
 			EnableOutput: *enableOutput,
 			EnableInput:  *enableInput,
 		},
-		config.AgentConfiguration{
-			AgentVSockPort: packageConfig.AgentVSockPort,
-			ResumeTimeout:  *resumeTimeout,
-		},
 
 		config.StateName,
 		config.MemoryName,
@@ -227,7 +223,7 @@ func main() {
 
 	before := time.Now()
 
-	if err := runner.Resume(ctx); err != nil {
+	if err := runner.Resume(ctx, *resumeTimeout, packageConfig.AgentVSockPort); err != nil {
 		panic(err)
 	}
 
@@ -240,7 +236,7 @@ func main() {
 
 	before = time.Now()
 
-	if err := runner.Suspend(ctx); err != nil {
+	if err := runner.Suspend(ctx, *resumeTimeout); err != nil {
 		panic(err)
 	}
 

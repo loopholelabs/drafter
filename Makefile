@@ -45,4 +45,4 @@ clean:
 
 # Dependencies
 depend:
-	true
+	go generate ./...

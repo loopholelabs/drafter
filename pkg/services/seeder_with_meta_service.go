@@ -9,19 +9,17 @@ import (
 )
 
 type SeederWithMetaService struct {
-	base           *services.SeederService
-	b              backend.Backend
-	agentVSockPort uint32
-	verbose        bool
+	base    *services.SeederService
+	b       backend.Backend
+	verbose bool
 }
 
 func NewSeederWithMetaService(
 	base *services.SeederService,
 	b backend.Backend,
-	agentVSockPort uint32,
 	verbose bool,
 ) *SeederWithMetaService {
-	return &SeederWithMetaService{base, b, agentVSockPort, verbose}
+	return &SeederWithMetaService{base, b, verbose}
 }
 
 func (b *SeederWithMetaService) ReadAt(context context.Context, length int, off int64) (r services.ReadAtResponse, err error) {
@@ -40,15 +38,15 @@ func (b *SeederWithMetaService) Close(context context.Context) error {
 	return b.base.Close(context)
 }
 
-func (b *SeederWithMetaService) Meta(context context.Context) (size int64, agentVSockPort uint32, err error) {
+func (b *SeederWithMetaService) Meta(context context.Context) (size int64, err error) {
 	if b.verbose {
 		log.Println("Meta()")
 	}
 
 	size, err = b.b.Size()
 	if err != nil {
-		return 0, 0, err
+		return 0, err
 	}
 
-	return size, b.agentVSockPort, nil
+	return size, nil
 }

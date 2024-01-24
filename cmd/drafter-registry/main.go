@@ -1,7 +1,6 @@
 package main
 
 import (
-	"archive/tar"
 	"flag"
 	"log"
 	"net"
@@ -11,7 +10,6 @@ import (
 
 	v1 "github.com/loopholelabs/drafter/pkg/api/proto/migration/v1"
 	backend "github.com/loopholelabs/drafter/pkg/backends"
-	"github.com/loopholelabs/drafter/pkg/config"
 	iservices "github.com/loopholelabs/drafter/pkg/services"
 	"github.com/loopholelabs/drafter/pkg/utils"
 	"github.com/pojntfx/r3map/pkg/services"
@@ -27,74 +25,69 @@ type resources struct {
 }
 
 func main() {
-	packagePath := flag.String("package-path", filepath.Join("out", "redis.drft"), "Path to package to serve")
+	statePath := flag.String("state-path", filepath.Join("out", "package", "drafter.drftstate"), "State path")
+	memoryPath := flag.String("memory-path", filepath.Join("out", "package", "drafter.drftmemory"), "Memory path")
+	initramfsPath := flag.String("initramfs-path", filepath.Join("out", "package", "drafter.drftinitramfs"), "initramfs path")
+	kernelPath := flag.String("kernel-path", filepath.Join("out", "package", "drafter.drftkernel"), "Kernel path")
+	diskPath := flag.String("disk-path", filepath.Join("out", "package", "drafter.drftdisk"), "Disk path")
+	configPath := flag.String("config-path", filepath.Join("out", "package", "drafter.drftconfig"), "Config path")
 
 	stateLaddr := flag.String("state-laddr", ":1600", "Listen address for state")
 	memoryLaddr := flag.String("memory-laddr", ":1601", "Listen address for memory")
 	initramfsLaddr := flag.String("initramfs-laddr", ":1602", "Listen address for initramfs")
 	kernelLaddr := flag.String("kernel-laddr", ":1603", "Listen address for kernel")
 	diskLaddr := flag.String("disk-laddr", ":1604", "Listen address for disk")
+	configLaddr := flag.String("config-laddr", ":1605", "Listen address for config")
 
 	verbose := flag.Bool("verbose", false, "Whether to enable verbose logging")
 
 	flag.Parse()
 
-	packageFile, err := os.Open(*packagePath)
-	if err != nil {
-		panic(err)
-	}
-	defer packageFile.Close()
-
-	packageArchive := tar.NewReader(packageFile)
-
-	packageConfig, _, err := utils.ReadPackageConfig(packageArchive, config.ConfigName)
-	if err != nil {
-		panic(err)
-	}
-
-	if err := packageFile.Close(); err != nil {
-		panic(err)
-	}
-
 	resources := []*resources{
 		{
 			laddr: *initramfsLaddr,
-			path:  config.InitramfsName,
+			path:  *initramfsPath,
 		},
 		{
 			laddr: *kernelLaddr,
-			path:  config.KernelName,
+			path:  *kernelPath,
 		},
 		{
 			laddr: *diskLaddr,
-			path:  config.DiskName,
+			path:  *diskPath,
 		},
 
 		{
 			laddr: *stateLaddr,
-			path:  config.StateName,
+			path:  *statePath,
 		},
 		{
 			laddr: *memoryLaddr,
-			path:  config.MemoryName,
+			path:  *memoryPath,
+		},
+
+		{
+			laddr: *configLaddr,
+			path:  *configPath,
 		},
 	}
 	for _, rsc := range resources {
 		r := rsc
 
-		f, err := os.Open(*packagePath)
+		f, err := os.Open(rsc.path)
 		if err != nil {
 			panic(err)
 		}
 		defer f.Close()
 
-		off, size, err := utils.FindSectionForPathInArchive(f, r.path)
+		stat, err := f.Stat()
 		if err != nil {
 			panic(err)
 		}
-		r.size = size
 
-		b := backend.NewReadOnlyBackend(utils.NewSectionReaderAt(f, off, size), r.size)
+		r.size = stat.Size()
+
+		b := backend.NewReadOnlyBackend(f, r.size)
 
 		svc := iservices.NewSeederWithMetaService(
 			services.NewSeederService(
@@ -112,7 +105,6 @@ func main() {
 				services.MaxChunkSize,
 			),
 			b,
-			packageConfig.AgentVSockPort,
 			*verbose,
 		)
 

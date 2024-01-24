@@ -58,13 +58,12 @@ func (s *SeederWithMetaServiceGrpc) Close(ctx context.Context, args *v1.CloseArg
 }
 
 func (s *SeederWithMetaServiceGrpc) Meta(ctx context.Context, args *v1.MetaArgs) (*v1.MetaReply, error) {
-	size, agentVSockPort, err := s.svc.Meta(ctx)
+	size, err := s.svc.Meta(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	return &v1.MetaReply{
-		Size:           size,
-		AgentVSockPort: agentVSockPort,
+		Size: size,
 	}, nil
 }
