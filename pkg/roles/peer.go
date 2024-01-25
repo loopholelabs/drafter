@@ -267,7 +267,22 @@ func (p *Peer) Connect(ctx context.Context) (*Sizes, error) {
 					return err
 				}
 
-				output.size = info.Size()
+				padding := (((info.Size() + (client.MaximumBlockSize * 2) - 1) / (client.MaximumBlockSize * 2)) * client.MaximumBlockSize * 2) - info.Size()
+				if padding > 0 {
+					resourceFile, err := os.OpenFile(input.fallback, os.O_WRONLY|os.O_APPEND, os.ModePerm)
+					if err != nil {
+						panic(err)
+					}
+					addDefer(resourceFile.Close)
+
+					if _, err := resourceFile.Write(make([]byte, padding)); err != nil {
+						panic(err)
+					}
+
+					_ = resourceFile.Close()
+				}
+
+				output.size = info.Size() + padding
 
 				return nil
 			}

@@ -17,6 +17,7 @@ import (
 	"github.com/loopholelabs/drafter/pkg/config"
 	"github.com/loopholelabs/drafter/pkg/roles"
 	"github.com/loopholelabs/drafter/pkg/utils"
+	"github.com/pojntfx/go-nbd/pkg/client"
 	"golang.org/x/sys/unix"
 )
 
@@ -192,6 +193,26 @@ func main() {
 				}(resource)
 			}
 		} else {
+			resourceInfo, err := os.Stat(resource[1])
+			if err != nil {
+				panic(err)
+			}
+
+			padding := (((resourceInfo.Size() + (client.MaximumBlockSize * 2) - 1) / (client.MaximumBlockSize * 2)) * client.MaximumBlockSize * 2) - resourceInfo.Size()
+			if padding > 0 {
+				resourceFile, err := os.OpenFile(resource[1], os.O_WRONLY|os.O_APPEND, os.ModePerm)
+				if err != nil {
+					panic(err)
+				}
+				defer resourceFile.Close()
+
+				if _, err := resourceFile.Write(make([]byte, padding)); err != nil {
+					panic(err)
+				}
+
+				_ = resourceFile.Close()
+			}
+
 			mnt := utils.NewLoopMount(resource[1])
 
 			defer mnt.Close()
