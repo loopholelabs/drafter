@@ -17,6 +17,7 @@ import (
 
 	v1 "github.com/loopholelabs/drafter/pkg/api/proto/migration/v1"
 	"github.com/loopholelabs/drafter/pkg/config"
+	"github.com/loopholelabs/drafter/pkg/remotes"
 	"github.com/loopholelabs/drafter/pkg/services"
 	"github.com/loopholelabs/drafter/pkg/utils"
 	"github.com/pojntfx/go-nbd/pkg/backend"
@@ -277,14 +278,18 @@ func (p *Peer) Connect(ctx context.Context) (*Sizes, error) {
 			}
 			addDefer(conn.Close)
 
-			remote, remoteWithMeta := services.NewSeederWithMetaRemoteGrpc(v1.NewSeederWithMetaClient(conn))
-			output.remote = remote
+			rawRemote, rawRemoteWithMeta := services.NewSeederWithMetaRemoteGrpc(v1.NewSeederWithMetaClient(conn))
 
-			size, err := remoteWithMeta.Meta(ctx)
+			rawSize, err := rawRemoteWithMeta.Meta(ctx)
 			if err != nil {
 				return err
 			}
-			output.size = size
+
+			// Make sure that we always have at least two blocks in length
+			alignedSize := ((rawSize + (client.MaximumBlockSize * 2) - 1) / (client.MaximumBlockSize * 2)) * client.MaximumBlockSize * 2
+			output.size = alignedSize
+
+			output.remote = remotes.NewSeederWithAlignedReadsRemote(rawRemote, rawSize, alignedSize)
 
 			if err := os.MkdirAll(p.cacheBaseDir, os.ModePerm); err != nil {
 				return err
@@ -300,7 +305,7 @@ func (p *Peer) Connect(ctx context.Context) (*Sizes, error) {
 				return os.Remove(cache.Name())
 			})
 
-			if err := cache.Truncate(size); err != nil {
+			if err := cache.Truncate(output.size); err != nil {
 				return err
 			}
 

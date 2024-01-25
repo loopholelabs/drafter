@@ -71,10 +71,10 @@ func main() {
 			path:  *configPath,
 		},
 	}
-	for _, rsc := range resources {
-		r := rsc
+	for _, resource := range resources {
+		r := resource
 
-		f, err := os.Open(rsc.path)
+		f, err := os.Open(resource.path)
 		if err != nil {
 			panic(err)
 		}
