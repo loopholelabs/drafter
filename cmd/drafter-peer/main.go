@@ -294,10 +294,10 @@ func main() {
 
 		log.Println("Exiting gracefully")
 
-		_ = peer.Close()
+		_ = peer.Close(true)
 	}()
 
-	defer peer.Close()
+	defer peer.Close(false)
 	sizes, err := peer.Connect(ctx)
 	if err != nil {
 		if !utils.IsClosedErr(err) {

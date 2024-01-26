@@ -131,6 +131,7 @@ type Peer struct {
 	stage3Inputs []stage3
 	runner       *Runner
 	vmPath       string
+	suspendVM    func() error
 	stage4Inputs []stage4
 	stage5Inputs []stage5
 
@@ -407,7 +408,7 @@ func (p *Peer) Leech(ctx context.Context) (*Deltas, error) {
 		return nil, err
 	}
 
-	suspendVM := sync.OnceValue(func() error {
+	p.suspendVM = sync.OnceValue(func() error {
 		if hook := p.hooks.OnBeforeSuspend; hook != nil {
 			if err := hook(); err != nil {
 				return err
@@ -495,7 +496,7 @@ func (p *Peer) Leech(ctx context.Context) (*Deltas, error) {
 					},
 					&migration.MigratorHooks{
 						OnBeforeSync: func() error {
-							return suspendVM()
+							return p.suspendVM()
 						},
 						OnAfterSync: func(dirtyOffsets []int64) error {
 							output.delta = (len(dirtyOffsets) * client.MaximumBlockSize)
@@ -817,9 +818,15 @@ func (p *Peer) Serve() error {
 	}
 }
 
-func (p *Peer) Close() error {
+func (p *Peer) Close(suspend bool) error {
 	p.closeLock.Lock()
 	defer p.closeLock.Unlock()
+
+	if hook := p.suspendVM; suspend && hook != nil {
+		if err := hook(); err != nil {
+			return err
+		}
+	}
 
 	func() {
 		defer func() {
