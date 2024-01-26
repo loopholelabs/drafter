@@ -262,27 +262,28 @@ func (p *Peer) Connect(ctx context.Context) (*Sizes, error) {
 			output.prev = input
 
 			if input.raddr == "" {
-				info, err := os.Stat(input.fallback)
+				resourceInfo, err := os.Stat(input.fallback)
 				if err != nil {
 					return err
 				}
 
-				padding := (((info.Size() + (client.MaximumBlockSize * 2) - 1) / (client.MaximumBlockSize * 2)) * client.MaximumBlockSize * 2) - info.Size()
-				if padding > 0 {
-					resourceFile, err := os.OpenFile(input.fallback, os.O_WRONLY|os.O_APPEND, os.ModePerm)
-					if err != nil {
-						panic(err)
+				addDefer(func() error {
+					if paddingLength := utils.GetBlockDevicePadding(resourceInfo.Size()); paddingLength > 0 {
+						resourceFile, err := os.OpenFile(input.fallback, os.O_WRONLY|os.O_APPEND, os.ModePerm)
+						if err != nil {
+							return err
+						}
+						defer resourceFile.Close()
+
+						if _, err := resourceFile.Write(make([]byte, paddingLength)); err != nil {
+							return err
+						}
 					}
-					addDefer(resourceFile.Close)
 
-					if _, err := resourceFile.Write(make([]byte, padding)); err != nil {
-						panic(err)
-					}
+					return nil
+				})
 
-					_ = resourceFile.Close()
-				}
-
-				output.size = info.Size() + padding
+				output.size = resourceInfo.Size()
 
 				return nil
 			}
@@ -434,7 +435,7 @@ func (p *Peer) Leech(ctx context.Context) (*Deltas, error) {
 		return p.runner.Close()
 	})
 
-	var nbdDevicesLock sync.Mutex
+	var deviceLookupLock sync.Mutex
 	mgrs := []*migration.PathMigrator{}
 	var mgrsLock sync.Mutex
 
@@ -450,6 +451,14 @@ func (p *Peer) Leech(ctx context.Context) (*Deltas, error) {
 			if input.prev.raddr == "" {
 				mnt := utils.NewLoopMount(input.prev.fallback)
 
+				deviceLookupLock.Lock() // We need to make sure that we call `GetFree` synchronously
+				defer deviceLookupLock.Unlock()
+
+				addDefer(func() error {
+					close(output.finished)
+
+					return nil
+				})
 				addDefer(mnt.Close)
 				dev, err := mnt.Open()
 				if err != nil {
@@ -536,8 +545,8 @@ func (p *Peer) Leech(ctx context.Context) (*Deltas, error) {
 				mgrs = append(mgrs, output.mgr)
 				mgrsLock.Unlock()
 
-				nbdDevicesLock.Lock() // We need to make sure that we call `FindUnusedNBDDevice` synchronously
-				defer nbdDevicesLock.Unlock()
+				deviceLookupLock.Lock() // We need to make sure that we call `FindUnusedNBDDevice` synchronously
+				defer deviceLookupLock.Unlock()
 
 				addDefer(output.mgr.Close)
 				finalize, dev, _, err := output.mgr.Leech(output.prev.remote)
@@ -814,6 +823,10 @@ func (p *Peer) Close() error {
 	defer p.closeLock.Unlock()
 
 	func() {
+		defer func() {
+			p.deferFuncs = [][]func() error{} // Make sure that we only run the defers once
+		}()
+
 		for _, deferFuncs := range p.deferFuncs {
 			for _, deferFunc := range deferFuncs {
 				defer deferFunc()

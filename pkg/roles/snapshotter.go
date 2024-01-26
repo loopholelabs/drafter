@@ -140,6 +140,11 @@ func (p *Snapshotter) CreateSnapshot(
 				knownNamesConfiguration.MemoryName,
 				memoryOutputPath,
 			},
+
+			{
+				knownNamesConfiguration.ConfigName,
+				configOutputPath,
+			},
 		} {
 			inputFile, err := os.Open(filepath.Join(vmPath, resource[0]))
 			if err != nil {
@@ -163,10 +168,19 @@ func (p *Snapshotter) CreateSnapshot(
 			}
 			defer outputFile.Close()
 
-			if _, err = io.Copy(outputFile, inputFile); err != nil {
+			resourceSize, err := io.Copy(outputFile, inputFile)
+			if err != nil {
 				p.errs <- err
 
 				return
+			}
+
+			if paddingLength := utils.GetBlockDevicePadding(resourceSize); paddingLength > 0 {
+				if _, err := outputFile.Write(make([]byte, paddingLength)); err != nil {
+					p.errs <- err
+
+					return
+				}
 			}
 		}
 	}()
@@ -265,11 +279,7 @@ func (p *Snapshotter) CreateSnapshot(
 		return err
 	}
 
-	if err := os.MkdirAll(filepath.Dir(configOutputPath), os.ModePerm); err != nil {
-		return err
-	}
-
-	if _, err := utils.WriteFile(packageConfig, configOutputPath, hypervisorConfiguration.UID, hypervisorConfiguration.GID); err != nil {
+	if _, err := utils.WriteFile(packageConfig, filepath.Join(vmPath, knownNamesConfiguration.ConfigName), hypervisorConfiguration.UID, hypervisorConfiguration.GID); err != nil {
 		return err
 	}
 

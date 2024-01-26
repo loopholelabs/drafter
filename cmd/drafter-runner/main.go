@@ -17,7 +17,6 @@ import (
 	"github.com/loopholelabs/drafter/pkg/config"
 	"github.com/loopholelabs/drafter/pkg/roles"
 	"github.com/loopholelabs/drafter/pkg/utils"
-	"github.com/pojntfx/go-nbd/pkg/client"
 	"golang.org/x/sys/unix"
 )
 
@@ -184,8 +183,15 @@ func main() {
 					}
 					defer outputFile.Close()
 
-					if _, err = io.Copy(outputFile, inputFile); err != nil {
+					resourceSize, err := io.Copy(outputFile, inputFile)
+					if err != nil {
 						panic(err)
+					}
+
+					if paddingLength := utils.GetBlockDevicePadding(resourceSize); paddingLength > 0 {
+						if _, err := outputFile.Write(make([]byte, paddingLength)); err != nil {
+							panic(err)
+						}
 					}
 
 					_ = inputFile.Close()
@@ -193,25 +199,24 @@ func main() {
 				}(resource)
 			}
 		} else {
-			resourceInfo, err := os.Stat(resource[1])
-			if err != nil {
-				panic(err)
-			}
-
-			padding := (((resourceInfo.Size() + (client.MaximumBlockSize * 2) - 1) / (client.MaximumBlockSize * 2)) * client.MaximumBlockSize * 2) - resourceInfo.Size()
-			if padding > 0 {
-				resourceFile, err := os.OpenFile(resource[1], os.O_WRONLY|os.O_APPEND, os.ModePerm)
+			defer func() {
+				resourceInfo, err := os.Stat(resource[1])
 				if err != nil {
 					panic(err)
 				}
-				defer resourceFile.Close()
 
-				if _, err := resourceFile.Write(make([]byte, padding)); err != nil {
-					panic(err)
+				if paddingLength := utils.GetBlockDevicePadding(resourceInfo.Size()); paddingLength > 0 {
+					resourceFile, err := os.OpenFile(resource[1], os.O_WRONLY|os.O_APPEND, os.ModePerm)
+					if err != nil {
+						panic(err)
+					}
+					defer resourceFile.Close()
+
+					if _, err := resourceFile.Write(make([]byte, paddingLength)); err != nil {
+						panic(err)
+					}
 				}
-
-				_ = resourceFile.Close()
-			}
+			}()
 
 			mnt := utils.NewLoopMount(resource[1])
 
