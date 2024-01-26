@@ -42,14 +42,14 @@ func ConcurrentMap[I, O any](
 					defersLock.Lock()
 					defer defersLock.Unlock()
 
-					defers = append([][]func() error{localDefers}, defers...)
+					defers = append(defers, localDefers)
 				}()
 
 				return callback(i, input, output, func(deferFunc func() error) {
 					localDefersLock.Lock()
 					defer localDefersLock.Unlock()
 
-					localDefers = append([]func() error{deferFunc}, localDefers...)
+					localDefers = append(localDefers, deferFunc)
 				})
 			}()
 
