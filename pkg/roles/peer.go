@@ -641,7 +641,6 @@ func (p *Peer) Leech(ctx context.Context) (*Deltas, error) {
 
 func (p *Peer) Resume(ctx context.Context) (string, error) {
 	// Resume as soon as the underlying resources are unlocked
-	p.deferFuncs = append(p.deferFuncs, []func() error{p.runner.Close})
 	resumeErrs := make(chan error)
 	go func() {
 		var err error
