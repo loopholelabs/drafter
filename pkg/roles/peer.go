@@ -45,7 +45,8 @@ type PeerHooks struct {
 }
 
 var (
-	ErrCouldNotGetDeviceStat = errors.New("could not get device stat")
+	ErrCouldNotGetDeviceStat         = errors.New("could not get device stat")
+	ErrNoRaddrOrPathGivenForResource = errors.New("no raddr or path given for resource")
 )
 
 type stage1 struct {
@@ -255,6 +256,12 @@ func (p *Peer) Connect(ctx context.Context) (*Sizes, error) {
 			resumeThreshold: p.resumeThresholds.Config,
 			onLeechProgress: p.hooks.OnConfigLeechProgress,
 		},
+	}
+
+	for _, stage := range stage1Inputs {
+		if stage.raddr == "" && stage.path == "" {
+
+		}
 	}
 
 	stage2Inputs, stage1Defers, stage1Errs := utils.ConcurrentMap(
