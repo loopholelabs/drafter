@@ -51,7 +51,7 @@ var (
 type stage1 struct {
 	name            string
 	raddr           string
-	fallback        string
+	path            string
 	laddr           string
 	resumeThreshold int64
 	onLeechProgress func(remainingDataSize int64) error
@@ -123,7 +123,7 @@ type Peer struct {
 	resumeTimeout time.Duration
 
 	raddrs           config.ResourceAddresses
-	fallbacks        config.ResourceAddresses
+	paths            config.ResourceAddresses
 	laddrs           config.ResourceAddresses
 	resumeThresholds config.ResourceResumeThresholds
 
@@ -158,7 +158,7 @@ func NewPeer(
 	cacheBaseDir string,
 
 	raddrs config.ResourceAddresses,
-	fallbacks config.ResourceAddresses,
+	paths config.ResourceAddresses,
 	laddrs config.ResourceAddresses,
 	resumeThresholds config.ResourceResumeThresholds,
 
@@ -180,7 +180,7 @@ func NewPeer(
 		resumeTimeout: resumeTimeout,
 
 		raddrs:           raddrs,
-		fallbacks:        fallbacks,
+		paths:            paths,
 		laddrs:           laddrs,
 		resumeThresholds: resumeThresholds,
 
@@ -208,7 +208,7 @@ func (p *Peer) Connect(ctx context.Context) (*Sizes, error) {
 		{
 			name:            config.InitramfsName,
 			raddr:           p.raddrs.Initramfs,
-			fallback:        p.fallbacks.Initramfs,
+			path:            p.paths.Initramfs,
 			laddr:           p.laddrs.Initramfs,
 			resumeThreshold: p.resumeThresholds.Initramfs,
 			onLeechProgress: p.hooks.OnInitramfsLeechProgress,
@@ -216,7 +216,7 @@ func (p *Peer) Connect(ctx context.Context) (*Sizes, error) {
 		{
 			name:            config.KernelName,
 			raddr:           p.raddrs.Kernel,
-			fallback:        p.fallbacks.Kernel,
+			path:            p.paths.Kernel,
 			laddr:           p.laddrs.Kernel,
 			resumeThreshold: p.resumeThresholds.Kernel,
 			onLeechProgress: p.hooks.OnKernelLeechProgress,
@@ -224,7 +224,7 @@ func (p *Peer) Connect(ctx context.Context) (*Sizes, error) {
 		{
 			name:            config.DiskName,
 			raddr:           p.raddrs.Disk,
-			fallback:        p.fallbacks.Disk,
+			path:            p.paths.Disk,
 			laddr:           p.laddrs.Disk,
 			resumeThreshold: p.resumeThresholds.Disk,
 			onLeechProgress: p.hooks.OnDiskLeechProgress,
@@ -233,7 +233,7 @@ func (p *Peer) Connect(ctx context.Context) (*Sizes, error) {
 		{
 			name:            config.StateName,
 			raddr:           p.raddrs.State,
-			fallback:        p.fallbacks.State,
+			path:            p.paths.State,
 			laddr:           p.laddrs.State,
 			resumeThreshold: p.resumeThresholds.State,
 			onLeechProgress: p.hooks.OnStateLeechProgress,
@@ -241,7 +241,7 @@ func (p *Peer) Connect(ctx context.Context) (*Sizes, error) {
 		{
 			name:            config.MemoryName,
 			raddr:           p.raddrs.Memory,
-			fallback:        p.fallbacks.Memory,
+			path:            p.paths.Memory,
 			laddr:           p.laddrs.Memory,
 			resumeThreshold: p.resumeThresholds.Memory,
 			onLeechProgress: p.hooks.OnMemoryLeechProgress,
@@ -250,7 +250,7 @@ func (p *Peer) Connect(ctx context.Context) (*Sizes, error) {
 		{
 			name:            config.ConfigName,
 			raddr:           p.raddrs.Config,
-			fallback:        p.fallbacks.Config,
+			path:            p.paths.Config,
 			laddr:           p.laddrs.Config,
 			resumeThreshold: p.resumeThresholds.Config,
 			onLeechProgress: p.hooks.OnConfigLeechProgress,
@@ -263,14 +263,14 @@ func (p *Peer) Connect(ctx context.Context) (*Sizes, error) {
 			output.prev = input
 
 			if input.raddr == "" {
-				resourceInfo, err := os.Stat(input.fallback)
+				resourceInfo, err := os.Stat(input.path)
 				if err != nil {
 					return err
 				}
 
 				addDefer(func() error {
 					if paddingLength := utils.GetBlockDevicePadding(resourceInfo.Size()); paddingLength > 0 {
-						resourceFile, err := os.OpenFile(input.fallback, os.O_WRONLY|os.O_APPEND, os.ModePerm)
+						resourceFile, err := os.OpenFile(input.path, os.O_WRONLY|os.O_APPEND, os.ModePerm)
 						if err != nil {
 							return err
 						}
@@ -450,7 +450,7 @@ func (p *Peer) Leech(ctx context.Context) (*Deltas, error) {
 
 			var file string
 			if input.prev.raddr == "" {
-				mnt := utils.NewLoopMount(input.prev.fallback)
+				mnt := utils.NewLoopMount(input.prev.path)
 
 				deviceLookupLock.Lock() // We need to make sure that we call `GetFree` synchronously
 				defer deviceLookupLock.Unlock()
@@ -654,7 +654,7 @@ func (p *Peer) Resume(ctx context.Context) (string, error) {
 			if stage.prev.prev.name == config.ConfigName {
 				configPath = filepath.Join(p.vmPath, stage.prev.prev.name)
 				if configPath == "" {
-					configPath = stage.prev.prev.fallback
+					configPath = stage.prev.prev.path
 				}
 
 				break
