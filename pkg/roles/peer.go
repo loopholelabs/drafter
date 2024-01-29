@@ -260,7 +260,7 @@ func (p *Peer) Connect(ctx context.Context) (*Sizes, error) {
 
 	for _, stage := range stage1Inputs {
 		if stage.raddr == "" && stage.path == "" {
-
+			return nil, ErrNoRaddrOrPathGivenForResource
 		}
 	}
 
