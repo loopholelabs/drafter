@@ -593,12 +593,12 @@ sudo drafter-peer --netns ark0 --state-raddr '' --state-path out/package/redis/d
 ### On a Workstation
 
 ```shell
-drafter-registry --state-path out/package/postgresql/drafter.drftstate \
-    --memory-path out/package/postgresql/drafter.drftmemory \
-    --initramfs-path out/package/postgresql/drafter.drftinitramfs \
-    --kernel-path out/package/postgresql/drafter.drftkernel \
-    --disk-path out/package/postgresql/drafter.drftdisk \
-    --config-path out/package/postgresql/drafter.drftconfig # Be sure to adjust the resource paths
+drafter-registry --state-path out/package/redis/drafter.drftstate \
+    --memory-path out/package/redis/drafter.drftmemory \
+    --initramfs-path out/package/redis/drafter.drftinitramfs \
+    --kernel-path out/package/redis/drafter.drftkernel \
+    --disk-path out/package/redis/drafter.drftdisk \
+    --config-path out/package/redis/drafter.drftconfig # Be sure to adjust the resource paths
 ```
 
 ```shell
@@ -624,12 +624,12 @@ export NODE_3_IP="145.40.95.151"
 ```
 
 ```shell
-drafter-registry --state-path out/package/postgresql/drafter.drftstate \
-    --memory-path out/package/postgresql/drafter.drftmemory \
-    --initramfs-path out/package/postgresql/drafter.drftinitramfs \
-    --kernel-path out/package/postgresql/drafter.drftkernel \
-    --disk-path out/package/postgresql/drafter.drftdisk \
-    --config-path out/package/postgresql/drafter.drftconfig # On ${REGISTRY_IP}; be sure to adjust the resource paths
+drafter-registry --state-path out/package/redis/drafter.drftstate \
+    --memory-path out/package/redis/drafter.drftmemory \
+    --initramfs-path out/package/redis/drafter.drftinitramfs \
+    --kernel-path out/package/redis/drafter.drftkernel \
+    --disk-path out/package/redis/drafter.drftdisk \
+    --config-path out/package/redis/drafter.drftconfig # On ${REGISTRY_IP}; be sure to adjust the resource paths
 ```
 
 ```shell
