@@ -503,15 +503,89 @@ rm -rf /tmp/blueprint
 
 ```shell
 # For Redis (be sure to use a free namespace)
-sudo drafter-packager --netns ark0 --memory-size 512 --package-output-path out/redis.drft
+sudo drafter-snapshotter --netns ark0 --memory-size 512 \
+    --state-output-path out/package/redis/drafter.drftstate \
+    --memory-output-path out/package/redis/drafter.drftmemory \
+    --initramfs-output-path out/package/redis/drafter.drftinitramfs \
+    --kernel-output-path out/package/redis/drafter.drftkernel \
+    --disk-output-path out/package/redis/drafter.drftdisk \
+    --config-output-path out/package/redis/drafter.drftconfig
 
 # For Minecraft (Cuberite/1.12.2) (be sure to use a free namespace)
-sudo drafter-packager --netns ark0 --memory-size 512 --package-output-path out/minecraft-cuberite.drft
+sudo drafter-snapshotter --netns ark0 --memory-size 512 \
+    --state-output-path out/package/minecraft-cuberite/drafter.drftstate \
+    --memory-output-path out/package/minecraft-cuberite/drafter.drftmemory \
+    --initramfs-output-path out/package/minecraft-cuberite/drafter.drftinitramfs \
+    --kernel-output-path out/package/minecraft-cuberite/drafter.drftkernel \
+    --disk-output-path out/package/minecraft-cuberite/drafter.drftdisk \
+    --config-output-path out/package/minecraft-cuberite/drafter.drftconfig
 
 # For Minecraft (Official server; needs more RAM than the default 1024 MB) (be sure to use a free namespace)
-sudo drafter-packager --netns ark0 --memory-size 2048 --package-output-path out/minecraft-official.drft
+sudo drafter-snapshotter --netns ark0 --memory-size 1024 \
+    --state-output-path out/package/minecraft-official/drafter.drftstate \
+    --memory-output-path out/package/minecraft-official/drafter.drftmemory \
+    --initramfs-output-path out/package/minecraft-official/drafter.drftinitramfs \
+    --kernel-output-path out/package/minecraft-official/drafter.drftkernel \
+    --disk-output-path out/package/minecraft-official/drafter.drftdisk \
+    --config-output-path out/package/minecraft-official/drafter.drftconfig
 
+# For PostgreSQL (be sure to use a free namespace)
+sudo drafter-snapshotter --netns ark0 --memory-size 512 \
+    --state-output-path out/package/postgresql/drafter.drftstate \
+    --memory-output-path out/package/postgresql/drafter.drftmemory \
+    --initramfs-output-path out/package/postgresql/drafter.drftinitramfs \
+    --kernel-output-path out/package/postgresql/drafter.drftkernel \
+    --disk-output-path out/package/postgresql/drafter.drftdisk \
+    --config-output-path out/package/postgresql/drafter.drftconfig
+```
+
+```shell
+# For Redis
+sudo drafter-packager --package-path out/redis.drft \
+    --state-path out/package/redis/drafter.drftstate \
+    --memory-path out/package/redis/drafter.drftmemory \
+    --initramfs-path out/package/redis/drafter.drftinitramfs \
+    --kernel-path out/package/redis/drafter.drftkernel \
+    --disk-path out/package/redis/drafter.drftdisk \
+    --config-path out/package/redis/drafter.drftconfig # Append --extract to extract the package instead
+
+# For Minecraft (Cuberite/1.12.2)
+sudo drafter-packager --package-path out/minecraft-cuberite.drft \
+    --state-path out/package/minecraft-cuberite/drafter.drftstate \
+    --memory-path out/package/minecraft-cuberite/drafter.drftmemory \
+    --initramfs-path out/package/minecraft-cuberite/drafter.drftinitramfs \
+    --kernel-path out/package/minecraft-cuberite/drafter.drftkernel \
+    --disk-path out/package/minecraft-cuberite/drafter.drftdisk \
+    --config-path out/package/minecraft-cuberite/drafter.drftconfig # Append --extract to extract the package instead
+
+# For Minecraft (Official server)
+sudo drafter-packager --package-path out/minecraft-official.drft \
+    --state-path out/package/minecraft-official/drafter.drftstate \
+    --memory-path out/package/minecraft-official/drafter.drftmemory \
+    --initramfs-path out/package/minecraft-official/drafter.drftinitramfs \
+    --kernel-path out/package/minecraft-official/drafter.drftkernel \
+    --disk-path out/package/minecraft-official/drafter.drftdisk \
+    --config-path out/package/minecraft-official/drafter.drftconfig # Append --extract to extract the package instead
+
+# For PostgreSQL
+sudo drafter-packager --package-path out/postgresql.drft \
+    --state-path out/package/postgresql/drafter.drftstate \
+    --memory-path out/package/postgresql/drafter.drftmemory \
+    --initramfs-path out/package/postgresql/drafter.drftinitramfs \
+    --kernel-path out/package/postgresql/drafter.drftkernel \
+    --disk-path out/package/postgresql/drafter.drftdisk \
+    --config-path out/package/postgresql/drafter.drftconfig # Append --extract to extract the package instead
+```
+
+```shell
 sudo drafter-runner --netns ark0 --package-path out/redis.drft # CTRL-C to flush the snapshot and run again to resume (be sure to use a free namespace and adjust the package path)
+# Or the equivalent:
+sudo drafter-peer --netns ark0 --state-raddr '' --state-path out/package/redis/drafter.drftstate \
+    --memory-raddr '' --memory-path out/package/redis/drafter.drftmemory \
+    --initramfs-raddr '' --initramfs-path out/package/redis/drafter.drftinitramfs \
+    --kernel-raddr '' --kernel-path out/package/redis/drafter.drftkernel \
+    --disk-raddr '' --disk-path out/package/redis/drafter.drftdisk \
+    --config-raddr '' --config-path out/package/redis/drafter.drftconfig --netns ark0
 ```
 
 ## Distributing, Running and Migrating Packages
@@ -519,11 +593,16 @@ sudo drafter-runner --netns ark0 --package-path out/redis.drft # CTRL-C to flush
 ### On a Workstation
 
 ```shell
-drafter-registry --package-path out/redis.drft # Be sure to adjust the package path
+drafter-registry --state-path out/package/postgresql/drafter.drftstate \
+    --memory-path out/package/postgresql/drafter.drftmemory \
+    --initramfs-path out/package/postgresql/drafter.drftinitramfs \
+    --kernel-path out/package/postgresql/drafter.drftkernel \
+    --disk-path out/package/postgresql/drafter.drftdisk \
+    --config-path out/package/postgresql/drafter.drftconfig # Be sure to adjust the resource paths
 ```
 
 ```shell
-sudo drafter-peer --netns ark0 --state-raddr localhost:1600 --memory-raddr localhost:1601 --initramfs-raddr localhost:1602 --kernel-raddr localhost:1603 --disk-raddr localhost:1604 --netns ark0 --enable-input # If --enable-input is specified, CTRL-C is forwarded to the VM, so to stop the VM use `sudo pkill -2 drafter-peer` instead (be sure to use a free namespace)
+sudo drafter-peer --netns ark0 --state-raddr localhost:1600 --memory-raddr localhost:1601 --initramfs-raddr localhost:1602 --kernel-raddr localhost:1603 --disk-raddr localhost:1604 --config-raddr localhost:1605 --netns ark0 --enable-input # If --enable-input is specified, CTRL-C is forwarded to the VM, so to stop the VM use `sudo pkill -2 drafter-peer` instead (be sure to use a free namespace)
 ```
 
 ```shell
@@ -545,23 +624,28 @@ export NODE_3_IP="145.40.95.151"
 ```
 
 ```shell
-drafter-registry --package-path out/redis.drft # On ${REGISTRY_IP}; be sure to adjust the package path
+drafter-registry --state-path out/package/postgresql/drafter.drftstate \
+    --memory-path out/package/postgresql/drafter.drftmemory \
+    --initramfs-path out/package/postgresql/drafter.drftinitramfs \
+    --kernel-path out/package/postgresql/drafter.drftkernel \
+    --disk-path out/package/postgresql/drafter.drftdisk \
+    --config-path out/package/postgresql/drafter.drftconfig # On ${REGISTRY_IP}; be sure to adjust the resource paths
 ```
 
 ```shell
-sudo drafter-peer --netns ark0 --raddr ${REGISTRY_IP}:1337 --enable-input # On ${NODE_1_IP}: If --enable-input is specified, CTRL-C is forwarded to the VM, so to stop the VM use `sudo pkill -2 drafter-peer` instead (be sure to use a free namespace)
+sudo drafter-peer --netns ark0 --state-raddr ${REGISTRY_IP}:1600 --memory-raddr ${REGISTRY_IP}:1601 --initramfs-raddr ${REGISTRY_IP}:1602 --kernel-raddr ${REGISTRY_IP}:1603 --disk-raddr ${REGISTRY_IP}:1604 --config-raddr ${REGISTRY_IP}:1605 --enable-input # On ${NODE_1_IP}: If --enable-input is specified, CTRL-C is forwarded to the VM, so to stop the VM use `sudo pkill -2 drafter-peer` instead (be sure to use a free namespace)
 ```
 
 ```shell
-sudo drafter-peer --netns ark0 --raddr ${NODE_1_IP}:1338 --enable-input # On ${NODE_2_IP}: Migrates to this peer (be sure to use a free namespace)
+sudo drafter-peer --netns ark0 --state-raddr ${NODE_1_IP}:1500 --memory-raddr ${NODE_1_IP}:1501 --initramfs-raddr ${NODE_1_IP}:1502 --kernel-raddr ${NODE_1_IP}:1503 --disk-raddr ${NODE_1_IP}:1504 --config-raddr ${NODE_1_IP}:1505 --enable-input # On ${NODE_2_IP}: Migrates to this peer (be sure to use a free namespace)
 ```
 
 ```shell
-sudo drafter-peer --netns ark0 --raddr ${NODE_2_IP}:1338 # On ${NODE_3_IP}: Migrates to this peer without enabling input; CTRL-C to flush the snapshot and stop the VM (be sure to use a free namespace)
+sudo drafter-peer --netns ark0 --state-raddr ${NODE_2_IP}:1500 --memory-raddr ${NODE_2_IP}:1501 --initramfs-raddr ${NODE_2_IP}:1502 --kernel-raddr ${NODE_2_IP}:1503 --disk-raddr ${NODE_2_IP}:1504 --config-raddr ${NODE_2_IP}:1505 # On ${NODE_3_IP}: Migrates to this peer without enabling input; CTRL-C to flush the snapshot and stop the VM (be sure to use a free namespace)
 ```
 
 ```shell
-sudo drafter-peer --netns ark0 --raddr ${NODE_3_IP}:1338 # On ${NODE_1_IP}: Migrates to this peer without enabling input; CTRL-C to flush the snapshot and stop the VM (be sure to use a free namespace)
+sudo drafter-peer --netns ark0 --state-raddr ${NODE_3_IP}:1500 --memory-raddr ${NODE_3_IP}:1501 --initramfs-raddr ${NODE_3_IP}:1502 --kernel-raddr ${NODE_3_IP}:1503 --disk-raddr ${NODE_3_IP}:1504 --config-raddr ${NODE_3_IP}:1505 # On ${NODE_1_IP}: Migrates to this peer without enabling input; CTRL-C to flush the snapshot and stop the VM (be sure to use a free namespace)
 ```
 
 ## Tearing Down Workstation and Server Dependencies
