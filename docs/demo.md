@@ -585,7 +585,7 @@ sudo drafter-peer --netns ark0 --state-raddr '' --state-path out/package/redis/d
     --initramfs-raddr '' --initramfs-path out/package/redis/drafter.drftinitramfs \
     --kernel-raddr '' --kernel-path out/package/redis/drafter.drftkernel \
     --disk-raddr '' --disk-path out/package/redis/drafter.drftdisk \
-    --config-raddr '' --config-path out/package/redis/drafter.drftconfig --netns ark0
+    --config-raddr '' --config-path out/package/redis/drafter.drftconfig
 ```
 
 ## Distributing, Running and Migrating Packages
@@ -610,7 +610,12 @@ sudo drafter-peer --netns ark1 --enable-input # Migrates to this peer; be sure t
 ```
 
 ```shell
-sudo drafter-peer --netns ark0 # Migrates to this peer without enabling input; CTRL-C to flush the snapshot and stop the VM (be sure to use a free namespace)
+sudo drafter-peer --netns ark0 --state-path out/package/redis/drafter.drftstate \
+    --memory-path out/package/redis/drafter.drftmemory \
+    --initramfs-path out/package/redis/drafter.drftinitramfs \
+    --kernel-path out/package/redis/drafter.drftkernel \
+    --disk-path out/package/redis/drafter.drftdisk \
+    --config-path out/package/redis/drafter.drftconfig # Migrates to this peer without enabling input; CTRL-C to flush the snapshot, stop the VM, and write the changes back to the paths (be sure to use a free namespace)
 ```
 
 ### On a Cluster
@@ -645,7 +650,12 @@ sudo drafter-peer --netns ark0 --state-raddr ${NODE_2_IP}:1500 --memory-raddr ${
 ```
 
 ```shell
-sudo drafter-peer --netns ark0 --state-raddr ${NODE_3_IP}:1500 --memory-raddr ${NODE_3_IP}:1501 --initramfs-raddr ${NODE_3_IP}:1502 --kernel-raddr ${NODE_3_IP}:1503 --disk-raddr ${NODE_3_IP}:1504 --config-raddr ${NODE_3_IP}:1505 # On ${NODE_1_IP}: Migrates to this peer without enabling input; CTRL-C to flush the snapshot and stop the VM (be sure to use a free namespace)
+sudo drafter-peer --netns ark0 --state-raddr ${NODE_3_IP}:1500 --state-path out/package/redis/drafter.drftstate \
+    --memory-raddr ${NODE_3_IP}:1501 --memory-path out/package/redis/drafter.drftmemory \
+    --initramfs-raddr ${NODE_3_IP}:1502 --initramfs-path out/package/redis/drafter.drftinitramfs \
+    --kernel-raddr ${NODE_3_IP}:1503 --kernel-path out/package/redis/drafter.drftkernel \
+    --disk-raddr ${NODE_3_IP}:1504 --disk-path out/package/redis/drafter.drftdisk \
+    --config-raddr ${NODE_3_IP}:1505 --config-path out/package/redis/drafter.drftconfig # On ${NODE_1_IP}: Migrates to this peer without enabling input; CTRL-C to flush the snapshot, stop the VM, and write the changes back to the paths (be sure to use a free namespace)
 ```
 
 ## Tearing Down Workstation and Server Dependencies

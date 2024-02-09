@@ -319,15 +319,25 @@ func (p *Peer) Connect(ctx context.Context) (*Sizes, error) {
 				return err
 			}
 
-			cache, err := os.CreateTemp(p.cacheBaseDir, "*.drft")
-			if err != nil {
-				return err
+			var cache *os.File
+			if input.path == "" {
+				cache, err = os.CreateTemp(p.cacheBaseDir, "*.drft")
+				if err != nil {
+					return err
+				}
+				addDefer(func() error {
+					return os.Remove(cache.Name())
+				})
+			} else {
+				// Wite changes to specified path instead of cache directory for persistence
+				cache, err = os.OpenFile(input.path, os.O_CREATE|os.O_RDWR, os.ModePerm)
+				if err != nil {
+					return err
+				}
 			}
+
 			output.cache = cache
 			addDefer(cache.Close)
-			addDefer(func() error {
-				return os.Remove(cache.Name())
-			})
 
 			if err := cache.Truncate(output.size); err != nil {
 				return err
