@@ -70,7 +70,6 @@ type stage3 struct {
 	prev stage2
 
 	local    backend.Backend
-	mgr      *migration.PathMigrator
 	finished chan struct{}
 	finalize func() (seed func() (svc *iservices.SeederService, err error), err error)
 	delta    int
@@ -293,6 +292,16 @@ func (p *Peer) Connect(ctx context.Context) (*Sizes, error) {
 
 				output.size = resourceInfo.Size()
 
+				if input.laddr != "" {
+					cache, err := os.OpenFile(input.path, os.O_RDWR, os.ModePerm)
+					if err != nil {
+						return err
+					}
+
+					output.cache = cache
+					addDefer(cache.Close)
+				}
+
 				return nil
 			}
 
@@ -453,12 +462,10 @@ func (p *Peer) Leech(ctx context.Context) (*Deltas, error) {
 		return p.runner.Close()
 	})
 
-	var deviceLookupLock sync.Mutex
-	mgrs := []*migration.PathMigrator{}
-	var mgrsLock sync.Mutex
-
-	var continueWg sync.WaitGroup
-
+	var (
+		deviceLookupLock sync.Mutex
+		continueWg       sync.WaitGroup
+	)
 	stage3Inputs, stage2Defers, stage2Errs := utils.ConcurrentMap(
 		p.stage2Inputs,
 		func(index int, input stage2, output *stage3, addDefer func(deferFunc func() error)) error {
@@ -467,28 +474,84 @@ func (p *Peer) Leech(ctx context.Context) (*Deltas, error) {
 
 			var file string
 			if input.prev.raddr == "" {
-				mnt := utils.NewLoopMount(input.prev.path)
+				if input.prev.laddr == "" {
+					mnt := utils.NewLoopMount(input.prev.path)
 
-				deviceLookupLock.Lock() // We need to make sure that we call `GetFree` synchronously
-				defer deviceLookupLock.Unlock()
+					deviceLookupLock.Lock() // We need to make sure that we call `GetFree` synchronously
+					defer deviceLookupLock.Unlock()
 
-				addDefer(func() error {
-					close(output.finished)
+					addDefer(func() error {
+						close(output.finished)
 
-					return nil
-				})
-				addDefer(mnt.Close)
-				dev, err := mnt.Open()
-				if err != nil {
-					return err
-				}
-				file = dev
-
-				addDefer(stopVM)
-
-				if hook := input.prev.onLeechProgress; hook != nil {
-					if err := hook(0); err != nil {
+						return nil
+					})
+					addDefer(mnt.Close)
+					dev, err := mnt.Open()
+					if err != nil {
 						return err
+					}
+					file = dev
+
+					addDefer(stopVM)
+
+					if hook := input.prev.onLeechProgress; hook != nil {
+						if err := hook(0); err != nil {
+							return err
+						}
+					}
+				} else {
+					output.local = backend.NewFileBackend(input.cache)
+					sdr := migration.NewPathSeeder(
+						output.local,
+
+						&migration.SeederOptions{
+							Verbose: p.verbose,
+						},
+						&migration.SeederHooks{
+							OnBeforeSync: func() error {
+								return p.suspendVM()
+							},
+
+							OnBeforeClose: func() error {
+								return stopVM()
+							},
+						},
+
+						nil,
+						nil,
+					)
+
+					p.wg.Add(1)
+					go func() {
+						defer p.wg.Done()
+						defer close(output.finished)
+
+						if err := sdr.Wait(); err != nil {
+							if !utils.IsClosedErr(err) {
+								p.errs <- err
+							}
+						}
+					}()
+
+					deviceLookupLock.Lock() // We need to make sure that we call `GetFree` synchronously
+					defer deviceLookupLock.Unlock()
+
+					addDefer(sdr.Close)
+					dev, _, svc, err := sdr.Open()
+					if err != nil {
+						return err
+					}
+					file = dev
+					output.finalize = func() (seed func() (*iservices.SeederService, error), err error) {
+						return func() (*iservices.SeederService, error) {
+							return svc, nil
+						}, nil
+					}
+
+					if hook := input.prev.onLeechProgress; hook != nil {
+						if err := hook(0); err != nil {
+							return err
+						}
 					}
 				}
 			} else {
@@ -502,7 +565,7 @@ func (p *Peer) Leech(ctx context.Context) (*Deltas, error) {
 				remainingDataSize.Add(((input.size / client.MaximumBlockSize) * client.MaximumBlockSize) - client.MaximumBlockSize)
 
 				output.local = backend.NewFileBackend(input.cache)
-				output.mgr = migration.NewPathMigrator(
+				mgr := migration.NewPathMigrator(
 					ctx,
 
 					output.local,
@@ -552,22 +615,18 @@ func (p *Peer) Leech(ctx context.Context) (*Deltas, error) {
 					defer close(output.finished)
 					defer markStageAsReady()
 
-					if err := output.mgr.Wait(); err != nil {
+					if err := mgr.Wait(); err != nil {
 						if !utils.IsClosedErr(err) {
 							p.errs <- err
 						}
 					}
 				}()
 
-				mgrsLock.Lock()
-				mgrs = append(mgrs, output.mgr)
-				mgrsLock.Unlock()
-
 				deviceLookupLock.Lock() // We need to make sure that we call `FindUnusedNBDDevice` synchronously
 				defer deviceLookupLock.Unlock()
 
-				addDefer(output.mgr.Close)
-				finalize, dev, _, err := output.mgr.Leech(output.prev.remote)
+				addDefer(mgr.Close)
+				finalize, dev, _, err := mgr.Leech(output.prev.remote)
 				if err != nil {
 					return err
 				}
@@ -701,7 +760,7 @@ func (p *Peer) Resume(ctx context.Context) (string, error) {
 		func(index int, input stage3, output *stage4, addDefer func(deferFunc func() error)) error {
 			output.prev = input
 
-			if input.prev.prev.raddr == "" {
+			if input.prev.prev.raddr == "" && input.prev.prev.laddr == "" {
 				return nil
 			}
 
@@ -736,7 +795,7 @@ func (p *Peer) Seed() (*config.ResourceAddresses, error) {
 		func(index int, input stage4, output *stage5, addDefer func(deferFunc func() error)) error {
 			output.prev = input
 
-			if input.prev.prev.prev.raddr == "" {
+			if input.prev.prev.prev.raddr == "" && input.prev.prev.prev.laddr == "" {
 				return nil
 			}
 
@@ -796,7 +855,7 @@ func (p *Peer) Serve() error {
 	errs := make(chan error)
 	for _, stage := range p.stage5Inputs {
 		go func(stage stage5) {
-			if stage.prev.prev.prev.prev.raddr == "" {
+			if stage.prev.prev.prev.prev.raddr == "" && stage.prev.prev.prev.prev.laddr == "" {
 				return
 			}
 
