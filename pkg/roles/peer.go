@@ -789,13 +789,18 @@ func (p *Peer) Resume(ctx context.Context) (string, error) {
 	return p.vmPath, nil
 }
 
-func (p *Peer) Seed() (*config.ResourceAddresses, error) {
+func (p *Peer) Seed(ctx context.Context) (*config.ResourceAddresses, error) {
 	stage5Inputs, stage4Defers, stage4Errs := utils.ConcurrentMap(
 		p.stage4Inputs,
 		func(index int, input stage4, output *stage5, addDefer func(deferFunc func() error)) error {
 			output.prev = input
 
-			if input.prev.prev.prev.raddr == "" && input.prev.prev.prev.laddr == "" {
+			if input.prev.prev.prev.raddr == "" && input.prev.prev.prev.laddr == "" || input.prev.prev.prev.laddr == "" {
+				if input.prev.prev.prev.raddr != "" {
+					// We need to manually `Close()` the remote since we don't call `Seed()`, otherwise the remote VM is stuck in the resumed state
+					return input.prev.prev.remote.Close(ctx)
+				}
+
 				return nil
 			}
 
@@ -855,7 +860,7 @@ func (p *Peer) Serve() error {
 	errs := make(chan error)
 	for _, stage := range p.stage5Inputs {
 		go func(stage stage5) {
-			if stage.prev.prev.prev.prev.raddr == "" && stage.prev.prev.prev.prev.laddr == "" {
+			if stage.prev.prev.prev.prev.raddr == "" && stage.prev.prev.prev.prev.laddr == "" || stage.prev.prev.prev.prev.laddr == "" {
 				return
 			}
 

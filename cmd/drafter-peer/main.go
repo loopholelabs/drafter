@@ -398,7 +398,7 @@ func main() {
 		log.Println("Resumed VM in", time.Since(before), "on", vmPath)
 	}()
 
-	laddrs, err := peer.Seed()
+	laddrs, err := peer.Seed(ctx)
 	if err != nil {
 		if !utils.IsClosedErr(err) {
 			panic(err)
