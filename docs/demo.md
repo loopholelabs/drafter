@@ -579,16 +579,38 @@ sudo drafter-packager --package-path out/postgresql.drft \
 
 ```shell
 sudo drafter-runner --netns ark0 --package-path out/redis.drft # CTRL-C to flush the snapshot and run again to resume (be sure to use a free namespace and adjust the package path)
-# Or the equivalent:
-sudo drafter-peer --netns ark0 --state-raddr '' --state-path out/package/redis/drafter.drftstate \
-    --memory-raddr '' --memory-path out/package/redis/drafter.drftmemory \
-    --initramfs-raddr '' --initramfs-path out/package/redis/drafter.drftinitramfs \
-    --kernel-raddr '' --kernel-path out/package/redis/drafter.drftkernel \
-    --disk-raddr '' --disk-path out/package/redis/drafter.drftdisk \
-    --config-raddr '' --config-path out/package/redis/drafter.drftconfig
 ```
 
 ## Distributing, Running and Migrating Packages
+
+The peer API can CLI are the primary way of distributing, running and migrating packages. They can be configured like so:
+
+| `--raddr` | `--path` | `--laddr` | Supported configuration | Leech from[^1] | Leech via [^2] | Seed on[^3] | Write back changes to[^4] |
+| --------- | -------- | --------- | ----------------------- | -------------- | -------------- | ----------- | ------------------------- |
+|           |          |           | No                      |                |                |             |                           |
+|           |          | Given     | No                      |                |                |             |                           |
+|           | Given    |           | Yes                     | `--path`       | loop device    |             | `--path`                  |
+|           | Given    | Given     | Yes                     | `--path`       | r3map device   | `--laddr`   | `--path`                  |
+| Given     |          |           | Yes                     | `--raddr`      | r3map device   |             |                           |
+| Given     | Given    |           | Yes                     | `--raddr`      | r3map device   |             | `--path`                  |
+| Given     | Given    | Given     | Yes                     | `--raddr`      | r3map device   | `--laddr`   | `--path`                  |
+| Given     |          | Given     | Yes                     | `--raddr`      | r3map device   | `--laddr`   |                           |
+
+[^1]: Address from which the resource will be leeched from before resuming the VM
+[^2]: Method with which the resource will be leeched
+[^3]: Address on which the resource will be exposed to be migrated away after the VM has resumed/leeching has finished
+[^4]: Address to which the changes will be written to if the peer API is `Close`d, e.g. if the process is stopped
+
+These configurations lead to the following behavior:
+
+- `drafter-peer`: Unsupported configuration
+- `drafter-peer --laddr localhost:1234`: Unsupported configuration
+- `drafter-peer --path ./resource.bin`: Leech from `--path` via a loop device, resume the VM, and write back changes to `--path` if interrupted
+- `drafter-peer --path ./resource.bin --laddr localhost:1234`: Leech from `--path` via a r3map device, resume the VM, seed on `--laddr`, and write back changes to `--path` if interrupted
+- `drafter-peer --raddr localhost:1234`: Leech from `--raddr` via a r3map device, resume the VM, and discard changes if interrupted
+- `drafter-peer --raddr localhost:1234 --path ./resource.bin`: Leech from `--raddr` via a r3map device, resume the VM, and write back changes to `--path` if interrupted
+- `drafter-peer --raddr localhost:1234 --path ./resource.bin --laddr localhost:1234`: Leech from `--raddr` via a r3map device, resume the VM, seed on `--laddr`, and write back changes to `--path` if interrupted
+- `drafter-peer --raddr localhost:1234 --laddr localhost:1234`: Leech from `--raddr` via a r3map device, resume the VM, seed on `--laddr`, and discard changes if interrupted
 
 ### On a Workstation
 
@@ -602,11 +624,21 @@ drafter-registry --state-path out/package/redis/drafter.drftstate \
 ```
 
 ```shell
-sudo drafter-peer --netns ark0 --state-raddr localhost:1600 --memory-raddr localhost:1601 --initramfs-raddr localhost:1602 --kernel-raddr localhost:1603 --disk-raddr localhost:1604 --config-raddr localhost:1605 --netns ark0 --enable-input # If --enable-input is specified, CTRL-C is forwarded to the VM, so to stop the VM use `sudo pkill -2 drafter-peer` instead (be sure to use a free namespace)
+sudo drafter-peer --netns ark0 --state-raddr localhost:1600 --memory-raddr localhost:1601 --initramfs-raddr localhost:1602 --kernel-raddr localhost:1603 --disk-raddr localhost:1604 --config-raddr localhost:1605 --enable-input # If --enable-input is specified, CTRL-C is forwarded to the VM, so to stop the VM use `sudo pkill -2 drafter-peer` instead (be sure to use a free namespace)
+# Or alternatively, to make this first node become a registry instead of starting from a registry:
+sudo drafter-peer --netns ark0 --state-raddr='' --state-path out/package/redis/drafter.drftstate \
+    --memory-raddr='' --memory-path out/package/redis/drafter.drftmemory \
+    --initramfs-raddr='' --initramfs-path out/package/redis/drafter.drftinitramfs \
+    --kernel-raddr='' --kernel-path out/package/redis/drafter.drftkernel \
+    --disk-raddr='' --disk-path out/package/redis/drafter.drftdisk \
+    --config-raddr='' --config-path out/package/redis/drafter.drftconfig \
+    --enable-input
 ```
 
 ```shell
-sudo drafter-peer --netns ark1 --enable-input # Migrates to this peer; be sure to use a different namespace (i.e. ark1) since you're migrating on the same machine
+sudo drafter-peer --netns ark1 --enable-input # Migrates to this peer and seed; be sure to use a different namespace (i.e. ark1) since you're migrating on the same machine
+# Or alternatively, to start an ephemeral VM and not seed again after startup:
+sudo drafter-peer --state-laddr='' --memory-laddr='' --initramfs-laddr='' --kernel-laddr='' --disk-laddr='' --config-laddr='' --netns ark1
 ```
 
 ```shell
@@ -639,10 +671,20 @@ drafter-registry --state-path out/package/redis/drafter.drftstate \
 
 ```shell
 sudo drafter-peer --netns ark0 --state-raddr ${REGISTRY_IP}:1600 --memory-raddr ${REGISTRY_IP}:1601 --initramfs-raddr ${REGISTRY_IP}:1602 --kernel-raddr ${REGISTRY_IP}:1603 --disk-raddr ${REGISTRY_IP}:1604 --config-raddr ${REGISTRY_IP}:1605 --enable-input # On ${NODE_1_IP}: If --enable-input is specified, CTRL-C is forwarded to the VM, so to stop the VM use `sudo pkill -2 drafter-peer` instead (be sure to use a free namespace)
+# Or alternatively, to make this first node become a registry instead of starting from a registry:
+sudo drafter-peer --netns ark0 --state-raddr='' --state-path out/package/redis/drafter.drftstate \
+    --memory-raddr='' --memory-path out/package/redis/drafter.drftmemory \
+    --initramfs-raddr='' --initramfs-path out/package/redis/drafter.drftinitramfs \
+    --kernel-raddr='' --kernel-path out/package/redis/drafter.drftkernel \
+    --disk-raddr='' --disk-path out/package/redis/drafter.drftdisk \
+    --config-raddr='' --config-path out/package/redis/drafter.drftconfig \
+    --enable-input
 ```
 
 ```shell
 sudo drafter-peer --netns ark0 --state-raddr ${NODE_1_IP}:1500 --memory-raddr ${NODE_1_IP}:1501 --initramfs-raddr ${NODE_1_IP}:1502 --kernel-raddr ${NODE_1_IP}:1503 --disk-raddr ${NODE_1_IP}:1504 --config-raddr ${NODE_1_IP}:1505 --enable-input # On ${NODE_2_IP}: Migrates to this peer (be sure to use a free namespace)
+# Or alternatively, to start an ephemeral VM and not seed again after startup:
+sudo drafter-peer --netns ark0 --state-raddr ${NODE_1_IP}:1500 --memory-raddr ${NODE_1_IP}:1501 --initramfs-raddr ${NODE_1_IP}:1502 --kernel-raddr ${NODE_1_IP}:1503 --disk-raddr ${NODE_1_IP}:1504 --config-raddr ${NODE_1_IP}:1505 --state-laddr='' --memory-laddr='' --initramfs-laddr='' --kernel-laddr='' --disk-laddr='' --config-laddr='' --enable-input
 ```
 
 ```shell
