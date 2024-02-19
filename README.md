@@ -1,6 +1,6 @@
 # Drafter
 
-Lean VM Primitive with Live Migration Support
+Lean VM primitive with live migration support
 
 ## Overview
 
