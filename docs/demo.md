@@ -71,6 +71,9 @@ tar Jxvf /tmp/kernel.tar.xz --strip-components=1 -C /tmp/kernel
 
 curl -Lo /tmp/kernel/.config https://raw.githubusercontent.com/loopholelabs/firecracker/live-migration-1.6-main-1/resources/guest_configs/microvm-kernel-ci-x86_64-6.1.config
 
+sed -i 's/CONFIG_SECCOMP=n/CONFIG_SECCOMP=y/' /tmp/kernel/.config
+sed -i 's/CONFIG_SECCOMP_FILTER=n/CONFIG_SECCOMP_FILTER=y/' /tmp/kernel/.config
+
 sh - <<'EOT'
 cd /tmp/kernel
 
@@ -93,6 +96,9 @@ curl -Lo /tmp/kernel.tar.xz https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-5
 tar Jxvf /tmp/kernel.tar.xz --strip-components=1 -C /tmp/kernel
 
 curl -Lo /tmp/kernel/.config https://raw.githubusercontent.com/loopholelabs/firecracker/live-migration-1.6-main-1/resources/guest_configs/microvm-kernel-ci-x86_64-5.10.config
+
+sed -i 's/CONFIG_SECCOMP=n/CONFIG_SECCOMP=y/' /tmp/kernel/.config
+sed -i 's/CONFIG_SECCOMP_FILTER=n/CONFIG_SECCOMP_FILTER=y/' /tmp/kernel/.config
 
 sh - <<'EOT'
 cd /tmp/kernel
@@ -118,6 +124,9 @@ export DISK_SIZE="384M"
 # # For PostgreSQL
 # export DISK_SIZE="1536M"
 
+# # For CRI-O
+# export DISK_SIZE="1G"
+
 export GATEWAY_IP="172.100.100.1"
 export GUEST_CIDR="172.100.100.2/30"
 
@@ -129,9 +138,13 @@ rm -rf /tmp/blueprint
 mkdir -p /tmp/blueprint
 
 sudo mount out/blueprint/drafter.drftdisk /tmp/blueprint
-sudo chown ${USER} /tmp/blueprint
+sudo chown -R ${USER} /tmp/blueprint
 
-curl -Lo /tmp/rootfs.tar.gz https://dl-cdn.alpinelinux.org/alpine/v3.18/releases/x86_64/alpine-minirootfs-3.18.4-x86_64.tar.gz
+# # For 3.18
+# curl -Lo /tmp/rootfs.tar.gz https://dl-cdn.alpinelinux.org/alpine/v3.18/releases/x86_64/alpine-minirootfs-3.18.4-x86_64.tar.gz
+
+# For edge
+curl -Lo /tmp/rootfs.tar.gz https://dl-cdn.alpinelinux.org/alpine/edge/releases/x86_64/alpine-minirootfs-20231219-x86_64.tar.gz
 tar zxvf /tmp/rootfs.tar.gz -C /tmp/blueprint
 
 tee /tmp/blueprint/etc/resolv.conf <<'EOT'
@@ -149,6 +162,9 @@ iface eth0 inet static
 EOT
 
 sudo chroot /tmp/blueprint sh - <<'EOT'
+apk update
+apk upgrade
+
 apk add alpine-base util-linux linux-virt linux-virt-dev coreutils binutils grep bzip2 chrony haveged
 echo root:root | chpasswd
 
@@ -165,7 +181,7 @@ rc-update add haveged default
 EOT
 
 sudo cp /tmp/blueprint/boot/initramfs-virt out/blueprint/drafter.drftinitramfs
-sudo chown ${USER} out/blueprint/drafter.drftinitramfs
+sudo chown -R ${USER} out/blueprint/drafter.drftinitramfs
 
 sync -f /tmp/blueprint
 sudo umount /tmp/blueprint || true
@@ -182,7 +198,7 @@ rm -rf /tmp/blueprint
 mkdir -p /tmp/blueprint
 
 sudo mount out/blueprint/drafter.drftdisk /tmp/blueprint
-sudo chown ${USER} /tmp/blueprint
+sudo chown -R ${USER} /tmp/blueprint
 
 sudo chroot /tmp/blueprint sh - <<'EOT'
 apk add redis redis-openrc
@@ -203,7 +219,7 @@ rm -rf /tmp/blueprint
 mkdir -p /tmp/blueprint
 
 sudo mount out/blueprint/drafter.drftdisk /tmp/blueprint
-sudo chown ${USER} /tmp/blueprint
+sudo chown -R ${USER} /tmp/blueprint
 
 if [ ! -d /tmp/blueprint/root/cuberite ]; then
     git clone --recursive https://github.com/cuberite/cuberite.git /tmp/blueprint/root/cuberite
@@ -328,7 +344,7 @@ rm -rf /tmp/blueprint
 mkdir -p /tmp/blueprint
 
 sudo mount out/blueprint/drafter.drftdisk /tmp/blueprint
-sudo chown ${USER} /tmp/blueprint
+sudo chown -R ${USER} /tmp/blueprint
 
 sudo mount -t proc proc /tmp/blueprint/proc
 
@@ -382,7 +398,7 @@ rm -rf /tmp/blueprint
 mkdir -p /tmp/blueprint
 
 sudo mount out/blueprint/drafter.drftdisk /tmp/blueprint
-sudo chown ${USER} /tmp/blueprint
+sudo chown -R ${USER} /tmp/blueprint
 
 sudo mount --bind /dev /tmp/blueprint/dev
 
@@ -403,6 +419,34 @@ sudo umount /tmp/blueprint || true
 rm -rf /tmp/blueprint
 ```
 
+#### CRI-O
+
+> See [drafter-cri/docs/demo](https://github.com/loopholelabs/drafter-cri/blob/master/docs/demo.md) for the Drafter Container Runtime docs
+
+```shell
+sudo umount /tmp/blueprint || true
+rm -rf /tmp/blueprint
+mkdir -p /tmp/blueprint
+
+sudo mount out/blueprint/drafter.drftdisk /tmp/blueprint
+sudo chown -R ${USER} /tmp/blueprint
+
+sudo chroot /tmp/blueprint sh - <<'EOT'
+echo 'https://dl-cdn.alpinelinux.org/alpine/edge/testing' >> /etc/apk/repositories
+
+apk update
+
+apk add cri-o cri-o-openrc
+
+rc-update add crio default
+rc-update add cgroups default
+EOT
+
+sync -f /tmp/blueprint
+sudo umount /tmp/blueprint || true
+rm -rf /tmp/blueprint
+```
+
 ### Liveness
 
 ```shell
@@ -417,12 +461,15 @@ export SERVICE_DEPENDENCY="redis"
 # # For PostgreSQL
 # export SERVICE_DEPENDENCY="postgresql"
 
+# # For CRI-O
+# export SERVICE_DEPENDENCY="crio"
+
 sudo umount /tmp/blueprint || true
 rm -rf /tmp/blueprint
 mkdir -p /tmp/blueprint
 
 sudo mount out/blueprint/drafter.drftdisk /tmp/blueprint
-sudo chown ${USER} /tmp/blueprint
+sudo chown -R ${USER} /tmp/blueprint
 
 CGO_ENABLED=0 go build -o /tmp/blueprint/usr/sbin/drafter-liveness ./cmd/drafter-liveness
 
@@ -465,12 +512,15 @@ export SERVICE_DEPENDENCY="redis"
 # # For PostgreSQL
 # export SERVICE_DEPENDENCY="postgresql"
 
+# # For CRI-O
+# export SERVICE_DEPENDENCY="crio"
+
 sudo umount /tmp/blueprint || true
 rm -rf /tmp/blueprint
 mkdir -p /tmp/blueprint
 
 sudo mount out/blueprint/drafter.drftdisk /tmp/blueprint
-sudo chown ${USER} /tmp/blueprint
+sudo chown -R ${USER} /tmp/blueprint
 
 CGO_ENABLED=0 go build -o /tmp/blueprint/usr/sbin/drafter-agent ./cmd/drafter-agent
 
@@ -537,6 +587,15 @@ sudo drafter-snapshotter --netns ark0 --memory-size 512 \
     --kernel-output-path out/package/postgresql/drafter.drftkernel \
     --disk-output-path out/package/postgresql/drafter.drftdisk \
     --config-output-path out/package/postgresql/drafter.drftconfig
+
+# For CRI-O (be sure to use a free namespace)
+sudo drafter-snapshotter --netns ark0 --memory-size 1024 \
+    --state-output-path out/package/cri-o/drafter.drftstate \
+    --memory-output-path out/package/cri-o/drafter.drftmemory \
+    --initramfs-output-path out/package/cri-o/drafter.drftinitramfs \
+    --kernel-output-path out/package/cri-o/drafter.drftkernel \
+    --disk-output-path out/package/cri-o/drafter.drftdisk \
+    --config-output-path out/package/cri-o/drafter.drftconfig
 ```
 
 ```shell
@@ -575,6 +634,15 @@ sudo drafter-packager --package-path out/postgresql.drft \
     --kernel-path out/package/postgresql/drafter.drftkernel \
     --disk-path out/package/postgresql/drafter.drftdisk \
     --config-path out/package/postgresql/drafter.drftconfig # Append --extract to extract the package instead
+
+# For CRI-O
+sudo drafter-packager --package-path out/cri-o.drft \
+    --state-path out/package/cri-o/drafter.drftstate \
+    --memory-path out/package/cri-o/drafter.drftmemory \
+    --initramfs-path out/package/cri-o/drafter.drftinitramfs \
+    --kernel-path out/package/cri-o/drafter.drftkernel \
+    --disk-path out/package/cri-o/drafter.drftdisk \
+    --config-path out/package/cri-o/drafter.drftconfig # Append --extract to extract the package instead
 ```
 
 ```shell
@@ -716,8 +784,8 @@ done
 
 # Completely cleaning up artifacts from failed runs (should not be necessary)
 sudo pkill -9 firecracker
-sudo umount out/redis.drft
-sudo rm -f out/redis.drft
+sudo rm -f out/*.drft
+sudo rm -rf out/package
 sudo rm -rf out/vms
 sudo rm -rf out/cache
 ```
