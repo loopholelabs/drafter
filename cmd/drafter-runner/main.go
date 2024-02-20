@@ -253,7 +253,7 @@ func main() {
 		panic(err)
 	}
 
-	log.Println("Resume:", time.Since(before))
+	log.Println("Resumed VM in", time.Since(before), "on", vmPath)
 
 	done := make(chan os.Signal, 1)
 	signal.Notify(done, os.Interrupt)

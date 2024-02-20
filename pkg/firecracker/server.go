@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/google/uuid"
+	"github.com/lithammer/shortuuid/v4"
 	"golang.org/x/sys/unix"
 	"k8s.io/utils/inotify"
 )
@@ -97,7 +97,7 @@ func (s *Server) Wait() error {
 }
 
 func (s *Server) Open() (string, error) {
-	id := uuid.NewString()
+	id := shortuuid.New()
 
 	s.vmDir = filepath.Join(s.chrootBaseDir, "firecracker", id, "root")
 	if err := os.MkdirAll(s.vmDir, os.ModePerm); err != nil {
