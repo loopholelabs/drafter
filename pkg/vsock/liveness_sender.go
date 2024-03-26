@@ -9,9 +9,10 @@ func SendLivenessPing(
 	vsockCID uint32,
 	vsockPort uint32,
 ) error {
-	conn, err := NewConn(vsockCID, vsockPort)
+	conn, err := Dial(vsockCID, vsockPort)
 	if err != nil {
 		return err
 	}
+
 	return conn.Close()
 }
