@@ -3,9 +3,10 @@ package services
 import (
 	"context"
 	"encoding/json"
-	"github.com/loopholelabs/drafter/pkg/vsock"
 	"log"
 	"sync"
+
+	"github.com/loopholelabs/drafter/pkg/vsock"
 
 	"github.com/loopholelabs/drafter/pkg/utils"
 	"github.com/pojntfx/panrpc/go/pkg/rpc"
@@ -113,7 +114,7 @@ func (s *AgentServer) Open(ctx context.Context) error {
 	)
 
 	var err error
-	s.lis, err = vsock.NewListener(s.vsockCID, s.vsockPort, 1)
+	s.lis, err = vsock.Listen(s.vsockCID, s.vsockPort, 1)
 	if err != nil {
 		return err
 	}
@@ -127,8 +128,10 @@ func (s *AgentServer) Open(ctx context.Context) error {
 			if err != nil {
 				if !utils.IsClosedErr(err) {
 					s.errs <- err
+
 					return
 				}
+
 				break
 			}
 
@@ -152,10 +155,10 @@ func (s *AgentServer) Open(ctx context.Context) error {
 							return nil, err
 						}
 
-						return b, nil
+						return json.RawMessage(b), nil
 					},
 					func(data json.RawMessage, v any) error {
-						return json.Unmarshal(data, v)
+						return json.Unmarshal([]byte(data), v)
 					},
 				); err != nil && !utils.IsClosedErr(err) {
 					s.errs <- err
