@@ -3,13 +3,29 @@ package services
 import (
 	"context"
 	"encoding/json"
+	"golang.org/x/sys/unix"
 	"log"
 	"sync"
 
 	"github.com/loopholelabs/drafter/pkg/utils"
-	"github.com/mdlayher/vsock"
 	"github.com/pojntfx/panrpc/go/pkg/rpc"
 )
+
+type vsock struct {
+	fd int
+}
+
+func (v *vsock) Close() error {
+	return unix.Close(v.fd)
+}
+
+func (v *vsock) Read(b []byte) (int, error) {
+	return unix.Read(v.fd, b)
+}
+
+func (v *vsock) Write(b []byte) (int, error) {
+	return unix.Write(v.fd, b)
+}
 
 type Agent struct {
 	beforeSuspend func(ctx context.Context) error
@@ -55,7 +71,7 @@ type AgentServer struct {
 	beforeSuspend func(ctx context.Context) error
 	afterResume   func(ctx context.Context) error
 
-	lis *vsock.Listener
+	lis int
 
 	wg   sync.WaitGroup
 	errs chan error
@@ -75,6 +91,8 @@ func NewAgentServer(
 	return &AgentServer{
 		vsockCID:  vsockCID,
 		vsockPort: vsockPort,
+
+		lis: -1,
 
 		beforeSuspend: beforeSuspend,
 		afterResume:   afterResume,
@@ -113,9 +131,24 @@ func (s *AgentServer) Open(ctx context.Context) error {
 	)
 
 	var err error
-	s.lis, err = vsock.ListenContextID(s.vsockCID, s.vsockPort, nil)
+	s.lis, err = unix.Socket(unix.AF_VSOCK, unix.SOCK_STREAM, 0)
 	if err != nil {
 		return err
+	}
+
+	socketAddr := &unix.SockaddrVM{
+		CID:  s.vsockCID,
+		Port: s.vsockPort,
+	}
+
+	err = unix.Bind(s.lis, socketAddr)
+	if err != nil {
+		return err
+	}
+
+	err = unix.Listen(s.lis, 2)
+	if err != nil {
+
 	}
 
 	s.wg.Add(1)
@@ -123,15 +156,17 @@ func (s *AgentServer) Open(ctx context.Context) error {
 		defer s.wg.Done()
 
 		for {
-			conn, err := s.lis.Accept()
+			connFd, _, err := unix.Accept(s.lis)
 			if err != nil {
 				if !utils.IsClosedErr(err) {
 					s.errs <- err
-
 					return
 				}
-
 				break
+			}
+
+			conn := &vsock{
+				fd: connFd,
 			}
 
 			go func() {
@@ -174,8 +209,8 @@ func (s *AgentServer) Open(ctx context.Context) error {
 }
 
 func (s *AgentServer) Close() error {
-	if s.lis != nil {
-		_ = s.lis.Close()
+	if s.lis > -1 {
+		_ = unix.Close(s.lis)
 	}
 
 	s.wg.Wait()

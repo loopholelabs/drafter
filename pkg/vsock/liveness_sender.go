@@ -1,6 +1,8 @@
 package vsock
 
-import "github.com/mdlayher/vsock"
+import (
+	"golang.org/x/sys/unix"
+)
 
 const (
 	CIDHost  = 2
@@ -11,11 +13,21 @@ func SendLivenessPing(
 	vsockCID uint32,
 	vsockPort uint32,
 ) error {
-	conn, err := vsock.Dial(vsockCID, vsockPort, nil)
+	socket, err := unix.Socket(unix.AF_VSOCK, unix.SOCK_STREAM, 0)
 	if err != nil {
 		return err
 	}
-	defer conn.Close()
 
+	socketAddr := &unix.SockaddrVM{
+		CID:  vsockCID,
+		Port: vsockPort,
+	}
+
+	err = unix.Connect(socket, socketAddr)
+	if err != nil {
+		return err
+	}
+
+	_ = unix.Close(socket)
 	return nil
 }
