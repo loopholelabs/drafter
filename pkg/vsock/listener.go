@@ -23,11 +23,13 @@ func Listen(cid uint32, port uint32, backlog int) (*Listener, error) {
 
 	if err := unix.Bind(l, socketAddr); err != nil {
 		_ = unix.Close(l)
+
 		return nil, err
 	}
 
 	if err := unix.Listen(l, backlog); err != nil {
 		_ = unix.Close(l)
+
 		return nil, err
 	}
 
