@@ -549,7 +549,7 @@ sudo umount /tmp/blueprint || true
 rm -rf /tmp/blueprint
 ```
 
-## Creating and Running a Blueprint on a Workstation
+## Creating and Running a Package on a Workstation
 
 ```shell
 # For Redis (be sure to use a free namespace)
@@ -719,6 +719,9 @@ sudo drafter-peer --netns ark0 --state-path out/package/redis/drafter.drftstate 
 ```
 
 ### On a Cluster
+
+> Migrating across heterogeneous hosts? You might need to patch Firecracker to disable TSC scaling depending on your chosen KVM vendor (i.e. by commenting out `set_tsc_khz`).
+> Migrating across Intel CPU generations? Keep in mind limitations around [hardware RNG requirements](https://github.com/firecracker-microvm/firecracker/blob/main/docs/snapshotting/random-for-clones.md#recommendations). If you see kernel panics after restoring a VM related to entropy, you might be trying to migrate to a CPU that doesn't support `RSEED`.
 
 ```shell
 export REGISTRY_IP="136.144.59.97"
