@@ -31,11 +31,11 @@ func main() {
 	log.Println("Migrating from", conn.RemoteAddr())
 
 	var (
+		resumeWg    sync.WaitGroup
 		completedWg sync.WaitGroup
-		resumedWg   sync.WaitGroup
 	)
+	resumeWg.Add(6)
 	completedWg.Add(6)
-	resumedWg.Add(6)
 
 	exps := []storage.ExposedStorage{}
 	pro := protocol.NewProtocolRW(
@@ -83,7 +83,7 @@ func main() {
 						panic(err)
 					}
 
-					log.Println("Exposed on", exp.Device())
+					log.Println("Exposed", exp.Device(), "for", di.Name)
 
 					return remote
 				},
@@ -117,11 +117,11 @@ func main() {
 			go func() {
 				if err := dst.HandleEvent(func(et protocol.EventType) {
 					switch et {
+					case protocol.EventAssumeAuthority:
+						resumeWg.Done()
+
 					case protocol.EventCompleted:
 						completedWg.Done()
-
-					case protocol.EventResume:
-						resumedWg.Done()
 					}
 				}); err != nil {
 					panic(err)
@@ -150,7 +150,7 @@ func main() {
 		}
 	}()
 
-	resumedWg.Wait()
+	resumeWg.Wait()
 
 	log.Println("Resuming VM")
 

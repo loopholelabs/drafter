@@ -66,7 +66,7 @@ func main() {
 		defer src.Close()
 		defer exp.Shutdown()
 
-		log.Println("Exposed", path, "on", exp.Device())
+		log.Println("Exposed", exp.Device(), "for", path)
 
 		metrics := modules.NewMetrics(src)
 		dirtyLocal, dirtyRemote := dirtytracker.NewDirtyTracker(metrics, blockSize)
@@ -113,6 +113,22 @@ func main() {
 		if err := pro.Handle(); err != nil {
 			panic(err)
 		}
+	}()
+
+	var (
+		suspendWg   sync.WaitGroup
+		suspendedWg sync.WaitGroup
+	)
+
+	suspendWg.Add(len(resources))
+
+	suspendedWg.Add(1)
+	go func() {
+		suspendWg.Wait()
+
+		log.Println("Suspending VM")
+
+		suspendedWg.Done()
 	}()
 
 	for i, resource := range resources {
@@ -187,7 +203,7 @@ func main() {
 			panic(err)
 		}
 
-		log.Println("Migrating", resource.totalBlocks, "blocks")
+		log.Println("Migrating", resource.totalBlocks, "blocks for", resource.path)
 
 		if err := mig.Migrate(resource.totalBlocks); err != nil {
 			panic(err)
@@ -216,16 +232,19 @@ func main() {
 
 		for {
 			if suspendVM {
-				log.Println("Suspending VM")
-
 				suspendVM = false
 				suspendedVM = true
 
-				log.Println("Asking remote VM to resume")
+				suspendWg.Done()
+				go func(dst *protocol.ToProtocol, path string) {
+					suspendedWg.Wait()
 
-				if err := dst.SendEvent(protocol.EventResume); err != nil {
-					panic(err)
-				}
+					log.Println("Passing authority to destination for", path)
+
+					if err := dst.SendEvent(protocol.EventAssumeAuthority); err != nil {
+						panic(err)
+					}
+				}(dst, resource.path)
 
 				backgroundMigrationInProgress.Wait()
 			}
@@ -242,7 +261,7 @@ func main() {
 				suspendVM = true
 			}
 
-			log.Println("Continously migrating", len(blocks), "blocks")
+			log.Println("Continously migrating", len(blocks), "blocks for", resource.path)
 
 			if err := dst.DirtyList(blocks); err != nil {
 				panic(err)
