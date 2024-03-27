@@ -6,7 +6,6 @@ require (
 	github.com/coreos/go-iptables v0.6.0
 	github.com/freddierice/go-losetup/v2 v2.0.1
 	github.com/lithammer/shortuuid/v4 v4.0.0
-	github.com/mdlayher/vsock v1.2.1
 	github.com/metal-stack/go-ipam v1.11.3
 	github.com/pojntfx/go-nbd v0.3.2
 	github.com/pojntfx/panrpc/go v0.6.2-0.20240115212816-c9ef59483c19
@@ -50,7 +49,6 @@ require (
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.19 // indirect
 	github.com/mattn/go-runewidth v0.0.15 // indirect
-	github.com/mdlayher/socket v0.4.1 // indirect
 	github.com/minio/minio-go v6.0.14+incompatible // indirect
 	github.com/mitchellh/go-homedir v1.1.0 // indirect
 	github.com/moby/term v0.0.0-20221205130635-1aeaba878587 // indirect

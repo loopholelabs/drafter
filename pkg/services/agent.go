@@ -6,8 +6,9 @@ import (
 	"log"
 	"sync"
 
+	"github.com/loopholelabs/drafter/pkg/vsock"
+
 	"github.com/loopholelabs/drafter/pkg/utils"
-	"github.com/mdlayher/vsock"
 	"github.com/pojntfx/panrpc/go/pkg/rpc"
 )
 
@@ -113,7 +114,7 @@ func (s *AgentServer) Open(ctx context.Context) error {
 	)
 
 	var err error
-	s.lis, err = vsock.ListenContextID(s.vsockCID, s.vsockPort, nil)
+	s.lis, err = vsock.Listen(s.vsockCID, s.vsockPort, 1)
 	if err != nil {
 		return err
 	}
