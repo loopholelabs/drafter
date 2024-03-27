@@ -132,7 +132,7 @@ func main() {
 
 		go func() {
 			if err := dst.HandleDirtyList(func(blocks []uint) {
-				log.Println("Migrating", blocks, "blocks")
+				log.Println("Migrating", len(blocks), "blocks")
 
 				if local != nil {
 					local.DirtyBlocks(blocks)

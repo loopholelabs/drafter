@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/loopholelabs/silo/pkg/storage/blocks"
@@ -161,7 +162,6 @@ func main() {
 		panic(err)
 	}
 
-	// TODO:
 	// 1) Get dirty blocks. If the delta is small enough:
 	// 2) Mark VM to be suspended on the next iteration
 	// 3) Send list of dirty changes
@@ -174,29 +174,59 @@ func main() {
 	// 10) Migrate blocks & jump back to start of loop
 	// 11) Get dirty blocks returns `nil`, so break out of loop
 
-	for {
-		blocks := mig.GetLatestDirty()
-		if blocks == nil {
-			// TODO: Only break out of the loop here if the VM has been suspended
+	suspendVM := false
+	suspendedVM := false
 
+	var backgroundMigrationInProgress sync.WaitGroup
+
+	for {
+		if suspendVM {
+			log.Println("Suspending VM")
+
+			suspendVM = false
+			suspendedVM = true
+
+			log.Println("Asking remote VM to resume")
+
+			if err := dst.SendEvent(protocol.EventResume); err != nil {
+				panic(err)
+			}
+
+			backgroundMigrationInProgress.Wait()
+		}
+
+		blocks := mig.GetLatestDirty()
+		if blocks == nil && suspendedVM {
 			mig.Unlock()
 
 			break
 		}
 
-		log.Println("Migrating", blocks, "blocks")
+		// Below 128 MB; let's suspend the VM here and resume it over there
+		if len(blocks) <= 2 && !suspendedVM {
+			suspendVM = true
+		}
+
+		log.Println("Migrating", len(blocks), "blocks")
 
 		if err := dst.DirtyList(blocks); err != nil {
 			panic(err)
 		}
 
-		if err := mig.MigrateDirty(blocks); err != nil {
-			panic(err)
-		}
-	}
+		if suspendVM {
+			go func() {
+				defer backgroundMigrationInProgress.Done()
+				backgroundMigrationInProgress.Add(1)
 
-	if err := dst.SendEvent(protocol.EventResume); err != nil {
-		panic(err)
+				if err := mig.MigrateDirty(blocks); err != nil {
+					panic(err)
+				}
+			}()
+		} else {
+			if err := mig.MigrateDirty(blocks); err != nil {
+				panic(err)
+			}
+		}
 	}
 
 	if err := mig.WaitForCompletion(); err != nil {
