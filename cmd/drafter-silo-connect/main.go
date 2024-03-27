@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"path/filepath"
 	"sync"
 
 	"github.com/loopholelabs/silo/pkg/storage"
@@ -29,14 +30,20 @@ func main() {
 
 	log.Println("Migrating from", conn.RemoteAddr())
 
-	var wg sync.WaitGroup
-	wg.Add(1)
+	var (
+		completedWg sync.WaitGroup
+		resumedWg   sync.WaitGroup
+	)
+	completedWg.Add(1)
+	resumedWg.Add(1)
+
 	firstMigration := true
 
 	var exp storage.ExposedStorage
 	pro := protocol.NewProtocolRW(ctx, []io.Reader{conn}, []io.Writer{conn}, func(p protocol.Protocol, u uint32) {
 		if !firstMigration {
-			wg.Add(1)
+			completedWg.Add(1)
+			resumedWg.Add(1)
 		}
 		firstMigration = false
 
@@ -56,7 +63,7 @@ func main() {
 					int(di.Size),
 					int(shardSize),
 					func(index, size int) (storage.StorageProvider, error) {
-						return sources.NewFileStorageCreate(fmt.Sprintf("test-%v.bin", index), int64(size))
+						return sources.NewFileStorageCreate(filepath.Join("out", fmt.Sprintf("test-%v.bin", index)), int64(size))
 					},
 				)
 				if err != nil {
@@ -111,8 +118,12 @@ func main() {
 
 		go func() {
 			if err := dst.HandleEvent(func(et protocol.EventType) {
-				if et == protocol.EventCompleted {
-					wg.Done()
+				switch et {
+				case protocol.EventCompleted:
+					completedWg.Done()
+
+				case protocol.EventResume:
+					resumedWg.Done()
 				}
 			}); err != nil {
 				panic(err)
@@ -143,7 +154,13 @@ func main() {
 		}
 	}()
 
-	wg.Wait()
+	resumedWg.Wait()
 
-	log.Println("Completed migration")
+	log.Println("Resuming VM")
+
+	completedWg.Wait()
+
+	log.Println("Completed migration, idling")
+
+	select {}
 }

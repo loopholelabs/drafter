@@ -5,6 +5,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"path/filepath"
 	"time"
 
 	"github.com/loopholelabs/silo/pkg/storage/blocks"
@@ -31,7 +32,7 @@ func main() {
 		System:    "file",
 		BlockSize: blockSize,
 		Expose:    true,
-		Location:  "test.bin",
+		Location:  filepath.Join("out", "test.bin"),
 	})
 	if err != nil {
 		panic(err)
@@ -194,6 +195,10 @@ func main() {
 		}
 	}
 
+	if err := dst.SendEvent(protocol.EventResume); err != nil {
+		panic(err)
+	}
+
 	if err := mig.WaitForCompletion(); err != nil {
 		panic(err)
 	}
@@ -202,5 +207,5 @@ func main() {
 		panic(err)
 	}
 
-	log.Println("Completed migration")
+	log.Println("Completed migration, shutting down")
 }
