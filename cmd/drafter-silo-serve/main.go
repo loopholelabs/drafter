@@ -54,7 +54,7 @@ func main() {
 	rawFirecrackerBin := flag.String("firecracker-bin", "firecracker", "Firecracker binary")
 	rawJailerBin := flag.String("jailer-bin", "jailer", "Jailer binary (from Firecracker)")
 
-	chrootBaseDir := flag.String("chroot-base-dir", filepath.Join("out", "vms"), "`chroot` base directory")
+	chrootBaseDir := flag.String("chroot-base-dir", filepath.Join("out", "vms-src"), "`chroot` base directory")
 
 	uid := flag.Int("uid", 0, "User ID for the Firecracker process")
 	gid := flag.Int("gid", 0, "Group ID for the Firecracker process")
@@ -309,9 +309,13 @@ func main() {
 
 		log.Println("Suspending VM")
 
+		before := time.Now()
+
 		if err := runner.Suspend(ctx, *resumeTimeout); err != nil {
 			panic(err)
 		}
+
+		log.Println("Suspend:", time.Since(before))
 
 		suspendedWg.Done()
 	}()
@@ -418,6 +422,7 @@ func main() {
 
 			suspendVM := false
 			suspendedVM := false
+			passAuthority := false
 
 			var backgroundMigrationInProgress sync.WaitGroup
 
@@ -432,17 +437,13 @@ func main() {
 
 					suspendedWg.Wait()
 
-					log.Println("Passing authority to destination for", eres.resource.path)
-
-					if err := dst.SendEvent(protocol.EventAssumeAuthority); err != nil {
-						panic(err)
-					}
+					passAuthority = true
 
 					backgroundMigrationInProgress.Wait()
 				}
 
 				blocks := mig.GetLatestDirty()
-				if blocks == nil && suspendedVM {
+				if blocks == nil && suspendedVM && !passAuthority {
 					mig.Unlock()
 
 					break
@@ -457,6 +458,16 @@ func main() {
 
 				if err := dst.DirtyList(blocks); err != nil {
 					panic(err)
+				}
+
+				if passAuthority {
+					passAuthority = false
+
+					log.Println("Passing authority to destination for", eres.resource.path)
+
+					if err := dst.SendEvent(protocol.EventAssumeAuthority); err != nil {
+						panic(err)
+					}
 				}
 
 				if suspendVM {
