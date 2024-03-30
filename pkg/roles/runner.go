@@ -163,6 +163,18 @@ func (r *Runner) Resume(
 	return r.remote.AfterResume(ctx)
 }
 
+func (r *Runner) Msync(ctx context.Context) error {
+	if r.handler == nil {
+		return ErrVMNotRunning
+	}
+
+	if err := firecracker.FlushSnapshot(r.client, r.stateName, true); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (r *Runner) Suspend(ctx context.Context, resumeTimeout time.Duration) error {
 	if r.handler == nil {
 		return ErrVMNotRunning
@@ -179,7 +191,7 @@ func (r *Runner) Suspend(ctx context.Context, resumeTimeout time.Duration) error
 
 	_ = r.handler.Close() // Connection needs to be closed before flushing the snapshot
 
-	if err := firecracker.FlushSnapshot(r.client, r.stateName); err != nil {
+	if err := firecracker.FlushSnapshot(r.client, r.stateName, false); err != nil {
 		return err
 	}
 

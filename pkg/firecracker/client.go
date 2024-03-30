@@ -229,16 +229,19 @@ func FlushSnapshot(
 	client *http.Client,
 
 	statePath string,
+	msyncOnly bool,
 ) error {
-	if err := submitJSON(
-		http.MethodPatch,
-		client,
-		&v1.VirtualMachineStateRequest{
-			State: "Paused",
-		},
-		"vm",
-	); err != nil {
-		return fmt.Errorf("%w: %s", ErrCouldNotPauseInstance, err)
+	if !msyncOnly {
+		if err := submitJSON(
+			http.MethodPatch,
+			client,
+			&v1.VirtualMachineStateRequest{
+				State: "Paused",
+			},
+			"vm",
+		); err != nil {
+			return fmt.Errorf("%w: %s", ErrCouldNotPauseInstance, err)
+		}
 	}
 
 	if err := submitJSON(
@@ -246,6 +249,7 @@ func FlushSnapshot(
 		client,
 		&v1.SnapshotNoMemoryCreateRequest{
 			SnapshotPath: statePath,
+			MsyncOnly:    msyncOnly,
 		},
 		"snapshot-nomemory/create",
 	); err != nil {

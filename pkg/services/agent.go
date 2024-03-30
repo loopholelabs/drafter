@@ -9,6 +9,7 @@ import (
 	"github.com/loopholelabs/drafter/pkg/vsock"
 
 	"github.com/loopholelabs/drafter/pkg/utils"
+	ivsock "github.com/mdlayher/vsock"
 	"github.com/pojntfx/panrpc/go/pkg/rpc"
 )
 
@@ -56,7 +57,7 @@ type AgentServer struct {
 	beforeSuspend func(ctx context.Context) error
 	afterResume   func(ctx context.Context) error
 
-	lis *vsock.Listener
+	lis *ivsock.Listener
 
 	wg   sync.WaitGroup
 	errs chan error

@@ -19,6 +19,7 @@ import (
 
 	iconfig "github.com/loopholelabs/drafter/pkg/config"
 	"github.com/loopholelabs/drafter/pkg/roles"
+	"github.com/loopholelabs/silo/pkg/storage"
 	"github.com/loopholelabs/silo/pkg/storage/blocks"
 	"github.com/loopholelabs/silo/pkg/storage/config"
 	"github.com/loopholelabs/silo/pkg/storage/device"
@@ -251,9 +252,13 @@ func main() {
 
 	log.Println("Resuming VM")
 
+	before := time.Now()
+
 	if err := runner.Resume(ctx, *resumeTimeout, packageConfig.AgentVSockPort); err != nil {
 		panic(err)
 	}
+
+	log.Println("Resume:", time.Since(before))
 
 	go func() {
 		done := make(chan os.Signal, 1)
@@ -302,6 +307,7 @@ func main() {
 	)
 
 	suspendWg.Add(len(exposedResources))
+	suspendVM := false
 
 	suspendedWg.Add(1)
 	go func() {
@@ -367,6 +373,12 @@ func main() {
 			}()
 
 			cfg := migrator.NewMigratorConfig().WithBlockSize(blockSize)
+			cfg.Concurrency = map[int]int{
+				storage.BlockTypeAny:      eres.totalBlocks,
+				storage.BlockTypeStandard: eres.totalBlocks,
+				storage.BlockTypeDirty:    eres.totalBlocks,
+				storage.BlockTypePriority: eres.totalBlocks,
+			}
 			cfg.LockerHandler = func() {
 				if err := dst.SendEvent(protocol.EventPreLock); err != nil {
 					panic(err)
@@ -420,15 +432,14 @@ func main() {
 			// 10) Migrate blocks & jump back to start of loop
 			// 11) Get dirty blocks returns `nil`, so break out of loop
 
-			suspendVM := false
 			suspendedVM := false
 			passAuthority := false
 
 			var backgroundMigrationInProgress sync.WaitGroup
 
+			subsequentSyncs := 0
 			for {
-				if suspendVM {
-					suspendVM = false
+				if suspendVM && !suspendedVM {
 					suspendedVM = true
 
 					suspendWg.Done()
@@ -442,22 +453,41 @@ func main() {
 					backgroundMigrationInProgress.Wait()
 				}
 
-				blocks := mig.GetLatestDirty()
-				if blocks == nil && suspendedVM && !passAuthority {
-					mig.Unlock()
+				if !suspendVM && eres.resource.name == iconfig.MemoryName {
+					if err := runner.Msync(ctx); err != nil {
+						panic(err)
+					}
+				}
 
+				blocks := mig.GetLatestDirty()
+				if blocks == nil {
+					mig.Unlock()
+				}
+				if suspendedVM && !passAuthority {
 					break
 				}
 
-				// Below 128 MB; let's suspend the VM here and resume it over there
-				if len(blocks) <= 2 && !suspendedVM {
-					suspendVM = true
+				// Below threshold; let's suspend the VM here and resume it over there
+				if len(blocks) <= 200 && !suspendedVM { // && len(blocks) > 0
+					if eres.resource.name == iconfig.MemoryName {
+						subsequentSyncs++
+
+						if subsequentSyncs > 10 {
+							suspendVM = true
+						} else {
+							time.Sleep(time.Millisecond * 500)
+						}
+					}
 				}
 
-				log.Println("Continously migrating", len(blocks), "blocks for", eres.resource.name)
+				if blocks != nil {
+					log.Println("Continously migrating", len(blocks), "blocks for", eres.resource.name)
+				}
 
-				if err := dst.DirtyList(blocks); err != nil {
-					panic(err)
+				if blocks != nil {
+					if err := dst.DirtyList(blocks); err != nil {
+						panic(err)
+					}
 				}
 
 				if passAuthority {
@@ -470,7 +500,7 @@ func main() {
 					}
 				}
 
-				if suspendVM {
+				if suspendVM && !suspendedVM && blocks != nil {
 					go func() {
 						defer backgroundMigrationInProgress.Done()
 						backgroundMigrationInProgress.Add(1)

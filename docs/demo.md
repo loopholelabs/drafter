@@ -69,7 +69,7 @@ mkdir -p /tmp/kernel
 curl -Lo /tmp/kernel.tar.xz https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.1.60.tar.xz
 tar Jxvf /tmp/kernel.tar.xz --strip-components=1 -C /tmp/kernel
 
-curl -Lo /tmp/kernel/.config https://raw.githubusercontent.com/loopholelabs/firecracker/live-migration-1.6-main-1/resources/guest_configs/microvm-kernel-ci-x86_64-6.1.config
+curl -Lo /tmp/kernel/.config https://raw.githubusercontent.com/loopholelabs/firecracker/firecracker-v1.7-live-migration-and-pvm/resources/guest_configs/microvm-kernel-ci-x86_64-6.1.config
 
 sed -i 's/CONFIG_SECCOMP=n/CONFIG_SECCOMP=y/' /tmp/kernel/.config
 sed -i 's/CONFIG_SECCOMP_FILTER=n/CONFIG_SECCOMP_FILTER=y/' /tmp/kernel/.config
@@ -95,7 +95,7 @@ mkdir -p /tmp/kernel
 curl -Lo /tmp/kernel.tar.xz https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-5.10.194.tar.xz
 tar Jxvf /tmp/kernel.tar.xz --strip-components=1 -C /tmp/kernel
 
-curl -Lo /tmp/kernel/.config https://raw.githubusercontent.com/loopholelabs/firecracker/live-migration-1.6-main-1/resources/guest_configs/microvm-kernel-ci-x86_64-5.10.config
+curl -Lo /tmp/kernel/.config https://raw.githubusercontent.com/loopholelabs/firecracker/firecracker-v1.7-live-migration-and-pvm/resources/guest_configs/microvm-kernel-ci-x86_64-5.10.config
 
 sed -i 's/CONFIG_SECCOMP=n/CONFIG_SECCOMP=y/' /tmp/kernel/.config
 sed -i 's/CONFIG_SECCOMP_FILTER=n/CONFIG_SECCOMP_FILTER=y/' /tmp/kernel/.config

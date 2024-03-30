@@ -52,6 +52,7 @@ type SnapshotLoadRequestMemoryBackend struct {
 
 type SnapshotNoMemoryCreateRequest struct {
 	SnapshotPath string `json:"snapshot_path"`
+	MsyncOnly    bool   `json:"msync_only"`
 }
 
 type VSock struct {

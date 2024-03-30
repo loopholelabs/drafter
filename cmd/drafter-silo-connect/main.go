@@ -50,6 +50,8 @@ func main() {
 	numaNode := flag.Int("numa-node", 0, "NUMA node to run Firecracker in")
 	cgroupVersion := flag.Int("cgroup-version", 2, "Cgroup version to use for Jailer")
 
+	raddr := flag.String("raddr", "localhost:1337", "Remote Silo address")
+
 	flag.Parse()
 
 	firecrackerBin, err := exec.LookPath(*rawFirecrackerBin)
@@ -102,7 +104,7 @@ func main() {
 		panic(err)
 	}
 
-	conn, err := net.Dial("tcp", "localhost:1337")
+	conn, err := net.Dial("tcp", *raddr)
 	if err != nil {
 		panic(err)
 	}
