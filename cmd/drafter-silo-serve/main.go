@@ -36,11 +36,13 @@ const (
 )
 
 type resource struct {
-	name string
-	path string
+	name    string
+	base    string
+	overlay string
 }
 
 type exposedResource struct {
+	exp         storage.ExposedStorage
 	resource    resource
 	storage     *modules.Lockable
 	orderer     *blocks.PriorityBlockOrder
@@ -127,33 +129,39 @@ func main() {
 	exposedResources := []exposedResource{}
 	resources := []resource{
 		{
-			name: iconfig.ConfigName,
-			path: filepath.Join("out", "package", "drafter.drftconfig"),
+			name:    iconfig.ConfigName,
+			base:    filepath.Join("out", "package", "drafter.drftconfig"),
+			overlay: filepath.Join("out", "package", "drafter.drftconfig.overlay"),
 		},
 		{
-			name: iconfig.DiskName,
-			path: filepath.Join("out", "package", "drafter.drftdisk"),
+			name:    iconfig.DiskName,
+			base:    filepath.Join("out", "package", "drafter.drftdisk"),
+			overlay: filepath.Join("out", "package", "drafter.drftdisk.overlay"),
 		},
 		{
-			name: iconfig.InitramfsName,
-			path: filepath.Join("out", "package", "drafter.drftinitramfs"),
+			name:    iconfig.InitramfsName,
+			base:    filepath.Join("out", "package", "drafter.drftinitramfs"),
+			overlay: filepath.Join("out", "package", "drafter.drftinitramfs.overlay"),
 		},
 		{
-			name: iconfig.KernelName,
-			path: filepath.Join("out", "package", "drafter.drftkernel"),
+			name:    iconfig.KernelName,
+			base:    filepath.Join("out", "package", "drafter.drftkernel"),
+			overlay: filepath.Join("out", "package", "drafter.drftkernel.overlay"),
 		},
 		{
-			name: iconfig.MemoryName,
-			path: filepath.Join("out", "package", "drafter.drftmemory"),
+			name:    iconfig.MemoryName,
+			base:    filepath.Join("out", "package", "drafter.drftmemory"),
+			overlay: filepath.Join("out", "package", "drafter.drftmemory.overlay"),
 		},
 		{
-			name: iconfig.StateName,
-			path: filepath.Join("out", "package", "drafter.drftstate"),
+			name:    iconfig.StateName,
+			base:    filepath.Join("out", "package", "drafter.drftstate"),
+			overlay: filepath.Join("out", "package", "drafter.drftstate.overlay"),
 		},
 	}
 	for _, res := range resources {
 		if res.name == iconfig.StateName {
-			stateFile, err := os.OpenFile(res.path, os.O_APPEND|os.O_WRONLY, os.ModePerm)
+			stateFile, err := os.OpenFile(res.base, os.O_APPEND|os.O_WRONLY, os.ModePerm)
 			if err != nil {
 				panic(err)
 			}
@@ -168,18 +176,31 @@ func main() {
 			}
 		}
 
-		stat, err := os.Stat(res.path)
+		stat, err := os.Stat(res.base)
 		if err != nil {
 			panic(err)
 		}
 
 		src, exp, err := device.NewDevice(&config.DeviceSchema{
+			// Name:      res.name + ".overlay",
+			// System:    "sparsefile",
+			// Location:  res.overlay,
+			// Size:      fmt.Sprintf("%v", stat.Size()),
+			// BlockSize: fmt.Sprintf("%v", blockSize),
+			// Expose:    true,
+			// ROSource: &config.DeviceSchema{
+			// 	Name:     res.name,
+			// 	System:   "file",
+			// 	Location: res.base,
+			// 	Size:     fmt.Sprintf("%v", stat.Size()),
+			// },
+
 			Name:      res.name,
-			Size:      fmt.Sprintf("%v", stat.Size()),
 			System:    "file",
-			BlockSize: blockSize,
+			Location:  res.base,
+			Size:      fmt.Sprintf("%v", stat.Size()),
+			BlockSize: fmt.Sprintf("%v", blockSize),
 			Expose:    true,
-			Location:  res.path,
 		})
 		if err != nil {
 			panic(err)
@@ -242,6 +263,7 @@ func main() {
 		orderer.AddAll()
 
 		exposedResources = append(exposedResources, exposedResource{
+			exp:         exp,
 			resource:    res,
 			storage:     storage,
 			orderer:     orderer,
@@ -272,6 +294,16 @@ func main() {
 
 		if err := runner.Close(); err != nil {
 			panic(err)
+		}
+
+		for _, eres := range exposedResources {
+			if err := eres.exp.Shutdown(); err != nil {
+				panic(err)
+			}
+
+			if err := eres.storage.Close(); err != nil {
+				panic(err)
+			}
 		}
 
 		os.Exit(0)
@@ -374,10 +406,10 @@ func main() {
 
 			cfg := migrator.NewMigratorConfig().WithBlockSize(blockSize)
 			cfg.Concurrency = map[int]int{
-				storage.BlockTypeAny:      eres.totalBlocks,
-				storage.BlockTypeStandard: eres.totalBlocks,
-				storage.BlockTypeDirty:    eres.totalBlocks,
-				storage.BlockTypePriority: eres.totalBlocks,
+				storage.BlockTypeAny:      5000,
+				storage.BlockTypeStandard: 5000,
+				storage.BlockTypeDirty:    5000,
+				storage.BlockTypePriority: 5000,
 			}
 			cfg.LockerHandler = func() {
 				if err := dst.SendEvent(protocol.EventPreLock); err != nil {
@@ -493,7 +525,7 @@ func main() {
 				if passAuthority {
 					passAuthority = false
 
-					log.Println("Passing authority to destination for", eres.resource.path)
+					log.Println("Passing authority to destination for", eres.resource.base)
 
 					if err := dst.SendEvent(protocol.EventAssumeAuthority); err != nil {
 						panic(err)
