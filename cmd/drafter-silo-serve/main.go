@@ -525,7 +525,7 @@ func main() {
 				if passAuthority {
 					passAuthority = false
 
-					log.Println("Passing authority to destination for", eres.resource.base)
+					log.Println("Passing authority to destination for", eres.resource.name)
 
 					if err := dst.SendEvent(protocol.EventAssumeAuthority); err != nil {
 						panic(err)

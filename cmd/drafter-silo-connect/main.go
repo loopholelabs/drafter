@@ -20,13 +20,33 @@ import (
 	iconfig "github.com/loopholelabs/drafter/pkg/config"
 	"github.com/loopholelabs/drafter/pkg/roles"
 	"github.com/loopholelabs/silo/pkg/storage"
+	"github.com/loopholelabs/silo/pkg/storage/blocks"
+	"github.com/loopholelabs/silo/pkg/storage/dirtytracker"
 	"github.com/loopholelabs/silo/pkg/storage/expose"
+	"github.com/loopholelabs/silo/pkg/storage/migrator"
 	"github.com/loopholelabs/silo/pkg/storage/modules"
 	"github.com/loopholelabs/silo/pkg/storage/protocol"
 	"github.com/loopholelabs/silo/pkg/storage/sources"
+	"github.com/loopholelabs/silo/pkg/storage/volatilitymonitor"
 	"github.com/loopholelabs/silo/pkg/storage/waitingcache"
 	"golang.org/x/sys/unix"
 )
+
+type resource struct {
+	name      string
+	blockSize uint32
+	size      uint64
+	exp       storage.ExposedStorage
+	storage   storage.StorageProvider
+}
+
+type exposedResource struct {
+	resource    resource
+	storage     *modules.Lockable
+	orderer     *blocks.PriorityBlockOrder
+	totalBlocks int
+	dirtyRemote *dirtytracker.DirtyTrackerRemote
+}
 
 func main() {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -119,7 +139,7 @@ func main() {
 	resumeWg.Add(6)
 	completedWg.Add(6)
 
-	exps := []storage.ExposedStorage{}
+	resources := []resource{}
 	pro := protocol.NewProtocolRW(
 		ctx,
 		[]io.Reader{conn},
@@ -159,7 +179,13 @@ func main() {
 
 					exp := expose.NewExposedStorageNBDNL(local, 1, 0, local.Size(), 4096, true)
 
-					exps = append(exps, exp)
+					resources = append(resources, resource{
+						name:      di.Name,
+						blockSize: di.BlockSize,
+						size:      di.Size,
+						exp:       exp,
+						storage:   local,
+					})
 
 					if err := exp.Init(); err != nil {
 						panic(err)
@@ -244,8 +270,14 @@ func main() {
 	defer func() {
 		_ = runner.Close()
 
-		for _, exp := range exps {
-			_ = exp.Shutdown()
+		for _, res := range resources {
+			if err := res.exp.Shutdown(); err != nil {
+				panic(err)
+			}
+
+			if err := res.storage.Close(); err != nil {
+				panic(err)
+			}
 		}
 	}()
 
@@ -282,6 +314,7 @@ func main() {
 
 	log.Println("Resume:", time.Since(before))
 
+	exposedResources := []exposedResource{}
 	go func() {
 		done := make(chan os.Signal, 1)
 		signal.Notify(done, os.Interrupt)
@@ -296,12 +329,311 @@ func main() {
 			panic(err)
 		}
 
+		if len(exposedResources) == 0 {
+			for _, res := range resources {
+				if err := res.exp.Shutdown(); err != nil {
+					panic(err)
+				}
+
+				if err := res.storage.Close(); err != nil {
+					panic(err)
+				}
+			}
+		} else {
+			for _, eres := range exposedResources {
+				if err := eres.resource.exp.Shutdown(); err != nil {
+					panic(err)
+				}
+
+				if err := eres.storage.Close(); err != nil {
+					panic(err)
+				}
+			}
+		}
+
 		os.Exit(0)
 	}()
 
 	completedWg.Wait()
 
-	log.Println("Completed migration, idling")
+	log.Println("Completed migration, becoming migratable")
 
-	select {}
+	for _, res := range resources {
+		metrics := modules.NewMetrics(res.storage)
+		dirtyLocal, dirtyRemote := dirtytracker.NewDirtyTracker(metrics, int(res.blockSize))
+		monitor := volatilitymonitor.NewVolatilityMonitor(dirtyLocal, int(res.blockSize), 10*time.Second)
+
+		storage := modules.NewLockable(monitor)
+		defer storage.Unlock()
+
+		res.exp.SetProvider(storage)
+
+		totalBlocks := (int(storage.Size()) + int(res.blockSize) - 1) / int(res.blockSize)
+
+		orderer := blocks.NewPriorityBlockOrder(totalBlocks, monitor)
+		orderer.AddAll()
+
+		exposedResources = append(exposedResources, exposedResource{
+			resource:    res,
+			storage:     storage,
+			orderer:     orderer,
+			totalBlocks: totalBlocks,
+			dirtyRemote: dirtyRemote,
+		})
+	}
+
+	{
+		lis, err := net.Listen("tcp", ":1337")
+		if err != nil {
+			panic(err)
+		}
+		defer lis.Close()
+
+		log.Println("Serving on", lis.Addr())
+
+		conn, err := lis.Accept()
+		if err != nil {
+			panic(err)
+		}
+		defer conn.Close()
+
+		log.Println("Migrating to", conn.RemoteAddr())
+
+		pro := protocol.NewProtocolRW(ctx, []io.Reader{conn}, []io.Writer{conn}, nil)
+
+		go func() {
+			if err := pro.Handle(); err != nil {
+				panic(err)
+			}
+		}()
+
+		var (
+			suspendWg   sync.WaitGroup
+			suspendedWg sync.WaitGroup
+		)
+
+		suspendWg.Add(len(exposedResources))
+		suspendVM := false
+
+		suspendedWg.Add(1)
+		go func() {
+			suspendWg.Wait()
+
+			log.Println("Suspending VM")
+
+			before := time.Now()
+
+			if err := runner.Suspend(ctx, *resumeTimeout); err != nil {
+				panic(err)
+			}
+
+			log.Println("Suspend:", time.Since(before))
+
+			suspendedWg.Done()
+		}()
+
+		var completedWg sync.WaitGroup
+		completedWg.Add(len(exposedResources))
+
+		for i, eres := range exposedResources {
+			go func(i int, eres exposedResource) {
+				defer completedWg.Done()
+
+				dst := protocol.NewToProtocol(eres.storage.Size(), uint32(i), pro)
+				dst.SendDevInfo(eres.resource.name, eres.resource.blockSize)
+
+				go func() {
+					if err := dst.HandleNeedAt(func(offset int64, length int32) {
+						// Prioritize blocks
+						endOffset := uint64(offset + int64(length))
+						if endOffset > uint64(eres.storage.Size()) {
+							endOffset = uint64(eres.storage.Size())
+						}
+
+						startBlock := int(offset / int64(eres.resource.blockSize))
+						endBlock := int((endOffset-1)/uint64(eres.resource.blockSize)) + 1
+						for b := startBlock; b < endBlock; b++ {
+							eres.orderer.PrioritiseBlock(b)
+						}
+					}); err != nil {
+						panic(err)
+					}
+				}()
+
+				go func() {
+					if err := dst.HandleDontNeedAt(func(offset int64, length int32) {
+						// Deprioritize blocks
+						endOffset := uint64(offset + int64(length))
+						if endOffset > uint64(eres.storage.Size()) {
+							endOffset = uint64(eres.storage.Size())
+						}
+
+						startBlock := int(offset / int64(eres.storage.Size()))
+						endBlock := int((endOffset-1)/uint64(eres.storage.Size())) + 1
+						for b := startBlock; b < endBlock; b++ {
+							eres.orderer.Remove(b)
+						}
+					}); err != nil {
+						panic(err)
+					}
+				}()
+
+				cfg := migrator.NewMigratorConfig().WithBlockSize(int(eres.resource.blockSize))
+				cfg.Concurrency = map[int]int{
+					storage.BlockTypeAny:      5000,
+					storage.BlockTypeStandard: 5000,
+					storage.BlockTypeDirty:    5000,
+					storage.BlockTypePriority: 5000,
+				}
+				cfg.LockerHandler = func() {
+					if err := dst.SendEvent(protocol.EventPreLock); err != nil {
+						panic(err)
+					}
+
+					eres.storage.Lock()
+
+					if err := dst.SendEvent(protocol.EventPostLock); err != nil {
+						panic(err)
+					}
+				}
+				cfg.UnlockerHandler = func() {
+					if err := dst.SendEvent(protocol.EventPreUnlock); err != nil {
+						panic(err)
+					}
+
+					eres.storage.Unlock()
+
+					if err := dst.SendEvent(protocol.EventPostUnlock); err != nil {
+						panic(err)
+					}
+				}
+				cfg.ProgressHandler = func(p *migrator.MigrationProgress) {
+					// log.Printf("%v/%v", p.ReadyBlocks, p.TotalBlocks)
+				}
+
+				mig, err := migrator.NewMigrator(eres.dirtyRemote, dst, eres.orderer, cfg)
+				if err != nil {
+					panic(err)
+				}
+
+				log.Println("Migrating", eres.totalBlocks, "blocks for", eres.resource.name)
+
+				if err := mig.Migrate(eres.totalBlocks); err != nil {
+					panic(err)
+				}
+
+				if err := mig.WaitForCompletion(); err != nil {
+					panic(err)
+				}
+
+				// 1) Get dirty blocks. If the delta is small enough:
+				// 2) Mark VM to be suspended on the next iteration
+				// 3) Send list of dirty changes
+				// 4) Migrate blocks & jump back to start of loop
+				// 5) Suspend & `msync` VM since it's been marked
+				// 6) Mark VM not to be suspended on the next iteration
+				// 7) Get dirty blocks
+				// 8) Send dirty list
+				// 9) Resume VM on remote (in background) - we need to signal this
+				// 10) Migrate blocks & jump back to start of loop
+				// 11) Get dirty blocks returns `nil`, so break out of loop
+
+				suspendedVM := false
+				passAuthority := false
+
+				var backgroundMigrationInProgress sync.WaitGroup
+
+				subsequentSyncs := 0
+				for {
+					if suspendVM && !suspendedVM {
+						suspendedVM = true
+
+						suspendWg.Done()
+
+						mig.Unlock()
+
+						suspendedWg.Wait()
+
+						passAuthority = true
+
+						backgroundMigrationInProgress.Wait()
+					}
+
+					if !suspendVM && eres.resource.name == iconfig.MemoryName {
+						if err := runner.Msync(ctx); err != nil {
+							panic(err)
+						}
+					}
+
+					blocks := mig.GetLatestDirty()
+					if blocks == nil {
+						mig.Unlock()
+					}
+					if suspendedVM && !passAuthority {
+						break
+					}
+
+					// Below threshold; let's suspend the VM here and resume it over there
+					if len(blocks) <= 200 && !suspendedVM { // && len(blocks) > 0
+						if eres.resource.name == iconfig.MemoryName {
+							subsequentSyncs++
+
+							if subsequentSyncs > 10 {
+								suspendVM = true
+							} else {
+								time.Sleep(time.Millisecond * 500)
+							}
+						}
+					}
+
+					if blocks != nil {
+						log.Println("Continously migrating", len(blocks), "blocks for", eres.resource.name)
+					}
+
+					if blocks != nil {
+						if err := dst.DirtyList(blocks); err != nil {
+							panic(err)
+						}
+					}
+
+					if passAuthority {
+						passAuthority = false
+
+						log.Println("Passing authority to destination for", eres.resource.name)
+
+						if err := dst.SendEvent(protocol.EventAssumeAuthority); err != nil {
+							panic(err)
+						}
+					}
+
+					if suspendVM && !suspendedVM && blocks != nil {
+						go func() {
+							defer backgroundMigrationInProgress.Done()
+							backgroundMigrationInProgress.Add(1)
+
+							if err := mig.MigrateDirty(blocks); err != nil {
+								panic(err)
+							}
+						}()
+					} else {
+						if err := mig.MigrateDirty(blocks); err != nil {
+							panic(err)
+						}
+					}
+				}
+
+				if err := mig.WaitForCompletion(); err != nil {
+					panic(err)
+				}
+
+				if err := dst.SendEvent(protocol.EventCompleted); err != nil {
+					panic(err)
+				}
+			}(i, eres)
+		}
+
+		completedWg.Wait()
+
+		log.Println("Completed migration, shutting down")
+	}
 }
