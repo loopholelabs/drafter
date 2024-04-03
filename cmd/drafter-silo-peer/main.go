@@ -80,7 +80,7 @@ func main() {
 	cgroupVersion := flag.Int("cgroup-version", 2, "Cgroup version to use for Jailer")
 
 	raddr := flag.String("raddr", "", "Remote Silo address (connect use only) (set to empty value to serve instead)")
-	shardPath := flag.String("shard-path", filepath.Join("out", "shards"), "Shard path (connect use only)")
+	cachePath := flag.String("cache-path", filepath.Join("out", "cache"), "Cache path (connect use only)")
 
 	blockSize := flag.Uint("block-size", 1024*64, "Block size to use (serve use only)")
 	configPath := flag.String("config-path", filepath.Join("out", "package", "drafter.drftconfig"), "Config path (serve use only)")
@@ -360,7 +360,7 @@ func main() {
 
 		log.Println("Resume:", time.Since(before))
 	} else {
-		if err := os.MkdirAll(*shardPath, os.ModePerm); err != nil {
+		if err := os.MkdirAll(*cachePath, os.ModePerm); err != nil {
 			panic(err)
 		}
 
@@ -392,24 +392,13 @@ func main() {
 				dst = protocol.NewFromProtocol(
 					u,
 					func(di *protocol.DevInfo) storage.StorageProvider {
-						shardSize := di.Size
-						if di.Size > 64*1024 {
-							shardSize = di.Size / 1024
-						}
-
-						shards, err := modules.NewShardedStorage(
-							int(di.Size),
-							int(shardSize),
-							func(index, size int) (storage.StorageProvider, error) {
-								return sources.NewFileStorageCreate(filepath.Join(*shardPath, fmt.Sprintf("%v-%v.bin", di.Name, index)), int64(size))
-							},
-						)
+						st, err := sources.NewFileStorageCreate(filepath.Join(*cachePath, di.Name), int64(di.Size))
 						if err != nil {
 							panic(err)
 						}
 
 						var remote *waitingcache.WaitingCacheRemote
-						local, remote = waitingcache.NewWaitingCache(shards, int(di.BlockSize))
+						local, remote = waitingcache.NewWaitingCache(st, int(di.BlockSize))
 						local.NeedAt = func(offset int64, length int32) {
 							dst.NeedAt(offset, length)
 						}
