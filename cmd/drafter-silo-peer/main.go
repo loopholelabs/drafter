@@ -35,12 +35,16 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+var (
+	errUnknownResourceName = errors.New("unknown resource name")
+)
+
 type resource struct {
 	name      string
 	blockSize uint32
 	size      uint64
 
-	source  string
+	base    string
 	overlay string
 	state   string
 
@@ -80,18 +84,17 @@ func main() {
 	numaNode := flag.Int("numa-node", 0, "NUMA node to run Firecracker in")
 	cgroupVersion := flag.Int("cgroup-version", 2, "Cgroup version to use for Jailer")
 
+	configBasePath := flag.String("config-base-path", filepath.Join("out", "package", "drafter.drftconfig"), "Config base path")
+	diskBasePath := flag.String("disk-base-path", filepath.Join("out", "package", "drafter.drftdisk"), "Disk base path")
+	initramfsBasePath := flag.String("initramfs-base-path", filepath.Join("out", "package", "drafter.drftinitramfs"), "initramfs base path")
+	kernelBasePath := flag.String("kernel-base-path", filepath.Join("out", "package", "drafter.drftkernel"), "Kernel base path")
+	memoryBasePath := flag.String("memory-base-path", filepath.Join("out", "package", "drafter.drftmemory"), "Memory base path")
+	stateBasePath := flag.String("state-base-path", filepath.Join("out", "package", "drafter.drftstate"), "State base path")
+
 	raddr := flag.String("raddr", "", "Remote Silo address (connect use only) (set to empty value to serve instead)")
-	cachePath := flag.String("cache-path", filepath.Join("out", "cache"), "Cache directory path (connect use only)")
 
 	laddr := flag.String("laddr", ":1337", "Local Silo address (serve use only)")
 	blockSize := flag.Uint("block-size", 1024*64, "Block size to use (serve use only)")
-
-	configSourcePath := flag.String("config-source-path", filepath.Join("out", "package", "drafter.drftconfig"), "Config source path (serve use only)")
-	diskSourcePath := flag.String("disk-source-path", filepath.Join("out", "package", "drafter.drftdisk"), "Disk source path (serve use only)")
-	initramfsSourcePath := flag.String("initramfs-source-path", filepath.Join("out", "package", "drafter.drftinitramfs"), "initramfs source path (serve use only)")
-	kernelSourcePath := flag.String("kernel-source-path", filepath.Join("out", "package", "drafter.drftkernel"), "Kernel source path (serve use only)")
-	memorySourcePath := flag.String("memory-source-path", filepath.Join("out", "package", "drafter.drftmemory"), "Memory source path (serve use only)")
-	stateSourcePath := flag.String("state-source-path", filepath.Join("out", "package", "drafter.drftstate"), "State source path (serve use only)")
 
 	configOverlayPath := flag.String("config-overlay-path", filepath.Join("out", "overlay", "drafter.drftconfig.overlay"), "Config overlay path (serve use only)")
 	diskOverlayPath := flag.String("disk-overlay-path", filepath.Join("out", "overlay", "drafter.drftdisk.overlay"), "Disk overlay path (serve use only)")
@@ -214,7 +217,7 @@ func main() {
 				name:      iconfig.ConfigName,
 				blockSize: uint32(*blockSize),
 
-				source:  *configSourcePath,
+				base:    *configBasePath,
 				overlay: *configOverlayPath,
 				state:   *configStatePath,
 			},
@@ -222,7 +225,7 @@ func main() {
 				name:      iconfig.DiskName,
 				blockSize: uint32(*blockSize),
 
-				source:  *diskSourcePath,
+				base:    *diskBasePath,
 				overlay: *diskOverlayPath,
 				state:   *diskStatePath,
 			},
@@ -230,7 +233,7 @@ func main() {
 				name:      iconfig.InitramfsName,
 				blockSize: uint32(*blockSize),
 
-				source:  *initramfsSourcePath,
+				base:    *initramfsBasePath,
 				overlay: *initramfsOverlayPath,
 				state:   *initramfsStatePath,
 			},
@@ -238,7 +241,7 @@ func main() {
 				name:      iconfig.KernelName,
 				blockSize: uint32(*blockSize),
 
-				source:  *kernelSourcePath,
+				base:    *kernelBasePath,
 				overlay: *kernelOverlayPath,
 				state:   *kernelStatePath,
 			},
@@ -246,7 +249,7 @@ func main() {
 				name:      iconfig.MemoryName,
 				blockSize: uint32(*blockSize),
 
-				source:  *memorySourcePath,
+				base:    *memoryBasePath,
 				overlay: *memoryOverlayPath,
 				state:   *memoryStatePath,
 			},
@@ -254,7 +257,7 @@ func main() {
 				name:      iconfig.StateName,
 				blockSize: uint32(*blockSize),
 
-				source:  *stateSourcePath,
+				base:    *stateBasePath,
 				overlay: *stateOverlayPath,
 				state:   *stateStatePath,
 			},
@@ -264,11 +267,11 @@ func main() {
 				panic(err)
 			}
 
-			if err := os.MkdirAll(filepath.Dir(res.source), os.ModePerm); err != nil {
+			if err := os.MkdirAll(filepath.Dir(res.base), os.ModePerm); err != nil {
 				panic(err)
 			}
 
-			stat, err := os.Stat(res.source)
+			stat, err := os.Stat(res.base)
 			if err != nil {
 				panic(err)
 			}
@@ -284,7 +287,7 @@ func main() {
 				ROSource: &config.DeviceSchema{
 					Name:     res.state,
 					System:   "file",
-					Location: res.source,
+					Location: res.base,
 					Size:     fmt.Sprintf("%v", res.size),
 				},
 			})
@@ -368,10 +371,6 @@ func main() {
 
 		log.Println("Resume:", time.Since(before))
 	} else {
-		if err := os.MkdirAll(*cachePath, os.ModePerm); err != nil {
-			panic(err)
-		}
-
 		conn, err := net.Dial("tcp", *raddr)
 		if err != nil {
 			panic(err)
@@ -400,7 +399,36 @@ func main() {
 				dst = protocol.NewFromProtocol(
 					u,
 					func(di *protocol.DevInfo) storage.StorageProvider {
-						st, err := sources.NewFileStorageCreate(filepath.Join(*cachePath, di.Name), int64(di.Size))
+						stPath := ""
+						switch di.Name {
+						case iconfig.ConfigName:
+							stPath = *configBasePath
+
+						case iconfig.DiskName:
+							stPath = *diskBasePath
+
+						case iconfig.InitramfsName:
+							stPath = *initramfsBasePath
+
+						case iconfig.KernelName:
+							stPath = *kernelBasePath
+
+						case iconfig.MemoryName:
+							stPath = *memoryBasePath
+
+						case iconfig.StateName:
+							stPath = *stateBasePath
+						}
+
+						if strings.TrimSpace(stPath) == "" {
+							panic(errUnknownResourceName)
+						}
+
+						if err := os.MkdirAll(filepath.Dir(stPath), os.ModePerm); err != nil {
+							panic(err)
+						}
+
+						st, err := sources.NewFileStorageCreate(stPath, int64(di.Size))
 						if err != nil {
 							panic(err)
 						}
