@@ -40,8 +40,9 @@ type resource struct {
 	blockSize uint32
 	size      uint64
 
-	base    string
+	source  string
 	overlay string
+	state   string
 
 	exp     storage.ExposedStorage
 	storage storage.StorageProvider
@@ -80,15 +81,31 @@ func main() {
 	cgroupVersion := flag.Int("cgroup-version", 2, "Cgroup version to use for Jailer")
 
 	raddr := flag.String("raddr", "", "Remote Silo address (connect use only) (set to empty value to serve instead)")
-	cachePath := flag.String("cache-path", filepath.Join("out", "cache"), "Cache path (connect use only)")
+	cachePath := flag.String("cache-path", filepath.Join("out", "cache"), "Cache directory path (connect use only)")
 
+	laddr := flag.String("laddr", ":1337", "Local Silo address (serve use only)")
 	blockSize := flag.Uint("block-size", 1024*64, "Block size to use (serve use only)")
-	configPath := flag.String("config-path", filepath.Join("out", "package", "drafter.drftconfig"), "Config path (serve use only)")
-	diskPath := flag.String("disk-path", filepath.Join("out", "package", "drafter.drftdisk"), "Disk path (serve use only)")
-	initramfsPath := flag.String("initramfs-path", filepath.Join("out", "package", "drafter.drftinitramfs"), "initramfs path (serve use only)")
-	kernelPath := flag.String("kernel-path", filepath.Join("out", "package", "drafter.drftkernel"), "Kernel path (serve use only)")
-	memoryPath := flag.String("memory-path", filepath.Join("out", "package", "drafter.drftmemory"), "Memory path (serve use only)")
-	statePath := flag.String("state-path", filepath.Join("out", "package", "drafter.drftstate"), "State path (serve use only)")
+
+	configSourcePath := flag.String("config-source-path", filepath.Join("out", "package", "drafter.drftconfig"), "Config source path (serve use only)")
+	diskSourcePath := flag.String("disk-source-path", filepath.Join("out", "package", "drafter.drftdisk"), "Disk source path (serve use only)")
+	initramfsSourcePath := flag.String("initramfs-source-path", filepath.Join("out", "package", "drafter.drftinitramfs"), "initramfs source path (serve use only)")
+	kernelSourcePath := flag.String("kernel-source-path", filepath.Join("out", "package", "drafter.drftkernel"), "Kernel source path (serve use only)")
+	memorySourcePath := flag.String("memory-source-path", filepath.Join("out", "package", "drafter.drftmemory"), "Memory source path (serve use only)")
+	stateSourcePath := flag.String("state-source-path", filepath.Join("out", "package", "drafter.drftstate"), "State source path (serve use only)")
+
+	configOverlayPath := flag.String("config-overlay-path", filepath.Join("out", "overlay", "drafter.drftconfig.overlay"), "Config overlay path (serve use only)")
+	diskOverlayPath := flag.String("disk-overlay-path", filepath.Join("out", "overlay", "drafter.drftdisk.overlay"), "Disk overlay path (serve use only)")
+	initramfsOverlayPath := flag.String("initramfs-overlay-path", filepath.Join("out", "overlay", "drafter.drftinitramfs.overlay"), "initramfs overlay path (serve use only)")
+	kernelOverlayPath := flag.String("kernel-overlay-path", filepath.Join("out", "overlay", "drafter.drftkernel.overlay"), "Kernel overlay path (serve use only)")
+	memoryOverlayPath := flag.String("memory-overlay-path", filepath.Join("out", "overlay", "drafter.drftmemory.overlay"), "Memory overlay path (serve use only)")
+	stateOverlayPath := flag.String("state-overlay-path", filepath.Join("out", "overlay", "drafter.drftstate.overlay"), "State overlay path (serve use only)")
+
+	configStatePath := flag.String("config-state-path", filepath.Join("out", "overlay", "drafter.drftconfig.state"), "Config state path (serve use only)")
+	diskStatePath := flag.String("disk-state-path", filepath.Join("out", "overlay", "drafter.drftdisk.state"), "Disk state path (serve use only)")
+	initramfsStatePath := flag.String("initramfs-state-path", filepath.Join("out", "overlay", "drafter.drftinitramfs.state"), "initramfs state path (serve use only)")
+	kernelStatePath := flag.String("kernel-state-path", filepath.Join("out", "overlay", "drafter.drftkernel.state"), "Kernel state path (serve use only)")
+	memoryStatePath := flag.String("memory-state-path", filepath.Join("out", "overlay", "drafter.drftmemory.state"), "Memory state path (serve use only)")
+	stateStatePath := flag.String("state-state-path", filepath.Join("out", "overlay", "drafter.drftstate.state"), "State state path (serve use only)")
 
 	flag.Parse()
 
@@ -197,88 +214,79 @@ func main() {
 				name:      iconfig.ConfigName,
 				blockSize: uint32(*blockSize),
 
-				base:    *configPath,
-				overlay: *configPath + ".overlay",
+				source:  *configSourcePath,
+				overlay: *configOverlayPath,
+				state:   *configStatePath,
 			},
 			{
 				name:      iconfig.DiskName,
 				blockSize: uint32(*blockSize),
 
-				base:    *diskPath,
-				overlay: *diskPath + ".overlay",
+				source:  *diskSourcePath,
+				overlay: *diskOverlayPath,
+				state:   *diskStatePath,
 			},
 			{
 				name:      iconfig.InitramfsName,
 				blockSize: uint32(*blockSize),
 
-				base:    *initramfsPath,
-				overlay: *initramfsPath + ".overlay",
+				source:  *initramfsSourcePath,
+				overlay: *initramfsOverlayPath,
+				state:   *initramfsStatePath,
 			},
 			{
 				name:      iconfig.KernelName,
 				blockSize: uint32(*blockSize),
 
-				base:    *kernelPath,
-				overlay: *kernelPath + ".overlay",
+				source:  *kernelSourcePath,
+				overlay: *kernelOverlayPath,
+				state:   *kernelStatePath,
 			},
 			{
 				name:      iconfig.MemoryName,
 				blockSize: uint32(*blockSize),
 
-				base:    *memoryPath,
-				overlay: *memoryPath + ".overlay",
+				source:  *memorySourcePath,
+				overlay: *memoryOverlayPath,
+				state:   *memoryStatePath,
 			},
 			{
 				name:      iconfig.StateName,
 				blockSize: uint32(*blockSize),
 
-				base:    *statePath,
-				overlay: *statePath + ".overlay",
+				source:  *stateSourcePath,
+				overlay: *stateOverlayPath,
+				state:   *stateStatePath,
 			},
 		}
 		for _, res := range resources {
-			if res.name == iconfig.StateName {
-				stateFile, err := os.OpenFile(res.base, os.O_APPEND|os.O_WRONLY, os.ModePerm)
-				if err != nil {
-					panic(err)
-				}
-				defer stateFile.Close()
-
-				if _, err := stateFile.Write(make([]byte, res.blockSize*10)); err != nil { // Add some additional blocks in case the state gets larger;
-					panic(err)
-				}
-
-				if err := stateFile.Close(); err != nil {
-					panic(err)
-				}
+			if err := os.MkdirAll(filepath.Dir(res.overlay), os.ModePerm); err != nil {
+				panic(err)
 			}
 
-			stat, err := os.Stat(res.base)
+			if err := os.MkdirAll(filepath.Dir(res.source), os.ModePerm); err != nil {
+				panic(err)
+			}
+
+			stat, err := os.Stat(res.source)
 			if err != nil {
 				panic(err)
 			}
 			res.size = uint64(stat.Size())
 
 			src, exp, err := device.NewDevice(&config.DeviceSchema{
-				// Name:      res.name + ".overlay",
-				// System:    "sparsefile",
-				// Location:  res.overlay,
-				// Size:      fmt.Sprintf("%v", res.size),
-				// BlockSize: fmt.Sprintf("%v", *blockSize),
-				// Expose:    true,
-				// ROSource: &config.DeviceSchema{
-				// 	Name:     res.name,
-				// 	System:   "file",
-				// 	Location: res.base,
-				// 	Size:     fmt.Sprintf("%v", res.size),
-				// },
-
 				Name:      res.name,
-				System:    "file",
-				Location:  res.base,
+				System:    "sparsefile",
+				Location:  res.overlay,
 				Size:      fmt.Sprintf("%v", res.size),
-				BlockSize: fmt.Sprintf("%v", *blockSize),
+				BlockSize: fmt.Sprintf("%v", res.blockSize),
 				Expose:    true,
+				ROSource: &config.DeviceSchema{
+					Name:     res.state,
+					System:   "file",
+					Location: res.source,
+					Size:     fmt.Sprintf("%v", res.size),
+				},
 			})
 			if err != nil {
 				panic(err)
@@ -573,7 +581,7 @@ func main() {
 		}
 	}
 
-	lis, err := net.Listen("tcp", ":1337")
+	lis, err := net.Listen("tcp", *laddr)
 	if err != nil {
 		panic(err)
 	}
