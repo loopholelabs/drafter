@@ -35,6 +35,10 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+type CustomEventType byte
+
+const EventCustomPassAuthority = CustomEventType(0)
+
 var (
 	errUnknownResourceName = errors.New("unknown resource name")
 )
@@ -509,10 +513,12 @@ func main() {
 				}()
 
 				go func() {
-					if err := dst.HandleEvent(func(et protocol.EventType) {
-						switch et {
-						case protocol.EventAssumeAuthority:
-							resumeWg.Done()
+					if err := dst.HandleEvent(func(e *protocol.Event) {
+						switch e.Type {
+						case protocol.EventCustom:
+							if e.CustomType == byte(EventCustomPassAuthority) {
+								resumeWg.Done()
+							}
 
 						case protocol.EventCompleted:
 							completedWg.Done()
@@ -712,24 +718,33 @@ func main() {
 				storage.BlockTypePriority: 5000,
 			}
 			cfg.LockerHandler = func() {
-				if err := dst.SendEvent(protocol.EventPreLock); err != nil {
+				if err := dst.SendEvent(&protocol.Event{
+					Type: protocol.EventPreLock,
+				}); err != nil {
 					panic(err)
 				}
 
 				eres.storage.Lock()
 
-				if err := dst.SendEvent(protocol.EventPostLock); err != nil {
+				if err := dst.SendEvent(&protocol.Event{
+					Type: protocol.EventPostLock,
+				}); err != nil {
 					panic(err)
 				}
+
 			}
 			cfg.UnlockerHandler = func() {
-				if err := dst.SendEvent(protocol.EventPreUnlock); err != nil {
+				if err := dst.SendEvent(&protocol.Event{
+					Type: protocol.EventPreUnlock,
+				}); err != nil {
 					panic(err)
 				}
 
 				eres.storage.Unlock()
 
-				if err := dst.SendEvent(protocol.EventPostUnlock); err != nil {
+				if err := dst.SendEvent(&protocol.Event{
+					Type: protocol.EventPostUnlock,
+				}); err != nil {
 					panic(err)
 				}
 			}
@@ -827,7 +842,10 @@ func main() {
 
 					log.Println("Passing authority to destination for", eres.resource.name)
 
-					if err := dst.SendEvent(protocol.EventAssumeAuthority); err != nil {
+					if err := dst.SendEvent(&protocol.Event{
+						Type:       protocol.EventCustom,
+						CustomType: byte(EventCustomPassAuthority),
+					}); err != nil {
 						panic(err)
 					}
 				}
@@ -852,7 +870,9 @@ func main() {
 				panic(err)
 			}
 
-			if err := dst.SendEvent(protocol.EventCompleted); err != nil {
+			if err := dst.SendEvent(&protocol.Event{
+				Type: protocol.EventCompleted,
+			}); err != nil {
 				panic(err)
 			}
 		}(i, eres)
