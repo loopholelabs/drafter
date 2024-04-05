@@ -24,6 +24,15 @@ var (
 	ErrCouldNotCreateSnapshot       = errors.New("could not create snapshot")
 	ErrCouldNotResumeSnapshot       = errors.New("could not resume snapshot")
 	ErrCouldNotFlushSnapshot        = errors.New("could not flush snapshot")
+	ErrUnknownSnapshotType          = errors.New("could not work with unknown snapshot type")
+)
+
+type SnapshotType byte
+
+const (
+	SnapshotTypeFull = iota
+	SnapshotTypeMsync
+	SnapshotTypeMsyncAndState
 )
 
 func submitJSON(method string, client *http.Client, body any, resource string) error {
@@ -171,23 +180,40 @@ func CreateSnapshot(
 
 	statePath,
 	memoryPath string,
+
+	snapshotType SnapshotType,
 ) error {
-	if err := submitJSON(
-		http.MethodPatch,
-		client,
-		&v1.VirtualMachineStateRequest{
-			State: "Paused",
-		},
-		"vm",
-	); err != nil {
-		return fmt.Errorf("%w: %s", ErrCouldNotPauseInstance, err)
+	st := ""
+	switch snapshotType {
+	case SnapshotTypeFull:
+		st = "Full"
+	case SnapshotTypeMsync:
+		st = "Msync"
+	case SnapshotTypeMsyncAndState:
+		st = "MsyncAndState"
+
+	default:
+		return ErrUnknownSnapshotType
+	}
+
+	if snapshotType != SnapshotTypeMsync {
+		if err := submitJSON(
+			http.MethodPatch,
+			client,
+			&v1.VirtualMachineStateRequest{
+				State: "Paused",
+			},
+			"vm",
+		); err != nil {
+			return fmt.Errorf("%w: %s", ErrCouldNotPauseInstance, err)
+		}
 	}
 
 	if err := submitJSON(
 		http.MethodPut,
 		client,
 		&v1.SnapshotCreateRequest{
-			SnapshotType:   "Full",
+			SnapshotType:   st,
 			SnapshotPath:   statePath,
 			MemoryFilePath: memoryPath,
 		},
@@ -216,44 +242,11 @@ func ResumeSnapshot(
 			},
 			EnableDiffSnapshots:  false,
 			ResumeVirtualMachine: true,
+			Shared:               true,
 		},
 		"snapshot/load",
 	); err != nil {
 		return fmt.Errorf("%w: %s", ErrCouldNotResumeSnapshot, err)
-	}
-
-	return nil
-}
-
-func FlushSnapshot(
-	client *http.Client,
-
-	statePath string,
-	msyncOnly bool,
-) error {
-	if !msyncOnly {
-		if err := submitJSON(
-			http.MethodPatch,
-			client,
-			&v1.VirtualMachineStateRequest{
-				State: "Paused",
-			},
-			"vm",
-		); err != nil {
-			return fmt.Errorf("%w: %s", ErrCouldNotPauseInstance, err)
-		}
-	}
-
-	if err := submitJSON(
-		http.MethodPut,
-		client,
-		&v1.SnapshotNoMemoryCreateRequest{
-			SnapshotPath: statePath,
-			MsyncOnly:    msyncOnly,
-		},
-		"snapshot-nomemory/create",
-	); err != nil {
-		return fmt.Errorf("%w: %s", ErrCouldNotFlushSnapshot, err)
 	}
 
 	return nil

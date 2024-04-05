@@ -268,6 +268,8 @@ func (p *Snapshotter) CreateSnapshot(
 
 		knownNamesConfiguration.StateName,
 		knownNamesConfiguration.MemoryName,
+
+		firecracker.SnapshotTypeFull,
 	); err != nil {
 		return err
 	}

@@ -43,6 +43,7 @@ type SnapshotLoadRequest struct {
 	MemoryBackend        SnapshotLoadRequestMemoryBackend `json:"mem_backend"`
 	EnableDiffSnapshots  bool                             `json:"enable_diff_snapshots"`
 	ResumeVirtualMachine bool                             `json:"resume_vm"`
+	Shared               bool                             `json:"shared"`
 }
 
 type SnapshotLoadRequestMemoryBackend struct {
