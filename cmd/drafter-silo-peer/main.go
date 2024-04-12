@@ -712,10 +712,10 @@ func main() {
 
 			cfg := migrator.NewMigratorConfig().WithBlockSize(int(eres.resource.blockSize))
 			cfg.Concurrency = map[int]int{
-				storage.BlockTypeAny:      5000,
-				storage.BlockTypeStandard: 5000,
-				storage.BlockTypeDirty:    5000,
-				storage.BlockTypePriority: 5000,
+				storage.BlockTypeAny:      eres.totalBlocks,
+				storage.BlockTypeStandard: eres.totalBlocks,
+				storage.BlockTypeDirty:    eres.totalBlocks,
+				storage.BlockTypePriority: eres.totalBlocks,
 			}
 			cfg.LockerHandler = func() {
 				if err := dst.SendEvent(&protocol.Event{
