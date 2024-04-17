@@ -7,7 +7,6 @@ require (
 	github.com/freddierice/go-losetup/v2 v2.0.1
 	github.com/lithammer/shortuuid/v4 v4.0.0
 	github.com/loopholelabs/silo v0.0.0-00010101000000-000000000000
-	github.com/mdlayher/vsock v1.2.1
 	github.com/metal-stack/go-ipam v1.11.3
 	github.com/pojntfx/go-nbd v0.3.2
 	github.com/pojntfx/panrpc/go v0.6.2-0.20240115212816-c9ef59483c19
