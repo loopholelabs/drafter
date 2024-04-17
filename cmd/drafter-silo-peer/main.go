@@ -283,7 +283,7 @@ func main() {
 
 			src, exp, err := device.NewDevice(&config.DeviceSchema{
 				Name:      res.name,
-				System:    "file",
+				System:    "sparsefile",
 				Location:  res.overlay,
 				Size:      fmt.Sprintf("%v", res.size),
 				BlockSize: fmt.Sprintf("%v", res.blockSize),
