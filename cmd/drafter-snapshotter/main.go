@@ -48,7 +48,7 @@ func main() {
 
 	cpuCount := flag.Int("cpu-count", 1, "CPU count")
 	memorySize := flag.Int("memory-size", 1024, "Memory size (in MB)")
-	cpuTemplate := flag.String("cpu-template", "T2A", "Firecracker CPU template")
+	cpuTemplate := flag.String("cpu-template", "None", "Firecracker CPU template (see https://github.com/firecracker-microvm/firecracker/blob/main/docs/cpu_templates/cpu-templates.md#static-cpu-templates for the options)")
 	bootArgs := flag.String("boot-args", config.DefaultBootArgs, "Boot/kernel arguments")
 
 	flag.Parse()
