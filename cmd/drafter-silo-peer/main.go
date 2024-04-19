@@ -114,6 +114,8 @@ func main() {
 	memoryStatePath := flag.String("memory-state-path", filepath.Join("out", "overlay", "drafter.drftmemory.state"), "Memory state path (serve use only)")
 	stateStatePath := flag.String("state-state-path", filepath.Join("out", "overlay", "drafter.drftstate.state"), "State state path (serve use only)")
 
+	concurrency := flag.Int("concurrency", 4096, "Amount of concurrent workers to use in migrations")
+
 	flag.Parse()
 
 	firecrackerBin, err := exec.LookPath(*rawFirecrackerBin)
@@ -712,10 +714,10 @@ func main() {
 
 			cfg := migrator.NewMigratorConfig().WithBlockSize(int(eres.resource.blockSize))
 			cfg.Concurrency = map[int]int{
-				storage.BlockTypeAny:      eres.totalBlocks,
-				storage.BlockTypeStandard: eres.totalBlocks,
-				storage.BlockTypeDirty:    eres.totalBlocks,
-				storage.BlockTypePriority: eres.totalBlocks,
+				storage.BlockTypeAny:      *concurrency,
+				storage.BlockTypeStandard: *concurrency,
+				storage.BlockTypeDirty:    *concurrency,
+				storage.BlockTypePriority: *concurrency,
 			}
 			cfg.LockerHandler = func() {
 				if err := dst.SendEvent(&protocol.Event{
