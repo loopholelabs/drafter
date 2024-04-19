@@ -48,7 +48,7 @@ func main() {
 
 	cpuCount := flag.Int("cpu-count", 1, "CPU count")
 	memorySize := flag.Int("memory-size", 1024, "Memory size (in MB)")
-	cpuTemplate := flag.String("cpu-template", "T2A", "CPU template")
+	cpuTemplate := flag.String("cpu-template", "T2A", "Firecracker CPU template")
 	bootArgs := flag.String("boot-args", config.DefaultBootArgs, "Boot/kernel arguments")
 
 	flag.Parse()
@@ -89,10 +89,11 @@ func main() {
 		*configOutputPath,
 
 		config.VMConfiguration{
-			CpuCount:    *cpuCount,
+			CPUCount:    *cpuCount,
 			MemorySize:  *memorySize,
 			CPUTemplate: *cpuTemplate,
-			BootArgs:    *bootArgs,
+
+			BootArgs: *bootArgs,
 		},
 		config.LivenessConfiguration{
 			LivenessVSockPort: uint32(*livenessVSockPort),

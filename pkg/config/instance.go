@@ -6,7 +6,7 @@ type NetworkConfiguration struct {
 }
 
 type VMConfiguration struct {
-	CpuCount    int
+	CPUCount    int
 	MemorySize  int
 	CPUTemplate string
 
