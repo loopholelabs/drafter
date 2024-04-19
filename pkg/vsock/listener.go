@@ -11,29 +11,23 @@ type Listener struct {
 }
 
 func Listen(cid uint32, port uint32, backlog int) (*Listener, error) {
-	l, err := unix.Socket(unix.AF_VSOCK, unix.SOCK_STREAM, 0)
+	lis, err := unix.Socket(unix.AF_VSOCK, unix.SOCK_STREAM, 0)
 	if err != nil {
 		return nil, err
 	}
 
-	socketAddr := &unix.SockaddrVM{
+	if err := unix.Bind(lis, &unix.SockaddrVM{
 		CID:  cid,
 		Port: port,
+	}); err != nil {
+		return nil, unix.Close(lis)
 	}
 
-	if err := unix.Bind(l, socketAddr); err != nil {
-		_ = unix.Close(l)
-
-		return nil, err
+	if err := unix.Listen(lis, backlog); err != nil {
+		return nil, unix.Close(lis)
 	}
 
-	if err := unix.Listen(l, backlog); err != nil {
-		_ = unix.Close(l)
-
-		return nil, err
-	}
-
-	return &Listener{fd: l}, nil
+	return &Listener{fd: lis}, nil
 }
 
 func (l *Listener) Accept() (io.ReadWriteCloser, error) {
@@ -42,7 +36,7 @@ func (l *Listener) Accept() (io.ReadWriteCloser, error) {
 		return nil, err
 	}
 
-	return &Conn{fd: fd}, nil
+	return &conn{fd}, nil
 }
 
 func (l *Listener) Close() error {

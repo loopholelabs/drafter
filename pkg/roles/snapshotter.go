@@ -214,6 +214,7 @@ func (p *Snapshotter) CreateSnapshot(
 
 		vmConfiguration.CpuCount,
 		vmConfiguration.MemorySize,
+		vmConfiguration.CPUTemplate,
 		vmConfiguration.BootArgs,
 
 		networkConfiguration.Interface,

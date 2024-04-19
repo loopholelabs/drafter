@@ -14,8 +14,9 @@ type Drive struct {
 }
 
 type MachineConfig struct {
-	VCPUCount  int `json:"vcpu_count"`
-	MemSizeMib int `json:"mem_size_mib"`
+	VCPUCount   int    `json:"vcpu_count"`
+	MemSizeMib  int    `json:"mem_size_mib"`
+	CPUTemplate string `json:"cpu_template"`
 }
 
 type Action struct {

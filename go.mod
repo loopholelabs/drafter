@@ -1,6 +1,6 @@
 module github.com/loopholelabs/drafter
 
-go 1.21.0
+go 1.21
 
 require (
 	github.com/coreos/go-iptables v0.6.0
