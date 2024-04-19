@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -37,7 +38,10 @@ import (
 
 type CustomEventType byte
 
-const EventCustomPassAuthority = CustomEventType(0)
+const (
+	EventCustomPassAuthority  = CustomEventType(0)
+	EventCustomAllDevicesSent = CustomEventType(1)
+)
 
 var (
 	errUnknownResourceName = errors.New("unknown resource name")
@@ -54,6 +58,8 @@ type resource struct {
 
 	exp     storage.ExposedStorage
 	storage storage.StorageProvider
+
+	serve bool
 }
 
 type exposedResource struct {
@@ -113,6 +119,13 @@ func main() {
 	kernelStatePath := flag.String("kernel-state-path", filepath.Join("out", "overlay", "drafter.drftkernel.state"), "Kernel state path (serve use only)")
 	memoryStatePath := flag.String("memory-state-path", filepath.Join("out", "overlay", "drafter.drftmemory.state"), "Memory state path (serve use only)")
 	stateStatePath := flag.String("state-state-path", filepath.Join("out", "overlay", "drafter.drftstate.state"), "State state path (serve use only)")
+
+	configServe := flag.Bool("config-serve", false, "Whether to serve the config (serve use only)")
+	diskServe := flag.Bool("disk-serve", false, "Whether to serve the disk (serve use only)")
+	initramfsServe := flag.Bool("initramfs-serve", false, "Whether to serve the initramfs (serve use only)")
+	kernelServe := flag.Bool("kernel-serve", false, "Whether to serve the kernel (serve use only)")
+	memoryServe := flag.Bool("memory-serve", false, "Whether to serve the memory (serve use only)")
+	stateServe := flag.Bool("state-serve", false, "Whether to serve the state (serve use only)")
 
 	concurrency := flag.Int("concurrency", 4096, "Amount of concurrent workers to use in migrations")
 
@@ -226,6 +239,8 @@ func main() {
 				base:    *configBasePath,
 				overlay: *configOverlayPath,
 				state:   *configStatePath,
+
+				serve: *configServe,
 			},
 			{
 				name:      iconfig.DiskName,
@@ -234,6 +249,8 @@ func main() {
 				base:    *diskBasePath,
 				overlay: *diskOverlayPath,
 				state:   *diskStatePath,
+
+				serve: *diskServe,
 			},
 			{
 				name:      iconfig.InitramfsName,
@@ -242,6 +259,8 @@ func main() {
 				base:    *initramfsBasePath,
 				overlay: *initramfsOverlayPath,
 				state:   *initramfsStatePath,
+
+				serve: *initramfsServe,
 			},
 			{
 				name:      iconfig.KernelName,
@@ -250,6 +269,8 @@ func main() {
 				base:    *kernelBasePath,
 				overlay: *kernelOverlayPath,
 				state:   *kernelStatePath,
+
+				serve: *kernelServe,
 			},
 			{
 				name:      iconfig.MemoryName,
@@ -258,6 +279,8 @@ func main() {
 				base:    *memoryBasePath,
 				overlay: *memoryOverlayPath,
 				state:   *memoryStatePath,
+
+				serve: *memoryServe,
 			},
 			{
 				name:      iconfig.StateName,
@@ -266,6 +289,8 @@ func main() {
 				base:    *stateBasePath,
 				overlay: *stateOverlayPath,
 				state:   *stateStatePath,
+
+				serve: *stateServe,
 			},
 		}
 		for _, res := range resources {
@@ -386,11 +411,15 @@ func main() {
 		log.Println("Migrating from", conn.RemoteAddr())
 
 		var (
-			resumeWg    sync.WaitGroup
-			completedWg sync.WaitGroup
+			allDevicesReceivedWg  sync.WaitGroup
+			devicesReadyWg        sync.WaitGroup
+			migrationsCompletedWg sync.WaitGroup
 		)
-		resumeWg.Add(6)
-		completedWg.Add(6)
+
+		allDevicesReceivedWg.Add(1)
+		setAllDevicesReceived := sync.OnceFunc(func() {
+			allDevicesReceivedWg.Done()
+		})
 
 		resources := []resource{}
 		pro := protocol.NewProtocolRW(
@@ -405,30 +434,42 @@ func main() {
 				dst = protocol.NewFromProtocol(
 					u,
 					func(di *protocol.DevInfo) storage.StorageProvider {
-						stPath := ""
+						var (
+							stPath  = ""
+							stServe = false
+						)
 						switch di.Name {
 						case iconfig.ConfigName:
 							stPath = *configBasePath
+							stServe = *configServe
 
 						case iconfig.DiskName:
 							stPath = *diskBasePath
+							stServe = *diskServe
 
 						case iconfig.InitramfsName:
 							stPath = *initramfsBasePath
+							stServe = *initramfsServe
 
 						case iconfig.KernelName:
 							stPath = *kernelBasePath
+							stServe = *kernelServe
 
 						case iconfig.MemoryName:
 							stPath = *memoryBasePath
+							stServe = *memoryServe
 
 						case iconfig.StateName:
 							stPath = *stateBasePath
+							stServe = *stateServe
 						}
 
 						if strings.TrimSpace(stPath) == "" {
 							panic(errUnknownResourceName)
 						}
+
+						devicesReadyWg.Add(1)
+						migrationsCompletedWg.Add(1)
 
 						if err := os.MkdirAll(filepath.Dir(stPath), os.ModePerm); err != nil {
 							panic(err)
@@ -456,6 +497,7 @@ func main() {
 							size:      di.Size,
 							exp:       exp,
 							storage:   local,
+							serve:     stServe,
 						})
 
 						if err := exp.Init(); err != nil {
@@ -518,12 +560,16 @@ func main() {
 					if err := dst.HandleEvent(func(e *protocol.Event) {
 						switch e.Type {
 						case protocol.EventCustom:
-							if e.CustomType == byte(EventCustomPassAuthority) {
-								resumeWg.Done()
+							switch e.CustomType {
+							case byte(EventCustomPassAuthority):
+								devicesReadyWg.Done()
+
+							case byte(EventCustomAllDevicesSent):
+								setAllDevicesReceived()
 							}
 
 						case protocol.EventCompleted:
-							completedWg.Done()
+							migrationsCompletedWg.Done()
 						}
 					}); err != nil {
 						panic(err)
@@ -560,7 +606,11 @@ func main() {
 			}
 		}()
 
-		resumeWg.Wait()
+		allDevicesReceivedWg.Wait()
+
+		// TODO: Set up file-backed devices for the resources we haven't received
+
+		devicesReadyWg.Wait()
 
 		log.Println("Resuming VM")
 
@@ -587,11 +637,30 @@ func main() {
 
 		log.Println("Resume:", time.Since(before))
 
-		completedWg.Wait()
+		migrationsCompletedWg.Wait()
+
+		becomeMigratable := false
+		for _, res := range resources {
+			if res.serve {
+				becomeMigratable = true
+
+				break
+			}
+		}
+
+		if !becomeMigratable {
+			log.Println("Completed migration, idling")
+
+			select {}
+		}
 
 		log.Println("Completed migration, becoming migratable")
 
 		for _, res := range resources {
+			if !res.serve {
+				continue
+			}
+
 			metrics := modules.NewMetrics(res.storage)
 			dirtyLocal, dirtyRemote := dirtytracker.NewDirtyTracker(metrics, int(res.blockSize))
 			monitor := volatilitymonitor.NewVolatilityMonitor(dirtyLocal, int(res.blockSize), 10*time.Second)
@@ -669,12 +738,29 @@ func main() {
 	var completedWg sync.WaitGroup
 	completedWg.Add(len(exposedResources))
 
+	var devicesLeftToSend atomic.Int32
+
 	for i, eres := range exposedResources {
 		go func(i int, eres exposedResource) {
 			defer completedWg.Done()
 
 			dst := protocol.NewToProtocol(eres.storage.Size(), uint32(i), pro)
-			dst.SendDevInfo(eres.resource.name, eres.resource.blockSize)
+
+			if err := dst.SendDevInfo(eres.resource.name, eres.resource.blockSize); err != nil {
+				panic(err)
+			}
+			devicesLeftToSend.Add(1)
+
+			if devicesLeftToSend.Load() >= int32(len(exposedResources)) {
+				go func() {
+					if err := dst.SendEvent(&protocol.Event{
+						Type:       protocol.EventCustom,
+						CustomType: byte(EventCustomAllDevicesSent),
+					}); err != nil {
+						panic(err)
+					}
+				}()
+			}
 
 			go func() {
 				if err := dst.HandleNeedAt(func(offset int64, length int32) {
