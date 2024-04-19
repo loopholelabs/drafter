@@ -72,6 +72,7 @@ func StartVM(
 
 	cpuCount int,
 	memorySize int,
+	cpuTemplate string,
 	bootArgs string,
 
 	hostInterface string,
@@ -111,8 +112,9 @@ func StartVM(
 		http.MethodPut,
 		client,
 		&v1.MachineConfig{
-			VCPUCount:  cpuCount,
-			MemSizeMib: memorySize,
+			VCPUCount:   cpuCount,
+			MemSizeMib:  memorySize,
+			CPUTemplate: cpuTemplate,
 		},
 		"machine-config",
 	); err != nil {
