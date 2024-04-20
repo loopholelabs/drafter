@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -120,12 +121,12 @@ func main() {
 	memoryStatePath := flag.String("memory-state-path", filepath.Join("out", "overlay", "drafter.drftmemory.state"), "Memory state path (serve use only)")
 	stateStatePath := flag.String("state-state-path", filepath.Join("out", "overlay", "drafter.drftstate.state"), "State state path (serve use only)")
 
-	configServe := flag.Bool("config-serve", false, "Whether to serve the config (serve use only)")
-	diskServe := flag.Bool("disk-serve", false, "Whether to serve the disk (serve use only)")
-	initramfsServe := flag.Bool("initramfs-serve", false, "Whether to serve the initramfs (serve use only)")
-	kernelServe := flag.Bool("kernel-serve", false, "Whether to serve the kernel (serve use only)")
-	memoryServe := flag.Bool("memory-serve", false, "Whether to serve the memory (serve use only)")
-	stateServe := flag.Bool("state-serve", false, "Whether to serve the state (serve use only)")
+	configServe := flag.Bool("config-serve", true, "Whether to serve the config (serve use only)")
+	diskServe := flag.Bool("disk-serve", true, "Whether to serve the disk (serve use only)")
+	initramfsServe := flag.Bool("initramfs-serve", true, "Whether to serve the initramfs (serve use only)")
+	kernelServe := flag.Bool("kernel-serve", true, "Whether to serve the kernel (serve use only)")
+	memoryServe := flag.Bool("memory-serve", true, "Whether to serve the memory (serve use only)")
+	stateServe := flag.Bool("state-serve", true, "Whether to serve the state (serve use only)")
 
 	concurrency := flag.Int("concurrency", 4096, "Amount of concurrent workers to use in migrations")
 
@@ -230,70 +231,73 @@ func main() {
 		os.Exit(0)
 	}()
 
+	resourceConfigurations := []resource{
+		{
+			name:      iconfig.ConfigName,
+			blockSize: uint32(*blockSize),
+
+			base:    *configBasePath,
+			overlay: *configOverlayPath,
+			state:   *configStatePath,
+
+			serve: *configServe,
+		},
+		{
+			name:      iconfig.DiskName,
+			blockSize: uint32(*blockSize),
+
+			base:    *diskBasePath,
+			overlay: *diskOverlayPath,
+			state:   *diskStatePath,
+
+			serve: *diskServe,
+		},
+		{
+			name:      iconfig.InitramfsName,
+			blockSize: uint32(*blockSize),
+
+			base:    *initramfsBasePath,
+			overlay: *initramfsOverlayPath,
+			state:   *initramfsStatePath,
+
+			serve: *initramfsServe,
+		},
+		{
+			name:      iconfig.KernelName,
+			blockSize: uint32(*blockSize),
+
+			base:    *kernelBasePath,
+			overlay: *kernelOverlayPath,
+			state:   *kernelStatePath,
+
+			serve: *kernelServe,
+		},
+		{
+			name:      iconfig.MemoryName,
+			blockSize: uint32(*blockSize),
+
+			base:    *memoryBasePath,
+			overlay: *memoryOverlayPath,
+			state:   *memoryStatePath,
+
+			serve: *memoryServe,
+		},
+		{
+			name:      iconfig.StateName,
+			blockSize: uint32(*blockSize),
+
+			base:    *stateBasePath,
+			overlay: *stateOverlayPath,
+			state:   *stateStatePath,
+
+			serve: *stateServe,
+		},
+	}
+
 	if strings.TrimSpace(*raddr) == "" {
-		resources = []resource{
-			{
-				name:      iconfig.ConfigName,
-				blockSize: uint32(*blockSize),
-
-				base:    *configBasePath,
-				overlay: *configOverlayPath,
-				state:   *configStatePath,
-
-				serve: *configServe,
-			},
-			{
-				name:      iconfig.DiskName,
-				blockSize: uint32(*blockSize),
-
-				base:    *diskBasePath,
-				overlay: *diskOverlayPath,
-				state:   *diskStatePath,
-
-				serve: *diskServe,
-			},
-			{
-				name:      iconfig.InitramfsName,
-				blockSize: uint32(*blockSize),
-
-				base:    *initramfsBasePath,
-				overlay: *initramfsOverlayPath,
-				state:   *initramfsStatePath,
-
-				serve: *initramfsServe,
-			},
-			{
-				name:      iconfig.KernelName,
-				blockSize: uint32(*blockSize),
-
-				base:    *kernelBasePath,
-				overlay: *kernelOverlayPath,
-				state:   *kernelStatePath,
-
-				serve: *kernelServe,
-			},
-			{
-				name:      iconfig.MemoryName,
-				blockSize: uint32(*blockSize),
-
-				base:    *memoryBasePath,
-				overlay: *memoryOverlayPath,
-				state:   *memoryStatePath,
-
-				serve: *memoryServe,
-			},
-			{
-				name:      iconfig.StateName,
-				blockSize: uint32(*blockSize),
-
-				base:    *stateBasePath,
-				overlay: *stateOverlayPath,
-				state:   *stateStatePath,
-
-				serve: *stateServe,
-			},
-		}
+		resources = resourceConfigurations
 		for _, res := range resources {
+			// TODO: Decompose this into func
 			if err := os.MkdirAll(filepath.Dir(res.overlay), os.ModePerm); err != nil {
 				panic(err)
 			}
@@ -308,20 +312,35 @@ func main() {
 			}
 			res.size = uint64(stat.Size())
 
-			src, exp, err := device.NewDevice(&config.DeviceSchema{
-				Name:      res.name,
-				System:    "sparsefile",
-				Location:  res.overlay,
-				Size:      fmt.Sprintf("%v", res.size),
-				BlockSize: fmt.Sprintf("%v", res.blockSize),
-				Expose:    true,
-				ROSource: &config.DeviceSchema{
-					Name:     res.state,
-					System:   "file",
-					Location: res.base,
-					Size:     fmt.Sprintf("%v", res.size),
-				},
-			})
+			var (
+				src storage.StorageProvider
+				exp storage.ExposedStorage
+			)
+			if strings.TrimSpace(res.overlay) == "" {
+				src, exp, err = device.NewDevice(&config.DeviceSchema{
+					Name:      res.name,
+					System:    "file",
+					Location:  res.base,
+					Size:      fmt.Sprintf("%v", res.size),
+					BlockSize: fmt.Sprintf("%v", res.blockSize),
+					Expose:    true,
+				})
+			} else {
+				src, exp, err = device.NewDevice(&config.DeviceSchema{
+					Name:      res.name,
+					System:    "sparsefile",
+					Location:  res.overlay,
+					Size:      fmt.Sprintf("%v", res.size),
+					BlockSize: fmt.Sprintf("%v", res.blockSize),
+					Expose:    true,
+					ROSource: &config.DeviceSchema{
+						Name:     res.state,
+						System:   "file",
+						Location: res.base,
+						Size:     fmt.Sprintf("%v", res.size),
+					},
+				})
+			}
 			if err != nil {
 				panic(err)
 			}
@@ -366,6 +385,10 @@ func main() {
 
 			if err := unix.Mknod(filepath.Join(vmPath, res.name), unix.S_IFBLK|0666, dev); err != nil {
 				panic(err)
+			}
+
+			if !res.serve {
+				continue
 			}
 
 			metrics := modules.NewMetrics(src)
@@ -608,7 +631,129 @@ func main() {
 
 		allDevicesReceivedWg.Wait()
 
-		// TODO: Set up file-backed devices for the resources we haven't received
+		for _, res := range resourceConfigurations {
+			if slices.ContainsFunc(
+				resources,
+				func(r resource) bool {
+					return res.name == r.name
+				},
+			) {
+				continue
+			}
+
+			// TODO: Decompose this into func
+			if err := os.MkdirAll(filepath.Dir(res.overlay), os.ModePerm); err != nil {
+				panic(err)
+			}
+
+			if err := os.MkdirAll(filepath.Dir(res.base), os.ModePerm); err != nil {
+				panic(err)
+			}
+
+			stat, err := os.Stat(res.base)
+			if err != nil {
+				panic(err)
+			}
+			res.size = uint64(stat.Size())
+
+			var (
+				src storage.StorageProvider
+				exp storage.ExposedStorage
+			)
+			if strings.TrimSpace(res.overlay) == "" {
+				src, exp, err = device.NewDevice(&config.DeviceSchema{
+					Name:      res.name,
+					System:    "file",
+					Location:  res.base,
+					Size:      fmt.Sprintf("%v", res.size),
+					BlockSize: fmt.Sprintf("%v", res.blockSize),
+					Expose:    true,
+				})
+			} else {
+				src, exp, err = device.NewDevice(&config.DeviceSchema{
+					Name:      res.name,
+					System:    "sparsefile",
+					Location:  res.overlay,
+					Size:      fmt.Sprintf("%v", res.size),
+					BlockSize: fmt.Sprintf("%v", res.blockSize),
+					Expose:    true,
+					ROSource: &config.DeviceSchema{
+						Name:     res.state,
+						System:   "file",
+						Location: res.base,
+						Size:     fmt.Sprintf("%v", res.size),
+					},
+				})
+			}
+			if err != nil {
+				panic(err)
+			}
+			defer src.Close()
+			defer exp.Shutdown()
+			defer runner.Close()
+
+			devicePath := filepath.Join("/dev", exp.Device())
+
+			log.Println("Exposed", devicePath, "for", res.name)
+
+			if res.name == iconfig.ConfigName {
+				configFile, err := os.Open(devicePath)
+				if err != nil {
+					panic(err)
+				}
+				defer configFile.Close()
+
+				if err := json.NewDecoder(configFile).Decode(&packageConfig); err != nil {
+					panic(err)
+				}
+
+				if err := configFile.Close(); err != nil {
+					panic(err)
+				}
+			}
+
+			info, err := os.Stat(devicePath)
+			if err != nil {
+				panic(err)
+			}
+
+			deviceStat, ok := info.Sys().(*syscall.Stat_t)
+			if !ok {
+				panic(errors.New("could not get NBD device stat"))
+			}
+
+			major := uint64(deviceStat.Rdev / 256)
+			minor := uint64(deviceStat.Rdev % 256)
+
+			dev := int((major << 8) | minor)
+
+			if err := unix.Mknod(filepath.Join(vmPath, res.name), unix.S_IFBLK|0666, dev); err != nil {
+				panic(err)
+			}
+
+			metrics := modules.NewMetrics(src)
+			dirtyLocal, dirtyRemote := dirtytracker.NewDirtyTracker(metrics, int(res.blockSize))
+			monitor := volatilitymonitor.NewVolatilityMonitor(dirtyLocal, int(res.blockSize), 10*time.Second)
+
+			storage := modules.NewLockable(monitor)
+			defer storage.Unlock()
+
+			exp.SetProvider(storage)
+
+			totalBlocks := (int(storage.Size()) + int(res.blockSize) - 1) / int(res.blockSize)
+
+			orderer := blocks.NewPriorityBlockOrder(totalBlocks, monitor)
+			orderer.AddAll()
+
+			exposedResources = append(exposedResources, exposedResource{
+				exp:         exp,
+				resource:    res,
+				storage:     storage,
+				orderer:     orderer,
+				totalBlocks: totalBlocks,
+				dirtyRemote: dirtyRemote,
+			})
+		}
 
 		devicesReadyWg.Wait()
 
@@ -639,23 +784,6 @@ func main() {
 
 		migrationsCompletedWg.Wait()
 
-		becomeMigratable := false
-		for _, res := range resources {
-			if res.serve {
-				becomeMigratable = true
-
-				break
-			}
-		}
-
-		if !becomeMigratable {
-			log.Println("Completed migration, idling")
-
-			select {}
-		}
-
-		log.Println("Completed migration, becoming migratable")
-
 		for _, res := range resources {
 			if !res.serve {
 				continue
@@ -685,6 +813,23 @@ func main() {
 			})
 		}
 	}
+
+	becomeMigratable := false
+	for _, res := range exposedResources {
+		if res.resource.serve {
+			becomeMigratable = true
+
+			break
+		}
+	}
+
+	if !becomeMigratable {
+		log.Println("Completed migration, idling")
+
+		select {}
+	}
+
+	log.Println("Completed migration, becoming migratable")
 
 	lis, err := net.Listen("tcp", *laddr)
 	if err != nil {
