@@ -5,7 +5,7 @@ OUTPUT_DIR ?= out
 DST ?=
 
 # Private variables
-obj = drafter-daemon drafter-snapshotter drafter-packager drafter-runner drafter-registry drafter-peer drafter-silo-peer
+obj = drafter-daemon drafter-snapshotter drafter-packager drafter-runner drafter-registry drafter-peer drafter-silo-peer drafter-terminator
 all: $(addprefix build/,$(obj))
 
 # Build

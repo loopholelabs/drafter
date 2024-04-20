@@ -824,12 +824,12 @@ func main() {
 	}
 
 	if !becomeMigratable {
-		log.Println("Completed migration, idling")
+		log.Println("Completed all migrations, idling")
 
 		select {}
 	}
 
-	log.Println("Completed migration, becoming migratable")
+	log.Println("Completed all migrations, becoming migratable")
 
 	lis, err := net.Listen("tcp", *laddr)
 	if err != nil {
@@ -1113,5 +1113,5 @@ func main() {
 
 	completedWg.Wait()
 
-	log.Println("Completed migration, shutting down")
+	log.Println("Completed all migrations, shutting down")
 }
