@@ -61,6 +61,10 @@ type resource struct {
 	storage storage.StorageProvider
 
 	serve bool
+
+	maxDirtyBlocks int
+	minCycles      int
+	maxCycles      int
 }
 
 type exposedResource struct {
@@ -127,6 +131,27 @@ func main() {
 	kernelServe := flag.Bool("kernel-serve", true, "Whether to serve the kernel (serve use only)")
 	memoryServe := flag.Bool("memory-serve", true, "Whether to serve the memory (serve use only)")
 	stateServe := flag.Bool("state-serve", true, "Whether to serve the state (serve use only)")
+
+	configMaxDirtyBlocks := flag.Int("config-max-dirty-blocks", 200, "Maximum amount of dirty blocks per cycle after which to transfer authority for config (serve use only)")
+	diskMaxDirtyBlocks := flag.Int("disk-max-dirty-blocks", 200, "Maximum amount of dirty blocks per cycle after which to transfer authority for disk (serve use only)")
+	initramfsMaxDirtyBlocks := flag.Int("initramfs-max-dirty-blocks", 200, "Maximum amount of dirty blocks per cycle after which to transfer authority for initramfs (serve use only)")
+	kernelMaxDirtyBlocks := flag.Int("kernel-max-dirty-blocks", 200, "Maximum amount of dirty blocks per cycle after which to transfer authority for kernel (serve use only)")
+	memoryMaxDirtyBlocks := flag.Int("memory-max-dirty-blocks", 200, "Maximum amount of dirty blocks per cycle after which to transfer authority for memory (serve use only)")
+	stateMaxDirtyBlocks := flag.Int("state-max-dirty-blocks", 200, "Maximum amount of dirty blocks per cycle after which to transfer authority for state (serve use only)")
+
+	configMinCycles := flag.Int("config-min-cycles", 5, "Minimum amount of cycles with dirty blocks below the block threshold after which to transfer authority for config (serve use only)")
+	diskMinCycles := flag.Int("disk-min-cycles", 5, "Minimum amount of cycles with dirty blocks below the block threshold after which to transfer authority for disk (serve use only)")
+	initramfsMinCycles := flag.Int("initramfs-min-cycles", 5, "Minimum amount of cycles with dirty blocks below the block threshold after which to transfer authority for initramfs (serve use only)")
+	kernelMinCycles := flag.Int("kernel-min-cycles", 5, "Minimum amount of cycles with dirty blocks below the block threshold after which to transfer authority for kernel (serve use only)")
+	memoryMinCycles := flag.Int("memory-min-cycles", 5, "Minimum amount of cycles with dirty blocks below the block threshold after which to transfer authority for memory (serve use only)")
+	stateMinCycles := flag.Int("state-min-cycles", 5, "Minimum amount of cycles with dirty blocks below the block threshold after which to transfer authority for state (serve use only)")
+
+	configMaxCycles := flag.Int("config-max-cycles", 10, "Maximum amount of cycles to check for dirty blocks after which to transfer authority for config (serve use only)")
+	diskMaxCycles := flag.Int("disk-max-cycles", 10, "Maximum amount of cycles to check for dirty blocks after which to transfer authority for disk (serve use only)")
+	initramfsMaxCycles := flag.Int("initramfs-max-cycles", 10, "Maximum amount of cycles to check for dirty blocks after which to transfer authority for initramfs (serve use only)")
+	kernelMaxCycles := flag.Int("kernel-max-cycles", 10, "Maximum amount of cycles to check for dirty blocks after which to transfer authority for kernel (serve use only)")
+	memoryMaxCycles := flag.Int("memory-max-cycles", 10, "Maximum amount of cycles to check for dirty blocks after which to transfer authority for memory (serve use only)")
+	stateMaxCycles := flag.Int("state-max-cycles", 10, "Maximum amount of cycles to check for dirty blocks after which to transfer authority for state (serve use only)")
 
 	concurrency := flag.Int("concurrency", 4096, "Amount of concurrent workers to use in migrations")
 
@@ -241,6 +266,10 @@ func main() {
 			state:   *configStatePath,
 
 			serve: *configServe,
+
+			maxDirtyBlocks: *configMaxDirtyBlocks,
+			minCycles:      *configMinCycles,
+			maxCycles:      *configMaxCycles,
 		},
 		{
 			name:      iconfig.DiskName,
@@ -251,6 +280,10 @@ func main() {
 			state:   *diskStatePath,
 
 			serve: *diskServe,
+
+			maxDirtyBlocks: *diskMaxDirtyBlocks,
+			minCycles:      *diskMinCycles,
+			maxCycles:      *diskMaxCycles,
 		},
 		{
 			name:      iconfig.InitramfsName,
@@ -261,6 +294,10 @@ func main() {
 			state:   *initramfsStatePath,
 
 			serve: *initramfsServe,
+
+			maxDirtyBlocks: *initramfsMaxDirtyBlocks,
+			minCycles:      *initramfsMinCycles,
+			maxCycles:      *initramfsMaxCycles,
 		},
 		{
 			name:      iconfig.KernelName,
@@ -271,6 +308,10 @@ func main() {
 			state:   *kernelStatePath,
 
 			serve: *kernelServe,
+
+			maxDirtyBlocks: *kernelMaxDirtyBlocks,
+			minCycles:      *kernelMinCycles,
+			maxCycles:      *kernelMaxCycles,
 		},
 		{
 			name:      iconfig.MemoryName,
@@ -281,6 +322,10 @@ func main() {
 			state:   *memoryStatePath,
 
 			serve: *memoryServe,
+
+			maxDirtyBlocks: *memoryMaxDirtyBlocks,
+			minCycles:      *memoryMinCycles,
+			maxCycles:      *memoryMaxCycles,
 		},
 		{
 			name:      iconfig.StateName,
@@ -291,6 +336,10 @@ func main() {
 			state:   *stateStatePath,
 
 			serve: *stateServe,
+
+			maxDirtyBlocks: *stateMaxDirtyBlocks,
+			minCycles:      *stateMinCycles,
+			maxCycles:      *stateMaxCycles,
 		},
 	}
 
@@ -1048,11 +1097,11 @@ func main() {
 				}
 
 				// Below threshold; let's suspend the VM here and resume it over there
-				if len(blocks) <= 200 && !suspendedVM { // && len(blocks) > 0
+				if len(blocks) <= eres.resource.maxDirtyBlocks && !suspendedVM { // && len(blocks) > 0
 					if eres.resource.name == iconfig.MemoryName {
 						subsequentSyncs++
 
-						if subsequentSyncs > 10 {
+						if subsequentSyncs > eres.resource.minCycles || subsequentSyncs > eres.resource.maxCycles {
 							suspendVM = true
 						} else {
 							time.Sleep(time.Millisecond * 500)
