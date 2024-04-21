@@ -46,6 +46,7 @@ type Daemon struct {
 }
 
 func NewDaemon(
+	ctx context.Context,
 	hostInterface string,
 
 	hostVethCIDR string,
@@ -85,7 +86,7 @@ func NewDaemon(
 		namespaces:     map[string]claimableNamespace{},
 		namespacesLock: sync.Mutex{},
 
-		namespaceVethIPs: NewIPTable(namespaceVethCIDR),
+		namespaceVethIPs: NewIPTable(namespaceVethCIDR, ctx),
 	}
 }
 
@@ -99,7 +100,7 @@ func (d *Daemon) Open(ctx context.Context) error {
 		return err
 	}
 
-	hostVethIPs := NewIPTable(d.hostVethCIDR)
+	hostVethIPs := NewIPTable(d.hostVethCIDR, ctx)
 	if err := hostVethIPs.Open(ctx); err != nil {
 		return err
 	}

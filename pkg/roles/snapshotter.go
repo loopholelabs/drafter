@@ -3,6 +3,7 @@ package roles
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -15,6 +16,10 @@ import (
 	"github.com/loopholelabs/drafter/pkg/firecracker"
 	"github.com/loopholelabs/drafter/pkg/utils"
 	"github.com/loopholelabs/drafter/pkg/vsock"
+)
+
+var (
+	ErrCouldNotGetDeviceStat = errors.New("could not get NBD device stat")
 )
 
 type Snapshotter struct {

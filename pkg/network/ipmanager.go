@@ -24,11 +24,11 @@ type IPTable struct {
 	prefix *ipam.Prefix
 }
 
-func NewIPTable(cidr string) *IPTable {
+func NewIPTable(cidr string, ctx context.Context) *IPTable {
 	return &IPTable{
 		cidr: cidr,
 
-		ipam: ipam.New(),
+		ipam: ipam.New(ctx),
 	}
 }
 

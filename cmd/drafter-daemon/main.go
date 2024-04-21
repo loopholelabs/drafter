@@ -32,6 +32,8 @@ func main() {
 	defer cancel()
 
 	daemon := network.NewDaemon(
+		ctx,
+
 		*hostInterface,
 
 		*hostVethCIDR,
