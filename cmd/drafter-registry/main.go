@@ -261,39 +261,8 @@ func main() {
 							storage.BlockTypeDirty:    *concurrency,
 							storage.BlockTypePriority: *concurrency,
 						}
-						cfg.LockerHandler = func() {
-							if err := to.SendEvent(&protocol.Event{
-								Type: protocol.EventPreLock,
-							}); err != nil {
-								panic(err)
-							}
-
-							eres.storage.Lock()
-
-							if err := to.SendEvent(&protocol.Event{
-								Type: protocol.EventPostLock,
-							}); err != nil {
-								panic(err)
-							}
-
-						}
-						cfg.UnlockerHandler = func() {
-							if err := to.SendEvent(&protocol.Event{
-								Type: protocol.EventPreUnlock,
-							}); err != nil {
-								panic(err)
-							}
-
-							eres.storage.Unlock()
-
-							if err := to.SendEvent(&protocol.Event{
-								Type: protocol.EventPostUnlock,
-							}); err != nil {
-								panic(err)
-							}
-						}
 						cfg.ProgressHandler = func(p *migrator.MigrationProgress) {
-							// log.Printf("%v/%v", p.ReadyBlocks, p.TotalBlocks)
+							log.Printf("Migrated %v/%v blocks for device %v", p.ReadyBlocks, p.TotalBlocks, u)
 						}
 
 						mig, err := migrator.NewMigrator(eres.dirtyRemote, to, eres.orderer, cfg)
