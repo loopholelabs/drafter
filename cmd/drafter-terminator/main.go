@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"io"
 	"log"
 	"net"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/loopholelabs/drafter/pkg/config"
 	"github.com/loopholelabs/silo/pkg/storage"
@@ -41,10 +43,58 @@ func main() {
 
 	flag.Parse()
 
+	errs := []error{}
+	var errsLock sync.Mutex
+
+	defer func() {
+		errsLock.Lock()
+		defer errsLock.Unlock()
+
+		if len(errs) > 0 {
+			log.Fatal(errs)
+		}
+	}()
+
+	defer func() {
+		if err := recover(); err != nil {
+			errsLock.Lock()
+			defer errsLock.Unlock()
+
+			errs = append(errs, fmt.Errorf("%v", err))
+		}
+	}()
+
+	var wg sync.WaitGroup
+	defer wg.Wait()
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	conn, err := net.Dial("tcp", *raddr)
+	var (
+		conn net.Conn
+		err  error
+	)
+	handleGoroutinePanic := func() func() {
+		return func() {
+			if err := recover(); err != nil {
+				errsLock.Lock()
+				defer errsLock.Unlock()
+
+				errs = append(errs, fmt.Errorf("%v", err))
+
+				cancel()
+
+				// TODO: Make `func (p *protocol.ProtocolRW) Handle() error` return if context is cancelled, then remove this workaround
+				if conn != nil {
+					if err := conn.Close(); err != nil {
+						errs = append(errs, err)
+					}
+				}
+			}
+		}
+	}
+
+	conn, err = net.Dial("tcp", *raddr)
 	if err != nil {
 		panic(err)
 	}
@@ -64,6 +114,8 @@ func main() {
 			from = protocol.NewFromProtocol(
 				u,
 				func(di *protocol.DevInfo) storage.StorageProvider {
+					defer handleGoroutinePanic()()
+
 					var (
 						path = ""
 					)
@@ -97,13 +149,13 @@ func main() {
 						panic(err)
 					}
 
-					st, err := sources.NewFileStorageCreate(path, int64(di.Size))
+					storage, err := sources.NewFileStorageCreate(path, int64(di.Size))
 					if err != nil {
 						panic(err)
 					}
 
 					var remote *waitingcache.WaitingCacheRemote
-					local, remote = waitingcache.NewWaitingCache(st, int(di.BlockSize))
+					local, remote = waitingcache.NewWaitingCache(storage, int(di.BlockSize))
 					local.NeedAt = func(offset int64, length int32) {
 						if err := from.NeedAt(offset, length); err != nil {
 							panic(err)
@@ -120,31 +172,51 @@ func main() {
 				p,
 			)
 
+			wg.Add(1)
 			go func() {
-				if err := from.HandleSend(ctx); err != nil {
+				defer wg.Done()
+				defer handleGoroutinePanic()()
+
+				if err := from.HandleSend(ctx); err != nil && !errors.Is(err, context.Canceled) {
 					panic(err)
 				}
 			}()
 
+			wg.Add(1)
 			go func() {
-				if err := from.HandleReadAt(); err != nil {
+				defer wg.Done()
+				defer handleGoroutinePanic()()
+
+				if err := from.HandleReadAt(); err != nil && !errors.Is(err, context.Canceled) {
 					panic(err)
 				}
 			}()
 
+			wg.Add(1)
 			go func() {
-				if err := from.HandleWriteAt(); err != nil {
+				defer wg.Done()
+				defer handleGoroutinePanic()()
+
+				if err := from.HandleWriteAt(); err != nil && !errors.Is(err, context.Canceled) {
 					panic(err)
 				}
 			}()
 
+			wg.Add(1)
 			go func() {
+				defer wg.Done()
+				defer handleGoroutinePanic()()
+
 				if err := from.HandleDevInfo(); err != nil {
 					panic(err)
 				}
 			}()
 
+			wg.Add(1)
 			go func() {
+				defer wg.Done()
+				defer handleGoroutinePanic()()
+
 				if err := from.HandleEvent(func(e *protocol.Event) {
 					switch e.Type {
 					case protocol.EventCustom:
@@ -159,17 +231,21 @@ func main() {
 					case protocol.EventCompleted:
 						log.Println("Completed migration of device", u)
 					}
-				}); err != nil {
+				}); err != nil && !errors.Is(err, context.Canceled) {
 					panic(err)
 				}
 			}()
 
+			wg.Add(1)
 			go func() {
+				defer wg.Done()
+				defer handleGoroutinePanic()()
+
 				if err := from.HandleDirtyList(func(blocks []uint) {
 					if local != nil {
 						local.DirtyBlocks(blocks)
 					}
-				}); err != nil {
+				}); err != nil && !errors.Is(err, context.Canceled) {
 					panic(err)
 				}
 			}()
