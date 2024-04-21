@@ -57,8 +57,14 @@ func main() {
 	diskPath := flag.String("disk-path", filepath.Join("out", "package", "drafter.drftdisk"), "Disk path")
 	configPath := flag.String("config-path", filepath.Join("out", "package", "drafter.drftconfig"), "Config path")
 
+	stateBlockSize := flag.Uint("state-block-size", 1024*64, "State block size")
+	memoryBlockSize := flag.Uint("memory-block-size", 1024*64, "Memory block size")
+	initramfsBlockSize := flag.Uint("initramfs-block-size", 1024*64, "initramfs block size")
+	kernelBlockSize := flag.Uint("kernel-block-size", 1024*64, "Kernel block size")
+	diskBlockSize := flag.Uint("disk-block-size", 1024*64, "Disk block size")
+	configBlockSize := flag.Uint("config-block-size", 1024*64, "Config block size")
+
 	laddr := flag.String("laddr", ":1600", "Address to listen on")
-	blockSize := flag.Uint("block-size", 1024*64, "Block size to use (serve use only)")
 
 	concurrency := flag.Int("concurrency", 4096, "Amount of concurrent workers to use in migrations")
 
@@ -69,34 +75,34 @@ func main() {
 
 	resources := []resource{
 		{
-			name:      iconfig.ConfigName,
-			blockSize: uint32(*blockSize),
-			base:      *configPath,
+			name:      iconfig.StateName,
+			blockSize: uint32(*stateBlockSize),
+			base:      *statePath,
 		},
 		{
-			name:      iconfig.DiskName,
-			blockSize: uint32(*blockSize),
-			base:      *diskPath,
+			name:      iconfig.MemoryName,
+			blockSize: uint32(*memoryBlockSize),
+			base:      *memoryPath,
 		},
 		{
 			name:      iconfig.InitramfsName,
-			blockSize: uint32(*blockSize),
+			blockSize: uint32(*initramfsBlockSize),
 			base:      *initramfsPath,
 		},
 		{
 			name:      iconfig.KernelName,
-			blockSize: uint32(*blockSize),
+			blockSize: uint32(*kernelBlockSize),
 			base:      *kernelPath,
 		},
 		{
-			name:      iconfig.MemoryName,
-			blockSize: uint32(*blockSize),
-			base:      *memoryPath,
+			name:      iconfig.DiskName,
+			blockSize: uint32(*diskBlockSize),
+			base:      *diskPath,
 		},
 		{
-			name:      iconfig.StateName,
-			blockSize: uint32(*blockSize),
-			base:      *statePath,
+			name:      iconfig.ConfigName,
+			blockSize: uint32(*configBlockSize),
+			base:      *configPath,
 		},
 	}
 
