@@ -99,12 +99,10 @@ func main() {
 		)...,
 	)
 
-	if len(errs) > 0 {
-		for _, err := range errs {
-			// TODO: Make `func (p *protocol.ProtocolRW) Handle() error` return if context is cancelled, then remove this workaround
-			if err != nil && !(errors.Is(err, context.Canceled) && errors.Is(context.Cause(ctx), errInterrupted)) && !utils.IsClosedErr(err) {
-				panic(err)
-			}
+	for _, err := range errs {
+		// TODO: Make `func (p *protocol.ProtocolRW) Handle() error` return if context is cancelled, then remove this workaround
+		if err != nil && !(errors.Is(err, context.Canceled) && errors.Is(context.Cause(ctx), errInterrupted)) && !utils.IsClosedErr(err) {
+			panic(err)
 		}
 	}
 

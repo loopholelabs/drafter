@@ -94,13 +94,13 @@ func Terminate(
 		ctx,
 		readers,
 		writers,
-		func(p protocol.Protocol, u uint32) {
+		func(p protocol.Protocol, index uint32) {
 			var (
 				from  *protocol.FromProtocol
 				local *waitingcache.WaitingCacheLocal
 			)
 			from = protocol.NewFromProtocol(
-				u,
+				index,
 				func(di *protocol.DevInfo) storage.StorageProvider {
 					defer handleGoroutinePanic()()
 
@@ -132,7 +132,7 @@ func Terminate(
 					}
 
 					if hook := hooks.OnDeviceReceived; hook != nil {
-						hook(u, di.Name)
+						hook(index, di.Name)
 					}
 
 					if err := os.MkdirAll(filepath.Dir(path), os.ModePerm); err != nil {
@@ -213,7 +213,7 @@ func Terminate(
 						switch e.CustomType {
 						case byte(EventCustomPassAuthority):
 							if hook := hooks.OnDeviceAuthorityReceived; hook != nil {
-								hook(u)
+								hook(index)
 							}
 
 						case byte(EventCustomAllDevicesSent):
@@ -224,7 +224,7 @@ func Terminate(
 
 					case protocol.EventCompleted:
 						if hook := hooks.OnDeviceMigrationCompleted; hook != nil {
-							hook(u)
+							hook(index)
 						}
 					}
 				}); err != nil && !(errors.Is(err, context.Canceled) && errors.Is(context.Cause(ctx), errFinished)) {
