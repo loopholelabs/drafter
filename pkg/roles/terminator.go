@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"github.com/loopholelabs/drafter/pkg/config"
+	"github.com/loopholelabs/drafter/pkg/utils"
 	"github.com/loopholelabs/silo/pkg/storage"
 	"github.com/loopholelabs/silo/pkg/storage/protocol"
 	"github.com/loopholelabs/silo/pkg/storage/sources"
@@ -26,6 +27,8 @@ const (
 
 var (
 	ErrUnknownDeviceName = errors.New("unknown device name")
+
+	errFinished = errors.New("finished")
 )
 
 type TerminateHooks struct {
@@ -39,7 +42,7 @@ type TerminateHooks struct {
 
 func Terminate(
 	ctx context.Context,
-	connCloser io.Closer, // TODO: Make `func (p *protocol.ProtocolRW) Handle() error` return if context is cancelled, then remove this workaround
+	conn io.Closer, // TODO: Make `func (p *protocol.ProtocolRW) Handle() error` return if context is cancelled, then remove this workaround
 
 	statePath,
 	memoryPath,
@@ -55,20 +58,11 @@ func Terminate(
 ) (errs []error) {
 	var errsLock sync.Mutex
 
-	defer func() {
-		if err := recover(); err != nil {
-			errsLock.Lock()
-			defer errsLock.Unlock()
-
-			errs = append(errs, fmt.Errorf("%v", err))
-		}
-	}()
-
 	var wg sync.WaitGroup
 	defer wg.Wait()
 
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
+	ctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(errFinished)
 
 	handleGoroutinePanic := func() func() {
 		return func() {
@@ -76,19 +70,25 @@ func Terminate(
 				errsLock.Lock()
 				defer errsLock.Unlock()
 
-				errs = append(errs, fmt.Errorf("%v", err))
+				if e, ok := err.(error); ok {
+					errs = append(errs, e)
+				} else {
+					errs = append(errs, fmt.Errorf("%v", err))
+				}
 
-				cancel()
+				cancel(errFinished)
 
 				// TODO: Make `func (p *protocol.ProtocolRW) Handle() error` return if context is cancelled, then remove this workaround
-				if connCloser != nil {
-					if err := connCloser.Close(); err != nil {
+				if conn != nil {
+					if err := conn.Close(); err != nil && !utils.IsClosedErr(err) {
 						errs = append(errs, err)
 					}
 				}
 			}
 		}
 	}
+
+	defer handleGoroutinePanic()
 
 	pro := protocol.NewProtocolRW(
 		ctx,
@@ -167,7 +167,7 @@ func Terminate(
 				defer wg.Done()
 				defer handleGoroutinePanic()()
 
-				if err := from.HandleSend(ctx); err != nil && !errors.Is(err, context.Canceled) {
+				if err := from.HandleSend(ctx); err != nil && !(errors.Is(err, context.Canceled) && errors.Is(context.Cause(ctx), errFinished)) {
 					panic(err)
 				}
 			}()
@@ -177,7 +177,7 @@ func Terminate(
 				defer wg.Done()
 				defer handleGoroutinePanic()()
 
-				if err := from.HandleReadAt(); err != nil && !errors.Is(err, context.Canceled) {
+				if err := from.HandleReadAt(); err != nil && !(errors.Is(err, context.Canceled) && errors.Is(context.Cause(ctx), errFinished)) {
 					panic(err)
 				}
 			}()
@@ -187,7 +187,7 @@ func Terminate(
 				defer wg.Done()
 				defer handleGoroutinePanic()()
 
-				if err := from.HandleWriteAt(); err != nil && !errors.Is(err, context.Canceled) {
+				if err := from.HandleWriteAt(); err != nil && !(errors.Is(err, context.Canceled) && errors.Is(context.Cause(ctx), errFinished)) {
 					panic(err)
 				}
 			}()
@@ -227,7 +227,7 @@ func Terminate(
 							hook(u)
 						}
 					}
-				}); err != nil && !errors.Is(err, context.Canceled) {
+				}); err != nil && !(errors.Is(err, context.Canceled) && errors.Is(context.Cause(ctx), errFinished)) {
 					panic(err)
 				}
 			}()
@@ -241,7 +241,7 @@ func Terminate(
 					if local != nil {
 						local.DirtyBlocks(blocks)
 					}
-				}); err != nil && !errors.Is(err, context.Canceled) {
+				}); err != nil && !(errors.Is(err, context.Canceled) && errors.Is(context.Cause(ctx), errFinished)) {
 					panic(err)
 				}
 			}()

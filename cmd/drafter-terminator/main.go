@@ -2,13 +2,21 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"io"
 	"log"
 	"net"
+	"os"
+	"os/signal"
 	"path/filepath"
 
 	"github.com/loopholelabs/drafter/pkg/roles"
+	"github.com/loopholelabs/drafter/pkg/utils"
+)
+
+var (
+	errInterrupted = errors.New("interrupted")
 )
 
 func main() {
@@ -23,8 +31,8 @@ func main() {
 
 	flag.Parse()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx, cancel := context.WithCancelCause(context.Background())
+	defer cancel(errInterrupted)
 
 	conn, err := net.Dial("tcp", *raddr)
 	if err != nil {
@@ -34,41 +42,67 @@ func main() {
 
 	log.Println("Migrating from", conn.RemoteAddr())
 
-	if errs := roles.Terminate(
-		ctx,
-		conn,
+	errs := []error{}
 
-		*statePath,
-		*memoryPath,
-		*initramfsPath,
-		*kernelPath,
-		*diskPath,
-		*configPath,
+	go func() {
+		done := make(chan os.Signal, 1)
+		signal.Notify(done, os.Interrupt)
 
-		[]io.Reader{conn},
-		[]io.Writer{conn},
+		<-done
 
-		roles.TerminateHooks{
-			OnDeviceReceived: func(deviceID uint32, name string) {
-				log.Println("Received device", deviceID, "with name", name)
-			},
-			OnDeviceAuthorityReceived: func(deviceID uint32) {
-				log.Println("Received authority for device", deviceID)
-			},
-			OnDeviceMigrationCompleted: func(deviceID uint32) {
-				log.Println("Completed migration of device", deviceID)
-			},
+		log.Println("Exiting gracefully")
 
-			OnAllDevicesReceived: func() {
-				log.Println("Received all devices")
+		cancel(errInterrupted)
+
+		// TODO: Make `func (p *protocol.ProtocolRW) Handle() error` return if context is cancelled, then remove this workaround
+		if conn != nil {
+			if err := conn.Close(); err != nil && !utils.IsClosedErr(err) {
+				errs = append(errs, err)
+			}
+		}
+	}()
+
+	errs = append(
+		errs,
+		roles.Terminate(
+			ctx,
+			conn,
+
+			*statePath,
+			*memoryPath,
+			*initramfsPath,
+			*kernelPath,
+			*diskPath,
+			*configPath,
+
+			[]io.Reader{conn},
+			[]io.Writer{conn},
+
+			roles.TerminateHooks{
+				OnDeviceReceived: func(deviceID uint32, name string) {
+					log.Println("Received device", deviceID, "with name", name)
+				},
+				OnDeviceAuthorityReceived: func(deviceID uint32) {
+					log.Println("Received authority for device", deviceID)
+				},
+				OnDeviceMigrationCompleted: func(deviceID uint32) {
+					log.Println("Completed migration of device", deviceID)
+				},
+
+				OnAllDevicesReceived: func() {
+					log.Println("Received all devices")
+				},
+				OnAllMigrationsCompleted: func() {
+					log.Println("Completed all migrations")
+				},
 			},
-			OnAllMigrationsCompleted: func() {
-				log.Println("Completed all migrations")
-			},
-		},
-	); len(errs) > 0 {
+		)...,
+	)
+
+	if len(errs) > 0 {
 		for _, err := range errs {
-			if err != nil {
+			// TODO: Make `func (p *protocol.ProtocolRW) Handle() error` return if context is cancelled, then remove this workaround
+			if err != nil && !(errors.Is(err, context.Canceled) && errors.Is(context.Cause(ctx), errInterrupted)) && !utils.IsClosedErr(err) {
 				panic(err)
 			}
 		}
