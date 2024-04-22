@@ -2,25 +2,17 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
+	"fmt"
 	"io"
 	"log"
 	"net"
 	"os"
 	"os/signal"
 	"path/filepath"
-	"sync"
-	"sync/atomic"
 
 	"github.com/loopholelabs/drafter/pkg/roles"
-	"github.com/loopholelabs/silo/pkg/storage"
-	"github.com/loopholelabs/silo/pkg/storage/migrator"
-	"github.com/loopholelabs/silo/pkg/storage/protocol"
-)
-
-var (
-	errInterrupted = errors.New("interrupted")
+	"github.com/loopholelabs/drafter/pkg/utils"
 )
 
 func main() {
@@ -44,8 +36,8 @@ func main() {
 
 	flag.Parse()
 
-	ctx, cancel := context.WithCancelCause(context.Background())
-	defer cancel(errInterrupted)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	lis, err := net.Listen("tcp", *laddr)
 	if err != nil {
@@ -65,7 +57,7 @@ func main() {
 
 		log.Println("Exiting gracefully")
 
-		cancel(errInterrupted)
+		cancel()
 
 		if lis != nil {
 			if err := lis.Close(); err != nil {
@@ -74,193 +66,111 @@ func main() {
 		}
 	}()
 
-	defer log.Println("Shutting down")
-
+l:
 	for {
-		func() {
-			conn, err := lis.Accept()
-			if err != nil {
-				log.Println("could not accept connection, continuing:", err)
+		conn, err := lis.Accept()
+		if err != nil {
+			select {
+			case <-ctx.Done():
+				break l
 
-				return
+			default:
+				panic(err)
 			}
+		}
 
-			log.Println("Migrating tcmd/drafter-terminatoro", conn.RemoteAddr())
+		log.Println("Migrating to", conn.RemoteAddr())
 
-			go func() {
-				defer func() {
-					_ = conn.Close()
+		go func() {
+			defer conn.Close() // TODO: Keep this even after the Goroutine leaks are solved since the conn handler will no longer close the connections
+			defer func() {
+				if err := recover(); err != nil {
+					var e error
+					if v, ok := err.(error); ok {
+						e = v
+					} else {
+						e = fmt.Errorf("%v", err)
+					}
 
-					if err := recover(); err != nil {
+					// TODO: Make `func (p *protocol.ProtocolRW) Handle() error` return if context is cancelled, then remove this workaround
+					if !utils.IsClosedErr(e) {
 						log.Printf("Registry client disconnected with error: %v", err)
 					}
-				}()
-
-				devices, defers, errs := roles.OpenDevices(
-					*statePath,
-					*memoryPath,
-					*initramfsPath,
-					*kernelPath,
-					*diskPath,
-					*configPath,
-
-					uint32(*stateBlockSize),
-					uint32(*memoryBlockSize),
-					uint32(*initramfsBlockSize),
-					uint32(*kernelBlockSize),
-					uint32(*diskBlockSize),
-					uint32(*configBlockSize),
-
-					roles.OpenDevicesHooks{
-						OnOpenDevice: func(deviceID uint32, name string) {
-							log.Println("Opening device", deviceID, "with name", name)
-						},
-					},
-				)
-
-				for _, err := range errs {
-					if err != nil && !(errors.Is(err, context.Canceled) && errors.Is(context.Cause(ctx), errInterrupted)) {
-						panic(err)
-					}
-				}
-
-				for _, deferFunc := range defers {
-					defer deferFunc()
-				}
-
-				{
-					var completedWg sync.WaitGroup
-					completedWg.Add(len(devices))
-
-					var devicesLeftToSend atomic.Int32
-
-					pro := protocol.NewProtocolRW(
-						ctx,
-						[]io.Reader{conn},
-						[]io.Writer{conn},
-						nil,
-					)
-
-					go func() {
-						if err := pro.Handle(); err != nil {
-							panic(err)
-						}
-					}()
-
-					for u, eres := range devices {
-						go func(u int, eres roles.Device) {
-							defer completedWg.Done()
-
-							to := protocol.NewToProtocol(eres.Storage.Size(), uint32(u), pro)
-
-							log.Println("Sending device", u)
-
-							if err := to.SendDevInfo(eres.Prev.Name, eres.Prev.BlockSize); err != nil {
-								panic(err)
-							}
-							devicesLeftToSend.Add(1)
-
-							if devicesLeftToSend.Load() >= int32(len(devices)) {
-								go func() {
-									if err := to.SendEvent(&protocol.Event{
-										Type:       protocol.EventCustom,
-										CustomType: byte(roles.EventCustomAllDevicesSent),
-									}); err != nil {
-										panic(err)
-									}
-
-									log.Println("Sent all devices")
-								}()
-							}
-
-							go func() {
-								if err := to.HandleNeedAt(func(offset int64, length int32) {
-									// Prioritize blocks
-									endOffset := uint64(offset + int64(length))
-									if endOffset > uint64(eres.Storage.Size()) {
-										endOffset = uint64(eres.Storage.Size())
-									}
-
-									startBlock := int(offset / int64(eres.Prev.BlockSize))
-									endBlock := int((endOffset-1)/uint64(eres.Prev.BlockSize)) + 1
-									for b := startBlock; b < endBlock; b++ {
-										eres.Orderer.PrioritiseBlock(b)
-									}
-								}); err != nil {
-									panic(err)
-								}
-							}()
-
-							go func() {
-								if err := to.HandleDontNeedAt(func(offset int64, length int32) {
-									// Deprioritize blocks
-									endOffset := uint64(offset + int64(length))
-									if endOffset > uint64(eres.Storage.Size()) {
-										endOffset = uint64(eres.Storage.Size())
-									}
-
-									startBlock := int(offset / int64(eres.Storage.Size()))
-									endBlock := int((endOffset-1)/uint64(eres.Storage.Size())) + 1
-									for b := startBlock; b < endBlock; b++ {
-										eres.Orderer.Remove(b)
-									}
-								}); err != nil {
-									panic(err)
-								}
-							}()
-
-							cfg := migrator.NewMigratorConfig().WithBlockSize(int(eres.Prev.BlockSize))
-							cfg.Concurrency = map[int]int{
-								storage.BlockTypeAny:      *concurrency,
-								storage.BlockTypeStandard: *concurrency,
-								storage.BlockTypeDirty:    *concurrency,
-								storage.BlockTypePriority: *concurrency,
-							}
-							cfg.ProgressHandler = func(p *migrator.MigrationProgress) {
-								log.Printf("Migrated %v/%v blocks for device %v", p.ReadyBlocks, p.TotalBlocks, u)
-							}
-
-							mig, err := migrator.NewMigrator(eres.DirtyRemote, to, eres.Orderer, cfg)
-							if err != nil {
-								panic(err)
-							}
-
-							log.Println("Migrating", eres.TotalBlocks, "blocks for device", u)
-
-							go func() {
-								if err := to.SendEvent(&protocol.Event{
-									Type:       protocol.EventCustom,
-									CustomType: byte(roles.EventCustomPassAuthority),
-								}); err != nil {
-									panic(err)
-								}
-
-								log.Println("Transferred authority for device", u)
-							}()
-
-							if err := mig.Migrate(eres.TotalBlocks); err != nil {
-								panic(err)
-							}
-
-							if err := mig.WaitForCompletion(); err != nil {
-								panic(err)
-							}
-
-							if err := to.SendEvent(&protocol.Event{
-								Type: protocol.EventCompleted,
-							}); err != nil {
-								panic(err)
-							}
-
-							log.Println("Completed migration of device", u)
-						}(u, eres)
-					}
-
-					completedWg.Wait()
-
-					log.Println("Completed all migrations, closing connection")
 				}
 			}()
+
+			devices, defers, errs := roles.OpenDevices(
+				*statePath,
+				*memoryPath,
+				*initramfsPath,
+				*kernelPath,
+				*diskPath,
+				*configPath,
+
+				uint32(*stateBlockSize),
+				uint32(*memoryBlockSize),
+				uint32(*initramfsBlockSize),
+				uint32(*kernelBlockSize),
+				uint32(*diskBlockSize),
+				uint32(*configBlockSize),
+
+				roles.OpenDevicesHooks{
+					OnDeviceOpened: func(deviceID uint32, name string) {
+						log.Println("Opened device", deviceID, "with name", name)
+					},
+				},
+			)
+
+			for _, err := range errs {
+				if err != nil {
+					panic(err)
+				}
+			}
+
+			for _, deferFunc := range defers {
+				defer deferFunc()
+			}
+
+			errs = roles.MigrateDevices(
+				ctx,
+				conn,
+
+				devices,
+				*concurrency,
+
+				[]io.Reader{conn},
+				[]io.Writer{conn},
+
+				roles.MigrateDevicesHooks{
+					OnDeviceSent: func(deviceID uint32) {
+						log.Println("Sent device", deviceID)
+					},
+					OnDeviceAuthoritySent: func(deviceID uint32) {
+						log.Println("Sent authority for device", deviceID)
+					},
+					OnDeviceMigrationProgress: func(deviceID uint32, ready, total int) {
+						log.Println("Migrated", ready, "of", total, "blocks for device", deviceID)
+					},
+					OnDeviceMigrationCompleted: func(deviceID uint32) {
+						log.Println("Completed migration of device", deviceID)
+					},
+
+					OnAllDevicesSent: func() {
+						log.Println("Sent all devices")
+					},
+					OnAllMigrationsCompleted: func() {
+						log.Println("Completed all migrations")
+					},
+				},
+			)
+
+			for _, err := range errs {
+				if err != nil {
+					panic(err)
+				}
+			}
 		}()
 	}
+
+	log.Println("Shutting down")
 }

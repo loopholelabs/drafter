@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"io"
 	"log"
@@ -13,10 +12,6 @@ import (
 
 	"github.com/loopholelabs/drafter/pkg/roles"
 	"github.com/loopholelabs/drafter/pkg/utils"
-)
-
-var (
-	errInterrupted = errors.New("interrupted")
 )
 
 func main() {
@@ -31,8 +26,8 @@ func main() {
 
 	flag.Parse()
 
-	ctx, cancel := context.WithCancelCause(context.Background())
-	defer cancel(errInterrupted)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	conn, err := net.Dial("tcp", *raddr)
 	if err != nil {
@@ -52,7 +47,7 @@ func main() {
 
 		log.Println("Exiting gracefully")
 
-		cancel(errInterrupted)
+		cancel()
 
 		// TODO: Make `func (p *protocol.ProtocolRW) Handle() error` return if context is cancelled, then remove this workaround
 		if conn != nil {
@@ -101,8 +96,14 @@ func main() {
 
 	for _, err := range errs {
 		// TODO: Make `func (p *protocol.ProtocolRW) Handle() error` return if context is cancelled, then remove this workaround
-		if err != nil && !(errors.Is(err, context.Canceled) && errors.Is(context.Cause(ctx), errInterrupted)) && !utils.IsClosedErr(err) {
-			panic(err)
+		if err != nil && !utils.IsClosedErr(err) {
+			select {
+			case <-ctx.Done():
+				return
+
+			default:
+				panic(err)
+			}
 		}
 	}
 

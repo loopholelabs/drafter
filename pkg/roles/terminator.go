@@ -21,8 +21,8 @@ import (
 type CustomEventType byte
 
 const (
-	EventCustomPassAuthority  = CustomEventType(0)
-	EventCustomAllDevicesSent = CustomEventType(1)
+	EventCustomTransferAuthority = CustomEventType(0)
+	EventCustomAllDevicesSent    = CustomEventType(1)
 )
 
 var (
@@ -70,10 +70,15 @@ func Terminate(
 				errsLock.Lock()
 				defer errsLock.Unlock()
 
-				if e, ok := err.(error); ok {
-					errs = append(errs, e)
+				var e error
+				if v, ok := err.(error); ok {
+					e = v
 				} else {
-					errs = append(errs, fmt.Errorf("%v", err))
+					e = fmt.Errorf("%v", err)
+				}
+
+				if !(errors.Is(e, context.Canceled) && errors.Is(context.Cause(ctx), errFinished)) {
+					errs = append(errs, e)
 				}
 
 				cancel(errFinished)
@@ -167,7 +172,7 @@ func Terminate(
 				defer wg.Done()
 				defer handleGoroutinePanic()()
 
-				if err := from.HandleSend(ctx); err != nil && !(errors.Is(err, context.Canceled) && errors.Is(context.Cause(ctx), errFinished)) {
+				if err := from.HandleSend(ctx); err != nil && !(errors.Is(err, context.Canceled)) {
 					panic(err)
 				}
 			}()
@@ -177,7 +182,7 @@ func Terminate(
 				defer wg.Done()
 				defer handleGoroutinePanic()()
 
-				if err := from.HandleReadAt(); err != nil && !(errors.Is(err, context.Canceled) && errors.Is(context.Cause(ctx), errFinished)) {
+				if err := from.HandleReadAt(); err != nil && !(errors.Is(err, context.Canceled)) {
 					panic(err)
 				}
 			}()
@@ -187,7 +192,7 @@ func Terminate(
 				defer wg.Done()
 				defer handleGoroutinePanic()()
 
-				if err := from.HandleWriteAt(); err != nil && !(errors.Is(err, context.Canceled) && errors.Is(context.Cause(ctx), errFinished)) {
+				if err := from.HandleWriteAt(); err != nil && !(errors.Is(err, context.Canceled)) {
 					panic(err)
 				}
 			}()
@@ -211,7 +216,7 @@ func Terminate(
 					switch e.Type {
 					case protocol.EventCustom:
 						switch e.CustomType {
-						case byte(EventCustomPassAuthority):
+						case byte(EventCustomTransferAuthority):
 							if hook := hooks.OnDeviceAuthorityReceived; hook != nil {
 								hook(index)
 							}
@@ -227,7 +232,7 @@ func Terminate(
 							hook(index)
 						}
 					}
-				}); err != nil && !(errors.Is(err, context.Canceled) && errors.Is(context.Cause(ctx), errFinished)) {
+				}); err != nil {
 					panic(err)
 				}
 			}()
@@ -241,7 +246,7 @@ func Terminate(
 					if local != nil {
 						local.DirtyBlocks(blocks)
 					}
-				}); err != nil && !(errors.Is(err, context.Canceled) && errors.Is(context.Cause(ctx), errFinished)) {
+				}); err != nil {
 					panic(err)
 				}
 			}()
