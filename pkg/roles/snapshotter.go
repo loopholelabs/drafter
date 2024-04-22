@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -22,15 +23,7 @@ var (
 	ErrCouldNotGetDeviceStat = errors.New("could not get NBD device stat")
 )
 
-type Snapshotter struct {
-	errs chan error
-}
-
-func NewSnapshotter() *Snapshotter {
-	return &Snapshotter{}
-}
-
-func (p *Snapshotter) CreateSnapshot(
+func CreateSnapshot(
 	ctx context.Context,
 
 	initramfsInputPath string,
@@ -52,15 +45,41 @@ func (p *Snapshotter) CreateSnapshot(
 	agentConfiguration config.AgentConfiguration,
 
 	knownNamesConfiguration config.KnownNamesConfiguration,
-) error {
-	p.errs = make(chan error)
+) (errs []error) {
+	var errsLock sync.Mutex
 
-	defer func() {
-		close(p.errs)
-	}()
+	var wg sync.WaitGroup
+	defer wg.Wait()
+
+	ctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(errFinished)
+
+	handleGoroutinePanic := func() func() {
+		return func() {
+			if err := recover(); err != nil {
+				errsLock.Lock()
+				defer errsLock.Unlock()
+
+				var e error
+				if v, ok := err.(error); ok {
+					e = v
+				} else {
+					e = fmt.Errorf("%v", err)
+				}
+
+				if !(errors.Is(e, context.Canceled) && errors.Is(context.Cause(ctx), errFinished)) {
+					errs = append(errs, e)
+				}
+
+				cancel(errFinished)
+			}
+		}
+	}
+
+	defer handleGoroutinePanic()()
 
 	if err := os.MkdirAll(hypervisorConfiguration.ChrootBaseDir, os.ModePerm); err != nil {
-		return err
+		panic(err)
 	}
 
 	srv := firecracker.NewServer(
@@ -80,22 +99,20 @@ func (p *Snapshotter) CreateSnapshot(
 		hypervisorConfiguration.EnableInput,
 	)
 
-	var wg sync.WaitGroup
-	defer wg.Wait()
-
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+		defer handleGoroutinePanic()()
 
 		if err := srv.Wait(); err != nil {
-			p.errs <- err
+			panic(err)
 		}
 	}()
 
 	defer srv.Close()
 	vmPath, err := srv.Open()
 	if err != nil {
-		return err
+		panic(err)
 	}
 	defer os.RemoveAll(filepath.Dir(vmPath)) // Remove `firecracker/$id`, not just `firecracker/$id/root`
 
@@ -106,12 +123,12 @@ func (p *Snapshotter) CreateSnapshot(
 
 	livenessVSockPath, err := ping.Open()
 	if err != nil {
-		return err
+		panic(err)
 	}
 	defer ping.Close()
 
 	if err := os.Chown(livenessVSockPath, hypervisorConfiguration.UID, hypervisorConfiguration.GID); err != nil {
-		return err
+		panic(err)
 	}
 
 	client := &http.Client{
@@ -122,7 +139,11 @@ func (p *Snapshotter) CreateSnapshot(
 		},
 	}
 
+	wg.Add(1)
 	defer func() {
+		defer wg.Done()
+		defer handleGoroutinePanic()()
+
 		for _, resource := range [][2]string{
 			{
 				knownNamesConfiguration.InitramfsName,
@@ -153,38 +174,28 @@ func (p *Snapshotter) CreateSnapshot(
 		} {
 			inputFile, err := os.Open(filepath.Join(vmPath, resource[0]))
 			if err != nil {
-				p.errs <- err
-
-				return
+				panic(err)
 			}
 			defer inputFile.Close()
 
 			if err := os.MkdirAll(filepath.Dir(resource[1]), os.ModePerm); err != nil {
-				p.errs <- err
-
-				return
+				panic(err)
 			}
 
 			outputFile, err := os.OpenFile(resource[1], os.O_CREATE|os.O_TRUNC|os.O_WRONLY, os.ModePerm)
 			if err != nil {
-				p.errs <- err
-
-				return
+				panic(err)
 			}
 			defer outputFile.Close()
 
 			resourceSize, err := io.Copy(outputFile, inputFile)
 			if err != nil {
-				p.errs <- err
-
-				return
+				panic(err)
 			}
 
 			if paddingLength := utils.GetBlockDevicePadding(resourceSize); paddingLength > 0 {
 				if _, err := outputFile.Write(make([]byte, paddingLength)); err != nil {
-					p.errs <- err
-
-					return
+					panic(err)
 				}
 			}
 		}
@@ -199,15 +210,15 @@ func (p *Snapshotter) CreateSnapshot(
 	)
 
 	if _, err := utils.CopyFile(initramfsInputPath, initramfsWorkingPath, hypervisorConfiguration.UID, hypervisorConfiguration.GID); err != nil {
-		return err
+		panic(err)
 	}
 
 	if _, err := utils.CopyFile(kernelInputPath, kernelWorkingPath, hypervisorConfiguration.UID, hypervisorConfiguration.GID); err != nil {
-		return err
+		panic(err)
 	}
 
 	if _, err := utils.CopyFile(diskInputPath, diskWorkingPath, hypervisorConfiguration.UID, hypervisorConfiguration.GID); err != nil {
-		return err
+		panic(err)
 	}
 
 	if err := firecracker.StartVM(
@@ -228,12 +239,12 @@ func (p *Snapshotter) CreateSnapshot(
 		VSockName,
 		vsock.CIDGuest,
 	); err != nil {
-		return err
+		panic(err)
 	}
 	defer os.Remove(filepath.Join(vmPath, VSockName))
 
 	if err := ping.Receive(); err != nil {
-		return err
+		panic(err)
 	}
 
 	handler := vsock.NewHandler(
@@ -244,16 +255,17 @@ func (p *Snapshotter) CreateSnapshot(
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+		defer handleGoroutinePanic()()
 
 		if err := handler.Wait(); err != nil {
-			p.errs <- err
+			panic(err)
 		}
 	}()
 
 	defer handler.Close()
 	remote, err := handler.Open(ctx, time.Millisecond*100, agentConfiguration.ResumeTimeout)
 	if err != nil {
-		return err
+		panic(err)
 	}
 
 	{
@@ -261,7 +273,7 @@ func (p *Snapshotter) CreateSnapshot(
 		defer cancel()
 
 		if err := remote.BeforeSuspend(ctx); err != nil {
-			return err
+			panic(err)
 		}
 	}
 
@@ -277,29 +289,19 @@ func (p *Snapshotter) CreateSnapshot(
 
 		firecracker.SnapshotTypeFull,
 	); err != nil {
-		return err
+		panic(err)
 	}
 
 	packageConfig, err := json.Marshal(config.PackageConfiguration{
 		AgentVSockPort: agentConfiguration.AgentVSockPort,
 	})
 	if err != nil {
-		return err
+		panic(err)
 	}
 
 	if _, err := utils.WriteFile(packageConfig, filepath.Join(vmPath, knownNamesConfiguration.ConfigName), hypervisorConfiguration.UID, hypervisorConfiguration.GID); err != nil {
-		return err
+		panic(err)
 	}
 
-	return nil
-}
-
-func (r *Snapshotter) Wait() error {
-	for err := range r.errs {
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
+	return
 }

@@ -3,7 +3,10 @@ package main
 import (
 	"context"
 	"flag"
+	"log"
+	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"time"
 
@@ -66,15 +69,21 @@ func main() {
 		panic(err)
 	}
 
-	snapshotter := roles.NewSnapshotter()
-
 	go func() {
-		if err := snapshotter.Wait(); err != nil {
-			panic(err)
-		}
+		done := make(chan os.Signal, 1)
+		signal.Notify(done, os.Interrupt)
+
+		<-done
+
+		log.Println("Exiting gracefully")
+
+		cancel()
+
+		// TODO: Remove this workaround once all dependencies of `CreateSnapshot` handle `context.Context` correctly
+		os.Exit(1)
 	}()
 
-	if err := snapshotter.CreateSnapshot(
+	errs := roles.CreateSnapshot(
 		ctx,
 
 		*initramfsInputPath,
@@ -134,7 +143,19 @@ func main() {
 
 			ConfigName: config.ConfigName,
 		},
-	); err != nil {
-		panic(err)
+	)
+
+	for _, err := range errs {
+		if err != nil {
+			select {
+			case <-ctx.Done():
+				return
+
+			default:
+				panic(err)
+			}
+		}
 	}
+
+	log.Println("Shutting down")
 }
