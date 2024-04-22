@@ -212,7 +212,7 @@ func MigrateDevices(
 		}
 	}
 
-	defer handleGoroutinePanic()
+	defer handleGoroutinePanic()()
 
 	pro := protocol.NewProtocolRW(
 		ctx,

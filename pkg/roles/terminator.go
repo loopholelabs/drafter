@@ -93,7 +93,7 @@ func Terminate(
 		}
 	}
 
-	defer handleGoroutinePanic()
+	defer handleGoroutinePanic()()
 
 	pro := protocol.NewProtocolRW(
 		ctx,

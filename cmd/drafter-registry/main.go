@@ -172,5 +172,17 @@ l:
 		}()
 	}
 
+	for _, err := range errs {
+		if err != nil {
+			select {
+			case <-ctx.Done():
+				return
+
+			default:
+				panic(err)
+			}
+		}
+	}
+
 	log.Println("Shutting down")
 }
