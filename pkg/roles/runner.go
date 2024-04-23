@@ -30,10 +30,10 @@ type Runner struct {
 	stateName  string
 	memoryName string
 
-	firecrackerKill func() error
-	client          *http.Client
-	handler         *vsock.Handler
-	remote          remotes.AgentRemote
+	firecrackerKill   func() error
+	client            *http.Client
+	agentHandlerClose func() error
+	remote            remotes.AgentRemote
 
 	vmPath string
 
@@ -142,25 +142,35 @@ func (r *Runner) Resume(
 		return err
 	}
 
-	r.handler = vsock.NewHandler(
+	remote, agentHandlerWait, agentHandlerClose, errs := vsock.CreateNewAgentHandler(
+		ctx,
+
 		filepath.Join(r.vmPath, VSockName),
 		agentVSockPort,
+
+		time.Millisecond*100,
+		resumeTimeout,
 	)
+	for _, err := range errs {
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	r.remote = remote
+	r.agentHandlerClose = agentHandlerClose
 
 	r.wg.Add(1)
 	go func() {
 		defer r.wg.Done()
 
-		if err := r.handler.Wait(); err != nil {
-			r.errs <- err
+		errs := agentHandlerWait()
+		for _, err := range errs {
+			if err != nil {
+				r.errs <- err
+			}
 		}
 	}()
-
-	var err error
-	r.remote, err = r.handler.Open(ctx, time.Millisecond*100, resumeTimeout)
-	if err != nil {
-		return err
-	}
 
 	ctx, cancel := context.WithTimeout(ctx, resumeTimeout)
 	defer cancel()
@@ -169,7 +179,7 @@ func (r *Runner) Resume(
 }
 
 func (r *Runner) Msync(ctx context.Context) error {
-	if r.handler == nil {
+	if r.agentHandlerClose == nil {
 		return ErrVMNotRunning
 	}
 
@@ -188,7 +198,7 @@ func (r *Runner) Msync(ctx context.Context) error {
 }
 
 func (r *Runner) Suspend(ctx context.Context, resumeTimeout time.Duration) error {
-	if r.handler == nil {
+	if r.agentHandlerClose == nil {
 		return ErrVMNotRunning
 	}
 
@@ -201,7 +211,7 @@ func (r *Runner) Suspend(ctx context.Context, resumeTimeout time.Duration) error
 		}
 	}
 
-	_ = r.handler.Close() // Connection needs to be closed before flushing the snapshot
+	_ = r.agentHandlerClose() // Connection needs to be closed before flushing the snapshot
 
 	if err := firecracker.CreateSnapshot(
 		r.client,
@@ -214,7 +224,7 @@ func (r *Runner) Suspend(ctx context.Context, resumeTimeout time.Duration) error
 		return err
 	}
 
-	r.handler = nil
+	r.agentHandlerClose = nil
 
 	return nil
 }
@@ -223,8 +233,8 @@ func (r *Runner) Close() error {
 	r.closeLock.Lock()
 	defer r.closeLock.Unlock()
 
-	if r.handler != nil {
-		_ = r.handler.Close()
+	if r.agentHandlerClose != nil {
+		_ = r.agentHandlerClose()
 	}
 
 	if r.firecrackerKill != nil {

@@ -249,26 +249,34 @@ func CreateSnapshot(
 		panic(err)
 	}
 
-	handler := vsock.NewHandler(
+	remote, agentHandlerWait, agentHandlerClose, errs := vsock.CreateNewAgentHandler(
+		ctx,
+
 		filepath.Join(vmPath, VSockName),
 		uint32(agentConfiguration.AgentVSockPort),
+
+		time.Millisecond*100,
+		agentConfiguration.ResumeTimeout,
 	)
+	for _, err := range errs {
+		if err != nil {
+			panic(err)
+		}
+	}
+	defer agentHandlerClose()
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		defer handleGoroutinePanic()()
 
-		if err := handler.Wait(); err != nil {
-			panic(err)
+		errs := agentHandlerWait()
+		for _, err := range errs {
+			if err != nil {
+				panic(err)
+			}
 		}
 	}()
-
-	defer handler.Close()
-	remote, err := handler.Open(ctx, time.Millisecond*100, agentConfiguration.ResumeTimeout)
-	if err != nil {
-		panic(err)
-	}
 
 	{
 		ctx, cancel := context.WithTimeout(ctx, agentConfiguration.ResumeTimeout)
@@ -281,7 +289,7 @@ func CreateSnapshot(
 
 	// Connections need to be closed before creating the snapshot
 	ping.Close()
-	_ = handler.Close()
+	_ = agentHandlerClose()
 
 	if err := firecracker.CreateSnapshot(
 		client,

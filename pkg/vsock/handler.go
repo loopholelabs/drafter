@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"strings"
 	"sync"
@@ -23,44 +22,44 @@ var (
 	ErrRemoteNotFound         = errors.New("remote not found")
 )
 
-type Handler struct {
-	vsockPath string
-	vsockPort uint32
+func CreateNewAgentHandler(
+	ctx context.Context,
 
-	conn net.Conn
-
-	wg   sync.WaitGroup
-	errs chan error
-}
-
-func NewHandler(
 	vsockPath string,
 	vsockPort uint32,
-) *Handler {
-	return &Handler{
-		vsockPath: vsockPath,
-		vsockPort: vsockPort,
 
-		wg:   sync.WaitGroup{},
-		errs: make(chan error),
-	}
-}
+	connectDeadline time.Duration,
+	retryDeadline time.Duration,
+) (remote remotes.AgentRemote, waitFunc func() []error, closeFunc func() error, errs []error) {
+	var errsLock sync.Mutex
 
-func (s *Handler) Wait() error {
-	for err := range s.errs {
-		if err != nil {
-			return err
+	internalCtx, cancel := context.WithCancelCause(ctx)
+	defer cancel(errFinished)
+
+	handleGoroutinePanic := func() func() {
+		return func() {
+			if err := recover(); err != nil {
+				errsLock.Lock()
+				defer errsLock.Unlock()
+
+				var e error
+				if v, ok := err.(error); ok {
+					e = v
+				} else {
+					e = fmt.Errorf("%v", err)
+				}
+
+				if !(errors.Is(e, context.Canceled) && errors.Is(context.Cause(internalCtx), errFinished)) {
+					errs = append(errs, e)
+				}
+
+				cancel(errFinished)
+			}
 		}
 	}
 
-	return nil
-}
+	defer handleGoroutinePanic()()
 
-func (s *Handler) Open(
-	ctx context.Context,
-	connectDeadline time.Duration,
-	retryDeadline time.Duration,
-) (remotes.AgentRemote, error) {
 	ready := make(chan string)
 
 	registry := rpc.NewRegistry[remotes.AgentRemote, json.RawMessage](
@@ -75,70 +74,66 @@ func (s *Handler) Open(
 		},
 	)
 
+	var conn net.Conn
 	connectToService := func() (bool, error) {
 		var (
-			errs = make(chan error)
+			err  error
 			done = make(chan struct{})
 		)
-
 		go func() {
-			var err error
-			s.conn, err = net.Dial("unix", s.vsockPath)
-			if err != nil {
-				errs <- err
+			defer close(done)
 
+			conn, err = net.Dial("unix", vsockPath)
+			if err != nil {
 				return
 			}
 
-			if _, err = s.conn.Write([]byte(fmt.Sprintf("CONNECT %d\n", s.vsockPort))); err != nil {
-				errs <- err
-
+			if _, err = conn.Write([]byte(fmt.Sprintf("CONNECT %d\n", vsockPort))); err != nil {
 				return
 			}
 
-			line, err := iutils.ReadLineNoBuffer(s.conn)
+			var line string
+			line, err = iutils.ReadLineNoBuffer(conn)
 			if err != nil {
-				errs <- err
-
 				return
 			}
 
 			if !strings.HasPrefix(line, "OK ") {
-				errs <- ErrCouldNotConnectToVSock
+				err = ErrCouldNotConnectToVSock
 
 				return
 			}
-
-			done <- struct{}{}
 		}()
 
 		select {
-		case err := <-errs:
-			if !errors.Is(err, io.EOF) {
-				return false, err
+		case <-done:
+			if err != nil {
+				if !errors.Is(err, io.EOF) {
+					return false, err
+				}
+
+				return true, nil
 			}
 
-			return true, nil
+			return false, nil
+
 		case <-time.After(connectDeadline):
 			return true, nil
 
-		case <-done:
-			return false, nil
+		case <-internalCtx.Done():
+			return false, context.Cause(internalCtx)
 		}
 	}
 
 	before := time.Now()
-
 	for {
 		if time.Since(before) > retryDeadline {
-			return remotes.AgentRemote{}, ErrCouldNotConnectToVSock
+			panic(ErrCouldNotConnectToVSock)
 		}
 
 		retry, err := connectToService()
 		if err != nil {
-			log.Println(err)
-
-			return remotes.AgentRemote{}, err
+			panic(err)
 		}
 
 		if !retry {
@@ -146,12 +141,35 @@ func (s *Handler) Open(
 		}
 	}
 
-	s.wg.Add(1)
-	go func() {
-		defer s.wg.Done()
+	var wg sync.WaitGroup
+	waitFunc = func() []error {
+		wg.Wait()
 
-		encoder := json.NewEncoder(s.conn)
-		decoder := json.NewDecoder(s.conn)
+		return errs
+	}
+
+	closeFunc = func() error {
+		if err := conn.Close(); err != nil {
+			return err
+		}
+
+		errs := waitFunc()
+		for _, err := range errs {
+			if err != nil {
+				return err
+			}
+		}
+
+		return nil
+	}
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		defer handleGoroutinePanic()()
+
+		encoder := json.NewEncoder(conn)
+		decoder := json.NewDecoder(conn)
 
 		if err := registry.LinkStream(
 			func(v rpc.Message[json.RawMessage]) error {
@@ -173,43 +191,33 @@ func (s *Handler) Open(
 				return json.Unmarshal([]byte(data), v)
 			},
 		); err != nil && !utils.IsClosedErr(err) && !strings.HasSuffix(err.Error(), "use of closed network connection") {
-			s.errs <- err
-
-			return
+			panic(err)
 		}
-
-		close(s.errs)
 	}()
 
-	remoteID := <-ready
+	var remoteID string
+	select {
+	case remoteID = <-ready:
+		break
 
-	var (
-		remote remotes.AgentRemote
-		ok     bool
-	)
+	case <-internalCtx.Done():
+		panic(context.Cause(internalCtx))
+	}
+
+	found := false
 	// We can safely ignore the errors here, since errors are bubbled up from `cb`,
 	// which can never return an error here
 	_ = registry.ForRemotes(func(candidateID string, candidate remotes.AgentRemote) error {
 		if candidateID == remoteID {
 			remote = candidate
-			ok = true
+			found = true
 		}
 
 		return nil
 	})
-	if !ok {
-		return remotes.AgentRemote{}, ErrRemoteNotFound
+	if !found {
+		panic(ErrRemoteNotFound)
 	}
 
-	return remote, nil
-}
-
-func (s *Handler) Close() error {
-	if s.conn != nil {
-		_ = s.conn.Close()
-	}
-
-	s.wg.Wait()
-
-	return nil
+	return
 }

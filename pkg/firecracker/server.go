@@ -45,7 +45,7 @@ func StartFirecrackerServer(
 
 	enableOutput bool,
 	enableInput bool,
-) (vmDir string, wait func() error, close func() error, errs []error) {
+) (vmDir string, waitFunc func() error, closeFunc func() error, errs []error) {
 	var errsLock sync.Mutex
 
 	var wg sync.WaitGroup
@@ -182,7 +182,7 @@ func StartFirecrackerServer(
 		panic(ErrNoSocketCreated)
 	}
 
-	wait = func() error {
+	waitFunc = func() error {
 		if cmd.Process != nil {
 			if _, err := cmd.Process.Wait(); err != nil && err.Error() != errSignalKilled.Error() && err.Error() != errWaitNoChildProcesses.Error() && err.Error() != errWaitIDNoChildProcesses.Error() {
 				return err
@@ -192,12 +192,12 @@ func StartFirecrackerServer(
 		return nil
 	}
 
-	close = func() error {
+	closeFunc = func() error {
 		if cmd.Process != nil {
 			return cmd.Process.Kill()
 		}
 
-		return nil
+		return waitFunc()
 	}
 
 	return

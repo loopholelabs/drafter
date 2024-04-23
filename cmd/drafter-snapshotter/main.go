@@ -78,9 +78,6 @@ func main() {
 		log.Println("Exiting gracefully")
 
 		cancel()
-
-		// TODO: Remove this workaround once all dependencies of `CreateSnapshot` handle `context.Context` correctly
-		os.Exit(1)
 	}()
 
 	errs := roles.CreateSnapshot(
