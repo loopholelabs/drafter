@@ -82,7 +82,9 @@ func CreateSnapshot(
 		panic(err)
 	}
 
-	srv := firecracker.NewServer(
+	vmPath, firecrackerWait, firecrackerKill, errs := firecracker.StartFirecrackerServer(
+		ctx,
+
 		hypervisorConfiguration.FirecrackerBin,
 		hypervisorConfiguration.JailerBin,
 
@@ -98,23 +100,23 @@ func CreateSnapshot(
 		hypervisorConfiguration.EnableOutput,
 		hypervisorConfiguration.EnableInput,
 	)
+	for _, err := range errs {
+		if err != nil {
+			panic(err)
+		}
+	}
+	defer firecrackerKill()
+	defer os.RemoveAll(filepath.Dir(vmPath)) // Remove `firecracker/$id`, not just `firecracker/$id/root`
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		defer handleGoroutinePanic()()
 
-		if err := srv.Wait(); err != nil {
+		if err := firecrackerWait(); err != nil {
 			panic(err)
 		}
 	}()
-
-	defer srv.Close()
-	vmPath, err := srv.Open()
-	if err != nil {
-		panic(err)
-	}
-	defer os.RemoveAll(filepath.Dir(vmPath)) // Remove `firecracker/$id`, not just `firecracker/$id/root`
 
 	ping := vsock.NewLivenessPingReceiver(
 		filepath.Join(vmPath, VSockName),
@@ -200,8 +202,8 @@ func CreateSnapshot(
 			}
 		}
 	}()
-
-	defer srv.Close() // We need to stop the Firecracker process from using the mount before we can unmount it
+	// We need to stop the Firecracker process from using the mount before we can unmount it
+	defer firecrackerKill()
 
 	var (
 		initramfsWorkingPath = filepath.Join(vmPath, knownNamesConfiguration.InitramfsName)
@@ -243,7 +245,7 @@ func CreateSnapshot(
 	}
 	defer os.Remove(filepath.Join(vmPath, VSockName))
 
-	if err := ping.Receive(); err != nil {
+	if err := ping.ReceiveAndClose(ctx); err != nil {
 		panic(err)
 	}
 

@@ -30,10 +30,10 @@ type Runner struct {
 	stateName  string
 	memoryName string
 
-	srv     *firecracker.Server
-	client  *http.Client
-	handler *vsock.Handler
-	remote  remotes.AgentRemote
+	firecrackerKill func() error
+	client          *http.Client
+	handler         *vsock.Handler
+	remote          remotes.AgentRemote
 
 	vmPath string
 
@@ -74,12 +74,15 @@ func (r *Runner) Wait() error {
 }
 
 func (r *Runner) Open() (string, error) {
-	if r.srv == nil {
+	if r.firecrackerKill == nil {
 		if err := os.MkdirAll(r.hypervisorConfiguration.ChrootBaseDir, os.ModePerm); err != nil {
 			return "", err
 		}
 
-		r.srv = firecracker.NewServer(
+		// TODO: Integrate with new context handling logic
+		vmPath, firecrackerWait, firecrackerKill, errs := firecracker.StartFirecrackerServer(
+			context.Background(),
+
 			r.hypervisorConfiguration.FirecrackerBin,
 			r.hypervisorConfiguration.JailerBin,
 
@@ -95,21 +98,23 @@ func (r *Runner) Open() (string, error) {
 			r.hypervisorConfiguration.EnableOutput,
 			r.hypervisorConfiguration.EnableInput,
 		)
+		for _, err := range errs {
+			if err != nil {
+				return "", err
+			}
+		}
+
+		r.vmPath = vmPath
+		r.firecrackerKill = firecrackerKill
 
 		r.wg.Add(1)
 		go func() {
 			defer r.wg.Done()
 
-			if err := r.srv.Wait(); err != nil {
+			if err := firecrackerWait(); err != nil {
 				r.errs <- err
 			}
 		}()
-
-		var err error
-		r.vmPath, err = r.srv.Open()
-		if err != nil {
-			return "", err
-		}
 
 		r.client = &http.Client{
 			Transport: &http.Transport{
@@ -222,8 +227,8 @@ func (r *Runner) Close() error {
 		_ = r.handler.Close()
 	}
 
-	if r.srv != nil {
-		_ = r.srv.Close()
+	if r.firecrackerKill != nil {
+		_ = r.firecrackerKill()
 	}
 
 	r.wg.Wait()

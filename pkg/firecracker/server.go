@@ -1,6 +1,7 @@
 package firecracker
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -16,40 +17,20 @@ import (
 var (
 	ErrNoSocketCreated = errors.New("no socket created")
 
-	errSignalKilled = errors.New("signal: killed")
+	errFinished = errors.New("finished")
+
+	errSignalKilled           = errors.New("signal: killed")
+	errWaitNoChildProcesses   = errors.New("wait: no child processes")
+	errWaitIDNoChildProcesses = errors.New("waitid: no child processes")
 )
 
 const (
 	FirecrackerSocketName = "firecracker.sock"
 )
 
-type Server struct {
-	firecrackerBin string
-	jailerBin      string
+func StartFirecrackerServer(
+	ctx context.Context,
 
-	chrootBaseDir string
-
-	uid int
-	gid int
-
-	netns         string
-	numaNode      int
-	cgroupVersion int
-
-	enableOutput bool
-	enableInput  bool
-
-	cmd   *exec.Cmd
-	vmDir string
-
-	wg sync.WaitGroup
-
-	closeLock sync.Mutex
-
-	errs chan error
-}
-
-func NewServer(
 	firecrackerBin string,
 	jailerBin string,
 
@@ -64,148 +45,160 @@ func NewServer(
 
 	enableOutput bool,
 	enableInput bool,
-) *Server {
-	return &Server{
-		firecrackerBin: firecrackerBin,
-		jailerBin:      jailerBin,
+) (vmDir string, wait func() error, close func() error, errs []error) {
+	var errsLock sync.Mutex
 
-		chrootBaseDir: chrootBaseDir,
+	var wg sync.WaitGroup
+	defer wg.Wait()
 
-		uid: uid,
-		gid: gid,
+	internalCtx, cancel := context.WithCancelCause(ctx)
+	defer cancel(errFinished)
 
-		netns:         netns,
-		numaNode:      numaNode,
-		cgroupVersion: cgroupVersion,
+	handleGoroutinePanic := func() func() {
+		return func() {
+			if err := recover(); err != nil {
+				errsLock.Lock()
+				defer errsLock.Unlock()
 
-		enableOutput: enableOutput,
-		enableInput:  enableInput,
+				var e error
+				if v, ok := err.(error); ok {
+					e = v
+				} else {
+					e = fmt.Errorf("%v", err)
+				}
 
-		wg:   sync.WaitGroup{},
-		errs: make(chan error),
-	}
-}
+				if !(errors.Is(e, context.Canceled) && errors.Is(context.Cause(internalCtx), errFinished)) {
+					errs = append(errs, e)
+				}
 
-func (s *Server) Wait() error {
-	for err := range s.errs {
-		if err != nil {
-			return err
+				cancel(errFinished)
+			}
 		}
 	}
 
-	return nil
-}
+	defer handleGoroutinePanic()()
 
-func (s *Server) Open() (string, error) {
 	id := shortuuid.New()
 
-	s.vmDir = filepath.Join(s.chrootBaseDir, "firecracker", id, "root")
-	if err := os.MkdirAll(s.vmDir, os.ModePerm); err != nil {
-		return "", err
+	vmDir = filepath.Join(chrootBaseDir, "firecracker", id, "root")
+	if err := os.MkdirAll(vmDir, os.ModePerm); err != nil {
+		panic(err)
 	}
 
 	watcher, err := inotify.NewWatcher()
 	if err != nil {
-		return "", err
+		panic(err)
 	}
 	defer watcher.Close()
 
-	if err := watcher.AddWatch(s.vmDir, inotify.InCreate); err != nil {
-		return "", err
+	if err := watcher.AddWatch(vmDir, inotify.InCreate); err != nil {
+		panic(err)
 	}
 
-	cpus, err := os.ReadFile(filepath.Join("/sys", "devices", "system", "node", fmt.Sprintf("node%v", s.numaNode), "cpulist"))
+	cpus, err := os.ReadFile(filepath.Join("/sys", "devices", "system", "node", fmt.Sprintf("node%v", numaNode), "cpulist"))
 	if err != nil {
-		return "", err
+		panic(err)
 	}
 
-	s.cmd = exec.Command(
-		s.jailerBin,
+	cmd := exec.CommandContext(
+		ctx,
+		jailerBin,
 		"--chroot-base-dir",
-		s.chrootBaseDir,
+		chrootBaseDir,
 		"--uid",
-		fmt.Sprintf("%v", s.uid),
+		fmt.Sprintf("%v", uid),
 		"--gid",
-		fmt.Sprintf("%v", s.gid),
+		fmt.Sprintf("%v", gid),
 		"--netns",
-		filepath.Join("/var", "run", "netns", s.netns),
+		filepath.Join("/var", "run", "netns", netns),
 		"--cgroup-version",
-		fmt.Sprintf("%v", s.cgroupVersion),
+		fmt.Sprintf("%v", cgroupVersion),
 		"--cgroup",
-		fmt.Sprintf("cpuset.mems=%v", s.numaNode),
+		fmt.Sprintf("cpuset.mems=%v", numaNode),
 		"--cgroup",
 		fmt.Sprintf("cpuset.cpus=%s", cpus),
 		"--id",
 		id,
 		"--exec-file",
-		s.firecrackerBin,
+		firecrackerBin,
 		"--",
 		"--api-sock",
 		FirecrackerSocketName,
 	)
 
-	if s.enableOutput {
-		s.cmd.Stdout = os.Stdout
-		s.cmd.Stderr = os.Stderr
+	if enableOutput {
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
 	}
 
-	if s.enableInput {
-		s.cmd.Stdin = os.Stdin
+	if enableInput {
+		cmd.Stdin = os.Stdin
 	} else {
 		// Don't forward CTRL-C etc. signals from parent to child process
 		// We can't enable this if we set the cmd stdin or we deadlock
-		s.cmd.SysProcAttr = &unix.SysProcAttr{
+		cmd.SysProcAttr = &unix.SysProcAttr{
 			Setpgid: true,
 			Pgid:    0,
 		}
 	}
 
-	if err := s.cmd.Start(); err != nil {
-		return "", err
-	}
-
-	s.wg.Add(1)
+	// We intentionally don't call `wg.Add` and `wg.Done` here - we are ok with leaking this
+	// goroutine since we return the process, which allows tracking errors and stopping this goroutine
+	// and waiting for it to be stopped. We still need to `defer handleGoroutinePanic()()` however so that
+	// any errors we get as we're polling the socket path directory are caught
 	go func() {
-		defer s.wg.Done()
+		defer handleGoroutinePanic()()
 
-		if err := s.cmd.Wait(); err != nil && err.Error() != errSignalKilled.Error() {
-			s.errs <- err
-
-			return
-		}
-
-		if s.errs != nil {
-			close(s.errs)
-
-			s.errs = nil
+		if err := cmd.Run(); err != nil {
+			panic(err)
 		}
 	}()
 
-	socketPath := filepath.Join(s.vmDir, FirecrackerSocketName)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		defer handleGoroutinePanic()()
+
+		// Cause the `range Watcher.Event` loop to break if context is cancelled, e.g. when command errors
+		<-internalCtx.Done()
+
+		if err := watcher.Close(); err != nil {
+			panic(err)
+		}
+	}()
+
+	socketCreated := false
+
+	socketPath := filepath.Join(vmDir, FirecrackerSocketName)
 	for ev := range watcher.Event {
 		if filepath.Clean(ev.Name) == filepath.Clean(socketPath) {
-			return s.vmDir, nil
+			socketCreated = true
+
+			break
 		}
 	}
 
-	return "", ErrNoSocketCreated
-}
-
-func (s *Server) Close() error {
-	s.closeLock.Lock()
-	defer s.closeLock.Unlock()
-
-	if s.cmd != nil && s.cmd.Process != nil {
-		_ = s.cmd.Process.Kill()
+	if !socketCreated {
+		panic(ErrNoSocketCreated)
 	}
 
-	s.wg.Wait()
+	wait = func() error {
+		if cmd.Process != nil {
+			if _, err := cmd.Process.Wait(); err != nil && err.Error() != errSignalKilled.Error() && err.Error() != errWaitNoChildProcesses.Error() && err.Error() != errWaitIDNoChildProcesses.Error() {
+				return err
+			}
+		}
 
-	if s.errs != nil {
-		close(s.errs)
-
-		s.errs = nil
+		return nil
 	}
 
-	return nil
+	close = func() error {
+		if cmd.Process != nil {
+			return cmd.Process.Kill()
+		}
+
+		return nil
+	}
+
+	return
 }
