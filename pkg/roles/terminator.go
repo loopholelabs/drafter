@@ -82,18 +82,26 @@ func Terminate(
 				}
 
 				cancel(errFinished)
-
-				// TODO: Make `func (p *protocol.ProtocolRW) Handle() error` return if context is cancelled, then remove this workaround
-				if conn != nil {
-					if err := conn.Close(); err != nil && !utils.IsClosedErr(err) {
-						errs = append(errs, err)
-					}
-				}
 			}
 		}
 	}
 
 	defer handleGoroutinePanic()()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		defer handleGoroutinePanic()()
+
+		<-ctx.Done()
+
+		// TODO: Make `func (p *protocol.ProtocolRW) Handle() error` return if context is cancelled, then remove this workaround
+		if conn != nil {
+			if err := conn.Close(); err != nil && !utils.IsClosedErr(err) {
+				errs = append(errs, err)
+			}
+		}
+	}()
 
 	pro := protocol.NewProtocolRW(
 		ctx,
@@ -172,7 +180,7 @@ func Terminate(
 				defer wg.Done()
 				defer handleGoroutinePanic()()
 
-				if err := from.HandleSend(ctx); err != nil && !(errors.Is(err, context.Canceled)) {
+				if err := from.HandleSend(ctx); err != nil {
 					panic(err)
 				}
 			}()
@@ -182,7 +190,7 @@ func Terminate(
 				defer wg.Done()
 				defer handleGoroutinePanic()()
 
-				if err := from.HandleReadAt(); err != nil && !(errors.Is(err, context.Canceled)) {
+				if err := from.HandleReadAt(); err != nil {
 					panic(err)
 				}
 			}()
@@ -192,7 +200,7 @@ func Terminate(
 				defer wg.Done()
 				defer handleGoroutinePanic()()
 
-				if err := from.HandleWriteAt(); err != nil && !(errors.Is(err, context.Canceled)) {
+				if err := from.HandleWriteAt(); err != nil {
 					panic(err)
 				}
 			}()

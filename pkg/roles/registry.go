@@ -201,18 +201,26 @@ func MigrateDevices(
 				}
 
 				cancel(errFinished)
-
-				// TODO: Make `func (p *protocol.ProtocolRW) Handle() error` return if context is cancelled, then remove this workaround
-				if conn != nil {
-					if err := conn.Close(); err != nil && !utils.IsClosedErr(err) {
-						errs = append(errs, err)
-					}
-				}
 			}
 		}
 	}
 
 	defer handleGoroutinePanic()()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		defer handleGoroutinePanic()()
+
+		<-ctx.Done()
+
+		// TODO: Make `func (p *protocol.ProtocolRW) Handle() error` return if context is cancelled, then remove this workaround
+		if conn != nil {
+			if err := conn.Close(); err != nil && !utils.IsClosedErr(err) {
+				errs = append(errs, err)
+			}
+		}
+	}()
 
 	pro := protocol.NewProtocolRW(
 		ctx,
