@@ -189,6 +189,22 @@ func StartFirecrackerServer(
 		}
 	}()
 
+	// We intentionally don't call `wg.Add` and `wg.Done` here - we are ok with leaking this
+	// goroutine since we return the process, which allows tracking errors and stopping this goroutine
+	// and waiting for it to be stopped. We still need to `defer handleGoroutinePanic()()` however so that
+	// if we cancel the context during this call, we still handle it appropriately
+	go func() {
+		defer handleGoroutinePanic()()
+
+		// Cause the Firecracker to be closed if context is cancelled - cancelling `ctx` on the `exec.Command`
+		// doesn't actually stop it, it only stops trying to start it!
+		<-ctx.Done() // We use ctx, not internalCtx here since this resource outlives the function call
+
+		if err := closeFunc(); err != nil {
+			panic(err)
+		}
+	}()
+
 	socketCreated := false
 
 	socketPath := filepath.Join(vmDir, FirecrackerSocketName)
