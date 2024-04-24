@@ -225,6 +225,10 @@ func main() {
 
 				if *persist {
 					defer func(resource [2]string) {
+						if len(errs) > 0 {
+							return
+						}
+
 						inputFile, err := os.Open(filepath.Join(vmPath, resource[0]))
 						if err != nil {
 							panic(err)

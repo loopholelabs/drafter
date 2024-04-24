@@ -146,6 +146,10 @@ func CreateSnapshot(
 		defer wg.Done()
 		defer handleGoroutinePanic()()
 
+		if len(errs) > 0 {
+			return
+		}
+
 		for _, resource := range [][2]string{
 			{
 				knownNamesConfiguration.InitramfsName,
