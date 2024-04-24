@@ -19,9 +19,7 @@ var (
 
 	errFinished = errors.New("finished")
 
-	errSignalKilled           = errors.New("signal: killed")
-	errWaitNoChildProcesses   = errors.New("wait: no child processes")
-	errWaitIDNoChildProcesses = errors.New("waitid: no child processes")
+	errSignalKilled = errors.New("signal: killed")
 )
 
 const (
@@ -101,7 +99,7 @@ func StartFirecrackerServer(
 	}
 
 	cmd := exec.CommandContext(
-		ctx,
+		ctx, // We use ctx, not internalCtx here since this resource outlives the function call
 		jailerBin,
 		"--chroot-base-dir",
 		chrootBaseDir,
@@ -142,14 +140,38 @@ func StartFirecrackerServer(
 		}
 	}
 
+	if err := cmd.Start(); err != nil {
+		panic(err)
+	}
+
+	var closeLock sync.Mutex
+	closed := false
+
+	// We can only run this once since `cmd.Wait()` releases resources after the first call
+	waitFunc = sync.OnceValue(func() error {
+		if err := cmd.Wait(); err != nil {
+			closeLock.Lock()
+			defer closeLock.Unlock()
+
+			if closed && (err.Error() == errSignalKilled.Error()) { // Don't treat killed errors as errors if we killed the process
+				return nil
+			}
+
+			return err
+		}
+
+		return nil
+	})
+
 	// We intentionally don't call `wg.Add` and `wg.Done` here - we are ok with leaking this
 	// goroutine since we return the process, which allows tracking errors and stopping this goroutine
 	// and waiting for it to be stopped. We still need to `defer handleGoroutinePanic()()` however so that
 	// any errors we get as we're polling the socket path directory are caught
+	// It's important that we start this _after_ calling `cmd.Start`, otherwise our process would be nil
 	go func() {
 		defer handleGoroutinePanic()()
 
-		if err := cmd.Run(); err != nil {
+		if err := waitFunc(); err != nil {
 			panic(err)
 		}
 	}()
@@ -182,19 +204,19 @@ func StartFirecrackerServer(
 		panic(ErrNoSocketCreated)
 	}
 
-	waitFunc = func() error {
-		if cmd.Process != nil {
-			if _, err := cmd.Process.Wait(); err != nil && err.Error() != errSignalKilled.Error() && err.Error() != errWaitNoChildProcesses.Error() && err.Error() != errWaitIDNoChildProcesses.Error() {
-				return err
-			}
-		}
-
-		return nil
-	}
-
 	closeFunc = func() error {
 		if cmd.Process != nil {
-			return cmd.Process.Kill()
+			closeLock.Lock()
+
+			if err := cmd.Process.Kill(); err != nil {
+				closeLock.Unlock()
+
+				return err
+			}
+
+			closed = true
+
+			closeLock.Unlock()
 		}
 
 		return waitFunc()
