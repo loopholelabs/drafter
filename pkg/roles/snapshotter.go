@@ -224,6 +224,8 @@ func CreateSnapshot(
 	}
 
 	if err := firecracker.StartVM(
+		ctx,
+
 		client,
 
 		knownNamesConfiguration.InitramfsName,
@@ -292,6 +294,8 @@ func CreateSnapshot(
 	_ = agentHandlerClose()
 
 	if err := firecracker.CreateSnapshot(
+		ctx,
+
 		client,
 
 		knownNamesConfiguration.StateName,

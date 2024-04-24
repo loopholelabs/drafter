@@ -3,6 +3,7 @@ package roles
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"os"
@@ -12,7 +13,6 @@ import (
 
 	"github.com/loopholelabs/drafter/pkg/config"
 	"github.com/loopholelabs/drafter/pkg/firecracker"
-	"github.com/loopholelabs/drafter/pkg/remotes"
 	"github.com/loopholelabs/drafter/pkg/vsock"
 )
 
@@ -20,136 +20,85 @@ const (
 	VSockName = "drafter.drftsock"
 )
 
-var (
-	ErrVMNotRunning = errors.New("vm not running")
-)
-
-type Runner struct {
-	hypervisorConfiguration config.HypervisorConfiguration
-
-	stateName  string
-	memoryName string
-
-	firecrackerKill   func() error
-	client            *http.Client
-	agentHandlerClose func() error
-	remote            remotes.AgentRemote
-
-	vmPath string
-
-	wg sync.WaitGroup
-
-	closeLock sync.Mutex
-
-	errs chan error
-}
-
-func NewRunner(
+func StartRunner(
+	ctx context.Context,
 	hypervisorConfiguration config.HypervisorConfiguration,
 
 	stateName string,
 	memoryName string,
-) *Runner {
-	return &Runner{
-		hypervisorConfiguration: hypervisorConfiguration,
+) (
+	vmPath string,
 
-		stateName:  stateName,
-		memoryName: memoryName,
+	waitFunc func() error,
+	closeFunc func() error,
 
-		wg:   sync.WaitGroup{},
-		errs: make(chan error),
-	}
-}
+	resumeFunc func(
+		ctx context.Context,
 
-func (r *Runner) Wait() error {
-	for err := range r.errs {
-		if err != nil {
-			return err
-		}
-	}
+		resumeTimeout time.Duration,
+		agentVSockPort uint32,
+	) (
+		waitFunc func() []error,
+		closeFunc func() []error,
 
-	r.wg.Wait()
+		msyncFunc func(ctx context.Context) error,
+		suspendAndCloseAgentHandlerFunc func(ctx context.Context, resumeTimeout time.Duration) error,
 
-	return nil
-}
+		errs []error,
+	),
 
-func (r *Runner) Open() (string, error) {
-	if r.firecrackerKill == nil {
-		if err := os.MkdirAll(r.hypervisorConfiguration.ChrootBaseDir, os.ModePerm); err != nil {
-			return "", err
-		}
+	errs []error,
+) {
+	var errsLock sync.Mutex
 
-		// TODO: Integrate with new context handling logic
-		vmPath, firecrackerWait, firecrackerKill, errs := firecracker.StartFirecrackerServer(
-			context.Background(),
+	internalCtx, cancel := context.WithCancelCause(ctx)
+	defer cancel(errFinished)
 
-			r.hypervisorConfiguration.FirecrackerBin,
-			r.hypervisorConfiguration.JailerBin,
+	handleGoroutinePanic := func() func() {
+		return func() {
+			if err := recover(); err != nil {
+				errsLock.Lock()
+				defer errsLock.Unlock()
 
-			r.hypervisorConfiguration.ChrootBaseDir,
+				var e error
+				if v, ok := err.(error); ok {
+					e = v
+				} else {
+					e = fmt.Errorf("%v", err)
+				}
 
-			r.hypervisorConfiguration.UID,
-			r.hypervisorConfiguration.GID,
+				if !(errors.Is(e, context.Canceled) && errors.Is(context.Cause(internalCtx), errFinished)) {
+					errs = append(errs, e)
+				}
 
-			r.hypervisorConfiguration.NetNS,
-			r.hypervisorConfiguration.NumaNode,
-			r.hypervisorConfiguration.CgroupVersion,
-
-			r.hypervisorConfiguration.EnableOutput,
-			r.hypervisorConfiguration.EnableInput,
-		)
-		for _, err := range errs {
-			if err != nil {
-				return "", err
+				cancel(errFinished)
 			}
 		}
-
-		r.vmPath = vmPath
-		r.firecrackerKill = firecrackerKill
-
-		r.wg.Add(1)
-		go func() {
-			defer r.wg.Done()
-
-			if err := firecrackerWait(); err != nil {
-				r.errs <- err
-			}
-		}()
-
-		r.client = &http.Client{
-			Transport: &http.Transport{
-				DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-					return net.Dial("unix", filepath.Join(r.vmPath, firecracker.FirecrackerSocketName))
-				},
-			},
-		}
 	}
 
-	return r.vmPath, nil
-}
+	defer handleGoroutinePanic()()
 
-func (r *Runner) Resume(
-	ctx context.Context,
-	resumeTimeout time.Duration,
-	agentVSockPort uint32,
-) error {
-	if err := firecracker.ResumeSnapshot(
-		r.client,
-
-		r.stateName,
-		r.memoryName,
-	); err != nil {
-		return err
+	if err := os.MkdirAll(hypervisorConfiguration.ChrootBaseDir, os.ModePerm); err != nil {
+		panic(err)
 	}
 
-	remote, agentHandlerWait, agentHandlerClose, errs := vsock.CreateNewAgentHandler(
-		ctx,
+	vp, firecrackerWait, firecrackerKill, errs := firecracker.StartFirecrackerServer(
+		ctx, // We use ctx, not internalCtx here since this resource outlives the function call
 
-		filepath.Join(r.vmPath, VSockName),
-		agentVSockPort,
+		hypervisorConfiguration.FirecrackerBin,
+		hypervisorConfiguration.JailerBin,
 
-		time.Millisecond*100,
-		resumeTimeout,
+		hypervisorConfiguration.ChrootBaseDir,
+
+		hypervisorConfiguration.UID,
+		hypervisorConfiguration.GID,
+
+		hypervisorConfiguration.NetNS,
+		hypervisorConfiguration.NumaNode,
+		hypervisorConfiguration.CgroupVersion,
+
+		hypervisorConfiguration.EnableOutput,
+		hypervisorConfiguration.EnableInput,
 	)
 	for _, err := range errs {
 		if err != nil {
@@ -157,99 +106,192 @@ func (r *Runner) Resume(
 		}
 	}
 
-	r.remote = remote
-	r.agentHandlerClose = agentHandlerClose
+	vmPath = vp
 
-	r.wg.Add(1)
+	// We intentionally don't call `wg.Add` and `wg.Done` here since we return the process's wait method
+	// We still need to `defer handleGoroutinePanic()()` here however so that we catch any errors during this call
 	go func() {
-		defer r.wg.Done()
+		defer handleGoroutinePanic()()
 
-		errs := agentHandlerWait()
-		for _, err := range errs {
-			if err != nil {
-				r.errs <- err
-			}
+		if err := firecrackerWait(); err != nil {
+			panic(err)
 		}
 	}()
 
-	ctx, cancel := context.WithTimeout(ctx, resumeTimeout)
-	defer cancel()
-
-	return r.remote.AfterResume(ctx)
-}
-
-func (r *Runner) Msync(ctx context.Context) error {
-	if r.agentHandlerClose == nil {
-		return ErrVMNotRunning
-	}
-
-	if err := firecracker.CreateSnapshot(
-		r.client,
-
-		r.stateName,
-		"",
-
-		firecracker.SnapshotTypeMsync,
-	); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (r *Runner) Suspend(ctx context.Context, resumeTimeout time.Duration) error {
-	if r.agentHandlerClose == nil {
-		return ErrVMNotRunning
-	}
-
-	{
-		ctx, cancel := context.WithTimeout(ctx, resumeTimeout)
-		defer cancel()
-
-		if err := r.remote.BeforeSuspend(ctx); err != nil {
+	waitFunc = firecrackerWait
+	closeFunc = func() error {
+		if err := firecrackerKill(); err != nil {
 			return err
 		}
+
+		if err := waitFunc(); err != nil {
+			return err
+		}
+
+		_ = os.RemoveAll(filepath.Dir(vmPath)) // Remove `firecracker/$id`, not just `firecracker/$id/root`
+
+		return nil
 	}
 
-	_ = r.agentHandlerClose() // Connection needs to be closed before flushing the snapshot
-
-	if err := firecracker.CreateSnapshot(
-		r.client,
-
-		r.stateName,
-		"",
-
-		firecracker.SnapshotTypeMsyncAndState,
-	); err != nil {
-		return err
+	firecrackerClient := &http.Client{
+		Transport: &http.Transport{
+			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+				return net.Dial("unix", filepath.Join(vmPath, firecracker.FirecrackerSocketName))
+			},
+		},
 	}
 
-	r.agentHandlerClose = nil
+	resumeFunc = func(
+		ctx context.Context,
 
-	return nil
-}
+		resumeTimeout time.Duration,
+		agentVSockPort uint32,
+	) (
+		waitFunc func() []error,
+		closeFunc func() []error,
 
-func (r *Runner) Close() error {
-	r.closeLock.Lock()
-	defer r.closeLock.Unlock()
+		msyncFunc func(ctx context.Context) error,
+		suspendAndCloseAgentHandlerFunc func(ctx context.Context, resumeTimeout time.Duration) error,
 
-	if r.agentHandlerClose != nil {
-		_ = r.agentHandlerClose()
+		errs []error,
+	) {
+		var errsLock sync.Mutex
+
+		var wg sync.WaitGroup
+		defer wg.Wait()
+
+		internalCtx, cancel := context.WithCancelCause(ctx)
+		defer cancel(errFinished)
+
+		handleGoroutinePanic := func() func() {
+			return func() {
+				if err := recover(); err != nil {
+					errsLock.Lock()
+					defer errsLock.Unlock()
+
+					var e error
+					if v, ok := err.(error); ok {
+						e = v
+					} else {
+						e = fmt.Errorf("%v", err)
+					}
+
+					if !(errors.Is(e, context.Canceled) && errors.Is(context.Cause(internalCtx), errFinished)) {
+						errs = append(errs, e)
+					}
+
+					cancel(errFinished)
+				}
+			}
+		}
+
+		defer handleGoroutinePanic()()
+
+		// We intentionally don't call `wg.Add` and `wg.Done` here since we return the process's wait method
+		// We still need to `defer handleGoroutinePanic()()` here however so that we catch any errors during this call
+		go func() {
+			defer handleGoroutinePanic()()
+
+			if err := firecrackerWait(); err != nil {
+				panic(err)
+			}
+		}()
+
+		if err := firecracker.ResumeSnapshot(
+			internalCtx,
+
+			firecrackerClient,
+
+			stateName,
+			memoryName,
+		); err != nil {
+			panic(err)
+		}
+
+		remote, agentHandlerWait, agentHandlerClose, errs := vsock.CreateNewAgentHandler(
+			ctx, // We use ctx, not internalCtx here since this resource outlives the function call
+
+			filepath.Join(vmPath, VSockName),
+			agentVSockPort,
+
+			time.Millisecond*100,
+			resumeTimeout,
+		)
+
+		for _, err := range errs {
+			if err != nil {
+				panic(err)
+			}
+		}
+
+		// We intentionally don't call `wg.Add` and `wg.Done` here since we return the process's wait method
+		// We still need to `defer handleGoroutinePanic()()` here however so that we catch any errors during this call
+		go func() {
+			defer handleGoroutinePanic()()
+
+			errs := agentHandlerWait()
+			for _, err := range errs {
+				if err != nil {
+					panic(err)
+				}
+			}
+		}()
+
+		waitFunc = agentHandlerWait
+		closeFunc = func() []error {
+			if errs := agentHandlerClose(); len(errs) > 0 {
+				return errs
+			}
+
+			return waitFunc()
+		}
+
+		resumeCtx, cancelResumeCtx := context.WithTimeout(internalCtx, resumeTimeout)
+		defer cancelResumeCtx()
+
+		if err := remote.AfterResume(resumeCtx); err != nil {
+			panic(err)
+		}
+
+		msyncFunc = func(ctx context.Context) error {
+			return firecracker.CreateSnapshot(
+				ctx,
+
+				firecrackerClient,
+
+				stateName,
+				"",
+
+				firecracker.SnapshotTypeMsync,
+			)
+		}
+
+		suspendAndCloseAgentHandlerFunc = func(ctx context.Context, resumeTimeout time.Duration) error {
+			{
+				ctx, cancel := context.WithTimeout(ctx, resumeTimeout)
+				defer cancel()
+
+				if err := remote.BeforeSuspend(ctx); err != nil {
+					return err
+				}
+			}
+
+			_ = agentHandlerClose() // Connection needs to be closed before flushing the snapshot
+
+			return firecracker.CreateSnapshot(
+				ctx,
+
+				firecrackerClient,
+
+				stateName,
+				"",
+
+				firecracker.SnapshotTypeMsyncAndState,
+			)
+		}
+
+		return
 	}
 
-	if r.firecrackerKill != nil {
-		_ = r.firecrackerKill()
-	}
-
-	r.wg.Wait()
-
-	_ = os.RemoveAll(filepath.Dir(r.vmPath)) // Remove `firecracker/$id`, not just `firecracker/$id/root`
-
-	if r.errs != nil {
-		close(r.errs)
-
-		r.errs = nil
-	}
-
-	return nil
+	return
 }

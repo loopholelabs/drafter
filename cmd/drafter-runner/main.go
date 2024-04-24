@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -18,6 +20,10 @@ import (
 	"github.com/loopholelabs/drafter/pkg/roles"
 	"github.com/loopholelabs/drafter/pkg/utils"
 	"golang.org/x/sys/unix"
+)
+
+var (
+	errFinished = errors.New("finished")
 )
 
 func main() {
@@ -77,194 +83,308 @@ func main() {
 
 	_ = configFile.Close()
 
-	runner := roles.NewRunner(
-		config.HypervisorConfiguration{
-			FirecrackerBin: firecrackerBin,
-			JailerBin:      jailerBin,
+	{
+		var errsLock sync.Mutex
+		errs := []error{}
 
-			ChrootBaseDir: *chrootBaseDir,
+		defer func() {
+			if len(errs) > 0 {
+				for _, err := range errs {
+					if err != nil {
+						panic(err)
+					}
+				}
+			}
+		}()
 
-			UID: *uid,
-			GID: *gid,
+		var wg sync.WaitGroup
+		defer wg.Wait()
 
-			NetNS:         *netns,
-			NumaNode:      *numaNode,
-			CgroupVersion: *cgroupVersion,
+		ctx, cancel := context.WithCancelCause(ctx)
+		defer cancel(errFinished)
 
-			EnableOutput: *enableOutput,
-			EnableInput:  *enableInput,
-		},
+		handleGoroutinePanic := func() func() {
+			return func() {
+				if err := recover(); err != nil {
+					errsLock.Lock()
+					defer errsLock.Unlock()
 
-		config.StateName,
-		config.MemoryName,
-	)
+					var e error
+					if v, ok := err.(error); ok {
+						e = v
+					} else {
+						e = fmt.Errorf("%v", err)
+					}
 
-	var wg sync.WaitGroup
-	defer wg.Wait()
+					if !(errors.Is(e, context.Canceled) && errors.Is(context.Cause(ctx), errFinished)) {
+						errs = append(errs, e)
+					}
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-
-		if err := runner.Wait(); err != nil {
-			panic(err)
+					cancel(errFinished)
+				}
+			}
 		}
-	}()
 
-	defer runner.Close()
-	vmPath, err := runner.Open()
-	if err != nil {
-		panic(err)
-	}
+		defer handleGoroutinePanic()()
 
-	resources := [][2]string{
-		{
-			config.InitramfsName,
-			*initramfsPath,
-		},
-		{
-			config.KernelName,
-			*kernelPath,
-		},
-		{
-			config.DiskName,
-			*diskPath,
-		},
+		vmPath, waitFunc, closeFunc, resumeFunc, errs := roles.StartRunner(
+			ctx,
 
-		{
+			config.HypervisorConfiguration{
+				FirecrackerBin: firecrackerBin,
+				JailerBin:      jailerBin,
+
+				ChrootBaseDir: *chrootBaseDir,
+
+				UID: *uid,
+				GID: *gid,
+
+				NetNS:         *netns,
+				NumaNode:      *numaNode,
+				CgroupVersion: *cgroupVersion,
+
+				EnableOutput: *enableOutput,
+				EnableInput:  *enableInput,
+			},
+
 			config.StateName,
-			*statePath,
-		},
-		{
 			config.MemoryName,
-			*memoryPath,
-		},
-	}
-	for _, resource := range resources {
-		if *copy {
-			inputFile, err := os.Open(resource[1])
+		)
+
+		for _, err := range errs {
 			if err != nil {
+				select {
+				case <-ctx.Done():
+					return
+
+				default:
+					panic(err)
+				}
+			}
+		}
+
+		defer closeFunc()
+
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			defer handleGoroutinePanic()()
+
+			if err := waitFunc(); err != nil {
 				panic(err)
 			}
-			defer inputFile.Close()
+		}()
 
-			if err := os.MkdirAll(filepath.Dir(filepath.Join(vmPath, resource[0])), os.ModePerm); err != nil {
-				panic(err)
-			}
+		resources := [][2]string{
+			{
+				config.InitramfsName,
+				*initramfsPath,
+			},
+			{
+				config.KernelName,
+				*kernelPath,
+			},
+			{
+				config.DiskName,
+				*diskPath,
+			},
 
-			outputFile, err := os.OpenFile(filepath.Join(vmPath, resource[0]), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, os.ModePerm)
-			if err != nil {
-				panic(err)
-			}
-			defer outputFile.Close()
+			{
+				config.StateName,
+				*statePath,
+			},
+			{
+				config.MemoryName,
+				*memoryPath,
+			},
+		}
+		for _, resource := range resources {
+			if *copy {
+				inputFile, err := os.Open(resource[1])
+				if err != nil {
+					panic(err)
+				}
+				defer inputFile.Close()
 
-			if _, err = io.Copy(outputFile, inputFile); err != nil {
-				panic(err)
-			}
+				if err := os.MkdirAll(filepath.Dir(filepath.Join(vmPath, resource[0])), os.ModePerm); err != nil {
+					panic(err)
+				}
 
-			_ = inputFile.Close()
-			_ = outputFile.Close()
+				outputFile, err := os.OpenFile(filepath.Join(vmPath, resource[0]), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, os.ModePerm)
+				if err != nil {
+					panic(err)
+				}
+				defer outputFile.Close()
 
-			if *persist {
-				defer func(resource [2]string) {
-					inputFile, err := os.Open(filepath.Join(vmPath, resource[0]))
+				if _, err = io.Copy(outputFile, inputFile); err != nil {
+					panic(err)
+				}
+
+				_ = inputFile.Close()
+				_ = outputFile.Close()
+
+				if *persist {
+					defer func(resource [2]string) {
+						inputFile, err := os.Open(filepath.Join(vmPath, resource[0]))
+						if err != nil {
+							panic(err)
+						}
+						defer inputFile.Close()
+
+						if err := os.MkdirAll(filepath.Dir(resource[1]), os.ModePerm); err != nil {
+							panic(err)
+						}
+
+						outputFile, err := os.OpenFile(resource[1], os.O_CREATE|os.O_TRUNC|os.O_WRONLY, os.ModePerm)
+						if err != nil {
+							panic(err)
+						}
+						defer outputFile.Close()
+
+						resourceSize, err := io.Copy(outputFile, inputFile)
+						if err != nil {
+							panic(err)
+						}
+
+						if paddingLength := utils.GetBlockDevicePadding(resourceSize); paddingLength > 0 {
+							if _, err := outputFile.Write(make([]byte, paddingLength)); err != nil {
+								panic(err)
+							}
+						}
+
+						_ = inputFile.Close()
+						_ = outputFile.Close()
+					}(resource)
+				}
+			} else {
+				defer func() {
+					resourceInfo, err := os.Stat(resource[1])
 					if err != nil {
 						panic(err)
 					}
-					defer inputFile.Close()
 
-					if err := os.MkdirAll(filepath.Dir(resource[1]), os.ModePerm); err != nil {
-						panic(err)
-					}
+					if paddingLength := utils.GetBlockDevicePadding(resourceInfo.Size()); paddingLength > 0 {
+						resourceFile, err := os.OpenFile(resource[1], os.O_WRONLY|os.O_APPEND, os.ModePerm)
+						if err != nil {
+							panic(err)
+						}
+						defer resourceFile.Close()
 
-					outputFile, err := os.OpenFile(resource[1], os.O_CREATE|os.O_TRUNC|os.O_WRONLY, os.ModePerm)
-					if err != nil {
-						panic(err)
-					}
-					defer outputFile.Close()
-
-					resourceSize, err := io.Copy(outputFile, inputFile)
-					if err != nil {
-						panic(err)
-					}
-
-					if paddingLength := utils.GetBlockDevicePadding(resourceSize); paddingLength > 0 {
-						if _, err := outputFile.Write(make([]byte, paddingLength)); err != nil {
+						if _, err := resourceFile.Write(make([]byte, paddingLength)); err != nil {
 							panic(err)
 						}
 					}
+				}()
 
-					_ = inputFile.Close()
-					_ = outputFile.Close()
-				}(resource)
-			}
-		} else {
-			defer func() {
-				resourceInfo, err := os.Stat(resource[1])
+				mnt := utils.NewLoopMount(resource[1])
+
+				defer mnt.Close()
+				file, err := mnt.Open()
 				if err != nil {
 					panic(err)
 				}
 
-				if paddingLength := utils.GetBlockDevicePadding(resourceInfo.Size()); paddingLength > 0 {
-					resourceFile, err := os.OpenFile(resource[1], os.O_WRONLY|os.O_APPEND, os.ModePerm)
+				info, err := os.Stat(file)
+				if err != nil {
+					panic(err)
+				}
+
+				stat, ok := info.Sys().(*syscall.Stat_t)
+				if !ok {
+					panic(roles.ErrCouldNotGetDeviceStat)
+				}
+
+				major := uint64(stat.Rdev / 256)
+				minor := uint64(stat.Rdev % 256)
+
+				dev := int((major << 8) | minor)
+
+				if err := unix.Mknod(filepath.Join(vmPath, resource[0]), unix.S_IFBLK|0666, dev); err != nil {
+					panic(err)
+				}
+			}
+		}
+
+		bubbleSignals := false
+
+		done := make(chan os.Signal, 1)
+		go func() {
+			signal.Notify(done, os.Interrupt)
+
+			v := <-done
+
+			if bubbleSignals {
+				done <- v
+
+				return
+			}
+
+			log.Println("Exiting gracefully")
+
+			cancel(errFinished)
+		}()
+
+		before := time.Now()
+
+		resumeWaitFunc,
+			resumeCloseFunc,
+			_,
+			suspendAndCloseAgentHandlerFunc,
+			errs := resumeFunc(
+			ctx,
+
+			*resumeTimeout,
+			packageConfig.AgentVSockPort,
+		)
+
+		for _, err := range errs {
+			if err != nil {
+				select {
+				case <-ctx.Done():
+					return
+
+				default:
+					panic(err)
+				}
+			}
+		}
+
+		defer resumeCloseFunc()
+
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			defer handleGoroutinePanic()()
+
+			if errs := resumeWaitFunc(); len(errs) > 0 {
+				for _, err := range errs {
 					if err != nil {
 						panic(err)
 					}
-					defer resourceFile.Close()
-
-					if _, err := resourceFile.Write(make([]byte, paddingLength)); err != nil {
-						panic(err)
-					}
 				}
-			}()
-
-			mnt := utils.NewLoopMount(resource[1])
-
-			defer mnt.Close()
-			file, err := mnt.Open()
-			if err != nil {
-				panic(err)
 			}
+		}()
 
-			info, err := os.Stat(file)
-			if err != nil {
-				panic(err)
-			}
+		log.Println("Resumed VM in", time.Since(before), "on", vmPath)
 
-			stat, ok := info.Sys().(*syscall.Stat_t)
-			if !ok {
-				panic(roles.ErrCouldNotGetDeviceStat)
-			}
+		bubbleSignals = true
 
-			major := uint64(stat.Rdev / 256)
-			minor := uint64(stat.Rdev % 256)
+		select {
+		case <-ctx.Done():
+			return
 
-			dev := int((major << 8) | minor)
-
-			if err := unix.Mknod(filepath.Join(vmPath, resource[0]), unix.S_IFBLK|0666, dev); err != nil {
-				panic(err)
-			}
+		case <-done:
+			break
 		}
+
+		before = time.Now()
+
+		if err := suspendAndCloseAgentHandlerFunc(ctx, *resumeTimeout); err != nil {
+			panic(err)
+		}
+
+		log.Println("Suspend:", time.Since(before))
+
+		log.Println("Shutting down")
 	}
-
-	before := time.Now()
-
-	if err := runner.Resume(ctx, *resumeTimeout, packageConfig.AgentVSockPort); err != nil {
-		panic(err)
-	}
-
-	log.Println("Resumed VM in", time.Since(before), "on", vmPath)
-
-	done := make(chan os.Signal, 1)
-	signal.Notify(done, os.Interrupt)
-
-	<-done
-
-	before = time.Now()
-
-	if err := runner.Suspend(ctx, *resumeTimeout); err != nil {
-		panic(err)
-	}
-
-	log.Println("Suspend:", time.Since(before))
 }
