@@ -2,6 +2,7 @@ package firecracker
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -35,13 +36,13 @@ const (
 	SnapshotTypeMsyncAndState
 )
 
-func submitJSON(method string, client *http.Client, body any, resource string) error {
+func submitJSON(ctx context.Context, method string, client *http.Client, body any, resource string) error {
 	p, err := json.Marshal(body)
 	if err != nil {
 		return err
 	}
 
-	req, err := http.NewRequest(method, "http://localhost/"+resource, bytes.NewReader(p))
+	req, err := http.NewRequestWithContext(ctx, method, "http://localhost/"+resource, bytes.NewReader(p))
 	if err != nil {
 		return err
 	}
@@ -64,6 +65,8 @@ func submitJSON(method string, client *http.Client, body any, resource string) e
 }
 
 func StartVM(
+	ctx context.Context,
+
 	client *http.Client,
 
 	initramfsPath string,
@@ -82,6 +85,7 @@ func StartVM(
 	vsockCID int,
 ) error {
 	if err := submitJSON(
+		ctx,
 		http.MethodPut,
 		client,
 		&v1.BootSource{
@@ -95,6 +99,7 @@ func StartVM(
 	}
 
 	if err := submitJSON(
+		ctx,
 		http.MethodPut,
 		client,
 		&v1.Drive{
@@ -109,6 +114,7 @@ func StartVM(
 	}
 
 	if err := submitJSON(
+		ctx,
 		http.MethodPut,
 		client,
 		&v1.MachineConfig{
@@ -122,6 +128,7 @@ func StartVM(
 	}
 
 	if err := submitJSON(
+		ctx,
 		http.MethodPut,
 		client,
 		&v1.VSock{
@@ -134,6 +141,7 @@ func StartVM(
 	}
 
 	if err := submitJSON(
+		ctx,
 		http.MethodPut,
 		client,
 		&v1.NetworkInterface{
@@ -147,6 +155,7 @@ func StartVM(
 	}
 
 	if err := submitJSON(
+		ctx,
 		http.MethodPut,
 		client,
 		&v1.Action{
@@ -161,9 +170,12 @@ func StartVM(
 }
 
 func StopVM(
+	ctx context.Context,
+
 	client *http.Client,
 ) error {
 	if err := submitJSON(
+		ctx,
 		http.MethodPut,
 		client,
 		&v1.Action{
@@ -178,6 +190,7 @@ func StopVM(
 }
 
 func CreateSnapshot(
+	ctx context.Context,
 	client *http.Client,
 
 	statePath,
@@ -200,6 +213,7 @@ func CreateSnapshot(
 
 	if snapshotType != SnapshotTypeMsync {
 		if err := submitJSON(
+			ctx,
 			http.MethodPatch,
 			client,
 			&v1.VirtualMachineStateRequest{
@@ -212,6 +226,7 @@ func CreateSnapshot(
 	}
 
 	if err := submitJSON(
+		ctx,
 		http.MethodPut,
 		client,
 		&v1.SnapshotCreateRequest{
@@ -228,12 +243,14 @@ func CreateSnapshot(
 }
 
 func ResumeSnapshot(
+	ctx context.Context,
 	client *http.Client,
 
 	statePath,
 	memoryPath string,
 ) error {
 	if err := submitJSON(
+		ctx,
 		http.MethodPut,
 		client,
 		&v1.SnapshotLoadRequest{
