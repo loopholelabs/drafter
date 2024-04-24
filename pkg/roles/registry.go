@@ -59,7 +59,7 @@ func OpenDevices(
 	configBlockSize uint32,
 
 	hooks OpenDevicesHooks,
-) ([]Device, []func() error, []error) {
+) ([]Device, []func() error, error) {
 	stage1Inputs := []stage1{
 		{
 			name:      iconfig.StateName,
@@ -93,7 +93,7 @@ func OpenDevices(
 		},
 	}
 
-	devices, deferFuncs, errs := utils.ConcurrentMap(
+	devices, deferFuncs, err := utils.ConcurrentMap(
 		stage1Inputs,
 		func(index int, input stage1, output *Device, addDefer func(deferFunc func() error)) error {
 			output.prev = input
@@ -150,7 +150,7 @@ func OpenDevices(
 		defers = append(defers, deferFuncs...)
 	}
 
-	return devices, defers, errs
+	return devices, defers, err
 }
 
 type MigrateDevicesHooks struct {
@@ -174,7 +174,7 @@ func MigrateDevices(
 	writers []io.Writer,
 
 	hooks MigrateDevicesHooks,
-) (errs []error) {
+) (errs error) {
 	var errsLock sync.Mutex
 
 	var wg sync.WaitGroup
@@ -197,7 +197,7 @@ func MigrateDevices(
 				}
 
 				if !(errors.Is(e, context.Canceled) && errors.Is(context.Cause(ctx), errFinished)) {
-					errs = append(errs, e)
+					errs = errors.Join(errs, e)
 				}
 
 				cancel(errFinished)
@@ -217,7 +217,7 @@ func MigrateDevices(
 		// TODO: Make `func (p *protocol.ProtocolRW) Handle() error` return if context is cancelled, then remove this workaround
 		if conn != nil {
 			if err := conn.Close(); err != nil && !utils.IsClosedErr(err) {
-				errs = append(errs, err)
+				panic(err)
 			}
 		}
 	}()
@@ -241,7 +241,7 @@ func MigrateDevices(
 
 	var devicesLeftToSend atomic.Int32
 
-	_, deferFuncs, errs := utils.ConcurrentMap(
+	_, deferFuncs, err := utils.ConcurrentMap(
 		devices,
 		func(index int, input Device, _ *struct{}, _ func(deferFunc func() error)) error {
 			to := protocol.NewToProtocol(input.storage.Size(), uint32(index), pro)
@@ -375,6 +375,10 @@ func MigrateDevices(
 		},
 	)
 
+	if err != nil {
+		panic(err)
+	}
+
 	for _, deferFuncs := range deferFuncs {
 		for _, deferFunc := range deferFuncs {
 			defer deferFunc()
@@ -385,5 +389,5 @@ func MigrateDevices(
 		hook()
 	}
 
-	return errs
+	return
 }

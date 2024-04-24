@@ -38,16 +38,16 @@ func StartRunner(
 		resumeTimeout time.Duration,
 		agentVSockPort uint32,
 	) (
-		waitFunc func() []error,
-		closeFunc func() []error,
+		waitFunc func() error,
+		closeFunc func() error,
 
 		msyncFunc func(ctx context.Context) error,
 		suspendAndCloseAgentHandlerFunc func(ctx context.Context, resumeTimeout time.Duration) error,
 
-		errs []error,
+		errs error,
 	),
 
-	errs []error,
+	errs error,
 ) {
 	var errsLock sync.Mutex
 
@@ -68,7 +68,7 @@ func StartRunner(
 				}
 
 				if !(errors.Is(e, context.Canceled) && errors.Is(context.Cause(internalCtx), errFinished)) {
-					errs = append(errs, e)
+					errs = errors.Join(errs, e)
 				}
 
 				cancel(errFinished)
@@ -82,7 +82,7 @@ func StartRunner(
 		panic(err)
 	}
 
-	vp, firecrackerWait, firecrackerKill, errs := firecracker.StartFirecrackerServer(
+	vp, firecrackerWait, firecrackerKill, err := firecracker.StartFirecrackerServer(
 		ctx, // We use ctx, not internalCtx here since this resource outlives the function call
 
 		hypervisorConfiguration.FirecrackerBin,
@@ -100,10 +100,8 @@ func StartRunner(
 		hypervisorConfiguration.EnableOutput,
 		hypervisorConfiguration.EnableInput,
 	)
-	for _, err := range errs {
-		if err != nil {
-			panic(err)
-		}
+	if err != nil {
+		panic(err)
 	}
 
 	vmPath = vp
@@ -147,13 +145,13 @@ func StartRunner(
 		resumeTimeout time.Duration,
 		agentVSockPort uint32,
 	) (
-		waitFunc func() []error,
-		closeFunc func() []error,
+		waitFunc func() error,
+		closeFunc func() error,
 
 		msyncFunc func(ctx context.Context) error,
 		suspendAndCloseAgentHandlerFunc func(ctx context.Context, resumeTimeout time.Duration) error,
 
-		errs []error,
+		errs error,
 	) {
 		var errsLock sync.Mutex
 
@@ -177,7 +175,7 @@ func StartRunner(
 					}
 
 					if !(errors.Is(e, context.Canceled) && errors.Is(context.Cause(internalCtx), errFinished)) {
-						errs = append(errs, e)
+						errs = errors.Join(errs, e)
 					}
 
 					cancel(errFinished)
@@ -208,7 +206,7 @@ func StartRunner(
 			panic(err)
 		}
 
-		remote, agentHandlerWait, agentHandlerClose, errs := vsock.CreateNewAgentHandler(
+		remote, agentHandlerWait, agentHandlerClose, err := vsock.CreateNewAgentHandler(
 			ctx, // We use ctx, not internalCtx here since this resource outlives the function call
 
 			filepath.Join(vmPath, VSockName),
@@ -218,10 +216,8 @@ func StartRunner(
 			resumeTimeout,
 		)
 
-		for _, err := range errs {
-			if err != nil {
-				panic(err)
-			}
+		if err != nil {
+			panic(err)
 		}
 
 		// We intentionally don't call `wg.Add` and `wg.Done` here since we return the process's wait method
@@ -229,18 +225,15 @@ func StartRunner(
 		go func() {
 			defer handleGoroutinePanic()()
 
-			errs := agentHandlerWait()
-			for _, err := range errs {
-				if err != nil {
-					panic(err)
-				}
+			if err := agentHandlerWait(); err != nil {
+				panic(err)
 			}
 		}()
 
 		waitFunc = agentHandlerWait
-		closeFunc = func() []error {
-			if errs := agentHandlerClose(); len(errs) > 0 {
-				return errs
+		closeFunc = func() error {
+			if err := agentHandlerClose(); err != nil {
+				return err
 			}
 
 			return waitFunc()

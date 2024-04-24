@@ -43,7 +43,7 @@ func StartFirecrackerServer(
 
 	enableOutput bool,
 	enableInput bool,
-) (vmDir string, waitFunc func() error, closeFunc func() error, errs []error) {
+) (vmDir string, waitFunc func() error, closeFunc func() error, errs error) {
 	var errsLock sync.Mutex
 
 	var wg sync.WaitGroup
@@ -66,7 +66,7 @@ func StartFirecrackerServer(
 				}
 
 				if !(errors.Is(e, context.Canceled) && errors.Is(context.Cause(internalCtx), errFinished)) {
-					errs = append(errs, e)
+					errs = errors.Join(errs, e)
 				}
 
 				cancel(errFinished)

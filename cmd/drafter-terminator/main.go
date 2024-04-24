@@ -2,16 +2,23 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
+	"fmt"
 	"io"
 	"log"
 	"net"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sync"
 
 	"github.com/loopholelabs/drafter/pkg/roles"
 	"github.com/loopholelabs/drafter/pkg/utils"
+)
+
+var (
+	errFinished = errors.New("finished")
 )
 
 func main() {
@@ -37,29 +44,70 @@ func main() {
 
 	log.Println("Migrating from", conn.RemoteAddr())
 
-	errs := []error{}
+	{
+		var errsLock sync.Mutex
+		var errs error
 
-	go func() {
-		done := make(chan os.Signal, 1)
-		signal.Notify(done, os.Interrupt)
+		defer func() {
+			if errs != nil {
+				panic(errs)
+			}
+		}()
 
-		<-done
+		var wg sync.WaitGroup
+		defer wg.Wait()
 
-		log.Println("Exiting gracefully")
+		ctx, cancel := context.WithCancelCause(ctx)
+		defer cancel(errFinished)
 
-		cancel()
+		handleGoroutinePanic := func() func() {
+			return func() {
+				if err := recover(); err != nil {
+					errsLock.Lock()
+					defer errsLock.Unlock()
 
-		// TODO: Make `func (p *protocol.ProtocolRW) Handle() error` return if context is cancelled, then remove this workaround
-		if conn != nil {
-			if err := conn.Close(); err != nil && !utils.IsClosedErr(err) {
-				errs = append(errs, err)
+					var e error
+					if v, ok := err.(error); ok {
+						e = v
+					} else {
+						e = fmt.Errorf("%v", err)
+					}
+
+					if !(errors.Is(e, context.Canceled) && errors.Is(context.Cause(ctx), errFinished)) {
+						errs = errors.Join(errs, e)
+					}
+
+					cancel(errFinished)
+				}
 			}
 		}
-	}()
 
-	errs = append(
-		errs,
-		roles.Terminate(
+		defer handleGoroutinePanic()()
+
+		go func() {
+			done := make(chan os.Signal, 1)
+			signal.Notify(done, os.Interrupt)
+
+			<-done
+
+			wg.Add(1) // We only register this here since we still want to be able to exit without manually interrupting
+			defer wg.Done()
+
+			defer handleGoroutinePanic()()
+
+			log.Println("Exiting gracefully")
+
+			cancel(errFinished)
+
+			// TODO: Make `func (p *protocol.ProtocolRW) Handle() error` return if context is cancelled, then remove this workaround
+			if conn != nil {
+				if err := conn.Close(); err != nil && !utils.IsClosedErr(err) {
+					panic(err)
+				}
+			}
+		}()
+
+		if err := roles.Terminate(
 			ctx,
 			conn,
 
@@ -91,21 +139,10 @@ func main() {
 					log.Println("Completed all migrations")
 				},
 			},
-		)...,
-	)
-
-	for _, err := range errs {
-		// TODO: Make `func (p *protocol.ProtocolRW) Handle() error` return if context is cancelled, then remove this workaround
-		if err != nil && !utils.IsClosedErr(err) {
-			select {
-			case <-ctx.Done():
-				return
-
-			default:
-				panic(err)
-			}
+		); err != nil && !utils.IsClosedErr(err) { // TODO: Make `func (p *protocol.ProtocolRW) Handle() error` return if context is cancelled, then remove this workaround
+			panic(err)
 		}
-	}
 
-	log.Println("Shutting down")
+		log.Println("Shutting down")
+	}
 }

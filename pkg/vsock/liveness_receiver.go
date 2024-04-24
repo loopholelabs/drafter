@@ -38,7 +38,7 @@ func (l *LivenessPingReceiver) Open() (string, error) {
 	return l.vsockPortPath, nil
 }
 
-func (l *LivenessPingReceiver) ReceiveAndClose(ctx context.Context) (errs []error) {
+func (l *LivenessPingReceiver) ReceiveAndClose(ctx context.Context) (errs error) {
 	var errsLock sync.Mutex
 
 	var wg sync.WaitGroup
@@ -61,7 +61,7 @@ func (l *LivenessPingReceiver) ReceiveAndClose(ctx context.Context) (errs []erro
 				}
 
 				if !(errors.Is(e, context.Canceled) && errors.Is(context.Cause(ctx), errFinished)) {
-					errs = append(errs, e)
+					errs = errors.Join(errs, e)
 				}
 
 				cancel(errFinished)

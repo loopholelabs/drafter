@@ -45,7 +45,7 @@ func CreateSnapshot(
 	agentConfiguration config.AgentConfiguration,
 
 	knownNamesConfiguration config.KnownNamesConfiguration,
-) (errs []error) {
+) (errs error) {
 	var errsLock sync.Mutex
 
 	var wg sync.WaitGroup
@@ -68,7 +68,7 @@ func CreateSnapshot(
 				}
 
 				if !(errors.Is(e, context.Canceled) && errors.Is(context.Cause(ctx), errFinished)) {
-					errs = append(errs, e)
+					errs = errors.Join(errs, e)
 				}
 
 				cancel(errFinished)
@@ -82,7 +82,7 @@ func CreateSnapshot(
 		panic(err)
 	}
 
-	vmPath, firecrackerWait, firecrackerKill, errs := firecracker.StartFirecrackerServer(
+	vmPath, firecrackerWait, firecrackerKill, err := firecracker.StartFirecrackerServer(
 		ctx,
 
 		hypervisorConfiguration.FirecrackerBin,
@@ -100,10 +100,8 @@ func CreateSnapshot(
 		hypervisorConfiguration.EnableOutput,
 		hypervisorConfiguration.EnableInput,
 	)
-	for _, err := range errs {
-		if err != nil {
-			panic(err)
-		}
+	if err != nil {
+		panic(err)
 	}
 	defer firecrackerKill()
 	defer os.RemoveAll(filepath.Dir(vmPath)) // Remove `firecracker/$id`, not just `firecracker/$id/root`
@@ -146,7 +144,7 @@ func CreateSnapshot(
 		defer wg.Done()
 		defer handleGoroutinePanic()()
 
-		if len(errs) > 0 {
+		if errs != nil {
 			return
 		}
 
@@ -255,7 +253,7 @@ func CreateSnapshot(
 		panic(err)
 	}
 
-	remote, agentHandlerWait, agentHandlerClose, errs := vsock.CreateNewAgentHandler(
+	remote, agentHandlerWait, agentHandlerClose, err := vsock.CreateNewAgentHandler(
 		ctx,
 
 		filepath.Join(vmPath, VSockName),
@@ -264,10 +262,8 @@ func CreateSnapshot(
 		time.Millisecond*100,
 		agentConfiguration.ResumeTimeout,
 	)
-	for _, err := range errs {
-		if err != nil {
-			panic(err)
-		}
+	if err != nil {
+		panic(err)
 	}
 	defer agentHandlerClose()
 
@@ -276,11 +272,8 @@ func CreateSnapshot(
 		defer wg.Done()
 		defer handleGoroutinePanic()()
 
-		errs := agentHandlerWait()
-		for _, err := range errs {
-			if err != nil {
-				panic(err)
-			}
+		if err := agentHandlerWait(); err != nil {
+			panic(err)
 		}
 	}()
 

@@ -80,7 +80,7 @@ func main() {
 		cancel()
 	}()
 
-	errs := roles.CreateSnapshot(
+	if err := roles.CreateSnapshot(
 		ctx,
 
 		*initramfsInputPath,
@@ -140,17 +140,13 @@ func main() {
 
 			ConfigName: config.ConfigName,
 		},
-	)
+	); err != nil {
+		select {
+		case <-ctx.Done():
+			return
 
-	for _, err := range errs {
-		if err != nil {
-			select {
-			case <-ctx.Done():
-				return
-
-			default:
-				panic(err)
-			}
+		default:
+			panic(err)
 		}
 	}
 

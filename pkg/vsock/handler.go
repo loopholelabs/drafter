@@ -30,7 +30,7 @@ func CreateNewAgentHandler(
 
 	connectDeadline time.Duration,
 	retryDeadline time.Duration,
-) (remote remotes.AgentRemote, waitFunc func() []error, closeFunc func() []error, errs []error) {
+) (remote remotes.AgentRemote, waitFunc func() error, closeFunc func() error, errs error) {
 	var errsLock sync.Mutex
 
 	internalCtx, cancel := context.WithCancelCause(ctx)
@@ -50,7 +50,7 @@ func CreateNewAgentHandler(
 				}
 
 				if !(errors.Is(e, context.Canceled) && errors.Is(context.Cause(internalCtx), errFinished)) {
-					errs = append(errs, e)
+					errs = errors.Join(errs, e)
 				}
 
 				cancel(errFinished)
@@ -142,15 +142,15 @@ func CreateNewAgentHandler(
 	}
 
 	var wg sync.WaitGroup
-	waitFunc = func() []error {
+	waitFunc = func() error {
 		wg.Wait()
 
 		return errs
 	}
 
-	closeFunc = func() []error {
+	closeFunc = func() error {
 		if err := conn.Close(); err != nil {
-			return []error{err}
+			return err
 		}
 
 		return waitFunc()
@@ -163,11 +163,8 @@ func CreateNewAgentHandler(
 
 		<-ctx.Done() // We use ctx, not internalCtx here since this resource outlives the function call
 
-		errs := closeFunc()
-		for _, err := range errs {
-			if err != nil {
-				panic(err)
-			}
+		if err := closeFunc(); err != nil {
+			panic(err)
 		}
 	}()
 

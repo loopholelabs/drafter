@@ -85,15 +85,11 @@ func main() {
 
 	{
 		var errsLock sync.Mutex
-		errs := []error{}
+		var errs error
 
 		defer func() {
-			if len(errs) > 0 {
-				for _, err := range errs {
-					if err != nil {
-						panic(err)
-					}
-				}
+			if errs != nil {
+				panic(errs)
 			}
 		}()
 
@@ -117,7 +113,7 @@ func main() {
 					}
 
 					if !(errors.Is(e, context.Canceled) && errors.Is(context.Cause(ctx), errFinished)) {
-						errs = append(errs, e)
+						errs = errors.Join(errs, e)
 					}
 
 					cancel(errFinished)
@@ -127,7 +123,7 @@ func main() {
 
 		defer handleGoroutinePanic()()
 
-		vmPath, waitFunc, closeFunc, resumeFunc, errs := roles.StartRunner(
+		vmPath, waitFunc, closeFunc, resumeFunc, err := roles.StartRunner(
 			ctx,
 
 			config.HypervisorConfiguration{
@@ -151,16 +147,8 @@ func main() {
 			config.MemoryName,
 		)
 
-		for _, err := range errs {
-			if err != nil {
-				select {
-				case <-ctx.Done():
-					return
-
-				default:
-					panic(err)
-				}
-			}
+		if err != nil {
+			panic(err)
 		}
 
 		defer closeFunc()
@@ -225,7 +213,7 @@ func main() {
 
 				if *persist {
 					defer func(resource [2]string) {
-						if len(errs) > 0 {
+						if errs != nil {
 							return
 						}
 
@@ -334,23 +322,15 @@ func main() {
 			resumeCloseFunc,
 			_,
 			suspendAndCloseAgentHandlerFunc,
-			errs := resumeFunc(
+			err := resumeFunc(
 			ctx,
 
 			*resumeTimeout,
 			packageConfig.AgentVSockPort,
 		)
 
-		for _, err := range errs {
-			if err != nil {
-				select {
-				case <-ctx.Done():
-					return
-
-				default:
-					panic(err)
-				}
-			}
+		if err != nil {
+			panic(err)
 		}
 
 		defer resumeCloseFunc()
@@ -360,12 +340,8 @@ func main() {
 			defer wg.Done()
 			defer handleGoroutinePanic()()
 
-			if errs := resumeWaitFunc(); len(errs) > 0 {
-				for _, err := range errs {
-					if err != nil {
-						panic(err)
-					}
-				}
+			if err := resumeWaitFunc(); err != nil {
+				panic(err)
 			}
 		}()
 

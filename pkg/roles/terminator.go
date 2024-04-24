@@ -55,7 +55,7 @@ func Terminate(
 	writers []io.Writer,
 
 	hooks TerminateHooks,
-) (errs []error) {
+) (errs error) {
 	var errsLock sync.Mutex
 
 	var wg sync.WaitGroup
@@ -78,7 +78,7 @@ func Terminate(
 				}
 
 				if !(errors.Is(e, context.Canceled) && errors.Is(context.Cause(ctx), errFinished)) {
-					errs = append(errs, e)
+					errs = errors.Join(errs, e)
 				}
 
 				cancel(errFinished)
@@ -98,7 +98,7 @@ func Terminate(
 		// TODO: Make `func (p *protocol.ProtocolRW) Handle() error` return if context is cancelled, then remove this workaround
 		if conn != nil {
 			if err := conn.Close(); err != nil && !utils.IsClosedErr(err) {
-				errs = append(errs, err)
+				panic(err)
 			}
 		}
 	}()
@@ -268,5 +268,5 @@ func Terminate(
 		hook()
 	}
 
-	return errs
+	return
 }

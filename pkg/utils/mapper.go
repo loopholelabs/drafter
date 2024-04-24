@@ -1,13 +1,14 @@
 package utils
 
 import (
+	"errors"
 	"sync"
 )
 
 func ConcurrentMap[I, O any](
 	input []I,
 	callback func(index int, input I, output *O, addDefer func(deferFunc func() error)) error,
-) ([]O, [][]func() error, []error) {
+) ([]O, [][]func() error, error) {
 	var (
 		wg sync.WaitGroup
 
@@ -17,7 +18,7 @@ func ConcurrentMap[I, O any](
 		defers     = [][]func() error{}
 		defersLock sync.Mutex
 
-		errs     = []error{}
+		errs     error
 		errsLock sync.Mutex
 	)
 	for i, input := range input {
@@ -56,7 +57,7 @@ func ConcurrentMap[I, O any](
 			errsLock.Lock()
 			defer errsLock.Unlock()
 
-			errs = append(errs, err)
+			errs = errors.Join(errs, err)
 		}(i, input)
 	}
 
