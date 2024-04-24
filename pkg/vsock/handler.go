@@ -30,7 +30,7 @@ func CreateNewAgentHandler(
 
 	connectDeadline time.Duration,
 	retryDeadline time.Duration,
-) (remote remotes.AgentRemote, waitFunc func() []error, closeFunc func() error, errs []error) {
+) (remote remotes.AgentRemote, waitFunc func() []error, closeFunc func() []error, errs []error) {
 	var errsLock sync.Mutex
 
 	internalCtx, cancel := context.WithCancelCause(ctx)
@@ -148,20 +148,28 @@ func CreateNewAgentHandler(
 		return errs
 	}
 
-	closeFunc = func() error {
+	closeFunc = func() []error {
 		if err := conn.Close(); err != nil {
-			return err
+			return []error{err}
 		}
 
-		errs := waitFunc()
+		return waitFunc()
+	}
+
+	// We intentionally don't call `wg.Add` and `wg.Done` here since we return the process's wait method
+	// We still need to `defer handleGoroutinePanic()()` here however so that we catch any errors during this call
+	go func() {
+		defer handleGoroutinePanic()()
+
+		<-ctx.Done() // We use ctx, not internalCtx here since this resource outlives the function call
+
+		errs := closeFunc()
 		for _, err := range errs {
 			if err != nil {
-				return err
+				panic(err)
 			}
 		}
-
-		return nil
-	}
+	}()
 
 	wg.Add(1)
 	go func() {
