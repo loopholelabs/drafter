@@ -315,8 +315,8 @@ command="/bin/bash"
 command_args="-c 'cp -r /root/cuberite/Release/Server/* /run && cd /run && unbuffer ./Cuberite'"
 command_background=true
 pidfile="/run/\${RC_SVCNAME}.pid"
-output_log="/dev/stdout"
-error_log="/dev/stderr"
+output_log="/dev/kmsg"
+error_log="/dev/kmsg"
 
 depend() {
 	need net
@@ -370,8 +370,8 @@ command="/usr/bin/java"
 command_args="-Xmx1024M -Xms1024M -jar /usr/sbin/minecraft-server.jar nogui"
 command_background=true
 pidfile="/run/\${RC_SVCNAME}.pid"
-output_log="/dev/stdout"
-error_log="/dev/stderr"
+output_log="/dev/kmsg"
+error_log="/dev/kmsg"
 directory="/root"
 
 depend() {
@@ -480,8 +480,8 @@ command="/usr/sbin/drafter-liveness"
 command_args="--vsock-port ${LIVENESS_VSOCK_PORT}"
 command_background=true
 pidfile="/run/\${RC_SVCNAME}.pid"
-output_log="/dev/stdout"
-error_log="/dev/stderr"
+output_log="/dev/kmsg"
+error_log="/dev/kmsg"
 
 depend() {
 	need net ${SERVICE_DEPENDENCY} drafter-agent
@@ -531,8 +531,8 @@ command="/usr/sbin/drafter-agent"
 command_args="--vsock-port ${AGENT_VSOCK_PORT}"
 command_background=true
 pidfile="/run/\${RC_SVCNAME}.pid"
-output_log="/dev/stdout"
-error_log="/dev/stderr"
+output_log="/dev/kmsg"
+error_log="/dev/kmsg"
 
 depend() {
 	need net ${SERVICE_DEPENDENCY}
