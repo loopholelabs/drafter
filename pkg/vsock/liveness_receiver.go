@@ -84,11 +84,10 @@ func (l *LivenessPingReceiver) ReceiveAndClose(ctx context.Context) (errs error)
 
 	defer l.Close()
 
-	conn, err := l.lis.Accept()
-	if err != nil {
+	// Don't close the connection here - we close close the listener
+	if _, err := l.lis.Accept(); err != nil {
 		panic(err)
 	}
-	defer conn.Close()
 
 	return nil
 }
