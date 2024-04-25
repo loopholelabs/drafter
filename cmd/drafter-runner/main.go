@@ -123,7 +123,7 @@ func main() {
 
 		defer handleGoroutinePanic()()
 
-		vmPath, waitFunc, closeFunc, resumeFunc, err := roles.StartRunner(
+		runner, err := roles.StartRunner(
 			ctx,
 
 			config.HypervisorConfiguration{
@@ -151,14 +151,14 @@ func main() {
 			panic(err)
 		}
 
-		defer closeFunc()
+		defer runner.Close()
 
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			defer handleGoroutinePanic()()
 
-			if err := waitFunc(); err != nil {
+			if err := runner.Wait(); err != nil {
 				panic(err)
 			}
 		}()
@@ -194,11 +194,11 @@ func main() {
 				}
 				defer inputFile.Close()
 
-				if err := os.MkdirAll(filepath.Dir(filepath.Join(vmPath, resource[0])), os.ModePerm); err != nil {
+				if err := os.MkdirAll(filepath.Dir(filepath.Join(runner.VMPath, resource[0])), os.ModePerm); err != nil {
 					panic(err)
 				}
 
-				outputFile, err := os.OpenFile(filepath.Join(vmPath, resource[0]), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, os.ModePerm)
+				outputFile, err := os.OpenFile(filepath.Join(runner.VMPath, resource[0]), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, os.ModePerm)
 				if err != nil {
 					panic(err)
 				}
@@ -217,7 +217,7 @@ func main() {
 							return
 						}
 
-						inputFile, err := os.Open(filepath.Join(vmPath, resource[0]))
+						inputFile, err := os.Open(filepath.Join(runner.VMPath, resource[0]))
 						if err != nil {
 							panic(err)
 						}
@@ -291,7 +291,7 @@ func main() {
 
 				dev := int((major << 8) | minor)
 
-				if err := unix.Mknod(filepath.Join(vmPath, resource[0]), unix.S_IFBLK|0666, dev); err != nil {
+				if err := unix.Mknod(filepath.Join(runner.VMPath, resource[0]), unix.S_IFBLK|0666, dev); err != nil {
 					panic(err)
 				}
 			}
@@ -318,11 +318,7 @@ func main() {
 
 		before := time.Now()
 
-		resumeWaitFunc,
-			resumeCloseFunc,
-			_,
-			suspendAndCloseAgentHandlerFunc,
-			err := resumeFunc(
+		resumedRunner, err := runner.Resume(
 			ctx,
 
 			*resumeTimeout,
@@ -333,19 +329,19 @@ func main() {
 			panic(err)
 		}
 
-		defer resumeCloseFunc()
+		defer resumedRunner.Close()
 
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			defer handleGoroutinePanic()()
 
-			if err := resumeWaitFunc(); err != nil {
+			if err := resumedRunner.Wait(); err != nil {
 				panic(err)
 			}
 		}()
 
-		log.Println("Resumed VM in", time.Since(before), "on", vmPath)
+		log.Println("Resumed VM in", time.Since(before), "on", runner.VMPath)
 
 		bubbleSignals = true
 
@@ -359,7 +355,7 @@ func main() {
 
 		before = time.Now()
 
-		if err := suspendAndCloseAgentHandlerFunc(ctx, *resumeTimeout); err != nil {
+		if err := resumedRunner.SuspendAndCloseAgentHandler(ctx, *resumeTimeout); err != nil {
 			panic(err)
 		}
 

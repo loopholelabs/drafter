@@ -82,7 +82,7 @@ func CreateSnapshot(
 		panic(err)
 	}
 
-	vmPath, firecrackerWait, firecrackerKill, err := firecracker.StartFirecrackerServer(
+	server, err := firecracker.StartFirecrackerServer(
 		ctx,
 
 		hypervisorConfiguration.FirecrackerBin,
@@ -103,21 +103,21 @@ func CreateSnapshot(
 	if err != nil {
 		panic(err)
 	}
-	defer firecrackerKill()
-	defer os.RemoveAll(filepath.Dir(vmPath)) // Remove `firecracker/$id`, not just `firecracker/$id/root`
+	defer server.Close()
+	defer os.RemoveAll(filepath.Dir(server.VMPath)) // Remove `firecracker/$id`, not just `firecracker/$id/root`
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		defer handleGoroutinePanic()()
 
-		if err := firecrackerWait(); err != nil {
+		if err := server.Wait(); err != nil {
 			panic(err)
 		}
 	}()
 
 	ping := vsock.NewLivenessPingReceiver(
-		filepath.Join(vmPath, VSockName),
+		filepath.Join(server.VMPath, VSockName),
 		uint32(livenessConfiguration.LivenessVSockPort),
 	)
 
@@ -134,7 +134,7 @@ func CreateSnapshot(
 	client := &http.Client{
 		Transport: &http.Transport{
 			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-				return net.Dial("unix", filepath.Join(vmPath, firecracker.FirecrackerSocketName))
+				return net.Dial("unix", filepath.Join(server.VMPath, firecracker.FirecrackerSocketName))
 			},
 		},
 	}
@@ -176,7 +176,7 @@ func CreateSnapshot(
 				configOutputPath,
 			},
 		} {
-			inputFile, err := os.Open(filepath.Join(vmPath, resource[0]))
+			inputFile, err := os.Open(filepath.Join(server.VMPath, resource[0]))
 			if err != nil {
 				panic(err)
 			}
@@ -205,12 +205,12 @@ func CreateSnapshot(
 		}
 	}()
 	// We need to stop the Firecracker process from using the mount before we can unmount it
-	defer firecrackerKill()
+	defer server.Close()
 
 	var (
-		initramfsWorkingPath = filepath.Join(vmPath, knownNamesConfiguration.InitramfsName)
-		kernelWorkingPath    = filepath.Join(vmPath, knownNamesConfiguration.KernelName)
-		diskWorkingPath      = filepath.Join(vmPath, knownNamesConfiguration.DiskName)
+		initramfsWorkingPath = filepath.Join(server.VMPath, knownNamesConfiguration.InitramfsName)
+		kernelWorkingPath    = filepath.Join(server.VMPath, knownNamesConfiguration.KernelName)
+		diskWorkingPath      = filepath.Join(server.VMPath, knownNamesConfiguration.DiskName)
 	)
 
 	if _, err := utils.CopyFile(initramfsInputPath, initramfsWorkingPath, hypervisorConfiguration.UID, hypervisorConfiguration.GID); err != nil {
@@ -247,16 +247,16 @@ func CreateSnapshot(
 	); err != nil {
 		panic(err)
 	}
-	defer os.Remove(filepath.Join(vmPath, VSockName))
+	defer os.Remove(filepath.Join(server.VMPath, VSockName))
 
 	if err := ping.ReceiveAndClose(ctx); err != nil {
 		panic(err)
 	}
 
-	remote, agentHandlerWait, agentHandlerClose, err := vsock.CreateNewAgentHandler(
+	agentHandler, err := vsock.CreateNewAgentHandler(
 		ctx,
 
-		filepath.Join(vmPath, VSockName),
+		filepath.Join(server.VMPath, VSockName),
 		uint32(agentConfiguration.AgentVSockPort),
 
 		time.Millisecond*100,
@@ -265,14 +265,14 @@ func CreateSnapshot(
 	if err != nil {
 		panic(err)
 	}
-	defer agentHandlerClose()
+	defer agentHandler.Close()
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		defer handleGoroutinePanic()()
 
-		if err := agentHandlerWait(); err != nil {
+		if err := agentHandler.Wait(); err != nil {
 			panic(err)
 		}
 	}()
@@ -281,14 +281,14 @@ func CreateSnapshot(
 		ctx, cancel := context.WithTimeout(ctx, agentConfiguration.ResumeTimeout)
 		defer cancel()
 
-		if err := remote.BeforeSuspend(ctx); err != nil {
+		if err := agentHandler.Remote.BeforeSuspend(ctx); err != nil {
 			panic(err)
 		}
 	}
 
 	// Connections need to be closed before creating the snapshot
 	ping.Close()
-	_ = agentHandlerClose()
+	_ = agentHandler.Close()
 
 	if err := firecracker.CreateSnapshot(
 		ctx,
@@ -310,7 +310,7 @@ func CreateSnapshot(
 		panic(err)
 	}
 
-	if _, err := utils.WriteFile(packageConfig, filepath.Join(vmPath, knownNamesConfiguration.ConfigName), hypervisorConfiguration.UID, hypervisorConfiguration.GID); err != nil {
+	if _, err := utils.WriteFile(packageConfig, filepath.Join(server.VMPath, knownNamesConfiguration.ConfigName), hypervisorConfiguration.UID, hypervisorConfiguration.GID); err != nil {
 		panic(err)
 	}
 

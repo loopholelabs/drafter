@@ -22,6 +22,12 @@ var (
 	ErrRemoteNotFound         = errors.New("remote not found")
 )
 
+type AgentHandler struct {
+	Remote remotes.AgentRemote
+	Wait   func() error
+	Close  func() error
+}
+
 func CreateNewAgentHandler(
 	ctx context.Context,
 
@@ -30,7 +36,9 @@ func CreateNewAgentHandler(
 
 	connectDeadline time.Duration,
 	retryDeadline time.Duration,
-) (remote remotes.AgentRemote, waitFunc func() error, closeFunc func() error, errs error) {
+) (agentHandler *AgentHandler, errs error) {
+	agentHandler = &AgentHandler{}
+
 	var errsLock sync.Mutex
 
 	internalCtx, cancel := context.WithCancelCause(ctx)
@@ -142,18 +150,18 @@ func CreateNewAgentHandler(
 	}
 
 	var wg sync.WaitGroup
-	waitFunc = func() error {
+	agentHandler.Wait = func() error {
 		wg.Wait()
 
 		return errs
 	}
 
-	closeFunc = func() error {
+	agentHandler.Close = func() error {
 		if err := conn.Close(); err != nil {
 			return err
 		}
 
-		return waitFunc()
+		return agentHandler.Wait()
 	}
 
 	// We intentionally don't call `wg.Add` and `wg.Done` here since we return the process's wait method
@@ -163,7 +171,7 @@ func CreateNewAgentHandler(
 
 		<-ctx.Done() // We use ctx, not internalCtx here since this resource outlives the function call
 
-		if err := closeFunc(); err != nil {
+		if err := agentHandler.Close(); err != nil {
 			panic(err)
 		}
 	}()
@@ -214,7 +222,7 @@ func CreateNewAgentHandler(
 	// which can never return an error here
 	_ = registry.ForRemotes(func(candidateID string, candidate remotes.AgentRemote) error {
 		if candidateID == remoteID {
-			remote = candidate
+			agentHandler.Remote = candidate
 			found = true
 		}
 

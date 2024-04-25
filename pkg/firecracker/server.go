@@ -26,6 +26,12 @@ const (
 	FirecrackerSocketName = "firecracker.sock"
 )
 
+type FirecrackerServer struct {
+	VMPath string
+	Wait   func() error
+	Close  func() error
+}
+
 func StartFirecrackerServer(
 	ctx context.Context,
 
@@ -43,7 +49,9 @@ func StartFirecrackerServer(
 
 	enableOutput bool,
 	enableInput bool,
-) (vmDir string, waitFunc func() error, closeFunc func() error, errs error) {
+) (server *FirecrackerServer, errs error) {
+	server = &FirecrackerServer{}
+
 	var errsLock sync.Mutex
 
 	var wg sync.WaitGroup
@@ -78,8 +86,8 @@ func StartFirecrackerServer(
 
 	id := shortuuid.New()
 
-	vmDir = filepath.Join(chrootBaseDir, "firecracker", id, "root")
-	if err := os.MkdirAll(vmDir, os.ModePerm); err != nil {
+	server.VMPath = filepath.Join(chrootBaseDir, "firecracker", id, "root")
+	if err := os.MkdirAll(server.VMPath, os.ModePerm); err != nil {
 		panic(err)
 	}
 
@@ -89,7 +97,7 @@ func StartFirecrackerServer(
 	}
 	defer watcher.Close()
 
-	if err := watcher.AddWatch(vmDir, inotify.InCreate); err != nil {
+	if err := watcher.AddWatch(server.VMPath, inotify.InCreate); err != nil {
 		panic(err)
 	}
 
@@ -148,7 +156,7 @@ func StartFirecrackerServer(
 	closed := false
 
 	// We can only run this once since `cmd.Wait()` releases resources after the first call
-	waitFunc = sync.OnceValue(func() error {
+	server.Wait = sync.OnceValue(func() error {
 		if err := cmd.Wait(); err != nil {
 			closeLock.Lock()
 			defer closeLock.Unlock()
@@ -171,7 +179,7 @@ func StartFirecrackerServer(
 	go func() {
 		defer handleGoroutinePanic()()
 
-		if err := waitFunc(); err != nil {
+		if err := server.Wait(); err != nil {
 			panic(err)
 		}
 	}()
@@ -200,14 +208,14 @@ func StartFirecrackerServer(
 		// doesn't actually stop it, it only stops trying to start it!
 		<-ctx.Done() // We use ctx, not internalCtx here since this resource outlives the function call
 
-		if err := closeFunc(); err != nil {
+		if err := server.Close(); err != nil {
 			panic(err)
 		}
 	}()
 
 	socketCreated := false
 
-	socketPath := filepath.Join(vmDir, FirecrackerSocketName)
+	socketPath := filepath.Join(server.VMPath, FirecrackerSocketName)
 	for ev := range watcher.Event {
 		if filepath.Clean(ev.Name) == filepath.Clean(socketPath) {
 			socketCreated = true
@@ -220,7 +228,7 @@ func StartFirecrackerServer(
 		panic(ErrNoSocketCreated)
 	}
 
-	closeFunc = func() error {
+	server.Close = func() error {
 		if cmd.Process != nil {
 			closeLock.Lock()
 
@@ -235,7 +243,7 @@ func StartFirecrackerServer(
 			closeLock.Unlock()
 		}
 
-		return waitFunc()
+		return server.Wait()
 	}
 
 	return
