@@ -42,8 +42,8 @@ type ResumedRunner struct {
 	Wait  func() error
 	Close func() error
 
-	Msync                       func(ctx context.Context) error
-	SuspendAndCloseAgentHandler func(ctx context.Context, resumeTimeout time.Duration) error
+	Msync                      func(ctx context.Context) error
+	SuspendAndCloseAgentServer func(ctx context.Context, resumeTimeout time.Duration) error
 }
 
 func StartRunner(
@@ -203,6 +203,24 @@ func StartRunner(
 			}
 		}()
 
+		agent, err := vsock.StartAgentServer(
+			filepath.Join(server.VMPath, VSockName),
+			uint32(agentVSockPort),
+		)
+		if err != nil {
+			panic(err)
+		}
+
+		resumedRunner.Close = func() error {
+			agent.Close()
+
+			return nil
+		}
+
+		if err := os.Chown(agent.VSockPath, hypervisorConfiguration.UID, hypervisorConfiguration.GID); err != nil {
+			panic(err)
+		}
+
 		if err := firecracker.ResumeSnapshot(
 			internalCtx,
 
@@ -214,18 +232,15 @@ func StartRunner(
 			panic(err)
 		}
 
-		agentHandler, err := vsock.CreateNewAgentHandler(
-			ctx, // We use ctx, not internalCtx here since this resource outlives the function call
+		var acceptingAgent *vsock.AcceptingAgentServer
+		{
+			acceptCtx, cancel := context.WithTimeout(ctx, resumeTimeout)
+			defer cancel()
 
-			filepath.Join(runner.VMPath, VSockName),
-			agentVSockPort,
-
-			time.Millisecond*100,
-			resumeTimeout,
-		)
-
-		if err != nil {
-			panic(err)
+			acceptingAgent, err = agent.Accept(acceptCtx, ctx)
+			if err != nil {
+				panic(err)
+			}
 		}
 
 		// We intentionally don't call `wg.Add` and `wg.Done` here since we return the process's wait method
@@ -233,16 +248,18 @@ func StartRunner(
 		go func() {
 			defer handleGoroutinePanic()()
 
-			if err := agentHandler.Wait(); err != nil {
+			if err := acceptingAgent.Wait(); err != nil {
 				panic(err)
 			}
 		}()
 
-		resumedRunner.Wait = agentHandler.Wait
+		resumedRunner.Wait = acceptingAgent.Wait
 		resumedRunner.Close = func() error {
-			if err := agentHandler.Close(); err != nil {
+			if err := acceptingAgent.Close(); err != nil {
 				return err
 			}
+
+			agent.Close()
 
 			return resumedRunner.Wait()
 		}
@@ -250,7 +267,7 @@ func StartRunner(
 		resumeCtx, cancelResumeCtx := context.WithTimeout(internalCtx, resumeTimeout)
 		defer cancelResumeCtx()
 
-		if err := agentHandler.Remote.AfterResume(resumeCtx); err != nil {
+		if err := acceptingAgent.Remote.AfterResume(resumeCtx); err != nil {
 			panic(err)
 		}
 
@@ -267,17 +284,21 @@ func StartRunner(
 			)
 		}
 
-		resumedRunner.SuspendAndCloseAgentHandler = func(ctx context.Context, resumeTimeout time.Duration) error {
+		resumedRunner.SuspendAndCloseAgentServer = func(ctx context.Context, resumeTimeout time.Duration) error {
 			{
 				ctx, cancel := context.WithTimeout(ctx, resumeTimeout)
 				defer cancel()
 
-				if err := agentHandler.Remote.BeforeSuspend(ctx); err != nil {
-					return err
+				if err := acceptingAgent.Remote.BeforeSuspend(ctx); err != nil {
+					panic(err)
 				}
 			}
 
-			_ = agentHandler.Close() // Connection needs to be closed before flushing the snapshot
+			// Connections need to be closed before creating the snapshot
+			if err := acceptingAgent.Close(); err != nil {
+				return err
+			}
+			agent.Close()
 
 			return firecracker.CreateSnapshot(
 				ctx,

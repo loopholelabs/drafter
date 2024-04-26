@@ -355,7 +355,7 @@ func main() {
 
 		before = time.Now()
 
-		if err := resumedRunner.SuspendAndCloseAgentHandler(ctx, *resumeTimeout); err != nil {
+		if err := resumedRunner.SuspendAndCloseAgentServer(ctx, *resumeTimeout); err != nil {
 			panic(err)
 		}
 

@@ -13,22 +13,22 @@ var (
 	errFinished = errors.New("finished")
 )
 
-type LivenessPingReceiver struct {
+type LivenessServer struct {
 	vsockPortPath string
 
 	lis net.Listener
 }
 
-func NewLivenessPingReceiver(
+func NewLivenessServer(
 	vsockPath string,
 	vsockPort uint32,
-) *LivenessPingReceiver {
-	return &LivenessPingReceiver{
+) *LivenessServer {
+	return &LivenessServer{
 		vsockPortPath: fmt.Sprintf("%s_%d", vsockPath, vsockPort),
 	}
 }
 
-func (l *LivenessPingReceiver) Open() (string, error) {
+func (l *LivenessServer) Open() (string, error) {
 	var err error
 	l.lis, err = net.Listen("unix", l.vsockPortPath)
 	if err != nil {
@@ -38,7 +38,7 @@ func (l *LivenessPingReceiver) Open() (string, error) {
 	return l.vsockPortPath, nil
 }
 
-func (l *LivenessPingReceiver) ReceiveAndClose(ctx context.Context) (errs error) {
+func (l *LivenessServer) ReceiveAndClose(ctx context.Context) (errs error) {
 	var errsLock sync.Mutex
 
 	var wg sync.WaitGroup
@@ -89,10 +89,10 @@ func (l *LivenessPingReceiver) ReceiveAndClose(ctx context.Context) (errs error)
 		panic(err)
 	}
 
-	return nil
+	return
 }
 
-func (l *LivenessPingReceiver) Close() {
+func (l *LivenessServer) Close() {
 	if l.lis != nil {
 		_ = l.lis.Close()
 	}

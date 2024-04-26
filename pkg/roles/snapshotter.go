@@ -11,7 +11,6 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
-	"time"
 
 	"github.com/loopholelabs/drafter/pkg/config"
 	"github.com/loopholelabs/drafter/pkg/firecracker"
@@ -116,18 +115,31 @@ func CreateSnapshot(
 		}
 	}()
 
-	ping := vsock.NewLivenessPingReceiver(
+	liveness := vsock.NewLivenessServer(
 		filepath.Join(server.VMPath, VSockName),
 		uint32(livenessConfiguration.LivenessVSockPort),
 	)
 
-	livenessVSockPath, err := ping.Open()
+	livenessVSockPath, err := liveness.Open()
 	if err != nil {
 		panic(err)
 	}
-	defer ping.Close()
+	defer liveness.Close()
 
 	if err := os.Chown(livenessVSockPath, hypervisorConfiguration.UID, hypervisorConfiguration.GID); err != nil {
+		panic(err)
+	}
+
+	agent, err := vsock.StartAgentServer(
+		filepath.Join(server.VMPath, VSockName),
+		uint32(agentConfiguration.AgentVSockPort),
+	)
+	if err != nil {
+		panic(err)
+	}
+	defer agent.Close()
+
+	if err := os.Chown(agent.VSockPath, hypervisorConfiguration.UID, hypervisorConfiguration.GID); err != nil {
 		panic(err)
 	}
 
@@ -249,46 +261,42 @@ func CreateSnapshot(
 	}
 	defer os.Remove(filepath.Join(server.VMPath, VSockName))
 
-	if err := ping.ReceiveAndClose(ctx); err != nil {
+	if err := liveness.ReceiveAndClose(ctx); err != nil {
 		panic(err)
 	}
 
-	agentHandler, err := vsock.CreateNewAgentHandler(
-		ctx,
-
-		filepath.Join(server.VMPath, VSockName),
-		uint32(agentConfiguration.AgentVSockPort),
-
-		time.Millisecond*100,
-		agentConfiguration.ResumeTimeout,
-	)
-	if err != nil {
-		panic(err)
-	}
-	defer agentHandler.Close()
-
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		defer handleGoroutinePanic()()
-
-		if err := agentHandler.Wait(); err != nil {
-			panic(err)
-		}
-	}()
-
+	var acceptingAgent *vsock.AcceptingAgentServer
 	{
-		ctx, cancel := context.WithTimeout(ctx, agentConfiguration.ResumeTimeout)
+		acceptCtx, cancel := context.WithTimeout(ctx, agentConfiguration.ResumeTimeout)
 		defer cancel()
 
-		if err := agentHandler.Remote.BeforeSuspend(ctx); err != nil {
+		acceptingAgent, err = agent.Accept(acceptCtx, ctx)
+		if err != nil {
+			panic(err)
+		}
+		defer acceptingAgent.Close()
+
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			defer handleGoroutinePanic()()
+
+			if err := acceptingAgent.Wait(); err != nil {
+				panic(err)
+			}
+		}()
+
+		if err := acceptingAgent.Remote.BeforeSuspend(acceptCtx); err != nil {
 			panic(err)
 		}
 	}
 
 	// Connections need to be closed before creating the snapshot
-	ping.Close()
-	_ = agentHandler.Close()
+	liveness.Close()
+	if err := acceptingAgent.Close(); err != nil {
+		panic(err)
+	}
+	agent.Close()
 
 	if err := firecracker.CreateSnapshot(
 		ctx,
@@ -310,7 +318,17 @@ func CreateSnapshot(
 		panic(err)
 	}
 
-	if _, err := utils.WriteFile(packageConfig, filepath.Join(server.VMPath, knownNamesConfiguration.ConfigName), hypervisorConfiguration.UID, hypervisorConfiguration.GID); err != nil {
+	outputFile, err := os.OpenFile(filepath.Join(server.VMPath, knownNamesConfiguration.ConfigName), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, os.ModePerm)
+	if err != nil {
+		panic(err)
+	}
+	defer outputFile.Close()
+
+	if _, err := outputFile.Write(packageConfig); err != nil {
+		panic(err)
+	}
+
+	if err := os.Chown(filepath.Join(server.VMPath, knownNamesConfiguration.ConfigName), hypervisorConfiguration.UID, hypervisorConfiguration.GID); err != nil {
 		panic(err)
 	}
 
