@@ -173,7 +173,7 @@ echo ttyS0 >/etc/securetty
 rc-update add agetty.ttyS0 default
 
 sed -i 's/initstepslew/#initstepslew/g' /etc/chrony/chrony.conf
-echo 'refclock PHC /dev/ptp0 poll 3 dpoll -2 offset 0' >> /etc/chrony/chrony.conf
+echo 'refclock PHC /dev/ptp0 poll -2 dpoll -2 offset 0 trust prefer' >> /etc/chrony/chrony.conf
 
 rc-update add networking default
 rc-update add chronyd default
