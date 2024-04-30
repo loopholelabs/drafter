@@ -169,6 +169,12 @@ func StartRunner(
 		internalCtx, cancel := context.WithCancelCause(ctx)
 		defer cancel(errFinished)
 
+		var (
+			agent          *vsock.AgentServer
+			acceptingAgent *vsock.AcceptingAgentServer
+		)
+
+		suspendOnPanicWithError := false
 		handleGoroutinePanic := func() func() {
 			return func() {
 				if err := recover(); err != nil {
@@ -184,6 +190,32 @@ func StartRunner(
 
 					if !(errors.Is(e, context.Canceled) && errors.Is(context.Cause(internalCtx), errFinished)) {
 						errs = errors.Join(errs, e)
+
+						if suspendOnPanicWithError {
+							// Connections need to be closed before creating the snapshot
+							if acceptingAgent != nil {
+								if e := acceptingAgent.Close(); e != nil {
+									errs = errors.Join(errs, e)
+								}
+							}
+							if agent != nil {
+								agent.Close()
+							}
+
+							// If a resume failed, flush the snapshot so that we can re-try
+							if e := firecracker.CreateSnapshot(
+								context.Background(),
+
+								firecrackerClient,
+
+								stateName,
+								"",
+
+								firecracker.SnapshotTypeMsyncAndState,
+							); e != nil {
+								errs = errors.Join(errs, e)
+							}
+						}
 					}
 
 					cancel(errFinished)
@@ -203,7 +235,7 @@ func StartRunner(
 			}
 		}()
 
-		agent, err := vsock.StartAgentServer(
+		agent, err = vsock.StartAgentServer(
 			filepath.Join(server.VMPath, VSockName),
 			uint32(agentVSockPort),
 		)
@@ -232,7 +264,8 @@ func StartRunner(
 			panic(err)
 		}
 
-		var acceptingAgent *vsock.AcceptingAgentServer
+		suspendOnPanicWithError = true
+
 		{
 			acceptCtx, cancel := context.WithTimeout(ctx, resumeTimeout)
 			defer cancel()
