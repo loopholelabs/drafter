@@ -21,7 +21,7 @@ var (
 
 	errSignalKilled = errors.New("signal: killed")
 
-	ErrFirecrackerExitedUnexpectedly = errors.New("firecracker exited unexpectedly")
+	ErrFirecrackerExited = errors.New("firecracker exited")
 )
 
 const (
@@ -167,7 +167,7 @@ func StartFirecrackerServer(
 				return nil
 			}
 
-			return errors.Join(ErrFirecrackerExitedUnexpectedly, err)
+			return errors.Join(ErrFirecrackerExited, err)
 		}
 
 		return nil

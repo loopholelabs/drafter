@@ -10,6 +10,10 @@ import (
 	"github.com/pojntfx/panrpc/go/pkg/rpc"
 )
 
+var (
+	ErrAgentServerDisconnected = errors.New("agent server disconnected")
+)
+
 type local struct {
 	beforeSuspend func(ctx context.Context) error
 	afterResume   func(ctx context.Context) error
@@ -109,7 +113,7 @@ func StartAgentClient(
 			return ctx.Err()
 		}
 
-		return err
+		return errors.Join(ErrAgentServerDisconnected, err)
 	}
 
 	return nil

@@ -10,6 +10,10 @@ import (
 )
 
 var (
+	ErrLivenessClientAcceptFailed = errors.New("liveness client accept failed")
+)
+
+var (
 	errFinished = errors.New("finished")
 )
 
@@ -96,7 +100,7 @@ func (l *LivenessServer) ReceiveAndClose(ctx context.Context) (errs error) {
 			panic(ctx.Err())
 		}
 
-		panic(err)
+		panic(errors.Join(ErrLivenessClientAcceptFailed, err))
 	}
 
 	return

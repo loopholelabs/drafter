@@ -16,7 +16,8 @@ import (
 var (
 	ErrNoRemoteFound = errors.New("no remote found")
 
-	ErrAgentDisconnectedUnexpectedly = errors.New("agent disconnected unexpectedly")
+	ErrAgentClientDisconnected = errors.New("agent client disconnected")
+	ErrAgentClientAcceptFailed = errors.New("agent client accept failed")
 )
 
 type AgentServer struct {
@@ -134,7 +135,7 @@ func StartAgentServer(
 				panic(internalCtx.Err())
 			}
 
-			panic(err)
+			panic(errors.Join(ErrAgentClientAcceptFailed, err))
 		}
 
 		acceptingAgent.Close = func() error {
@@ -224,7 +225,7 @@ func StartAgentServer(
 					return remoteCtx.Err()
 				}
 
-				return errors.Join(ErrAgentDisconnectedUnexpectedly, err)
+				return errors.Join(ErrAgentClientDisconnected, err)
 			}
 
 			return nil
