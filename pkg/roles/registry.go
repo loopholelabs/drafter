@@ -20,6 +20,7 @@ import (
 	"github.com/loopholelabs/silo/pkg/storage/migrator"
 	"github.com/loopholelabs/silo/pkg/storage/modules"
 	"github.com/loopholelabs/silo/pkg/storage/protocol"
+	"github.com/loopholelabs/silo/pkg/storage/protocol/packets"
 	"github.com/loopholelabs/silo/pkg/storage/volatilitymonitor"
 )
 
@@ -261,8 +262,8 @@ func MigrateDevices(
 					defer wg.Done()
 					defer handleGoroutinePanic()()
 
-					if err := to.SendEvent(&protocol.Event{
-						Type:       protocol.EventCustom,
+					if err := to.SendEvent(&packets.Event{
+						Type:       packets.EventCustom,
 						CustomType: byte(EventCustomAllDevicesSent),
 					}); err != nil {
 						panic(err)
@@ -325,9 +326,9 @@ func MigrateDevices(
 				storage.BlockTypeDirty:    concurrency,
 				storage.BlockTypePriority: concurrency,
 			}
-			cfg.ProgressHandler = func(p *migrator.MigrationProgress) {
+			cfg.Progress_handler = func(p *migrator.MigrationProgress) {
 				if hook := hooks.OnDeviceMigrationProgress; hook != nil {
-					hook(uint32(index), p.ReadyBlocks, p.TotalBlocks)
+					hook(uint32(index), p.Ready_blocks, p.Total_blocks)
 				}
 			}
 
@@ -341,8 +342,8 @@ func MigrateDevices(
 				defer wg.Done()
 				defer handleGoroutinePanic()()
 
-				if err := to.SendEvent(&protocol.Event{
-					Type:       protocol.EventCustom,
+				if err := to.SendEvent(&packets.Event{
+					Type:       packets.EventCustom,
 					CustomType: byte(EventCustomTransferAuthority),
 				}); err != nil {
 					panic(err)
@@ -361,8 +362,8 @@ func MigrateDevices(
 				return err
 			}
 
-			if err := to.SendEvent(&protocol.Event{
-				Type: protocol.EventCompleted,
+			if err := to.SendEvent(&packets.Event{
+				Type: packets.EventCompleted,
 			}); err != nil {
 				return err
 			}

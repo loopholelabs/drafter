@@ -14,6 +14,7 @@ import (
 	"github.com/loopholelabs/drafter/pkg/utils"
 	"github.com/loopholelabs/silo/pkg/storage"
 	"github.com/loopholelabs/silo/pkg/storage/protocol"
+	"github.com/loopholelabs/silo/pkg/storage/protocol/packets"
 	"github.com/loopholelabs/silo/pkg/storage/sources"
 	"github.com/loopholelabs/silo/pkg/storage/waitingcache"
 )
@@ -114,7 +115,7 @@ func Terminate(
 			)
 			from = protocol.NewFromProtocol(
 				index,
-				func(di *protocol.DevInfo) storage.StorageProvider {
+				func(di *packets.DevInfo) storage.StorageProvider {
 					defer handleGoroutinePanic()()
 
 					var (
@@ -158,7 +159,7 @@ func Terminate(
 					}
 
 					var remote *waitingcache.WaitingCacheRemote
-					local, remote = waitingcache.NewWaitingCache(storage, int(di.BlockSize))
+					local, remote = waitingcache.NewWaitingCache(storage, int(di.Block_size))
 					local.NeedAt = func(offset int64, length int32) {
 						if err := from.NeedAt(offset, length); err != nil {
 							panic(err)
@@ -174,16 +175,6 @@ func Terminate(
 				},
 				p,
 			)
-
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				defer handleGoroutinePanic()()
-
-				if err := from.HandleSend(ctx); err != nil {
-					panic(err)
-				}
-			}()
 
 			wg.Add(1)
 			go func() {
@@ -220,9 +211,9 @@ func Terminate(
 				defer wg.Done()
 				defer handleGoroutinePanic()()
 
-				if err := from.HandleEvent(func(e *protocol.Event) {
+				if err := from.HandleEvent(func(e *packets.Event) {
 					switch e.Type {
-					case protocol.EventCustom:
+					case packets.EventCustom:
 						switch e.CustomType {
 						case byte(EventCustomTransferAuthority):
 							if hook := hooks.OnDeviceAuthorityReceived; hook != nil {
@@ -235,7 +226,7 @@ func Terminate(
 							}
 						}
 
-					case protocol.EventCompleted:
+					case packets.EventCompleted:
 						if hook := hooks.OnDeviceMigrationCompleted; hook != nil {
 							hook(index)
 						}
