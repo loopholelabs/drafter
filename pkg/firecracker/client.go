@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"path"
@@ -95,7 +94,7 @@ func StartVM(
 		},
 		"boot-source",
 	); err != nil {
-		return fmt.Errorf("%w: %s", ErrCouldNotSetBootSource, err)
+		return errors.Join(ErrCouldNotSetBootSource, err)
 	}
 
 	if err := submitJSON(
@@ -110,7 +109,7 @@ func StartVM(
 		},
 		path.Join("drives", "root"),
 	); err != nil {
-		return fmt.Errorf("%w: %s", ErrCouldNotSetDrive, err)
+		return errors.Join(ErrCouldNotSetDrive, err)
 	}
 
 	if err := submitJSON(
@@ -124,7 +123,7 @@ func StartVM(
 		},
 		"machine-config",
 	); err != nil {
-		return fmt.Errorf("%w: %s", ErrCouldNotSetMachineConfig, err)
+		return errors.Join(ErrCouldNotSetMachineConfig, err)
 	}
 
 	if err := submitJSON(
@@ -137,7 +136,7 @@ func StartVM(
 		},
 		"vsock",
 	); err != nil {
-		return fmt.Errorf("%w: %s", ErrCouldNotSetVSock, err)
+		return errors.Join(ErrCouldNotSetVSock, err)
 	}
 
 	if err := submitJSON(
@@ -151,7 +150,7 @@ func StartVM(
 		},
 		path.Join("network-interfaces", hostInterface),
 	); err != nil {
-		return fmt.Errorf("%w: %s", ErrCouldNotSetNetworkInterfaces, err)
+		return errors.Join(ErrCouldNotSetNetworkInterfaces, err)
 	}
 
 	if err := submitJSON(
@@ -163,7 +162,7 @@ func StartVM(
 		},
 		"actions",
 	); err != nil {
-		return fmt.Errorf("%w: %s", ErrCouldNotStartInstance, err)
+		return errors.Join(ErrCouldNotStartInstance, err)
 	}
 
 	return nil
@@ -183,7 +182,7 @@ func StopVM(
 		},
 		"actions",
 	); err != nil {
-		return fmt.Errorf("%w: %s", ErrCouldNotStopInstance, err)
+		return errors.Join(ErrCouldNotStopInstance, err)
 	}
 
 	return nil
@@ -221,7 +220,7 @@ func CreateSnapshot(
 			},
 			"vm",
 		); err != nil {
-			return fmt.Errorf("%w: %s", ErrCouldNotPauseInstance, err)
+			return errors.Join(ErrCouldNotPauseInstance, err)
 		}
 	}
 
@@ -236,7 +235,7 @@ func CreateSnapshot(
 		},
 		"snapshot/create",
 	); err != nil {
-		return fmt.Errorf("%w: %s", ErrCouldNotCreateSnapshot, err)
+		return errors.Join(ErrCouldNotCreateSnapshot, err)
 	}
 
 	return nil
@@ -265,7 +264,7 @@ func ResumeSnapshot(
 		},
 		"snapshot/load",
 	); err != nil {
-		return fmt.Errorf("%w: %s", ErrCouldNotResumeSnapshot, err)
+		return errors.Join(ErrCouldNotResumeSnapshot, err)
 	}
 
 	return nil
