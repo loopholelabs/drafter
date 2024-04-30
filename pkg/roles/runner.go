@@ -193,12 +193,12 @@ func StartRunner(
 
 						if suspendOnPanicWithError {
 							// Connections need to be closed before creating the snapshot
-							if acceptingAgent != nil {
+							if acceptingAgent.Close != nil {
 								if e := acceptingAgent.Close(); e != nil {
 									errs = errors.Join(errs, e)
 								}
 							}
-							if agent != nil {
+							if agent.Close != nil {
 								agent.Close()
 							}
 
