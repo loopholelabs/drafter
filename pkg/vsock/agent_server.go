@@ -212,7 +212,7 @@ func StartAgentServer(
 				closeLock.Lock()
 				defer closeLock.Unlock()
 
-				if closed && utils.IsClosedErr(err) { // Don't treat killed errors as errors if we killed the process
+				if closed && utils.IsClosedErr(err) { // Don't treat closed errors as errors if we killed the process
 					return nil
 				}
 

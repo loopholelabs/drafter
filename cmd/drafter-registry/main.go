@@ -14,7 +14,6 @@ import (
 	"sync"
 
 	"github.com/loopholelabs/drafter/pkg/roles"
-	"github.com/loopholelabs/drafter/pkg/utils"
 )
 
 var (
@@ -131,7 +130,7 @@ func main() {
 			log.Println("Migrating to", conn.RemoteAddr())
 
 			go func() {
-				defer conn.Close() // TODO: Keep this even after the Goroutine leaks are solved since the conn handler will no longer close the connections
+				defer conn.Close()
 				defer func() {
 					if err := recover(); err != nil {
 						var e error
@@ -141,10 +140,7 @@ func main() {
 							e = fmt.Errorf("%v", err)
 						}
 
-						// TODO: Make `func (p *protocol.ProtocolRW) Handle() error` return if context is cancelled, then remove this workaround
-						if !utils.IsClosedErr(e) {
-							log.Printf("Registry client disconnected with error: %v", e)
-						}
+						log.Printf("Registry client disconnected with error: %v", e)
 					}
 				}()
 
@@ -179,7 +175,6 @@ func main() {
 
 				if err := roles.MigrateDevices(
 					ctx,
-					conn,
 
 					devices,
 					*concurrency,

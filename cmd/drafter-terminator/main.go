@@ -14,7 +14,6 @@ import (
 	"sync"
 
 	"github.com/loopholelabs/drafter/pkg/roles"
-	"github.com/loopholelabs/drafter/pkg/utils"
 )
 
 var (
@@ -98,18 +97,10 @@ func main() {
 			log.Println("Exiting gracefully")
 
 			cancel(errFinished)
-
-			// TODO: Make `func (p *protocol.ProtocolRW) Handle() error` return if context is cancelled, then remove this workaround
-			if conn != nil {
-				if err := conn.Close(); err != nil && !utils.IsClosedErr(err) {
-					panic(err)
-				}
-			}
 		}()
 
 		if err := roles.Terminate(
 			ctx,
-			conn,
 
 			*statePath,
 			*memoryPath,
@@ -139,7 +130,7 @@ func main() {
 					log.Println("Completed all migrations")
 				},
 			},
-		); err != nil && !utils.IsClosedErr(err) { // TODO: Make `func (p *protocol.ProtocolRW) Handle() error` return if context is cancelled, then remove this workaround
+		); err != nil {
 			panic(err)
 		}
 

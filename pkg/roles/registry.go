@@ -166,7 +166,6 @@ type MigrateDevicesHooks struct {
 
 func MigrateDevices(
 	ctx context.Context,
-	conn io.Closer, // TODO: Make `func (p *protocol.ProtocolRW) Handle() error` return if context is cancelled, then remove this workaround
 
 	devices []Device,
 	concurrency int,
@@ -207,21 +206,6 @@ func MigrateDevices(
 	}
 
 	defer handleGoroutinePanic()()
-
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		defer handleGoroutinePanic()()
-
-		<-ctx.Done()
-
-		// TODO: Make `func (p *protocol.ProtocolRW) Handle() error` return if context is cancelled, then remove this workaround
-		if conn != nil {
-			if err := conn.Close(); err != nil && !utils.IsClosedErr(err) {
-				panic(err)
-			}
-		}
-	}()
 
 	pro := protocol.NewProtocolRW(
 		ctx,

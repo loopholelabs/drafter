@@ -11,7 +11,6 @@ import (
 	"sync"
 
 	"github.com/loopholelabs/drafter/pkg/config"
-	"github.com/loopholelabs/drafter/pkg/utils"
 	"github.com/loopholelabs/silo/pkg/storage"
 	"github.com/loopholelabs/silo/pkg/storage/protocol"
 	"github.com/loopholelabs/silo/pkg/storage/protocol/packets"
@@ -43,7 +42,6 @@ type TerminateHooks struct {
 
 func Terminate(
 	ctx context.Context,
-	conn io.Closer, // TODO: Make `func (p *protocol.ProtocolRW) Handle() error` return if context is cancelled, then remove this workaround
 
 	statePath,
 	memoryPath,
@@ -88,21 +86,6 @@ func Terminate(
 	}
 
 	defer handleGoroutinePanic()()
-
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		defer handleGoroutinePanic()()
-
-		<-ctx.Done()
-
-		// TODO: Make `func (p *protocol.ProtocolRW) Handle() error` return if context is cancelled, then remove this workaround
-		if conn != nil {
-			if err := conn.Close(); err != nil && !utils.IsClosedErr(err) {
-				panic(err)
-			}
-		}
-	}()
 
 	pro := protocol.NewProtocolRW(
 		ctx,
