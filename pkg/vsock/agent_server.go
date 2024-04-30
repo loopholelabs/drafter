@@ -10,7 +10,6 @@ import (
 	"sync"
 
 	"github.com/loopholelabs/drafter/pkg/remotes"
-	"github.com/loopholelabs/drafter/pkg/utils"
 	"github.com/pojntfx/panrpc/go/pkg/rpc"
 )
 
@@ -126,6 +125,13 @@ func StartAgentServer(
 
 		conn, err := lis.Accept()
 		if err != nil {
+			closeLock.Lock()
+			defer closeLock.Unlock()
+
+			if closed && errors.Is(err, net.ErrClosed) { // Don't treat closed errors as errors if we closed the connection
+				panic(internalCtx.Err())
+			}
+
 			panic(err)
 		}
 
@@ -212,8 +218,8 @@ func StartAgentServer(
 				closeLock.Lock()
 				defer closeLock.Unlock()
 
-				if closed && utils.IsClosedErr(err) { // Don't treat closed errors as errors if we killed the process
-					return nil
+				if closed && errors.Is(err, net.ErrClosed) { // Don't treat closed errors as errors if we closed the connection
+					return remoteCtx.Err()
 				}
 
 				return err

@@ -5,9 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"log"
-	"strings"
 
-	"github.com/loopholelabs/drafter/pkg/utils"
 	"github.com/loopholelabs/drafter/pkg/vsock"
 	"github.com/pojntfx/panrpc/go/pkg/rpc"
 )
@@ -88,8 +86,8 @@ func main() {
 					return json.Unmarshal([]byte(data), v)
 				},
 			)
-		}(); err != nil && !utils.IsClosedErr(err) && !strings.HasSuffix(err.Error(), "connection timed out") {
-			panic(err)
+		}(); err != nil {
+			log.Println("Disconnected from host with error, reconnecting:", err)
 		}
 
 		log.Println("Disconnected from host, reconnecting")
