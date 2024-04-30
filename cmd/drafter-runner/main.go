@@ -125,6 +125,7 @@ func main() {
 
 		runner, err := roles.StartRunner(
 			ctx,
+			context.Background(), // Never give up on rescue operations
 
 			config.HypervisorConfiguration{
 				FirecrackerBin: firecrackerBin,

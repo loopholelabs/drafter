@@ -47,7 +47,8 @@ type ResumedRunner struct {
 }
 
 func StartRunner(
-	ctx context.Context,
+	hypervisorCtx context.Context,
+	rescueCtx context.Context,
 	hypervisorConfiguration config.HypervisorConfiguration,
 
 	stateName string,
@@ -61,7 +62,7 @@ func StartRunner(
 
 	var errsLock sync.Mutex
 
-	internalCtx, cancel := context.WithCancelCause(ctx)
+	internalCtx, cancel := context.WithCancelCause(hypervisorCtx)
 	defer cancel(errFinished)
 
 	handleGoroutinePanic := func() func() {
@@ -92,8 +93,20 @@ func StartRunner(
 		panic(err)
 	}
 
+	var ongoingResumeWg sync.WaitGroup
+
+	firecrackerCtx, cancelFirecrackerCtx := context.WithCancel(rescueCtx) // We use `rescueContext` here since this simply intercepts `hypervisorCtx`
+	// and then waits for `rescueCtx` or the rescue operation to complete
+	go func() {
+		<-hypervisorCtx.Done() // We use hypervisorCtx, not internalCtx here since this resource outlives the function call
+
+		ongoingResumeWg.Wait()
+
+		cancelFirecrackerCtx()
+	}()
+
 	server, err := firecracker.StartFirecrackerServer(
-		ctx, // We use ctx, not internalCtx here since this resource outlives the function call
+		firecrackerCtx, // We use firecrackerCtx (which depends on hypervisorCtx, not internalCtx) here since this resource outlives the function call
 
 		hypervisorConfiguration.FirecrackerBin,
 		hypervisorConfiguration.JailerBin,
@@ -161,6 +174,9 @@ func StartRunner(
 	) {
 		resumedRunner = &ResumedRunner{}
 
+		ongoingResumeWg.Add(1)
+		defer ongoingResumeWg.Done()
+
 		var errsLock sync.Mutex
 
 		var wg sync.WaitGroup
@@ -204,7 +220,9 @@ func StartRunner(
 
 							// If a resume failed, flush the snapshot so that we can re-try
 							if e := firecracker.CreateSnapshot(
-								context.Background(),
+								rescueCtx, // We use a separate context here so that we can
+								// cancel the snapshot create action independently of the resume
+								// ctx, which is typically cancelled already
 
 								firecrackerClient,
 
@@ -297,10 +315,10 @@ func StartRunner(
 			return resumedRunner.Wait()
 		}
 
-		resumeCtx, cancelResumeCtx := context.WithTimeout(internalCtx, resumeTimeout)
+		ctx, cancelResumeCtx := context.WithTimeout(internalCtx, resumeTimeout)
 		defer cancelResumeCtx()
 
-		if err := acceptingAgent.Remote.AfterResume(resumeCtx); err != nil {
+		if err := acceptingAgent.Remote.AfterResume(ctx); err != nil {
 			panic(err)
 		}
 
