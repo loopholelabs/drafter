@@ -17,6 +17,9 @@ type LivenessServer struct {
 	vsockPortPath string
 
 	lis net.Listener
+
+	closeLock sync.Mutex
+	closed    bool
 }
 
 func NewLivenessServer(
@@ -79,13 +82,20 @@ func (l *LivenessServer) ReceiveAndClose(ctx context.Context) (errs error) {
 		// Cause the `Accept()` function to unblock
 		<-ctx.Done()
 
-		_ = l.lis.Close() // We ignore errors here since we might interrupt a network connection
+		l.Close()
 	}()
 
 	defer l.Close()
 
 	// Don't close the connection here - we close close the listener
 	if _, err := l.lis.Accept(); err != nil {
+		l.closeLock.Lock()
+		defer l.closeLock.Unlock()
+
+		if l.closed && errors.Is(err, net.ErrClosed) { // Don't treat closed errors as errors if we closed the connection
+			panic(ctx.Err())
+		}
+
 		panic(err)
 	}
 
@@ -93,9 +103,15 @@ func (l *LivenessServer) ReceiveAndClose(ctx context.Context) (errs error) {
 }
 
 func (l *LivenessServer) Close() {
+	l.closeLock.Lock()
+	defer l.closeLock.Unlock()
+
+	// We need to remove this file first so that the client can't try to reconnect
+	_ = os.Remove(l.vsockPortPath) // We ignore errors here since the file might already have been removed, but we don't want to use `RemoveAll` cause it could remove a directory
+
 	if l.lis != nil {
-		_ = l.lis.Close()
+		_ = l.lis.Close() // We ignore errors here since we might interrupt a network connection
 	}
 
-	_ = os.Remove(l.vsockPortPath)
+	l.closed = true
 }
