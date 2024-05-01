@@ -4,20 +4,15 @@ import (
 	"context"
 	"errors"
 	"flag"
-	"fmt"
 	"log"
 	"os"
 	"os/exec"
 	"os/signal"
 	"strings"
-	"sync"
 
+	"github.com/loopholelabs/drafter/pkg/utils"
 	"github.com/loopholelabs/drafter/pkg/vsock"
 	"github.com/pojntfx/panrpc/go/pkg/rpc"
-)
-
-var (
-	errFinished = errors.New("finished")
 )
 
 func main() {
@@ -32,127 +27,96 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	{
-		var errsLock sync.Mutex
-		var errs error
-
-		defer func() {
-			if errs != nil {
-				panic(errs)
-			}
-		}()
-
-		var wg sync.WaitGroup
-		defer wg.Wait()
-
-		ctx, cancel := context.WithCancelCause(ctx)
-		defer cancel(errFinished)
-
-		handleGoroutinePanic := func() func() {
-			return func() {
-				if err := recover(); err != nil {
-					errsLock.Lock()
-					defer errsLock.Unlock()
-
-					var e error
-					if v, ok := err.(error); ok {
-						e = v
-					} else {
-						e = fmt.Errorf("%v", err)
-					}
-
-					if !(errors.Is(e, context.Canceled) && errors.Is(context.Cause(ctx), errFinished)) {
-						errs = errors.Join(errs, e)
-					}
-
-					cancel(errFinished)
-				}
-			}
+	var errs error
+	defer func() {
+		if errs != nil {
+			panic(errs)
 		}
+	}()
 
-		defer handleGoroutinePanic()()
+	ctx, handlePanics, _, cancel, wait := utils.GetPanicHandler(
+		ctx,
+		&errs,
+	)
+	defer wait()
+	defer cancel()
+	defer handlePanics(false)()
 
-		go func() {
-			done := make(chan os.Signal, 1)
-			signal.Notify(done, os.Interrupt)
+	go func() {
+		done := make(chan os.Signal, 1)
+		signal.Notify(done, os.Interrupt)
 
-			<-done
+		<-done
 
-			wg.Add(1) // We only register this here since we still want to be able to exit without manually interrupting
-			defer wg.Done()
+		log.Println("Exiting gracefully")
 
-			defer handleGoroutinePanic()()
+		cancel()
+	}()
 
-			log.Println("Exiting gracefully")
+	clients := 0
 
-			cancel(errFinished)
-		}()
+	for {
+		if err := vsock.StartAgentClient(
+			ctx,
 
-		clients := 0
+			vsock.CIDHost,
+			uint32(*vsockPort),
 
-		for {
-			if err := vsock.StartAgentClient(
-				ctx,
+			func(ctx context.Context) error {
+				log.Println("Running pre-suspend command")
 
-				vsock.CIDHost,
-				uint32(*vsockPort),
+				if strings.TrimSpace(*beforeSuspendCmd) != "" {
+					cmd := exec.CommandContext(ctx, *shellCmd, "-c", *beforeSuspendCmd)
+					cmd.Stdout = os.Stdout
+					cmd.Stderr = os.Stderr
 
-				func(ctx context.Context) error {
-					log.Println("Running pre-suspend command")
-
-					if strings.TrimSpace(*beforeSuspendCmd) != "" {
-						cmd := exec.CommandContext(ctx, *shellCmd, "-c", *beforeSuspendCmd)
-						cmd.Stdout = os.Stdout
-						cmd.Stderr = os.Stderr
-
-						if err := cmd.Run(); err != nil {
-							return err
-						}
+					if err := cmd.Run(); err != nil {
+						return err
 					}
-
-					return nil
-				},
-				func(ctx context.Context) error {
-					log.Println("Running after-resume command")
-
-					if strings.TrimSpace(*afterResumeCmd) != "" {
-						cmd := exec.CommandContext(ctx, *shellCmd, "-c", *afterResumeCmd)
-						cmd.Stdout = os.Stdout
-						cmd.Stderr = os.Stderr
-
-						if err := cmd.Run(); err != nil {
-							return err
-						}
-					}
-
-					return nil
-				},
-
-				&rpc.Options{
-					OnClientConnect: func(remoteID string) {
-						clients++
-
-						log.Printf("%v clients connected", clients)
-					},
-					OnClientDisconnect: func(remoteID string) {
-						clients--
-
-						log.Printf("%v clients connected", clients)
-					},
-				},
-			); err != nil {
-				if !(errors.Is(err, context.Canceled) && errors.Is(context.Cause(ctx), errFinished)) {
-					log.Println("Disconnected from host with error, reconnecting:", err)
-
-					continue
 				}
 
-				panic(err)
+				return nil
+			},
+			func(ctx context.Context) error {
+				log.Println("Running after-resume command")
+
+				if strings.TrimSpace(*afterResumeCmd) != "" {
+					cmd := exec.CommandContext(ctx, *shellCmd, "-c", *afterResumeCmd)
+					cmd.Stdout = os.Stdout
+					cmd.Stderr = os.Stderr
+
+					if err := cmd.Run(); err != nil {
+						return err
+					}
+				}
+
+				return nil
+			},
+
+			&rpc.Options{
+				OnClientConnect: func(remoteID string) {
+					clients++
+
+					log.Printf("%v clients connected", clients)
+				},
+				OnClientDisconnect: func(remoteID string) {
+					clients--
+
+					log.Printf("%v clients connected", clients)
+				},
+			},
+		); err != nil {
+			if !(errors.Is(err, context.Canceled) && errors.Is(context.Cause(ctx), utils.ErrFinished)) {
+				log.Println("Disconnected from host with error, reconnecting:", err)
+
+				continue
 			}
 
-			break
+			panic(err)
 		}
 
-		log.Println("Shutting down")
+		break
 	}
+
+	log.Println("Shutting down")
 }

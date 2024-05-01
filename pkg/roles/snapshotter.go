@@ -20,6 +20,8 @@ import (
 
 var (
 	ErrCouldNotGetDeviceStat = errors.New("could not get NBD device stat")
+
+	errFinished = errors.New("finished")
 )
 
 func CreateSnapshot(

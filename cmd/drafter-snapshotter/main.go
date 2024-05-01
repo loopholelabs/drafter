@@ -12,6 +12,7 @@ import (
 
 	"github.com/loopholelabs/drafter/pkg/config"
 	"github.com/loopholelabs/drafter/pkg/roles"
+	"github.com/loopholelabs/drafter/pkg/utils"
 )
 
 func main() {
@@ -68,6 +69,21 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+
+	var errs error
+	defer func() {
+		if errs != nil {
+			panic(errs)
+		}
+	}()
+
+	ctx, handlePanics, _, cancel, wait := utils.GetPanicHandler(
+		ctx,
+		&errs,
+	)
+	defer wait()
+	defer cancel()
+	defer handlePanics(false)()
 
 	go func() {
 		done := make(chan os.Signal, 1)
@@ -141,13 +157,7 @@ func main() {
 			ConfigName: config.ConfigName,
 		},
 	); err != nil {
-		select {
-		case <-ctx.Done():
-			return
-
-		default:
-			panic(err)
-		}
+		panic(err)
 	}
 
 	log.Println("Shutting down")

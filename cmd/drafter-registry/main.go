@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -11,13 +10,9 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"sync"
 
 	"github.com/loopholelabs/drafter/pkg/roles"
-)
-
-var (
-	errFinished = errors.New("finished")
+	"github.com/loopholelabs/drafter/pkg/utils"
 )
 
 func main() {
@@ -52,28 +47,59 @@ func main() {
 
 	log.Println("Serving on", lis.Addr())
 
-	{
-		var errsLock sync.Mutex
-		var errs error
+	var errs error
+	defer func() {
+		if errs != nil {
+			panic(errs)
+		}
+	}()
 
-		defer func() {
-			if errs != nil {
-				panic(errs)
+	ctx, handlePanics, _, cancel, wait := utils.GetPanicHandler(
+		ctx,
+		&errs,
+	)
+	defer wait()
+	defer cancel()
+	defer handlePanics(false)()
+
+	go func() {
+		done := make(chan os.Signal, 1)
+		signal.Notify(done, os.Interrupt)
+
+		<-done
+
+		log.Println("Exiting gracefully")
+
+		cancel()
+
+		defer handlePanics(true)()
+
+		if lis != nil {
+			if err := lis.Close(); err != nil {
+				panic(err)
 			}
-		}()
+		}
+	}()
 
-		var wg sync.WaitGroup
-		defer wg.Wait()
+l:
+	for {
+		conn, err := lis.Accept()
+		if err != nil {
+			select {
+			case <-ctx.Done():
+				break l
 
-		ctx, cancel := context.WithCancelCause(ctx)
-		defer cancel(errFinished)
+			default:
+				panic(err)
+			}
+		}
 
-		handleGoroutinePanic := func() func() {
-			return func() {
+		log.Println("Migrating to", conn.RemoteAddr())
+
+		go func() {
+			defer conn.Close()
+			defer func() {
 				if err := recover(); err != nil {
-					errsLock.Lock()
-					defer errsLock.Unlock()
-
 					var e error
 					if v, ok := err.(error); ok {
 						e = v
@@ -81,134 +107,74 @@ func main() {
 						e = fmt.Errorf("%v", err)
 					}
 
-					if !(errors.Is(e, context.Canceled) && errors.Is(context.Cause(ctx), errFinished)) {
-						errs = errors.Join(errs, e)
-					}
-
-					cancel(errFinished)
-				}
-			}
-		}
-
-		defer handleGoroutinePanic()()
-
-		go func() {
-			done := make(chan os.Signal, 1)
-			signal.Notify(done, os.Interrupt)
-
-			<-done
-
-			wg.Add(1) // We only register this here since we still want to be able to exit without manually interrupting
-			defer wg.Done()
-
-			defer handleGoroutinePanic()()
-
-			log.Println("Exiting gracefully")
-
-			cancel(errFinished)
-
-			if lis != nil {
-				if err := lis.Close(); err != nil {
-					panic(err)
-				}
-			}
-		}()
-
-	l:
-		for {
-			conn, err := lis.Accept()
-			if err != nil {
-				select {
-				case <-ctx.Done():
-					break l
-
-				default:
-					panic(err)
-				}
-			}
-
-			log.Println("Migrating to", conn.RemoteAddr())
-
-			go func() {
-				defer conn.Close()
-				defer func() {
-					if err := recover(); err != nil {
-						var e error
-						if v, ok := err.(error); ok {
-							e = v
-						} else {
-							e = fmt.Errorf("%v", err)
-						}
-
-						log.Printf("Registry client disconnected with error: %v", e)
-					}
-				}()
-
-				devices, defers, err := roles.OpenDevices(
-					*statePath,
-					*memoryPath,
-					*initramfsPath,
-					*kernelPath,
-					*diskPath,
-					*configPath,
-
-					uint32(*stateBlockSize),
-					uint32(*memoryBlockSize),
-					uint32(*initramfsBlockSize),
-					uint32(*kernelBlockSize),
-					uint32(*diskBlockSize),
-					uint32(*configBlockSize),
-
-					roles.OpenDevicesHooks{
-						OnDeviceOpened: func(deviceID uint32, name string) {
-							log.Println("Opened device", deviceID, "with name", name)
-						},
-					},
-				)
-				if err != nil {
-					panic(err)
-				}
-
-				for _, deferFunc := range defers {
-					defer deferFunc()
-				}
-
-				if err := roles.MigrateDevices(
-					ctx,
-
-					devices,
-					*concurrency,
-
-					[]io.Reader{conn},
-					[]io.Writer{conn},
-
-					roles.MigrateDevicesHooks{
-						OnDeviceSent: func(deviceID uint32) {
-							log.Println("Sent device", deviceID)
-						},
-						OnDeviceAuthoritySent: func(deviceID uint32) {
-							log.Println("Sent authority for device", deviceID)
-						},
-						OnDeviceMigrationProgress: func(deviceID uint32, ready, total int) {
-							log.Println("Migrated", ready, "of", total, "blocks for device", deviceID)
-						},
-						OnDeviceMigrationCompleted: func(deviceID uint32) {
-							log.Println("Completed migration of device", deviceID)
-						},
-
-						OnAllDevicesSent: func() {
-							log.Println("Sent all devices")
-						},
-						OnAllMigrationsCompleted: func() {
-							log.Println("Completed all migrations")
-						},
-					},
-				); err != nil {
-					panic(err)
+					log.Printf("Registry client disconnected with error: %v", e)
 				}
 			}()
-		}
 
-		log.Println("Shutting down")
+			devices, defers, err := roles.OpenDevices(
+				*statePath,
+				*memoryPath,
+				*initramfsPath,
+				*kernelPath,
+				*diskPath,
+				*configPath,
+
+				uint32(*stateBlockSize),
+				uint32(*memoryBlockSize),
+				uint32(*initramfsBlockSize),
+				uint32(*kernelBlockSize),
+				uint32(*diskBlockSize),
+				uint32(*configBlockSize),
+
+				roles.OpenDevicesHooks{
+					OnDeviceOpened: func(deviceID uint32, name string) {
+						log.Println("Opened device", deviceID, "with name", name)
+					},
+				},
+			)
+			if err != nil {
+				panic(err)
+			}
+
+			for _, deferFunc := range defers {
+				defer deferFunc()
+			}
+
+			if err := roles.MigrateDevices(
+				ctx,
+
+				devices,
+				*concurrency,
+
+				[]io.Reader{conn},
+				[]io.Writer{conn},
+
+				roles.MigrateDevicesHooks{
+					OnDeviceSent: func(deviceID uint32) {
+						log.Println("Sent device", deviceID)
+					},
+					OnDeviceAuthoritySent: func(deviceID uint32) {
+						log.Println("Sent authority for device", deviceID)
+					},
+					OnDeviceMigrationProgress: func(deviceID uint32, ready, total int) {
+						log.Println("Migrated", ready, "of", total, "blocks for device", deviceID)
+					},
+					OnDeviceMigrationCompleted: func(deviceID uint32) {
+						log.Println("Completed migration of device", deviceID)
+					},
+
+					OnAllDevicesSent: func() {
+						log.Println("Sent all devices")
+					},
+					OnAllMigrationsCompleted: func() {
+						log.Println("Completed all migrations")
+					},
+				},
+			); err != nil {
+				panic(err)
+			}
+		}()
 	}
+
+	log.Println("Shutting down")
 }

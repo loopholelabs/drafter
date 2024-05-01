@@ -2,22 +2,16 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
-	"fmt"
 	"io"
 	"log"
 	"net"
 	"os"
 	"os/signal"
 	"path/filepath"
-	"sync"
 
 	"github.com/loopholelabs/drafter/pkg/roles"
-)
-
-var (
-	errFinished = errors.New("finished")
+	"github.com/loopholelabs/drafter/pkg/utils"
 )
 
 func main() {
@@ -43,97 +37,66 @@ func main() {
 
 	log.Println("Migrating from", conn.RemoteAddr())
 
-	{
-		var errsLock sync.Mutex
-		var errs error
-
-		defer func() {
-			if errs != nil {
-				panic(errs)
-			}
-		}()
-
-		var wg sync.WaitGroup
-		defer wg.Wait()
-
-		ctx, cancel := context.WithCancelCause(ctx)
-		defer cancel(errFinished)
-
-		handleGoroutinePanic := func() func() {
-			return func() {
-				if err := recover(); err != nil {
-					errsLock.Lock()
-					defer errsLock.Unlock()
-
-					var e error
-					if v, ok := err.(error); ok {
-						e = v
-					} else {
-						e = fmt.Errorf("%v", err)
-					}
-
-					if !(errors.Is(e, context.Canceled) && errors.Is(context.Cause(ctx), errFinished)) {
-						errs = errors.Join(errs, e)
-					}
-
-					cancel(errFinished)
-				}
-			}
+	var errs error
+	defer func() {
+		if errs != nil {
+			panic(errs)
 		}
+	}()
 
-		defer handleGoroutinePanic()()
+	ctx, handlePanics, _, cancel, wait := utils.GetPanicHandler(
+		ctx,
+		&errs,
+	)
+	defer wait()
+	defer cancel()
+	defer handlePanics(false)()
 
-		go func() {
-			done := make(chan os.Signal, 1)
-			signal.Notify(done, os.Interrupt)
+	go func() {
+		done := make(chan os.Signal, 1)
+		signal.Notify(done, os.Interrupt)
 
-			<-done
+		<-done
 
-			wg.Add(1) // We only register this here since we still want to be able to exit without manually interrupting
-			defer wg.Done()
+		log.Println("Exiting gracefully")
 
-			defer handleGoroutinePanic()()
+		cancel()
+	}()
 
-			log.Println("Exiting gracefully")
+	if err := roles.Terminate(
+		ctx,
 
-			cancel(errFinished)
-		}()
+		*statePath,
+		*memoryPath,
+		*initramfsPath,
+		*kernelPath,
+		*diskPath,
+		*configPath,
 
-		if err := roles.Terminate(
-			ctx,
+		[]io.Reader{conn},
+		[]io.Writer{conn},
 
-			*statePath,
-			*memoryPath,
-			*initramfsPath,
-			*kernelPath,
-			*diskPath,
-			*configPath,
-
-			[]io.Reader{conn},
-			[]io.Writer{conn},
-
-			roles.TerminateHooks{
-				OnDeviceReceived: func(deviceID uint32, name string) {
-					log.Println("Received device", deviceID, "with name", name)
-				},
-				OnDeviceAuthorityReceived: func(deviceID uint32) {
-					log.Println("Received authority for device", deviceID)
-				},
-				OnDeviceMigrationCompleted: func(deviceID uint32) {
-					log.Println("Completed migration of device", deviceID)
-				},
-
-				OnAllDevicesReceived: func() {
-					log.Println("Received all devices")
-				},
-				OnAllMigrationsCompleted: func() {
-					log.Println("Completed all migrations")
-				},
+		roles.TerminateHooks{
+			OnDeviceReceived: func(deviceID uint32, name string) {
+				log.Println("Received device", deviceID, "with name", name)
 			},
-		); err != nil {
-			panic(err)
-		}
+			OnDeviceAuthorityReceived: func(deviceID uint32) {
+				log.Println("Received authority for device", deviceID)
+			},
+			OnDeviceMigrationCompleted: func(deviceID uint32) {
+				log.Println("Completed migration of device", deviceID)
+			},
 
-		log.Println("Shutting down")
+			OnAllDevicesReceived: func() {
+				log.Println("Received all devices")
+			},
+			OnAllMigrationsCompleted: func() {
+				log.Println("Completed all migrations")
+			},
+		},
+	); err != nil {
+		panic(err)
 	}
+
+	log.Println("Shutting down")
 }

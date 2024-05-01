@@ -3,14 +3,13 @@ package roles
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 
 	"github.com/loopholelabs/drafter/pkg/config"
+	"github.com/loopholelabs/drafter/pkg/utils"
 	"github.com/loopholelabs/silo/pkg/storage"
 	"github.com/loopholelabs/silo/pkg/storage/protocol"
 	"github.com/loopholelabs/silo/pkg/storage/protocol/packets"
@@ -27,8 +26,6 @@ const (
 
 var (
 	ErrUnknownDeviceName = errors.New("unknown device name")
-
-	errFinished = errors.New("finished")
 )
 
 type TerminateHooks struct {
@@ -55,37 +52,13 @@ func Terminate(
 
 	hooks TerminateHooks,
 ) (errs error) {
-	var errsLock sync.Mutex
-
-	var wg sync.WaitGroup
-	defer wg.Wait()
-
-	ctx, cancel := context.WithCancelCause(ctx)
-	defer cancel(errFinished)
-
-	handleGoroutinePanic := func() func() {
-		return func() {
-			if err := recover(); err != nil {
-				errsLock.Lock()
-				defer errsLock.Unlock()
-
-				var e error
-				if v, ok := err.(error); ok {
-					e = v
-				} else {
-					e = fmt.Errorf("%v", err)
-				}
-
-				if !(errors.Is(e, context.Canceled) && errors.Is(context.Cause(ctx), errFinished)) {
-					errs = errors.Join(errs, e)
-				}
-
-				cancel(errFinished)
-			}
-		}
-	}
-
-	defer handleGoroutinePanic()()
+	ctx, handlePanics, handleGoroutinePanics, cancel, wait := utils.GetPanicHandler(
+		ctx,
+		&errs,
+	)
+	defer wait()
+	defer cancel()
+	defer handlePanics(false)()
 
 	pro := protocol.NewProtocolRW(
 		ctx,
@@ -99,7 +72,7 @@ func Terminate(
 			from = protocol.NewFromProtocol(
 				index,
 				func(di *packets.DevInfo) storage.StorageProvider {
-					defer handleGoroutinePanic()()
+					defer handlePanics(false)()
 
 					var (
 						path = ""
@@ -159,41 +132,25 @@ func Terminate(
 				p,
 			)
 
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				defer handleGoroutinePanic()()
-
+			handleGoroutinePanics(true, func() {
 				if err := from.HandleReadAt(); err != nil {
 					panic(err)
 				}
-			}()
+			})
 
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				defer handleGoroutinePanic()()
-
+			handleGoroutinePanics(true, func() {
 				if err := from.HandleWriteAt(); err != nil {
 					panic(err)
 				}
-			}()
+			})
 
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				defer handleGoroutinePanic()()
-
+			handleGoroutinePanics(true, func() {
 				if err := from.HandleDevInfo(); err != nil {
 					panic(err)
 				}
-			}()
+			})
 
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				defer handleGoroutinePanic()()
-
+			handleGoroutinePanics(true, func() {
 				if err := from.HandleEvent(func(e *packets.Event) {
 					switch e.Type {
 					case packets.EventCustom:
@@ -217,13 +174,9 @@ func Terminate(
 				}); err != nil {
 					panic(err)
 				}
-			}()
+			})
 
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				defer handleGoroutinePanic()()
-
+			handleGoroutinePanics(true, func() {
 				if err := from.HandleDirtyList(func(blocks []uint) {
 					if local != nil {
 						local.DirtyBlocks(blocks)
@@ -231,7 +184,7 @@ func Terminate(
 				}); err != nil {
 					panic(err)
 				}
-			}()
+			})
 		})
 
 	if err := pro.Handle(); err != nil && !errors.Is(err, io.EOF) {
