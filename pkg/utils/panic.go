@@ -7,14 +7,16 @@ import (
 	"sync"
 )
 
-var (
-	ErrFinished = errors.New("finished")
-)
+type GetPanicHandlerHooks struct {
+	OnAfterRecover func()
+}
 
 func GetPanicHandler(
 	ctx context.Context,
 
 	errs *error,
+
+	hooks GetPanicHandlerHooks,
 ) (
 	internalCtx context.Context,
 
@@ -23,6 +25,8 @@ func GetPanicHandler(
 
 	cancel func(),
 	wait func(),
+
+	errFinishedType error,
 ) {
 	var (
 		errsLock sync.Mutex
@@ -30,6 +34,8 @@ func GetPanicHandler(
 	)
 
 	internalCtx, cancelInternalCtx := context.WithCancelCause(ctx)
+
+	errFinished := errors.New("finished") // This has to be a distinct error type for each panic handler, so we can't define it on the package level
 
 	recoverFromPanics := func(track bool) func() {
 		return func() {
@@ -48,11 +54,15 @@ func GetPanicHandler(
 					e = fmt.Errorf("%v", err)
 				}
 
-				if !(errors.Is(e, context.Canceled) && errors.Is(context.Cause(internalCtx), ErrFinished)) {
+				if !(errors.Is(e, context.Canceled) && errors.Is(context.Cause(internalCtx), errFinished)) {
 					*errs = errors.Join(*errs, e)
+
+					if hook := hooks.OnAfterRecover; hook != nil {
+						hook()
+					}
 				}
 
-				cancelInternalCtx(ErrFinished)
+				cancelInternalCtx(errFinished)
 			}
 		}
 	}
@@ -79,7 +89,9 @@ func GetPanicHandler(
 		},
 
 		func() {
-			cancelInternalCtx(ErrFinished)
+			cancelInternalCtx(errFinished)
 		},
-		wg.Wait
+		wg.Wait,
+
+		errFinished
 }
