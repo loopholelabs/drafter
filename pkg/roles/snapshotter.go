@@ -4,13 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
-	"sync"
 
 	"github.com/loopholelabs/drafter/pkg/config"
 	"github.com/loopholelabs/drafter/pkg/firecracker"
@@ -20,8 +18,6 @@ import (
 
 var (
 	ErrCouldNotGetDeviceStat = errors.New("could not get NBD device stat")
-
-	errFinished = errors.New("finished")
 )
 
 func CreateSnapshot(
@@ -47,37 +43,14 @@ func CreateSnapshot(
 
 	knownNamesConfiguration config.KnownNamesConfiguration,
 ) (errs error) {
-	var errsLock sync.Mutex
-
-	var wg sync.WaitGroup
-	defer wg.Wait()
-
-	ctx, cancel := context.WithCancelCause(ctx)
-	defer cancel(errFinished)
-
-	handleGoroutinePanic := func() func() {
-		return func() {
-			if err := recover(); err != nil {
-				errsLock.Lock()
-				defer errsLock.Unlock()
-
-				var e error
-				if v, ok := err.(error); ok {
-					e = v
-				} else {
-					e = fmt.Errorf("%v", err)
-				}
-
-				if !(errors.Is(e, context.Canceled) && errors.Is(context.Cause(ctx), errFinished)) {
-					errs = errors.Join(errs, e)
-				}
-
-				cancel(errFinished)
-			}
-		}
-	}
-
-	defer handleGoroutinePanic()()
+	ctx, handlePanics, handleGoroutinePanics, cancel, wait, _ := utils.GetPanicHandler(
+		ctx,
+		&errs,
+		utils.GetPanicHandlerHooks{},
+	)
+	defer wait()
+	defer cancel()
+	defer handlePanics(false)()
 
 	if err := os.MkdirAll(hypervisorConfiguration.ChrootBaseDir, os.ModePerm); err != nil {
 		panic(err)
@@ -107,15 +80,11 @@ func CreateSnapshot(
 	defer server.Close()
 	defer os.RemoveAll(filepath.Dir(server.VMPath)) // Remove `firecracker/$id`, not just `firecracker/$id/root`
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		defer handleGoroutinePanic()()
-
+	handleGoroutinePanics(true, func() {
 		if err := server.Wait(); err != nil {
 			panic(err)
 		}
-	}()
+	})
 
 	liveness := vsock.NewLivenessServer(
 		filepath.Join(server.VMPath, VSockName),
@@ -153,10 +122,8 @@ func CreateSnapshot(
 		},
 	}
 
-	wg.Add(1)
 	defer func() {
-		defer wg.Done()
-		defer handleGoroutinePanic()()
+		defer handlePanics(true)()
 
 		if errs != nil {
 			return
@@ -278,15 +245,11 @@ func CreateSnapshot(
 		}
 		defer acceptingAgent.Close()
 
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			defer handleGoroutinePanic()()
-
+		handleGoroutinePanics(true, func() {
 			if err := acceptingAgent.Wait(); err != nil {
 				panic(err)
 			}
-		}()
+		})
 
 		if err := acceptingAgent.Remote.BeforeSuspend(acceptCtx); err != nil {
 			panic(err)

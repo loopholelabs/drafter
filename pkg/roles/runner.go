@@ -3,7 +3,6 @@ package roles
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net"
 	"net/http"
 	"os"
@@ -13,6 +12,7 @@ import (
 
 	"github.com/loopholelabs/drafter/pkg/config"
 	"github.com/loopholelabs/drafter/pkg/firecracker"
+	"github.com/loopholelabs/drafter/pkg/utils"
 	"github.com/loopholelabs/drafter/pkg/vsock"
 )
 
@@ -60,34 +60,14 @@ func StartRunner(
 ) {
 	runner = &Runner{}
 
-	var errsLock sync.Mutex
-
-	internalCtx, cancel := context.WithCancelCause(hypervisorCtx)
-	defer cancel(errFinished)
-
-	handleGoroutinePanic := func() func() {
-		return func() {
-			if err := recover(); err != nil {
-				errsLock.Lock()
-				defer errsLock.Unlock()
-
-				var e error
-				if v, ok := err.(error); ok {
-					e = v
-				} else {
-					e = fmt.Errorf("%v", err)
-				}
-
-				if !(errors.Is(e, context.Canceled) && errors.Is(context.Cause(internalCtx), errFinished)) {
-					errs = errors.Join(errs, e)
-				}
-
-				cancel(errFinished)
-			}
-		}
-	}
-
-	defer handleGoroutinePanic()()
+	_, handlePanics, handleGoroutinePanics, cancel, wait, _ := utils.GetPanicHandler(
+		hypervisorCtx,
+		&errs,
+		utils.GetPanicHandlerHooks{},
+	)
+	defer wait()
+	defer cancel()
+	defer handlePanics(false)()
 
 	if err := os.MkdirAll(hypervisorConfiguration.ChrootBaseDir, os.ModePerm); err != nil {
 		panic(err)
@@ -131,13 +111,11 @@ func StartRunner(
 
 	// We intentionally don't call `wg.Add` and `wg.Done` here since we return the process's wait method
 	// We still need to `defer handleGoroutinePanic()()` here however so that we catch any errors during this call
-	go func() {
-		defer handleGoroutinePanic()()
-
+	handleGoroutinePanics(false, func() {
 		if err := server.Wait(); err != nil {
 			panic(err)
 		}
-	}()
+	})
 
 	runner.Wait = server.Wait
 	runner.Close = func() error {
@@ -177,81 +155,58 @@ func StartRunner(
 		ongoingResumeWg.Add(1)
 		defer ongoingResumeWg.Done()
 
-		var errsLock sync.Mutex
-
-		var wg sync.WaitGroup
-		defer wg.Wait()
-
-		internalCtx, cancel := context.WithCancelCause(ctx)
-		defer cancel(errFinished)
-
 		var (
-			agent          *vsock.AgentServer
-			acceptingAgent *vsock.AcceptingAgentServer
+			agent                   *vsock.AgentServer
+			acceptingAgent          *vsock.AcceptingAgentServer
+			suspendOnPanicWithError = false
 		)
 
-		suspendOnPanicWithError := false
-		handleGoroutinePanic := func() func() {
-			return func() {
-				if err := recover(); err != nil {
-					errsLock.Lock()
-					defer errsLock.Unlock()
-
-					var e error
-					if v, ok := err.(error); ok {
-						e = v
-					} else {
-						e = fmt.Errorf("%v", err)
-					}
-
-					if !(errors.Is(e, context.Canceled) && errors.Is(context.Cause(internalCtx), errFinished)) {
-						errs = errors.Join(errs, e)
-
-						if suspendOnPanicWithError {
-							// Connections need to be closed before creating the snapshot
-							if acceptingAgent != nil && acceptingAgent.Close != nil {
-								if e := acceptingAgent.Close(); e != nil {
-									errs = errors.Join(errs, e)
-								}
-							}
-							if agent != nil && agent.Close != nil {
-								agent.Close()
-							}
-
-							// If a resume failed, flush the snapshot so that we can re-try
-							if e := firecracker.CreateSnapshot(
-								rescueCtx, // We use a separate context here so that we can
-								// cancel the snapshot create action independently of the resume
-								// ctx, which is typically cancelled already
-
-								firecrackerClient,
-
-								stateName,
-								"",
-
-								firecracker.SnapshotTypeMsyncAndState,
-							); e != nil {
+		internalCtx, handlePanics, handleGoroutinePanics, cancel, wait, _ := utils.GetPanicHandler(
+			ctx,
+			&errs,
+			utils.GetPanicHandlerHooks{
+				OnAfterRecover: func() {
+					if suspendOnPanicWithError {
+						// Connections need to be closed before creating the snapshot
+						if acceptingAgent != nil && acceptingAgent.Close != nil {
+							if e := acceptingAgent.Close(); e != nil {
 								errs = errors.Join(errs, e)
 							}
 						}
+						if agent != nil && agent.Close != nil {
+							agent.Close()
+						}
+
+						// If a resume failed, flush the snapshot so that we can re-try
+						if e := firecracker.CreateSnapshot(
+							rescueCtx, // We use a separate context here so that we can
+							// cancel the snapshot create action independently of the resume
+							// ctx, which is typically cancelled already
+
+							firecrackerClient,
+
+							stateName,
+							"",
+
+							firecracker.SnapshotTypeMsyncAndState,
+						); e != nil {
+							errs = errors.Join(errs, e)
+						}
 					}
-
-					cancel(errFinished)
-				}
-			}
-		}
-
-		defer handleGoroutinePanic()()
+				},
+			},
+		)
+		defer wait()
+		defer cancel()
+		defer handlePanics(false)()
 
 		// We intentionally don't call `wg.Add` and `wg.Done` here since we return the process's wait method
 		// We still need to `defer handleGoroutinePanic()()` here however so that we catch any errors during this call
-		go func() {
-			defer handleGoroutinePanic()()
-
+		handleGoroutinePanics(false, func() {
 			if err := server.Wait(); err != nil {
 				panic(err)
 			}
-		}()
+		})
 
 		agent, err = vsock.StartAgentServer(
 			filepath.Join(server.VMPath, VSockName),
@@ -296,13 +251,11 @@ func StartRunner(
 
 		// We intentionally don't call `wg.Add` and `wg.Done` here since we return the process's wait method
 		// We still need to `defer handleGoroutinePanic()()` here however so that we catch any errors during this call
-		go func() {
-			defer handleGoroutinePanic()()
-
+		handleGoroutinePanics(false, func() {
 			if err := acceptingAgent.Wait(); err != nil {
 				panic(err)
 			}
-		}()
+		})
 
 		resumedRunner.Wait = acceptingAgent.Wait
 		resumedRunner.Close = func() error {

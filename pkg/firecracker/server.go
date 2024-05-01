@@ -10,14 +10,13 @@ import (
 	"sync"
 
 	"github.com/lithammer/shortuuid/v4"
+	"github.com/loopholelabs/drafter/pkg/utils"
 	"golang.org/x/sys/unix"
 	"k8s.io/utils/inotify"
 )
 
 var (
 	ErrNoSocketCreated = errors.New("no socket created")
-
-	errFinished = errors.New("finished")
 
 	errSignalKilled = errors.New("signal: killed")
 
@@ -54,37 +53,14 @@ func StartFirecrackerServer(
 ) (server *FirecrackerServer, errs error) {
 	server = &FirecrackerServer{}
 
-	var errsLock sync.Mutex
-
-	var wg sync.WaitGroup
-	defer wg.Wait()
-
-	internalCtx, cancel := context.WithCancelCause(ctx)
-	defer cancel(errFinished)
-
-	handleGoroutinePanic := func() func() {
-		return func() {
-			if err := recover(); err != nil {
-				errsLock.Lock()
-				defer errsLock.Unlock()
-
-				var e error
-				if v, ok := err.(error); ok {
-					e = v
-				} else {
-					e = fmt.Errorf("%v", err)
-				}
-
-				if !(errors.Is(e, context.Canceled) && errors.Is(context.Cause(internalCtx), errFinished)) {
-					errs = errors.Join(errs, e)
-				}
-
-				cancel(errFinished)
-			}
-		}
-	}
-
-	defer handleGoroutinePanic()()
+	internalCtx, handlePanics, handleGoroutinePanics, cancel, wait, _ := utils.GetPanicHandler(
+		ctx,
+		&errs,
+		utils.GetPanicHandlerHooks{},
+	)
+	defer wait()
+	defer cancel()
+	defer handlePanics(false)()
 
 	id := shortuuid.New()
 
@@ -178,34 +154,26 @@ func StartFirecrackerServer(
 	// and waiting for it to be stopped. We still need to `defer handleGoroutinePanic()()` however so that
 	// any errors we get as we're polling the socket path directory are caught
 	// It's important that we start this _after_ calling `cmd.Start`, otherwise our process would be nil
-	go func() {
-		defer handleGoroutinePanic()()
-
+	handleGoroutinePanics(false, func() {
 		if err := server.Wait(); err != nil {
 			panic(err)
 		}
-	}()
+	})
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		defer handleGoroutinePanic()()
-
+	handleGoroutinePanics(true, func() {
 		// Cause the `range Watcher.Event` loop to break if context is cancelled, e.g. when command errors
 		<-internalCtx.Done()
 
 		if err := watcher.Close(); err != nil {
 			panic(err)
 		}
-	}()
+	})
 
 	// We intentionally don't call `wg.Add` and `wg.Done` here - we are ok with leaking this
 	// goroutine since we return the process, which allows tracking errors and stopping this goroutine
 	// and waiting for it to be stopped. We still need to `defer handleGoroutinePanic()()` however so that
 	// if we cancel the context during this call, we still handle it appropriately
-	go func() {
-		defer handleGoroutinePanic()()
-
+	handleGoroutinePanics(false, func() {
 		// Cause the Firecracker to be closed if context is cancelled - cancelling `ctx` on the `exec.Command`
 		// doesn't actually stop it, it only stops trying to start it!
 		<-ctx.Done() // We use ctx, not internalCtx here since this resource outlives the function call
@@ -213,7 +181,7 @@ func StartFirecrackerServer(
 		if err := server.Close(); err != nil {
 			panic(err)
 		}
-	}()
+	})
 
 	socketCreated := false
 

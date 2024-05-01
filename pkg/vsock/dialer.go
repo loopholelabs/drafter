@@ -3,10 +3,9 @@ package vsock
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
-	"sync"
 
+	"github.com/loopholelabs/drafter/pkg/utils"
 	"golang.org/x/sys/unix"
 )
 
@@ -21,48 +20,21 @@ func DialContext(
 	cid uint32,
 	port uint32,
 ) (c io.ReadWriteCloser, errs error) {
-	var errsLock sync.Mutex
-
-	var wg sync.WaitGroup
-	defer wg.Wait()
-
-	ctx, cancel := context.WithCancelCause(ctx)
-	defer cancel(errFinished)
-
-	handleGoroutinePanic := func() func() {
-		return func() {
-			if err := recover(); err != nil {
-				errsLock.Lock()
-				defer errsLock.Unlock()
-
-				var e error
-				if v, ok := err.(error); ok {
-					e = v
-				} else {
-					e = fmt.Errorf("%v", err)
-				}
-
-				if !(errors.Is(e, context.Canceled) && errors.Is(context.Cause(ctx), errFinished)) {
-					errs = errors.Join(errs, e)
-				}
-
-				cancel(errFinished)
-			}
-		}
-	}
-
-	defer handleGoroutinePanic()()
+	ctx, handlePanics, handleGoroutinePanics, cancel, wait, _ := utils.GetPanicHandler(
+		ctx,
+		&errs,
+		utils.GetPanicHandlerHooks{},
+	)
+	defer wait()
+	defer cancel()
+	defer handlePanics(false)()
 
 	fd, err := unix.Socket(unix.AF_VSOCK, unix.SOCK_STREAM, 0)
 	if err != nil {
 		panic(err)
 	}
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		defer handleGoroutinePanic()()
-
+	handleGoroutinePanics(true, func() {
 		<-ctx.Done()
 
 		// Non-happy path; context was cancelled before `connect()` completed
@@ -82,7 +54,7 @@ func DialContext(
 
 			panic(ctx.Err())
 		}
-	}()
+	})
 
 	if err = unix.Connect(fd, &unix.SockaddrVM{
 		CID:  cid,

@@ -44,9 +44,10 @@ func main() {
 		}
 	}()
 
-	ctx, handlePanics, _, cancel, wait := utils.GetPanicHandler(
+	ctx, handlePanics, _, cancel, wait, _ := utils.GetPanicHandler(
 		ctx,
 		&errs,
+		utils.GetPanicHandlerHooks{},
 	)
 	defer wait()
 	defer cancel()

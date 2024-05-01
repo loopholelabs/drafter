@@ -7,14 +7,12 @@ import (
 	"net"
 	"os"
 	"sync"
+
+	"github.com/loopholelabs/drafter/pkg/utils"
 )
 
 var (
 	ErrLivenessClientAcceptFailed = errors.New("liveness client accept failed")
-)
-
-var (
-	errFinished = errors.New("finished")
 )
 
 type LivenessServer struct {
@@ -46,48 +44,21 @@ func (l *LivenessServer) Open() (string, error) {
 }
 
 func (l *LivenessServer) ReceiveAndClose(ctx context.Context) (errs error) {
-	var errsLock sync.Mutex
+	ctx, handlePanics, handleGoroutinePanics, cancel, wait, _ := utils.GetPanicHandler(
+		ctx,
+		&errs,
+		utils.GetPanicHandlerHooks{},
+	)
+	defer wait()
+	defer cancel()
+	defer handlePanics(false)()
 
-	var wg sync.WaitGroup
-	defer wg.Wait()
-
-	ctx, cancel := context.WithCancelCause(ctx)
-	defer cancel(errFinished)
-
-	handleGoroutinePanic := func() func() {
-		return func() {
-			if err := recover(); err != nil {
-				errsLock.Lock()
-				defer errsLock.Unlock()
-
-				var e error
-				if v, ok := err.(error); ok {
-					e = v
-				} else {
-					e = fmt.Errorf("%v", err)
-				}
-
-				if !(errors.Is(e, context.Canceled) && errors.Is(context.Cause(ctx), errFinished)) {
-					errs = errors.Join(errs, e)
-				}
-
-				cancel(errFinished)
-			}
-		}
-	}
-
-	defer handleGoroutinePanic()()
-
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		defer handleGoroutinePanic()()
-
+	handleGoroutinePanics(true, func() {
 		// Cause the `Accept()` function to unblock
 		<-ctx.Done()
 
 		l.Close()
-	}()
+	})
 
 	defer l.Close()
 

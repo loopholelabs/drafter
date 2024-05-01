@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"github.com/loopholelabs/drafter/pkg/remotes"
+	"github.com/loopholelabs/drafter/pkg/utils"
 	"github.com/pojntfx/panrpc/go/pkg/rpc"
 )
 
@@ -77,34 +78,14 @@ func StartAgentServer(
 	agent.Accept = func(acceptCtx context.Context, remoteCtx context.Context) (acceptingAgent *AcceptingAgentServer, errs error) {
 		acceptingAgent = &AcceptingAgentServer{}
 
-		var errsLock sync.Mutex
-
-		internalCtx, cancel := context.WithCancelCause(acceptCtx)
-		defer cancel(errFinished)
-
-		handleGoroutinePanic := func() func() {
-			return func() {
-				if err := recover(); err != nil {
-					errsLock.Lock()
-					defer errsLock.Unlock()
-
-					var e error
-					if v, ok := err.(error); ok {
-						e = v
-					} else {
-						e = fmt.Errorf("%v", err)
-					}
-
-					if !(errors.Is(e, context.Canceled) && errors.Is(context.Cause(internalCtx), errFinished)) {
-						errs = errors.Join(errs, e)
-					}
-
-					cancel(errFinished)
-				}
-			}
-		}
-
-		defer handleGoroutinePanic()()
+		internalCtx, handlePanics, handleGoroutinePanics, cancel, wait, _ := utils.GetPanicHandler(
+			acceptCtx,
+			&errs,
+			utils.GetPanicHandlerHooks{},
+		)
+		defer wait()
+		defer cancel()
+		defer handlePanics(false)()
 
 		// We use the background context here instead of the internal context because we want to distinguish
 		// between a context cancellation from the outside and getting a response
@@ -158,9 +139,7 @@ func StartAgentServer(
 		// goroutine since we return a `Wait()` function.
 		// We still need to `defer handleGoroutinePanic()()` however so that
 		// if we cancel the context during this call, we still handle it appropriately
-		go func() {
-			defer handleGoroutinePanic()()
-
+		handleGoroutinePanics(false, func() {
 			select {
 			// Failure case; we cancelled the internal context before we got a connection
 			case <-internalCtx.Done():
@@ -180,7 +159,7 @@ func StartAgentServer(
 
 				break
 			}
-		}()
+		})
 
 		registry := rpc.NewRegistry[remotes.AgentRemote, json.RawMessage](
 			&struct{}{},
@@ -236,13 +215,11 @@ func StartAgentServer(
 		// and waiting for it to be stopped. We still need to `defer handleGoroutinePanic()()` however so that
 		// any errors we get as we're polling the socket path directory are caught
 		// It's important that we start this _after_ calling `cmd.Start`, otherwise our process would be nil
-		go func() {
-			defer handleGoroutinePanic()()
-
+		handleGoroutinePanics(false, func() {
 			if err := acceptingAgent.Wait(); err != nil {
 				panic(err)
 			}
-		}()
+		})
 
 		select {
 		case <-internalCtx.Done():

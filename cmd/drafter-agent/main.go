@@ -34,9 +34,10 @@ func main() {
 		}
 	}()
 
-	ctx, handlePanics, _, cancel, wait := utils.GetPanicHandler(
+	ctx, handlePanics, _, cancel, wait, errFinished := utils.GetPanicHandler(
 		ctx,
 		&errs,
+		utils.GetPanicHandlerHooks{},
 	)
 	defer wait()
 	defer cancel()
@@ -106,7 +107,7 @@ func main() {
 				},
 			},
 		); err != nil {
-			if !(errors.Is(err, context.Canceled) && errors.Is(context.Cause(ctx), utils.ErrFinished)) {
+			if !(errors.Is(err, context.Canceled) && errors.Is(context.Cause(ctx), errFinished)) {
 				log.Println("Disconnected from host with error, reconnecting:", err)
 
 				continue

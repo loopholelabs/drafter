@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -175,37 +174,14 @@ func MigrateDevices(
 
 	hooks MigrateDevicesHooks,
 ) (errs error) {
-	var errsLock sync.Mutex
-
-	var wg sync.WaitGroup
-	defer wg.Wait()
-
-	ctx, cancel := context.WithCancelCause(ctx)
-	defer cancel(errFinished)
-
-	handleGoroutinePanic := func() func() {
-		return func() {
-			if err := recover(); err != nil {
-				errsLock.Lock()
-				defer errsLock.Unlock()
-
-				var e error
-				if v, ok := err.(error); ok {
-					e = v
-				} else {
-					e = fmt.Errorf("%v", err)
-				}
-
-				if !(errors.Is(e, context.Canceled) && errors.Is(context.Cause(ctx), errFinished)) {
-					errs = errors.Join(errs, e)
-				}
-
-				cancel(errFinished)
-			}
-		}
-	}
-
-	defer handleGoroutinePanic()()
+	ctx, handlePanics, handleGoroutinePanics, cancel, wait, _ := utils.GetPanicHandler(
+		ctx,
+		&errs,
+		utils.GetPanicHandlerHooks{},
+	)
+	defer wait()
+	defer cancel()
+	defer handlePanics(false)()
 
 	pro := protocol.NewProtocolRW(
 		ctx,
@@ -214,15 +190,11 @@ func MigrateDevices(
 		nil,
 	)
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		defer handleGoroutinePanic()()
-
+	handleGoroutinePanics(true, func() {
 		if err := pro.Handle(); err != nil && !errors.Is(err, io.EOF) {
 			panic(err)
 		}
-	}()
+	})
 
 	var devicesLeftToSend atomic.Int32
 
@@ -241,11 +213,7 @@ func MigrateDevices(
 
 			devicesLeftToSend.Add(1)
 			if devicesLeftToSend.Load() >= int32(len(devices)) {
-				wg.Add(1)
-				go func() {
-					defer wg.Done()
-					defer handleGoroutinePanic()()
-
+				handleGoroutinePanics(true, func() {
 					if err := to.SendEvent(&packets.Event{
 						Type:       packets.EventCustom,
 						CustomType: byte(EventCustomAllDevicesSent),
@@ -256,14 +224,10 @@ func MigrateDevices(
 					if hook := hooks.OnAllDevicesSent; hook != nil {
 						hook()
 					}
-				}()
+				})
 			}
 
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				defer handleGoroutinePanic()()
-
+			handleGoroutinePanics(true, func() {
 				if err := to.HandleNeedAt(func(offset int64, length int32) {
 					// Prioritize blocks
 					endOffset := uint64(offset + int64(length))
@@ -279,13 +243,9 @@ func MigrateDevices(
 				}); err != nil {
 					panic(err)
 				}
-			}()
+			})
 
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				defer handleGoroutinePanic()()
-
+			handleGoroutinePanics(true, func() {
 				if err := to.HandleDontNeedAt(func(offset int64, length int32) {
 					// Deprioritize blocks
 					endOffset := uint64(offset + int64(length))
@@ -301,7 +261,7 @@ func MigrateDevices(
 				}); err != nil {
 					panic(err)
 				}
-			}()
+			})
 
 			cfg := migrator.NewMigratorConfig().WithBlockSize(int(input.prev.blockSize))
 			cfg.Concurrency = map[int]int{
@@ -321,11 +281,7 @@ func MigrateDevices(
 				return err
 			}
 
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				defer handleGoroutinePanic()()
-
+			handleGoroutinePanics(true, func() {
 				if err := to.SendEvent(&packets.Event{
 					Type:       packets.EventCustom,
 					CustomType: byte(EventCustomTransferAuthority),
@@ -336,7 +292,7 @@ func MigrateDevices(
 				if hook := hooks.OnDeviceAuthoritySent; hook != nil {
 					hook(uint32(index))
 				}
-			}()
+			})
 
 			if err := mig.Migrate(input.totalBlocks); err != nil {
 				return err
