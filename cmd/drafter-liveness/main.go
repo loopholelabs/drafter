@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"time"
 
 	"github.com/loopholelabs/drafter/pkg/utils"
 	"github.com/loopholelabs/drafter/pkg/vsock"
@@ -13,6 +14,8 @@ import (
 
 func main() {
 	vsockPort := flag.Int("vsock-port", 25, "VSock port")
+
+	connectTimeout := flag.Duration("connect-timeout", time.Minute, "Maximum amount of time to wait for liveness to connect")
 
 	flag.Parse()
 
@@ -48,14 +51,19 @@ func main() {
 
 	log.Println("Sending liveness ping")
 
+	dialCtx, cancelDialCtx := context.WithTimeout(ctx, *connectTimeout)
+	defer cancelDialCtx()
+
 	if err := vsock.SendLivenessPing(
-		ctx,
+		dialCtx,
 
 		vsock.CIDHost,
 		uint32(*vsockPort),
 	); err != nil {
 		panic(err)
 	}
+
+	log.Println("Sent liveness ping")
 
 	log.Println("Shutting down")
 }

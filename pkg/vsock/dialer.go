@@ -39,7 +39,7 @@ func DialContext(
 
 		// Non-happy path; context was cancelled before `connect()` completed
 		if c == nil {
-			if err := unix.Shutdown(fd, unix.SHUT_RD); err != nil {
+			if err := unix.Shutdown(fd, unix.SHUT_RDWR); err != nil {
 				// Always close the file descriptor even if shutdown fails
 				if e := unix.Close(fd); e != nil {
 					err = errors.Join(e, err)

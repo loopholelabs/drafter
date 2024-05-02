@@ -9,10 +9,10 @@ import (
 	"os/exec"
 	"os/signal"
 	"strings"
+	"time"
 
 	"github.com/loopholelabs/drafter/pkg/utils"
 	"github.com/loopholelabs/drafter/pkg/vsock"
-	"github.com/pojntfx/panrpc/go/pkg/rpc"
 )
 
 func main() {
@@ -21,6 +21,8 @@ func main() {
 	shellCmd := flag.String("shell-cmd", "sh", "Shell to use to run the before suspend and after resume commands")
 	beforeSuspendCmd := flag.String("before-suspend-cmd", "", "Command to run before the VM is suspended (leave empty to disable)")
 	afterResumeCmd := flag.String("after-resume-cmd", "", "Command to run after the VM has been resumed (leave empty to disable)")
+
+	connectTimeout := flag.Duration("connect-timeout", time.Minute, "Maximum amount of time to wait for agent to connect")
 
 	flag.Parse()
 
@@ -54,59 +56,60 @@ func main() {
 		cancel()
 	}()
 
-	clients := 0
-
 	for {
-		if err := vsock.StartAgentClient(
-			ctx,
+		if err := func() error {
+			log.Println("Connecting to host")
 
-			vsock.CIDHost,
-			uint32(*vsockPort),
+			dialCtx, cancelDialCtx := context.WithTimeout(ctx, *connectTimeout)
+			defer cancelDialCtx()
 
-			func(ctx context.Context) error {
-				log.Println("Running pre-suspend command")
+			connectedAgent, err := vsock.StartAgentClient(
+				dialCtx,
+				ctx,
 
-				if strings.TrimSpace(*beforeSuspendCmd) != "" {
-					cmd := exec.CommandContext(ctx, *shellCmd, "-c", *beforeSuspendCmd)
-					cmd.Stdout = os.Stdout
-					cmd.Stderr = os.Stderr
+				vsock.CIDHost,
+				uint32(*vsockPort),
 
-					if err := cmd.Run(); err != nil {
-						return err
+				func(ctx context.Context) error {
+					log.Println("Running pre-suspend command")
+
+					if strings.TrimSpace(*beforeSuspendCmd) != "" {
+						cmd := exec.CommandContext(ctx, *shellCmd, "-c", *beforeSuspendCmd)
+						cmd.Stdout = os.Stdout
+						cmd.Stderr = os.Stderr
+
+						if err := cmd.Run(); err != nil {
+							return err
+						}
 					}
-				}
 
-				return nil
-			},
-			func(ctx context.Context) error {
-				log.Println("Running after-resume command")
+					return nil
+				},
+				func(ctx context.Context) error {
+					log.Println("Running after-resume command")
 
-				if strings.TrimSpace(*afterResumeCmd) != "" {
-					cmd := exec.CommandContext(ctx, *shellCmd, "-c", *afterResumeCmd)
-					cmd.Stdout = os.Stdout
-					cmd.Stderr = os.Stderr
+					if strings.TrimSpace(*afterResumeCmd) != "" {
+						cmd := exec.CommandContext(ctx, *shellCmd, "-c", *afterResumeCmd)
+						cmd.Stdout = os.Stdout
+						cmd.Stderr = os.Stderr
 
-					if err := cmd.Run(); err != nil {
-						return err
+						if err := cmd.Run(); err != nil {
+							return err
+						}
 					}
-				}
 
-				return nil
-			},
-
-			&rpc.Options{
-				OnClientConnect: func(remoteID string) {
-					clients++
-
-					log.Printf("%v clients connected", clients)
+					return nil
 				},
-				OnClientDisconnect: func(remoteID string) {
-					clients--
+			)
+			if err != nil {
+				return err
+			}
+			defer connectedAgent.Close()
 
-					log.Printf("%v clients connected", clients)
-				},
-			},
-		); err != nil {
+			log.Println("Connected to host")
+
+			return connectedAgent.Wait()
+		}(); err != nil {
 			if !(errors.Is(err, context.Canceled) && errors.Is(context.Cause(ctx), errFinished)) {
 				log.Println("Disconnected from host with error, reconnecting:", err)
 

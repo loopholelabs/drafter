@@ -43,7 +43,7 @@ func (v *conn) Write(b []byte) (int, error) {
 }
 
 func (v *conn) Close() error {
-	if err := unix.Shutdown(v.fd, unix.SHUT_RD); err != nil {
+	if err := unix.Shutdown(v.fd, unix.SHUT_RDWR); err != nil {
 		// Always close the file descriptor even if shutdown fails
 		if e := unix.Close(v.fd); e != nil {
 			err = errors.Join(e, err)
