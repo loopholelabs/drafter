@@ -14,8 +14,7 @@ import (
 
 func main() {
 	vsockPort := flag.Int("vsock-port", 25, "VSock port")
-
-	connectTimeout := flag.Duration("connect-timeout", time.Minute, "Maximum amount of time to wait for liveness to connect")
+	vsockTimeout := flag.Duration("vsock-timeout", time.Minute, "VSock dial timeout")
 
 	flag.Parse()
 
@@ -51,7 +50,7 @@ func main() {
 
 	log.Println("Sending liveness ping")
 
-	dialCtx, cancelDialCtx := context.WithTimeout(ctx, *connectTimeout)
+	dialCtx, cancelDialCtx := context.WithTimeout(ctx, *vsockTimeout)
 	defer cancelDialCtx()
 
 	if err := vsock.SendLivenessPing(

@@ -47,15 +47,15 @@ func StartAgentServer(
 	vsockPath string,
 	vsockPort uint32,
 ) (
-	agent *AgentServer,
+	agentServer *AgentServer,
 
 	err error,
 ) {
-	agent = &AgentServer{}
+	agentServer = &AgentServer{}
 
-	agent.VSockPath = fmt.Sprintf("%s_%d", vsockPath, vsockPort)
+	agentServer.VSockPath = fmt.Sprintf("%s_%d", vsockPath, vsockPort)
 
-	lis, err := net.Listen("unix", agent.VSockPath)
+	lis, err := net.Listen("unix", agentServer.VSockPath)
 	if err != nil {
 		return nil, err
 	}
@@ -63,20 +63,20 @@ func StartAgentServer(
 	var closeLock sync.Mutex
 	closed := false
 
-	agent.Close = func() {
+	agentServer.Close = func() {
 		closeLock.Lock()
 		defer closeLock.Unlock()
 
 		// We need to remove this file first so that the client can't try to reconnect
-		_ = os.Remove(agent.VSockPath) // We ignore errors here since the file might already have been removed, but we don't want to use `RemoveAll` cause it could remove a directory
+		_ = os.Remove(agentServer.VSockPath) // We ignore errors here since the file might already have been removed, but we don't want to use `RemoveAll` cause it could remove a directory
 
 		_ = lis.Close() // We ignore errors here since we might interrupt a network connection
 
 		closed = true
 	}
 
-	agent.Accept = func(acceptCtx context.Context, remoteCtx context.Context) (acceptingAgent *AcceptingAgentServer, errs error) {
-		acceptingAgent = &AcceptingAgentServer{}
+	agentServer.Accept = func(acceptCtx context.Context, remoteCtx context.Context) (acceptingAgentServer *AcceptingAgentServer, errs error) {
+		acceptingAgentServer = &AcceptingAgentServer{}
 
 		internalCtx, handlePanics, handleGoroutinePanics, cancel, wait, _ := utils.GetPanicHandler(
 			acceptCtx,
@@ -98,7 +98,7 @@ func StartAgentServer(
 			select {
 			// Failure case; we cancelled the internal context before we got a connection
 			case <-internalCtx.Done():
-				agent.Close() // We ignore errors here since we might interrupt a network connection
+				agentServer.Close() // We ignore errors here since we might interrupt a network connection
 
 			// Happy case; we've got a connection and we want to wait with closing the agent's connections until the context, not the internal context is cancelled
 			// We don't do anything here because the `acceptingAgent` context handler must close in order
@@ -119,7 +119,7 @@ func StartAgentServer(
 			panic(errors.Join(ErrAgentClientAcceptFailed, err))
 		}
 
-		acceptingAgent.Close = func() error {
+		acceptingAgentServer.Close = func() error {
 			closeLock.Lock()
 
 			_ = conn.Close() // We ignore errors here since we might interrupt a network connection
@@ -128,8 +128,8 @@ func StartAgentServer(
 
 			closeLock.Unlock()
 
-			if acceptingAgent.Wait != nil {
-				return acceptingAgent.Wait()
+			if acceptingAgentServer.Wait != nil {
+				return acceptingAgentServer.Wait()
 			}
 
 			return nil
@@ -143,19 +143,19 @@ func StartAgentServer(
 			select {
 			// Failure case; we cancelled the internal context before we got a connection
 			case <-internalCtx.Done():
-				if err := acceptingAgent.Close(); err != nil {
+				if err := acceptingAgentServer.Close(); err != nil {
 					panic(err)
 				}
-				agent.Close() // We ignore errors here since we might interrupt a network connection
+				agentServer.Close() // We ignore errors here since we might interrupt a network connection
 
 			// Happy case; we've got a connection and we want to wait with closing the agent's connections until the context, not the internal context is cancelled
 			case <-readyCtx.Done():
 				<-remoteCtx.Done()
 
-				if err := acceptingAgent.Close(); err != nil {
+				if err := acceptingAgentServer.Close(); err != nil {
 					panic(err)
 				}
-				agent.Close() // We ignore errors here since we might interrupt a network connection
+				agentServer.Close() // We ignore errors here since we might interrupt a network connection
 
 				break
 			}
@@ -173,7 +173,7 @@ func StartAgentServer(
 			},
 		)
 
-		acceptingAgent.Wait = sync.OnceValue(func() error {
+		acceptingAgentServer.Wait = sync.OnceValue(func() error {
 			encoder := json.NewEncoder(conn)
 			decoder := json.NewDecoder(conn)
 
@@ -216,7 +216,7 @@ func StartAgentServer(
 		// any errors we get as we're polling the socket path directory are caught
 		// It's important that we start this _after_ calling `cmd.Start`, otherwise our process would be nil
 		handleGoroutinePanics(false, func() {
-			if err := acceptingAgent.Wait(); err != nil {
+			if err := acceptingAgentServer.Wait(); err != nil {
 				panic(err)
 			}
 		})
@@ -230,7 +230,7 @@ func StartAgentServer(
 
 		found := false
 		if err := registry.ForRemotes(func(remoteID string, r remotes.AgentRemote) error {
-			acceptingAgent.Remote = r
+			acceptingAgentServer.Remote = r
 			found = true
 
 			return nil

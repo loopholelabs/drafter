@@ -15,16 +15,26 @@ var (
 	ErrAgentServerDisconnected = errors.New("agent server disconnected")
 )
 
-type local struct {
+type AgentClient struct {
 	beforeSuspend func(ctx context.Context) error
 	afterResume   func(ctx context.Context) error
 }
 
-func (l *local) BeforeSuspend(ctx context.Context) error {
+func NewAgentClient(
+	beforeSuspend func(ctx context.Context) error,
+	afterResume func(ctx context.Context) error,
+) *AgentClient {
+	return &AgentClient{
+		beforeSuspend: beforeSuspend,
+		afterResume:   afterResume,
+	}
+}
+
+func (l *AgentClient) BeforeSuspend(ctx context.Context) error {
 	return l.beforeSuspend(ctx)
 }
 
-func (l *local) AfterResume(ctx context.Context) error {
+func (l *AgentClient) AfterResume(ctx context.Context) error {
 	return l.afterResume(ctx)
 }
 
@@ -40,10 +50,9 @@ func StartAgentClient(
 	vsockCID uint32,
 	vsockPort uint32,
 
-	beforeSuspend func(ctx context.Context) error,
-	afterResume func(ctx context.Context) error,
-) (connectedAgent *ConnectedAgentClient, errs error) {
-	connectedAgent = &ConnectedAgentClient{}
+	agentClient *AgentClient,
+) (connectedAgentClient *ConnectedAgentClient, errs error) {
+	connectedAgentClient = &ConnectedAgentClient{}
 
 	internalCtx, handlePanics, handleGoroutinePanics, cancel, wait, _ := utils.GetPanicHandler(
 		dialCtx,
@@ -72,7 +81,7 @@ func StartAgentClient(
 	var closeLock sync.Mutex
 	closed := false
 
-	connectedAgent.Close = func() {
+	connectedAgentClient.Close = func() {
 		closeLock.Lock()
 		defer closeLock.Unlock()
 
@@ -89,23 +98,20 @@ func StartAgentClient(
 		select {
 		// Failure case; we cancelled the internal context before we got a connection
 		case <-internalCtx.Done():
-			connectedAgent.Close() // We ignore errors here since we might interrupt a network connection
+			connectedAgentClient.Close() // We ignore errors here since we might interrupt a network connection
 
 		// Happy case; we've got a connection and we want to wait with closing the agent's connections until the context, not the internal context is cancelled
 		case <-readyCtx.Done():
 			<-remoteCtx.Done()
 
-			connectedAgent.Close() // We ignore errors here since we might interrupt a network connection
+			connectedAgentClient.Close() // We ignore errors here since we might interrupt a network connection
 
 			break
 		}
 	})
 
 	registry := rpc.NewRegistry[struct{}, json.RawMessage](
-		&local{
-			beforeSuspend: beforeSuspend,
-			afterResume:   afterResume,
-		},
+		agentClient,
 
 		remoteCtx, // This resource outlives the current scope, so we use the external context
 
@@ -116,7 +122,7 @@ func StartAgentClient(
 		},
 	)
 
-	connectedAgent.Wait = sync.OnceValue(func() error {
+	connectedAgentClient.Wait = sync.OnceValue(func() error {
 		encoder := json.NewEncoder(conn)
 		decoder := json.NewDecoder(conn)
 
@@ -159,7 +165,7 @@ func StartAgentClient(
 	// any errors we get as we're polling the socket path directory are caught
 	// It's important that we start this _after_ calling `cmd.Start`, otherwise our process would be nil
 	handleGoroutinePanics(false, func() {
-		if err := connectedAgent.Wait(); err != nil {
+		if err := connectedAgentClient.Wait(); err != nil {
 			panic(err)
 		}
 	})
