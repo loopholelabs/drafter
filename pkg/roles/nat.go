@@ -25,7 +25,9 @@ type claimableNamespace struct {
 type Namespaces struct {
 	ReleaseNamespace func(namespace string) error
 	ClaimNamespace   func() (string, error)
-	Close            func() error
+
+	Wait  func() error
+	Close func() error
 }
 
 type CreateNamespacesHooks struct {
@@ -52,6 +54,11 @@ func CreateNAT(
 	hooks CreateNamespacesHooks,
 ) (namespaces *Namespaces, errs error) {
 	namespaces = &Namespaces{}
+
+	// We use the background context here instead of the internal context because we want to distinguish
+	// between a context cancellation from the outside and getting a response
+	readyCtx, cancelReadyCtx := context.WithCancel(ctx)
+	defer cancelReadyCtx()
 
 	internalCtx, handlePanics, handleGoroutinePanics, cancel, wait, _ := utils.GetPanicHandler(
 		ctx,
@@ -102,7 +109,10 @@ func CreateNAT(
 	var closeLock sync.Mutex
 	closed := false
 
+	closeInProgressContext, cancelCloseInProgressContext := context.WithCancel(closeCtx) // We use `closeContext` here since this simply intercepts `ctx`
 	namespaces.Close = func() (errs error) {
+		defer cancelCloseInProgressContext()
+
 		namespaceVethsLock.Lock()
 		defer namespaceVethsLock.Unlock()
 
@@ -140,18 +150,36 @@ func CreateNAT(
 			closed = true
 		}
 
+		// No need to call `.Wait()` here since `.Wait()` is just waiting for us to cancel the in-progress context
+
 		return
+	}
+	namespaces.Wait = func() error {
+		<-closeInProgressContext.Done()
+
+		return nil
 	}
 
 	// We intentionally don't call `wg.Add` and `wg.Done` here - we are ok with leaking this
 	// goroutine since we return the Close func. We still need to `defer handleGoroutinePanic()()` however so that
 	// if we cancel the context during this call, we still handle it appropriately
 	handleGoroutinePanics(false, func() {
-		// Cause the namespaces to be closed if context is cancelled
-		<-ctx.Done() // We use ctx, not internalCtx here since this resource outlives the function call
+		select {
+		// Failure case; we cancelled the internal context before we got a connection
+		case <-internalCtx.Done():
+			if err := namespaces.Close(); err != nil {
+				panic(err)
+			}
 
-		if err := namespaces.Close(); err != nil {
-			panic(err)
+		// Happy case; we've set up all of the namespaces and we want to wait with closing the agent's connections until the context, not the internal context is cancelled
+		case <-readyCtx.Done():
+			<-ctx.Done()
+
+			if err := namespaces.Close(); err != nil {
+				panic(err)
+			}
+
+			break
 		}
 	})
 
@@ -278,6 +306,8 @@ func CreateNAT(
 
 		return nil
 	}
+
+	cancelReadyCtx()
 
 	return
 }

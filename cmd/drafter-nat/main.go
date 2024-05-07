@@ -37,7 +37,7 @@ func main() {
 		}
 	}()
 
-	ctx, handlePanics, _, cancel, wait, _ := utils.GetPanicHandler(
+	ctx, handlePanics, handleGoroutinePanics, cancel, wait, _ := utils.GetPanicHandler(
 		ctx,
 		&errs,
 		utils.GetPanicHandlerHooks{},
@@ -83,14 +83,34 @@ func main() {
 			},
 		},
 	)
+
+	if nat.Wait != nil {
+		defer func() {
+			defer handlePanics(true)()
+
+			if err := nat.Wait(); err != nil {
+				panic(err)
+			}
+		}()
+	}
+
 	if err != nil {
 		panic(err)
 	}
+
 	defer func() {
+		defer handlePanics(true)()
+
 		if err := nat.Close(); err != nil {
 			panic(err)
 		}
 	}()
+
+	handleGoroutinePanics(true, func() {
+		if err := nat.Wait(); err != nil {
+			panic(err)
+		}
+	})
 
 	log.Println("Created all namespaces")
 
