@@ -78,6 +78,11 @@ func StartAgentServer(
 	agentServer.Accept = func(acceptCtx context.Context, remoteCtx context.Context) (acceptingAgentServer *AcceptingAgentServer, errs error) {
 		acceptingAgentServer = &AcceptingAgentServer{}
 
+		// We use the background context here instead of the internal context because we want to distinguish
+		// between a context cancellation from the outside and getting a response
+		readyCtx, cancelReadyCtx := context.WithCancel(acceptCtx)
+		defer cancelReadyCtx()
+
 		internalCtx, handlePanics, handleGoroutinePanics, cancel, wait, _ := utils.GetPanicHandler(
 			acceptCtx,
 			&errs,
@@ -86,11 +91,6 @@ func StartAgentServer(
 		defer wait()
 		defer cancel()
 		defer handlePanics(false)()
-
-		// We use the background context here instead of the internal context because we want to distinguish
-		// between a context cancellation from the outside and getting a response
-		readyCtx, cancelReadyCtx := context.WithCancel(acceptCtx)
-		defer cancelReadyCtx()
 
 		// We intentionally don't call `wg.Add` and `wg.Done` here - we are ok with leaking this
 		// goroutine since we return a `Wait()` function

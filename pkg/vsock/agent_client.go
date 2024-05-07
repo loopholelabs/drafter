@@ -54,6 +54,11 @@ func StartAgentClient(
 ) (connectedAgentClient *ConnectedAgentClient, errs error) {
 	connectedAgentClient = &ConnectedAgentClient{}
 
+	// We use the background context here instead of the internal context because we want to distinguish
+	// between a context cancellation from the outside and getting a response
+	readyCtx, cancelReadyCtx := context.WithCancel(dialCtx)
+	defer cancelReadyCtx()
+
 	internalCtx, handlePanics, handleGoroutinePanics, cancel, wait, _ := utils.GetPanicHandler(
 		dialCtx,
 		&errs,
@@ -62,11 +67,6 @@ func StartAgentClient(
 	defer wait()
 	defer cancel()
 	defer handlePanics(false)()
-
-	// We use the background context here instead of the internal context because we want to distinguish
-	// between a context cancellation from the outside and getting a response
-	readyCtx, cancelReadyCtx := context.WithCancel(dialCtx)
-	defer cancelReadyCtx()
 
 	conn, err := DialContext(
 		internalCtx,

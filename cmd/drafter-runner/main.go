@@ -117,11 +117,27 @@ func main() {
 		config.MemoryName,
 	)
 
+	if runner.Wait != nil {
+		defer func() {
+			defer handlePanics(true)()
+
+			if err := runner.Wait(); err != nil {
+				panic(err)
+			}
+		}()
+	}
+
 	if err != nil {
 		panic(err)
 	}
 
-	defer runner.Close()
+	defer func() {
+		defer handlePanics(true)()
+
+		if err := runner.Close(); err != nil {
+			panic(err)
+		}
+	}()
 
 	handleGoroutinePanics(true, func() {
 		if err := runner.Wait(); err != nil {
