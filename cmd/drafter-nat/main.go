@@ -7,7 +7,8 @@ import (
 	"os"
 	"os/signal"
 
-	"github.com/loopholelabs/drafter/pkg/network"
+	"github.com/loopholelabs/drafter/pkg/roles"
+	"github.com/loopholelabs/drafter/pkg/utils"
 )
 
 func main() {
@@ -24,15 +25,41 @@ func main() {
 
 	namespacePrefix := flag.String("namespace-prefix", "ark", "Prefix for the namespace IDs")
 
-	verbose := flag.Bool("verbose", true, "Whether to enable verbose logging")
-
 	flag.Parse()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	daemon := network.NewDaemon(
+	var errs error
+	defer func() {
+		if errs != nil {
+			panic(errs)
+		}
+	}()
+
+	ctx, handlePanics, _, cancel, wait, _ := utils.GetPanicHandler(
 		ctx,
+		&errs,
+		utils.GetPanicHandlerHooks{},
+	)
+	defer wait()
+	defer cancel()
+	defer handlePanics(false)()
+
+	go func() {
+		done := make(chan os.Signal, 1)
+		signal.Notify(done, os.Interrupt)
+
+		<-done
+
+		log.Println("Exiting gracefully")
+
+		cancel()
+	}()
+
+	nat, err := roles.CreateNAT(
+		ctx,
+		context.Background(), // Never give up on rescue operations
 
 		*hostInterface,
 
@@ -47,36 +74,27 @@ func main() {
 
 		*namespacePrefix,
 
-		func(id string) error {
-			if *verbose {
-				log.Println("Created namespace", id)
-			}
-
-			return nil
-		},
-		func(id string) error {
-			if *verbose {
-				log.Println("Removed namespace", id)
-			}
-
-			return nil
+		roles.CreateNamespacesHooks{
+			OnBeforeCreateNamespace: func(id string) {
+				log.Println("Creating namespace", id)
+			},
+			OnBeforeRemoveNamespace: func(id string) {
+				log.Println("Removing namespace", id)
+			},
 		},
 	)
-
-	if err := daemon.Open(ctx); err != nil {
+	if err != nil {
 		panic(err)
 	}
+	defer func() {
+		if err := nat.Close(); err != nil {
+			panic(err)
+		}
+	}()
 
-	done := make(chan os.Signal, 1)
-	signal.Notify(done, os.Interrupt)
+	log.Println("Created all namespaces")
 
-	log.Println("Network namespaces ready")
+	<-ctx.Done()
 
-	<-done
-
-	log.Println("Exiting gracefully")
-
-	if err := daemon.Close(ctx); err != nil {
-		panic(err)
-	}
+	log.Println("Shutting down")
 }

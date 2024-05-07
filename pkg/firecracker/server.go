@@ -174,7 +174,7 @@ func StartFirecrackerServer(
 	// and waiting for it to be stopped. We still need to `defer handleGoroutinePanic()()` however so that
 	// if we cancel the context during this call, we still handle it appropriately
 	handleGoroutinePanics(false, func() {
-		// Cause the Firecracker to be closed if context is cancelled - cancelling `ctx` on the `exec.Command`
+		// Cause the Firecracker process to be closed if context is cancelled - cancelling `ctx` on the `exec.Command`
 		// doesn't actually stop it, it only stops trying to start it!
 		<-ctx.Done() // We use ctx, not internalCtx here since this resource outlives the function call
 
