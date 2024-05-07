@@ -216,6 +216,8 @@ func main() {
 			}
 		} else {
 			defer func() {
+				defer handlePanics(true)()
+
 				resourceInfo, err := os.Stat(resource[1])
 				if err != nil {
 					panic(err)
