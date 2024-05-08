@@ -230,8 +230,13 @@ func CreateSnapshot(
 	}
 	defer os.Remove(filepath.Join(server.VMPath, VSockName))
 
-	if err := liveness.ReceiveAndClose(ctx); err != nil {
+	{
+		receiveCtx, cancel := context.WithTimeout(ctx, livenessConfiguration.ResumeTimeout)
+		defer cancel()
+
+		if err := liveness.ReceiveAndClose(receiveCtx); err != nil {
 		panic(err)
+		}
 	}
 
 	var acceptingAgent *vsock.AcceptingAgentServer

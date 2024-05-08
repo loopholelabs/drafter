@@ -27,7 +27,7 @@ func main() {
 	enableOutput := flag.Bool("enable-output", true, "Whether to enable VM stdout and stderr")
 	enableInput := flag.Bool("enable-input", false, "Whether to enable VM stdin")
 
-	resumeTimeout := flag.Duration("resume-timeout", time.Minute, "Maximum amount of time to wait for agent to resume")
+	resumeTimeout := flag.Duration("resume-timeout", time.Minute, "Maximum amount of time to wait for agent and liveness to resume")
 
 	netns := flag.String("netns", "ark0", "Network namespace to run Firecracker in")
 	iface := flag.String("interface", "tap0", "Name of the interface in the network namespace to use")
@@ -120,6 +120,7 @@ func main() {
 		},
 		config.LivenessConfiguration{
 			LivenessVSockPort: uint32(*livenessVSockPort),
+			ResumeTimeout:     *resumeTimeout,
 		},
 
 		config.HypervisorConfiguration{

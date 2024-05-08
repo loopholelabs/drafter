@@ -9,4 +9,5 @@ type AgentConfiguration struct {
 
 type LivenessConfiguration struct {
 	LivenessVSockPort uint32
+	ResumeTimeout     time.Duration
 }
