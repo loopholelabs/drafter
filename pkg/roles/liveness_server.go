@@ -1,4 +1,4 @@
-package vsock
+package roles
 
 import (
 	"context"

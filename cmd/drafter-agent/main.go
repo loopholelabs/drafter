@@ -11,8 +11,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/loopholelabs/drafter/pkg/config"
+	"github.com/loopholelabs/drafter/pkg/roles"
 	"github.com/loopholelabs/drafter/pkg/utils"
-	"github.com/loopholelabs/drafter/pkg/vsock"
 )
 
 func main() {
@@ -55,7 +56,7 @@ func main() {
 		cancel()
 	}()
 
-	agentClient := vsock.NewAgentClient(
+	agentClient := roles.NewAgentClient(
 		func(ctx context.Context) error {
 			log.Println("Running pre-suspend command")
 
@@ -95,11 +96,11 @@ func main() {
 			dialCtx, cancelDialCtx := context.WithTimeout(ctx, *vsockTimeout)
 			defer cancelDialCtx()
 
-			connectedAgentClient, err := vsock.StartAgentClient(
+			connectedAgentClient, err := roles.StartAgentClient(
 				dialCtx,
 				ctx,
 
-				vsock.CIDHost,
+				config.VSockCIDHost,
 				uint32(*vsockPort),
 
 				agentClient,

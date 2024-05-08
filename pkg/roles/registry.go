@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	iutils "github.com/loopholelabs/drafter/internal/utils"
 	iconfig "github.com/loopholelabs/drafter/pkg/config"
 	"github.com/loopholelabs/drafter/pkg/utils"
 	"github.com/loopholelabs/silo/pkg/storage"
@@ -93,7 +94,7 @@ func OpenDevices(
 		},
 	}
 
-	devices, deferFuncs, err := utils.ConcurrentMap(
+	devices, deferFuncs, err := iutils.ConcurrentMap(
 		stage1Inputs,
 		func(index int, input stage1, output *Device, addDefer func(deferFunc func() error)) error {
 			output.prev = input
@@ -198,7 +199,7 @@ func MigrateDevices(
 
 	var devicesLeftToSend atomic.Int32
 
-	_, deferFuncs, err := utils.ConcurrentMap(
+	_, deferFuncs, err := iutils.ConcurrentMap(
 		devices,
 		func(index int, input Device, _ *struct{}, _ func(deferFunc func() error)) error {
 			to := protocol.NewToProtocol(input.storage.Size(), uint32(index), pro)

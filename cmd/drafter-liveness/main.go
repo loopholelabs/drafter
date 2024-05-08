@@ -8,8 +8,9 @@ import (
 	"os/signal"
 	"time"
 
+	"github.com/loopholelabs/drafter/pkg/config"
+	"github.com/loopholelabs/drafter/pkg/roles"
 	"github.com/loopholelabs/drafter/pkg/utils"
-	"github.com/loopholelabs/drafter/pkg/vsock"
 )
 
 func main() {
@@ -53,10 +54,10 @@ func main() {
 	dialCtx, cancelDialCtx := context.WithTimeout(ctx, *vsockTimeout)
 	defer cancelDialCtx()
 
-	if err := vsock.SendLivenessPing(
+	if err := roles.SendLivenessPing(
 		dialCtx,
 
-		vsock.CIDHost,
+		config.VSockCIDHost,
 		uint32(*vsockPort),
 	); err != nil {
 		panic(err)

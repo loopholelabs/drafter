@@ -1,4 +1,4 @@
-package vsock
+package roles
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 	"os"
 	"sync"
 
-	"github.com/loopholelabs/drafter/pkg/remotes"
+	"github.com/loopholelabs/drafter/internal/remotes"
 	"github.com/loopholelabs/drafter/pkg/utils"
 	"github.com/pojntfx/panrpc/go/pkg/rpc"
 )

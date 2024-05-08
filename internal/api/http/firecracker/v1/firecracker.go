@@ -8,7 +8,7 @@ type BootSource struct {
 
 type Drive struct {
 	DriveID      string `json:"drive_id"`
-	PathOnHost   string `json:"path_on_host"f`
+	PathOnHost   string `json:"path_on_host"`
 	IsRootDevice bool   `json:"is_root_device"`
 	IsReadOnly   bool   `json:"is_read_only"`
 }

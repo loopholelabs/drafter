@@ -10,10 +10,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/loopholelabs/drafter/internal/firecracker"
 	"github.com/loopholelabs/drafter/pkg/config"
-	"github.com/loopholelabs/drafter/pkg/firecracker"
 	"github.com/loopholelabs/drafter/pkg/utils"
-	"github.com/loopholelabs/drafter/pkg/vsock"
 )
 
 const (
@@ -156,8 +155,8 @@ func StartRunner(
 		defer ongoingResumeWg.Done()
 
 		var (
-			agent                   *vsock.AgentServer
-			acceptingAgent          *vsock.AcceptingAgentServer
+			agent                   *AgentServer
+			acceptingAgent          *AcceptingAgentServer
 			suspendOnPanicWithError = false
 		)
 
@@ -208,7 +207,7 @@ func StartRunner(
 			}
 		})
 
-		agent, err = vsock.StartAgentServer(
+		agent, err = StartAgentServer(
 			filepath.Join(server.VMPath, VSockName),
 			uint32(agentVSockPort),
 		)

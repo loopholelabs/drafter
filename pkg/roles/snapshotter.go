@@ -10,10 +10,10 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/loopholelabs/drafter/internal/firecracker"
+	iutils "github.com/loopholelabs/drafter/internal/utils"
 	"github.com/loopholelabs/drafter/pkg/config"
-	"github.com/loopholelabs/drafter/pkg/firecracker"
 	"github.com/loopholelabs/drafter/pkg/utils"
-	"github.com/loopholelabs/drafter/pkg/vsock"
 )
 
 var (
@@ -86,7 +86,7 @@ func CreateSnapshot(
 		}
 	})
 
-	liveness := vsock.NewLivenessServer(
+	liveness := NewLivenessServer(
 		filepath.Join(server.VMPath, VSockName),
 		uint32(livenessConfiguration.LivenessVSockPort),
 	)
@@ -101,7 +101,7 @@ func CreateSnapshot(
 		panic(err)
 	}
 
-	agent, err := vsock.StartAgentServer(
+	agent, err := StartAgentServer(
 		filepath.Join(server.VMPath, VSockName),
 		uint32(agentConfiguration.AgentVSockPort),
 	)
@@ -194,15 +194,15 @@ func CreateSnapshot(
 		diskWorkingPath      = filepath.Join(server.VMPath, knownNamesConfiguration.DiskName)
 	)
 
-	if _, err := utils.CopyFile(initramfsInputPath, initramfsWorkingPath, hypervisorConfiguration.UID, hypervisorConfiguration.GID); err != nil {
+	if _, err := iutils.CopyFile(initramfsInputPath, initramfsWorkingPath, hypervisorConfiguration.UID, hypervisorConfiguration.GID); err != nil {
 		panic(err)
 	}
 
-	if _, err := utils.CopyFile(kernelInputPath, kernelWorkingPath, hypervisorConfiguration.UID, hypervisorConfiguration.GID); err != nil {
+	if _, err := iutils.CopyFile(kernelInputPath, kernelWorkingPath, hypervisorConfiguration.UID, hypervisorConfiguration.GID); err != nil {
 		panic(err)
 	}
 
-	if _, err := utils.CopyFile(diskInputPath, diskWorkingPath, hypervisorConfiguration.UID, hypervisorConfiguration.GID); err != nil {
+	if _, err := iutils.CopyFile(diskInputPath, diskWorkingPath, hypervisorConfiguration.UID, hypervisorConfiguration.GID); err != nil {
 		panic(err)
 	}
 
@@ -224,7 +224,7 @@ func CreateSnapshot(
 		networkConfiguration.MAC,
 
 		VSockName,
-		vsock.CIDGuest,
+		config.VSockCIDGuest,
 	); err != nil {
 		panic(err)
 	}
@@ -235,11 +235,11 @@ func CreateSnapshot(
 		defer cancel()
 
 		if err := liveness.ReceiveAndClose(receiveCtx); err != nil {
-		panic(err)
+			panic(err)
 		}
 	}
 
-	var acceptingAgent *vsock.AcceptingAgentServer
+	var acceptingAgent *AcceptingAgentServer
 	{
 		acceptCtx, cancel := context.WithTimeout(ctx, agentConfiguration.ResumeTimeout)
 		defer cancel()

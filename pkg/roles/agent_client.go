@@ -1,4 +1,4 @@
-package vsock
+package roles
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 	"net"
 	"sync"
 
+	"github.com/loopholelabs/drafter/internal/vsock"
 	"github.com/loopholelabs/drafter/pkg/utils"
 	"github.com/pojntfx/panrpc/go/pkg/rpc"
 )
@@ -68,7 +69,7 @@ func StartAgentClient(
 	defer cancel()
 	defer handlePanics(false)()
 
-	conn, err := DialContext(
+	conn, err := vsock.DialContext(
 		internalCtx,
 
 		vsockCID,

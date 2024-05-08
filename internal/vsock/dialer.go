@@ -9,11 +9,6 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-const (
-	CIDHost  = 2
-	CIDGuest = 3
-)
-
 func DialContext(
 	ctx context.Context,
 

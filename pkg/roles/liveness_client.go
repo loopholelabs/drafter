@@ -1,7 +1,9 @@
-package vsock
+package roles
 
 import (
 	"context"
+
+	"github.com/loopholelabs/drafter/internal/vsock"
 )
 
 func SendLivenessPing(
@@ -10,7 +12,7 @@ func SendLivenessPing(
 	vsockCID uint32,
 	vsockPort uint32,
 ) error {
-	conn, err := DialContext(ctx, vsockCID, vsockPort)
+	conn, err := vsock.DialContext(ctx, vsockCID, vsockPort)
 	if err != nil {
 		return err
 	}
