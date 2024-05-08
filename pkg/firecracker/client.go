@@ -168,26 +168,6 @@ func StartVM(
 	return nil
 }
 
-func StopVM(
-	ctx context.Context,
-
-	client *http.Client,
-) error {
-	if err := submitJSON(
-		ctx,
-		http.MethodPut,
-		client,
-		&v1.Action{
-			ActionType: "SendCtrlAltDel",
-		},
-		"actions",
-	); err != nil {
-		return errors.Join(ErrCouldNotStopInstance, err)
-	}
-
-	return nil
-}
-
 func CreateSnapshot(
 	ctx context.Context,
 	client *http.Client,

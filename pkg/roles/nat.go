@@ -99,6 +99,9 @@ func CreateNAT(
 	}
 
 	var (
+		hostVeths     []*network.IPPair
+		hostVethsLock sync.Mutex
+
 		namespaceVeths     []*network.IP
 		namespaceVethsLock sync.Mutex
 
@@ -112,6 +115,17 @@ func CreateNAT(
 	closeInProgressContext, cancelCloseInProgressContext := context.WithCancel(closeCtx) // We use `closeContext` here since this simply intercepts `ctx`
 	namespaces.Close = func() (errs error) {
 		defer cancelCloseInProgressContext()
+
+		hostVethsLock.Lock()
+		defer hostVethsLock.Unlock()
+
+		for _, hostVeth := range hostVeths {
+			if err := namespaceVethIPs.ReleasePair(closeCtx, hostVeth); err != nil {
+				errs = errors.Join(errs, err)
+			}
+		}
+
+		hostVeths = []*network.IPPair{}
 
 		namespaceVethsLock.Lock()
 		defer namespaceVethsLock.Unlock()
@@ -186,10 +200,37 @@ func CreateNAT(
 	for i := uint64(0); i < availableIPs; i++ {
 		id := fmt.Sprintf("%v%v", namespacePrefix, i)
 
-		var (
-			hostVeth      *network.IPPair
-			namespaceVeth *network.IP
-		)
+		var hostVeth *network.IPPair
+		if err := func() error {
+			hostVethsLock.Lock()
+			defer hostVethsLock.Unlock()
+
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+
+			default:
+				break
+			}
+
+			var err error
+			hostVeth, err = hostVethIPs.GetPair(internalCtx)
+			if err != nil {
+				if e := namespaceVethIPs.ReleasePair(closeCtx, hostVeth); e != nil {
+					return errors.Join(err, e)
+				}
+
+				return err
+			}
+
+			hostVeths = append(hostVeths, hostVeth)
+
+			return nil
+		}(); err != nil {
+			panic(err)
+		}
+
+		var namespaceVeth *network.IP
 		if err := func() error {
 			namespaceVethsLock.Lock()
 			defer namespaceVethsLock.Unlock()
@@ -203,11 +244,6 @@ func CreateNAT(
 			}
 
 			var err error
-			hostVeth, err = hostVethIPs.GetPair(internalCtx)
-			if err != nil {
-				return err
-			}
-
 			namespaceVeth, err = namespaceVethIPs.GetIP(internalCtx)
 			if err != nil {
 				if e := namespaceVethIPs.ReleaseIP(closeCtx, namespaceVeth); e != nil {
