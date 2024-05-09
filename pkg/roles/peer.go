@@ -29,21 +29,12 @@ var (
 
 type MigrateFromHooks struct {
 	OnDeviceReceived           func(deviceID uint32, name string)
+	OnDeviceExposed            func(deviceID uint32, path string)
 	OnDeviceAuthorityReceived  func(deviceID uint32)
 	OnDeviceMigrationCompleted func(deviceID uint32)
 
 	OnAllDevicesReceived     func()
 	OnAllMigrationsCompleted func()
-
-	OnDeviceExposed func(deviceID uint32, path string)
-}
-
-type ResumedPeer struct {
-	Wait  func() error
-	Close func() error
-
-	Msync                      func(ctx context.Context) error
-	SuspendAndCloseAgentServer func(ctx context.Context, resumeTimeout time.Duration) error
 }
 
 type Peer struct {
@@ -71,7 +62,7 @@ type Peer struct {
 
 		nbdBlockSize uint64,
 	) (
-		resumedPeer *ResumedPeer,
+		waitForMigrationsToComplete func() error,
 
 		errs error,
 	)
@@ -158,12 +149,10 @@ func StartPeer(
 
 		nbdBlockSize uint64,
 	) (
-		resumedPeer *ResumedPeer,
+		waitForMigrationsToComplete func() error,
 
 		errs error,
 	) {
-		resumedPeer = &ResumedPeer{}
-
 		// We use the background context here instead of the internal context because we want to distinguish
 		// between a context cancellation from the outside and getting a response
 		allDevicesReceivedCtx, cancelAllDevicesReceivedCtx := context.WithCancel(ctx)
@@ -172,8 +161,15 @@ func StartPeer(
 		allDevicesReadyCtx, cancelAllDevicesReadyCtx := context.WithCancel(ctx)
 		defer cancelAllDevicesReadyCtx()
 
-		allMigrationsCompletedCtx, cancelAllMigrationsCompletedCtx := context.WithCancel(ctx)
-		defer cancelAllMigrationsCompletedCtx()
+		// We don't `defer cancelProtocolCtx()` this because we cancel in the wait function
+		protocolCtx, cancelProtocolCtx := context.WithCancel(ctx)
+
+		// We overwrite this further down, but this is so that we don't leak the `protocolCtx` if we `panic()` before we set `waitForMigrationsToComplete`
+		waitForMigrationsToComplete = func() error {
+			cancelProtocolCtx()
+
+			return nil
+		}
 
 		internalCtx, handlePanics, handleGoroutinePanics, cancel, wait, _ := utils.GetPanicHandler(
 			ctx,
@@ -187,7 +183,7 @@ func StartPeer(
 		// Use an atomic counter and `allDevicesReadyCtx` and instead of a WaitGroup so that we can `select {}` without leaking a goroutine
 		var receivedButNotReadyDevices atomic.Int32
 		pro := protocol.NewProtocolRW(
-			internalCtx,
+			protocolCtx, // We don't track this because we return the wait function
 			readers,
 			writers,
 			func(p protocol.Protocol, index uint32) {
@@ -352,12 +348,12 @@ func StartPeer(
 				})
 			})
 
-		handleProtocol := sync.OnceValue(func() error {
+		waitForMigrationsToComplete = sync.OnceValue(func() error {
+			defer cancelProtocolCtx()
+
 			if err := pro.Handle(); err != nil && !errors.Is(err, io.EOF) {
 				return err
 			}
-
-			cancelAllMigrationsCompletedCtx()
 
 			if hook := hooks.OnAllMigrationsCompleted; hook != nil {
 				hook()
@@ -366,13 +362,12 @@ func StartPeer(
 			return nil
 		})
 
-		handleGoroutinePanics(true, func() {
-			if err := handleProtocol(); err != nil {
+		// We don't track this because we return the wait function
+		handleGoroutinePanics(false, func() {
+			if err := waitForMigrationsToComplete(); err != nil {
 				panic(err)
 			}
 		})
-
-		resumedPeer.Wait = handleProtocol
 
 		select {
 		case <-internalCtx.Done():
@@ -385,15 +380,6 @@ func StartPeer(
 		case <-internalCtx.Done():
 			panic(internalCtx.Err())
 		case <-allDevicesReadyCtx.Done():
-			break
-		}
-
-		// TODO: Resume VM (device nodes will already be here)
-
-		select {
-		case <-internalCtx.Done():
-			panic(internalCtx.Err())
-		case <-allMigrationsCompletedCtx.Done():
 			break
 		}
 

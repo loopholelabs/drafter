@@ -150,7 +150,7 @@ func main() {
 		}
 	})
 
-	resumedPeer, err := peer.MigrateFrom(
+	waitForMigrationsToComplete, err := peer.MigrateFrom(
 		ctx,
 
 		*statePath,
@@ -167,6 +167,9 @@ func main() {
 			OnDeviceReceived: func(deviceID uint32, name string) {
 				log.Println("Received device", deviceID, "with name", name)
 			},
+			OnDeviceExposed: func(deviceID uint32, path string) {
+				log.Println("Exposed device", deviceID, "at", path)
+			},
 			OnDeviceAuthorityReceived: func(deviceID uint32) {
 				log.Println("Received authority for device", deviceID)
 			},
@@ -180,10 +183,6 @@ func main() {
 			OnAllMigrationsCompleted: func() {
 				log.Println("Completed all migrations")
 			},
-
-			OnDeviceExposed: func(deviceID uint32, path string) {
-				log.Println("Exposed device", deviceID, "at", path)
-			},
 		},
 
 		*resumeTimeout,
@@ -195,7 +194,7 @@ func main() {
 		defer func() {
 			defer handlePanics(true)()
 
-			if err := resumedPeer.Wait(); err != nil {
+			if err := waitForMigrationsToComplete(); err != nil {
 				panic(err)
 			}
 		}()
@@ -205,20 +204,19 @@ func main() {
 		panic(err)
 	}
 
-	// TODO: Re-enable once we set a close handler
-	// defer func() {
-	// 	defer handlePanics(true)()
-
-	// 	if err := resumedPeer.Close(); err != nil {
-	// 		panic(err)
-	// 	}
-	// }()
-
 	handleGoroutinePanics(true, func() {
-		if err := resumedPeer.Wait(); err != nil {
+		if err := waitForMigrationsToComplete(); err != nil {
 			panic(err)
 		}
 	})
+
+	// TODO: Resume runner
+
+	if err := waitForMigrationsToComplete(); err != nil {
+		panic(err)
+	}
+
+	// TODO: Become migratable
 
 	log.Println("Shutting down")
 }
