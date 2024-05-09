@@ -39,7 +39,8 @@ type MigrateFromHooks struct {
 }
 
 type MigratedPeer struct {
-	WaitForMigrationsToComplete func() error
+	Wait  func() error
+	Close func() error
 
 	Resume func(
 		ctx context.Context,
@@ -136,6 +137,8 @@ func StartPeer(
 		panic(err)
 	}
 
+	peer.VMPath = runner.VMPath
+
 	// We don't track this because we return the wait function
 	handleGoroutinePanics(false, func() {
 		if err := runner.Wait(); err != nil {
@@ -178,7 +181,7 @@ func StartPeer(
 		protocolCtx, cancelProtocolCtx := context.WithCancel(ctx)
 
 		// We overwrite this further down, but this is so that we don't leak the `protocolCtx` if we `panic()` before we set `WaitForMigrationsToComplete`
-		migratedPeer.WaitForMigrationsToComplete = func() error {
+		migratedPeer.Wait = func() error {
 			cancelProtocolCtx()
 
 			return nil
@@ -194,7 +197,12 @@ func StartPeer(
 		defer handlePanics(false)()
 
 		// Use an atomic counter and `allDevicesReadyCtx` and instead of a WaitGroup so that we can `select {}` without leaking a goroutine
-		var receivedButNotReadyDevices atomic.Int32
+		var (
+			receivedButNotReadyDevices atomic.Int32
+
+			deviceCloseFuncsLock sync.Mutex
+			deviceCloseFuncs     []func() error
+		)
 		pro := protocol.NewProtocolRW(
 			protocolCtx, // We don't track this because we return the wait function
 			readers,
@@ -254,11 +262,27 @@ func StartPeer(
 						var remote *waitingcache.WaitingCacheRemote
 						local, remote = waitingcache.NewWaitingCache(storage, int(di.Block_size))
 						local.NeedAt = func(offset int64, length int32) {
+							// Only access the `from` protocol if it's not already closed
+							select {
+							case <-protocolCtx.Done():
+								return
+
+							default:
+							}
+
 							if err := from.NeedAt(offset, length); err != nil {
 								panic(err)
 							}
 						}
 						local.DontNeedAt = func(offset int64, length int32) {
+							// Only access the `from` protocol if it's not already closed
+							select {
+							case <-protocolCtx.Done():
+								return
+
+							default:
+							}
+
 							if err := from.DontNeedAt(offset, length); err != nil {
 								panic(err)
 							}
@@ -269,6 +293,11 @@ func StartPeer(
 						if err := device.Init(); err != nil {
 							panic(err)
 						}
+
+						deviceCloseFuncsLock.Lock()
+						deviceCloseFuncs = append(deviceCloseFuncs, device.Close)    // defer device.Close()
+						deviceCloseFuncs = append(deviceCloseFuncs, device.Shutdown) // defer device.Shutdown()
+						deviceCloseFuncsLock.Unlock()
 
 						devicePath := filepath.Join("/dev", device.Device())
 
@@ -361,7 +390,7 @@ func StartPeer(
 				})
 			})
 
-		migratedPeer.WaitForMigrationsToComplete = sync.OnceValue(func() error {
+		migratedPeer.Wait = sync.OnceValue(func() error {
 			defer cancelProtocolCtx()
 
 			if err := pro.Handle(); err != nil && !errors.Is(err, io.EOF) {
@@ -374,10 +403,35 @@ func StartPeer(
 
 			return nil
 		})
+		migratedPeer.Close = func() (errs error) {
+			// We have to close the runner before we close the devices
+			if err := runner.Close(); err != nil {
+				errs = errors.Join(errs, err)
+			}
+
+			defer func() {
+				if err := migratedPeer.Wait(); err != nil {
+					errs = errors.Join(errs, err)
+				}
+			}()
+
+			deviceCloseFuncsLock.Lock()
+			defer deviceCloseFuncsLock.Unlock()
+
+			for _, deferFunc := range deviceCloseFuncs {
+				defer func(deferFunc func() error) {
+					if err := deferFunc(); err != nil {
+						errs = errors.Join(errs, err)
+					}
+				}(deferFunc)
+			}
+
+			return
+		}
 
 		// We don't track this because we return the wait function
 		handleGoroutinePanics(false, func() {
-			if err := migratedPeer.WaitForMigrationsToComplete(); err != nil {
+			if err := migratedPeer.Wait(); err != nil {
 				panic(err)
 			}
 		})

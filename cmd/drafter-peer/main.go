@@ -188,11 +188,11 @@ func main() {
 		*nbdBlockSize,
 	)
 
-	if migratedPeer.WaitForMigrationsToComplete != nil {
+	if migratedPeer.Wait != nil {
 		defer func() {
 			defer handlePanics(true)()
 
-			if err := migratedPeer.WaitForMigrationsToComplete(); err != nil {
+			if err := migratedPeer.Wait(); err != nil {
 				panic(err)
 			}
 		}()
@@ -202,8 +202,16 @@ func main() {
 		panic(err)
 	}
 
+	defer func() {
+		defer handlePanics(true)()
+
+		if err := migratedPeer.Close(); err != nil {
+			panic(err)
+		}
+	}()
+
 	handleGoroutinePanics(true, func() {
-		if err := migratedPeer.WaitForMigrationsToComplete(); err != nil {
+		if err := migratedPeer.Wait(); err != nil {
 			panic(err)
 		}
 	})
@@ -236,9 +244,17 @@ func main() {
 
 	log.Println("Resumed VM in", time.Since(before), "on", peer.VMPath)
 
-	if err := migratedPeer.WaitForMigrationsToComplete(); err != nil {
+	if err := migratedPeer.Wait(); err != nil {
 		panic(err)
 	}
+
+	before = time.Now()
+
+	if err := resumedPeer.SuspendAndCloseAgentServer(ctx, *resumeTimeout); err != nil {
+		panic(err)
+	}
+
+	log.Println("Suspend:", time.Since(before))
 
 	// TODO: Become migratable
 
