@@ -313,7 +313,13 @@ func main() {
 		panic(err)
 	}
 
-	defer resumedRunner.Close()
+	defer func() {
+		defer handlePanics(true)()
+
+		if err := resumedRunner.Close(); err != nil {
+			panic(err)
+		}
+	}()
 
 	handleGoroutinePanics(true, func() {
 		if err := resumedRunner.Wait(); err != nil {

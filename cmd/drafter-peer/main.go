@@ -150,7 +150,7 @@ func main() {
 		}
 	})
 
-	waitForMigrationsToComplete, err := peer.MigrateFrom(
+	migratedPeer, err := peer.MigrateFrom(
 		ctx,
 
 		*statePath,
@@ -185,16 +185,14 @@ func main() {
 			},
 		},
 
-		*resumeTimeout,
-
 		*nbdBlockSize,
 	)
 
-	if peer.Wait != nil {
+	if migratedPeer.WaitForMigrationsToComplete != nil {
 		defer func() {
 			defer handlePanics(true)()
 
-			if err := waitForMigrationsToComplete(); err != nil {
+			if err := migratedPeer.WaitForMigrationsToComplete(); err != nil {
 				panic(err)
 			}
 		}()
@@ -205,14 +203,40 @@ func main() {
 	}
 
 	handleGoroutinePanics(true, func() {
-		if err := waitForMigrationsToComplete(); err != nil {
+		if err := migratedPeer.WaitForMigrationsToComplete(); err != nil {
 			panic(err)
 		}
 	})
 
-	// TODO: Resume runner
+	before := time.Now()
 
-	if err := waitForMigrationsToComplete(); err != nil {
+	resumedPeer, err := migratedPeer.Resume(
+		ctx,
+
+		*resumeTimeout,
+	)
+
+	if err != nil {
+		panic(err)
+	}
+
+	defer func() {
+		defer handlePanics(true)()
+
+		if err := resumedPeer.Close(); err != nil {
+			panic(err)
+		}
+	}()
+
+	handleGoroutinePanics(true, func() {
+		if err := resumedPeer.Wait(); err != nil {
+			panic(err)
+		}
+	})
+
+	log.Println("Resumed VM in", time.Since(before), "on", peer.VMPath)
+
+	if err := migratedPeer.WaitForMigrationsToComplete(); err != nil {
 		panic(err)
 	}
 

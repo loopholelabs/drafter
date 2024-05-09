@@ -2,6 +2,7 @@ package roles
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"os"
@@ -37,6 +38,20 @@ type MigrateFromHooks struct {
 	OnAllMigrationsCompleted func()
 }
 
+type MigratedPeer struct {
+	WaitForMigrationsToComplete func() error
+
+	Resume func(
+		ctx context.Context,
+
+		resumeTimeout time.Duration,
+	) (
+		resumedPeer *ResumedRunner,
+
+		errs error,
+	)
+}
+
 type Peer struct {
 	VMPath string
 
@@ -58,11 +73,9 @@ type Peer struct {
 
 		hooks MigrateFromHooks,
 
-		resumeTimeout time.Duration,
-
 		nbdBlockSize uint64,
 	) (
-		waitForMigrationsToComplete func() error,
+		migratedPeer *MigratedPeer,
 
 		errs error,
 	)
@@ -145,14 +158,14 @@ func StartPeer(
 
 		hooks MigrateFromHooks,
 
-		resumeTimeout time.Duration,
-
 		nbdBlockSize uint64,
 	) (
-		waitForMigrationsToComplete func() error,
+		migratedPeer *MigratedPeer,
 
 		errs error,
 	) {
+		migratedPeer = &MigratedPeer{}
+
 		// We use the background context here instead of the internal context because we want to distinguish
 		// between a context cancellation from the outside and getting a response
 		allDevicesReceivedCtx, cancelAllDevicesReceivedCtx := context.WithCancel(ctx)
@@ -164,8 +177,8 @@ func StartPeer(
 		// We don't `defer cancelProtocolCtx()` this because we cancel in the wait function
 		protocolCtx, cancelProtocolCtx := context.WithCancel(ctx)
 
-		// We overwrite this further down, but this is so that we don't leak the `protocolCtx` if we `panic()` before we set `waitForMigrationsToComplete`
-		waitForMigrationsToComplete = func() error {
+		// We overwrite this further down, but this is so that we don't leak the `protocolCtx` if we `panic()` before we set `WaitForMigrationsToComplete`
+		migratedPeer.WaitForMigrationsToComplete = func() error {
 			cancelProtocolCtx()
 
 			return nil
@@ -348,7 +361,7 @@ func StartPeer(
 				})
 			})
 
-		waitForMigrationsToComplete = sync.OnceValue(func() error {
+		migratedPeer.WaitForMigrationsToComplete = sync.OnceValue(func() error {
 			defer cancelProtocolCtx()
 
 			if err := pro.Handle(); err != nil && !errors.Is(err, io.EOF) {
@@ -364,7 +377,7 @@ func StartPeer(
 
 		// We don't track this because we return the wait function
 		handleGoroutinePanics(false, func() {
-			if err := waitForMigrationsToComplete(); err != nil {
+			if err := migratedPeer.WaitForMigrationsToComplete(); err != nil {
 				panic(err)
 			}
 		})
@@ -381,6 +394,21 @@ func StartPeer(
 			panic(internalCtx.Err())
 		case <-allDevicesReadyCtx.Done():
 			break
+		}
+
+		migratedPeer.Resume = func(ctx context.Context, resumeTimeout time.Duration) (resumedPeer *ResumedRunner, errs error) {
+			packageConfigFile, err := os.Open(configPath)
+			if err != nil {
+				return nil, err
+			}
+			defer packageConfigFile.Close()
+
+			var packageConfig config.PackageConfiguration
+			if err := json.NewDecoder(packageConfigFile).Decode(&packageConfig); err != nil {
+				return nil, err
+			}
+
+			return runner.Resume(ctx, resumeTimeout, packageConfig.AgentVSockPort)
 		}
 
 		return
