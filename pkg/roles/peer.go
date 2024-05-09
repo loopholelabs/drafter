@@ -7,15 +7,24 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/loopholelabs/drafter/pkg/config"
 	"github.com/loopholelabs/drafter/pkg/utils"
 	"github.com/loopholelabs/silo/pkg/storage"
+	"github.com/loopholelabs/silo/pkg/storage/expose"
 	"github.com/loopholelabs/silo/pkg/storage/protocol"
 	"github.com/loopholelabs/silo/pkg/storage/protocol/packets"
 	"github.com/loopholelabs/silo/pkg/storage/sources"
 	"github.com/loopholelabs/silo/pkg/storage/waitingcache"
+	"golang.org/x/sys/unix"
+)
+
+var (
+	ErrCouldNotGetNBDDeviceStat = errors.New("could not get NBD device stat")
 )
 
 type MigrateFromHooks struct {
@@ -25,6 +34,16 @@ type MigrateFromHooks struct {
 
 	OnAllDevicesReceived     func()
 	OnAllMigrationsCompleted func()
+
+	OnDeviceExposed func(deviceID uint32, path string)
+}
+
+type ResumedPeer struct {
+	Wait  func() error
+	Close func() error
+
+	Msync                      func(ctx context.Context) error
+	SuspendAndCloseAgentServer func(ctx context.Context, resumeTimeout time.Duration) error
 }
 
 type Peer struct {
@@ -49,7 +68,13 @@ type Peer struct {
 		hooks MigrateFromHooks,
 
 		resumeTimeout time.Duration,
-	) (errs error)
+
+		nbdBlockSize uint64,
+	) (
+		resumedPeer *ResumedPeer,
+
+		errs error,
+	)
 }
 
 func StartPeer(
@@ -114,8 +139,43 @@ func StartPeer(
 		}
 	})
 
-	peer.MigrateFrom = func(ctx context.Context, statePath, memoryPath, initramfsPath, kernelPath, diskPath, configPath string, readers []io.Reader, writers []io.Writer, hooks MigrateFromHooks, resumeTimeout time.Duration) (errs error) {
-		ctx, handlePanics, handleGoroutinePanics, cancel, wait, _ := utils.GetPanicHandler(
+	peer.MigrateFrom = func(
+		ctx context.Context,
+
+		statePath,
+		memoryPath,
+		initramfsPath,
+		kernelPath,
+		diskPath,
+		configPath string,
+
+		readers []io.Reader,
+		writers []io.Writer,
+
+		hooks MigrateFromHooks,
+
+		resumeTimeout time.Duration,
+
+		nbdBlockSize uint64,
+	) (
+		resumedPeer *ResumedPeer,
+
+		errs error,
+	) {
+		resumedPeer = &ResumedPeer{}
+
+		// We use the background context here instead of the internal context because we want to distinguish
+		// between a context cancellation from the outside and getting a response
+		allDevicesReceivedCtx, cancelAllDevicesReceivedCtx := context.WithCancel(ctx)
+		defer cancelAllDevicesReceivedCtx()
+
+		allDevicesReadyCtx, cancelAllDevicesReadyCtx := context.WithCancel(ctx)
+		defer cancelAllDevicesReadyCtx()
+
+		allMigrationsCompletedCtx, cancelAllMigrationsCompletedCtx := context.WithCancel(ctx)
+		defer cancelAllMigrationsCompletedCtx()
+
+		internalCtx, handlePanics, handleGoroutinePanics, cancel, wait, _ := utils.GetPanicHandler(
 			ctx,
 			&errs,
 			utils.GetPanicHandlerHooks{},
@@ -124,8 +184,10 @@ func StartPeer(
 		defer cancel()
 		defer handlePanics(false)()
 
+		// Use an atomic counter and `allDevicesReadyCtx` and instead of a WaitGroup so that we can `select {}` without leaking a goroutine
+		var receivedButNotReadyDevices atomic.Int32
 		pro := protocol.NewProtocolRW(
-			ctx,
+			internalCtx,
 			readers,
 			writers,
 			func(p protocol.Protocol, index uint32) {
@@ -165,6 +227,8 @@ func StartPeer(
 							panic(ErrUnknownDeviceName)
 						}
 
+						receivedButNotReadyDevices.Add(1)
+
 						if hook := hooks.OnDeviceReceived; hook != nil {
 							hook(index, di.Name)
 						}
@@ -189,6 +253,37 @@ func StartPeer(
 							if err := from.DontNeedAt(offset, length); err != nil {
 								panic(err)
 							}
+						}
+
+						device := expose.NewExposedStorageNBDNL(local, 1, 0, local.Size(), nbdBlockSize, true)
+
+						if err := device.Init(); err != nil {
+							panic(err)
+						}
+
+						devicePath := filepath.Join("/dev", device.Device())
+
+						deviceInfo, err := os.Stat(devicePath)
+						if err != nil {
+							panic(err)
+						}
+
+						deviceStat, ok := deviceInfo.Sys().(*syscall.Stat_t)
+						if !ok {
+							panic(ErrCouldNotGetNBDDeviceStat)
+						}
+
+						deviceMajor := uint64(deviceStat.Rdev / 256)
+						deviceMinor := uint64(deviceStat.Rdev % 256)
+
+						deviceID := int((deviceMajor << 8) | deviceMinor)
+
+						if err := unix.Mknod(filepath.Join(runner.VMPath, di.Name), unix.S_IFBLK|0666, deviceID); err != nil {
+							panic(err)
+						}
+
+						if hook := hooks.OnDeviceExposed; hook != nil {
+							hook(index, devicePath)
 						}
 
 						return remote
@@ -219,14 +314,20 @@ func StartPeer(
 						switch e.Type {
 						case packets.EventCustom:
 							switch e.CustomType {
-							case byte(EventCustomTransferAuthority):
-								if hook := hooks.OnDeviceAuthorityReceived; hook != nil {
-									hook(index)
-								}
-
 							case byte(EventCustomAllDevicesSent):
+								cancelAllDevicesReceivedCtx()
+
 								if hook := hooks.OnAllDevicesReceived; hook != nil {
 									hook()
+								}
+
+							case byte(EventCustomTransferAuthority):
+								if receivedButNotReadyDevices.Add(-1) <= 0 {
+									cancelAllDevicesReadyCtx()
+								}
+
+								if hook := hooks.OnDeviceAuthorityReceived; hook != nil {
+									hook(index)
 								}
 							}
 
@@ -251,12 +352,49 @@ func StartPeer(
 				})
 			})
 
-		if err := pro.Handle(); err != nil && !errors.Is(err, io.EOF) {
-			panic(err)
+		handleProtocol := sync.OnceValue(func() error {
+			if err := pro.Handle(); err != nil && !errors.Is(err, io.EOF) {
+				return err
+			}
+
+			cancelAllMigrationsCompletedCtx()
+
+			if hook := hooks.OnAllMigrationsCompleted; hook != nil {
+				hook()
+			}
+
+			return nil
+		})
+
+		handleGoroutinePanics(true, func() {
+			if err := handleProtocol(); err != nil {
+				panic(err)
+			}
+		})
+
+		resumedPeer.Wait = handleProtocol
+
+		select {
+		case <-internalCtx.Done():
+			panic(internalCtx.Err())
+		case <-allDevicesReceivedCtx.Done():
+			break
 		}
 
-		if hook := hooks.OnAllMigrationsCompleted; hook != nil {
-			hook()
+		select {
+		case <-internalCtx.Done():
+			panic(internalCtx.Err())
+		case <-allDevicesReadyCtx.Done():
+			break
+		}
+
+		// TODO: Resume VM (device nodes will already be here)
+
+		select {
+		case <-internalCtx.Done():
+			panic(internalCtx.Err())
+		case <-allMigrationsCompletedCtx.Done():
+			break
 		}
 
 		return

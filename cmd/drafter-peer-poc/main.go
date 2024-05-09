@@ -42,8 +42,8 @@ import (
 type CustomEventType byte
 
 const (
-	EventCustomPassAuthority  = CustomEventType(0)
-	EventCustomAllDevicesSent = CustomEventType(1)
+	EventCustomAllDevicesSent = CustomEventType(0)
+	EventCustomPassAuthority  = CustomEventType(1)
 )
 
 var (

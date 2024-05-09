@@ -20,8 +20,8 @@ import (
 type CustomEventType byte
 
 const (
-	EventCustomTransferAuthority = CustomEventType(0)
-	EventCustomAllDevicesSent    = CustomEventType(1)
+	EventCustomAllDevicesSent    = CustomEventType(0)
+	EventCustomTransferAuthority = CustomEventType(1)
 )
 
 var (
@@ -156,14 +156,14 @@ func Terminate(
 					switch e.Type {
 					case packets.EventCustom:
 						switch e.CustomType {
-						case byte(EventCustomTransferAuthority):
-							if hook := hooks.OnDeviceAuthorityReceived; hook != nil {
-								hook(index)
-							}
-
 						case byte(EventCustomAllDevicesSent):
 							if hook := hooks.OnAllDevicesReceived; hook != nil {
 								hook()
+							}
+
+						case byte(EventCustomTransferAuthority):
+							if hook := hooks.OnDeviceAuthorityReceived; hook != nil {
+								hook(index)
 							}
 						}
 

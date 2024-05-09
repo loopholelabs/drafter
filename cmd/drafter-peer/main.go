@@ -45,6 +45,8 @@ func main() {
 
 	raddr := flag.String("raddr", "localhost:1337", "Remote address to connect to")
 
+	nbdBlockSize := flag.Uint64("nbd-block-size", 4096, "NBD block size to use")
+
 	flag.Parse()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -148,7 +150,7 @@ func main() {
 		}
 	})
 
-	if err := peer.MigrateFrom(
+	resumedPeer, err := peer.MigrateFrom(
 		ctx,
 
 		*statePath,
@@ -178,12 +180,45 @@ func main() {
 			OnAllMigrationsCompleted: func() {
 				log.Println("Completed all migrations")
 			},
+
+			OnDeviceExposed: func(deviceID uint32, path string) {
+				log.Println("Exposed device", deviceID, "at", path)
+			},
 		},
 
 		*resumeTimeout,
-	); err != nil {
+
+		*nbdBlockSize,
+	)
+
+	if peer.Wait != nil {
+		defer func() {
+			defer handlePanics(true)()
+
+			if err := resumedPeer.Wait(); err != nil {
+				panic(err)
+			}
+		}()
+	}
+
+	if err != nil {
 		panic(err)
 	}
+
+	// TODO: Re-enable once we set a close handler
+	// defer func() {
+	// 	defer handlePanics(true)()
+
+	// 	if err := resumedPeer.Close(); err != nil {
+	// 		panic(err)
+	// 	}
+	// }()
+
+	handleGoroutinePanics(true, func() {
+		if err := resumedPeer.Wait(); err != nil {
+			panic(err)
+		}
+	})
 
 	log.Println("Shutting down")
 }
