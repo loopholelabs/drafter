@@ -202,13 +202,16 @@ func StartFirecrackerServer(
 		if cmd.Process != nil {
 			closeLock.Lock()
 
-			if err := cmd.Process.Kill(); err != nil {
-				closeLock.Unlock()
+			// We can't trust `cmd.Process != nil` - without this check we could get `os.ErrProcessDone` here on the second `Kill()` call
+			if !closed {
+				if err := cmd.Process.Kill(); err != nil {
+					closeLock.Unlock()
 
-				return err
+					return err
+				}
+
+				closed = true
 			}
-
-			closed = true
 
 			closeLock.Unlock()
 		}
