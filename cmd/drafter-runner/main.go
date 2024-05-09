@@ -92,6 +92,25 @@ func main() {
 	defer cancel()
 	defer handlePanics(false)()
 
+	bubbleSignals := false
+
+	done := make(chan os.Signal, 1)
+	go func() {
+		signal.Notify(done, os.Interrupt)
+
+		v := <-done
+
+		if bubbleSignals {
+			done <- v
+
+			return
+		}
+
+		log.Println("Exiting gracefully")
+
+		cancel()
+	}()
+
 	runner, err := roles.StartRunner(
 		ctx,
 		context.Background(), // Never give up on rescue operations
@@ -280,25 +299,6 @@ func main() {
 			}
 		}
 	}
-
-	bubbleSignals := false
-
-	done := make(chan os.Signal, 1)
-	go func() {
-		signal.Notify(done, os.Interrupt)
-
-		v := <-done
-
-		if bubbleSignals {
-			done <- v
-
-			return
-		}
-
-		log.Println("Exiting gracefully")
-
-		cancel()
-	}()
 
 	before := time.Now()
 
