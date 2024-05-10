@@ -7,12 +7,14 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
 
+	iutils "github.com/loopholelabs/drafter/internal/utils"
 	"github.com/loopholelabs/drafter/pkg/config"
 	"github.com/loopholelabs/drafter/pkg/utils"
 	"github.com/loopholelabs/silo/pkg/storage"
@@ -53,6 +55,12 @@ type MigratedPeer struct {
 	)
 }
 
+type peerStage1 struct {
+	name      string
+	base      string
+	blockSize uint32
+}
+
 type Peer struct {
 	VMPath string
 
@@ -69,12 +77,24 @@ type Peer struct {
 		diskPath,
 		configPath string,
 
+		stateBlockSizeStorage,
+		memoryBlockSizeStorage,
+		initramfsBlockSizeStorage,
+		kernelBlockSizeStorage,
+		diskBlockSizeStorage,
+		configBlockSizeStorage uint32,
+
+		stateBlockSizeDevice,
+		memoryBlockSizeDevice,
+		initramfsBlockSizeDevice,
+		kernelBlockSizeDevice,
+		diskBlockSizeDevice,
+		configBlockSizeDevice uint64,
+
 		readers []io.Reader,
 		writers []io.Writer,
 
 		hooks MigrateFromHooks,
-
-		nbdBlockSize uint64,
 	) (
 		migratedPeer *MigratedPeer,
 
@@ -156,12 +176,24 @@ func StartPeer(
 		diskPath,
 		configPath string,
 
+		stateBlockSizeStorage,
+		memoryBlockSizeStorage,
+		initramfsBlockSizeStorage,
+		kernelBlockSizeStorage,
+		diskBlockSizeStorage,
+		configBlockSizeStorage uint32,
+
+		stateBlockSizeDevice,
+		memoryBlockSizeDevice,
+		initramfsBlockSizeDevice,
+		kernelBlockSizeDevice,
+		diskBlockSizeDevice,
+		configBlockSizeDevice uint64,
+
 		readers []io.Reader,
 		writers []io.Writer,
 
 		hooks MigrateFromHooks,
-
-		nbdBlockSize uint64,
 	) (
 		migratedPeer *MigratedPeer,
 
@@ -202,6 +234,9 @@ func StartPeer(
 
 			deviceCloseFuncsLock sync.Mutex
 			deviceCloseFuncs     []func() error
+
+			receivedDevicesLock sync.Mutex
+			receivedDevices     []string
 		)
 		pro := protocol.NewProtocolRW(
 			protocolCtx, // We don't track this because we return the wait function
@@ -218,31 +253,42 @@ func StartPeer(
 						defer handlePanics(false)()
 
 						var (
-							path = ""
+							path            = ""
+							blockSizeDevice = uint64(0)
 						)
 						switch di.Name {
 						case config.ConfigName:
 							path = configPath
+							blockSizeDevice = configBlockSizeDevice
 
 						case config.DiskName:
 							path = diskPath
+							blockSizeDevice = diskBlockSizeDevice
 
 						case config.InitramfsName:
 							path = initramfsPath
+							blockSizeDevice = initramfsBlockSizeDevice
 
 						case config.KernelName:
 							path = kernelPath
+							blockSizeDevice = kernelBlockSizeDevice
 
 						case config.MemoryName:
 							path = memoryPath
+							blockSizeDevice = memoryBlockSizeDevice
 
 						case config.StateName:
 							path = statePath
+							blockSizeDevice = stateBlockSizeDevice
 						}
 
 						if strings.TrimSpace(path) == "" {
 							panic(ErrUnknownDeviceName)
 						}
+
+						receivedDevicesLock.Lock()
+						receivedDevices = append(receivedDevices, di.Name)
+						receivedDevicesLock.Unlock()
 
 						receivedButNotReadyDevices.Add(1)
 
@@ -288,7 +334,7 @@ func StartPeer(
 							}
 						}
 
-						device := expose.NewExposedStorageNBDNL(local, 1, 0, local.Size(), nbdBlockSize, true)
+						device := expose.NewExposedStorageNBDNL(local, 1, 0, local.Size(), blockSizeDevice, true)
 
 						if err := device.Init(); err != nil {
 							panic(err)
@@ -418,12 +464,12 @@ func StartPeer(
 			deviceCloseFuncsLock.Lock()
 			defer deviceCloseFuncsLock.Unlock()
 
-			for _, deferFunc := range deviceCloseFuncs {
-				defer func(deferFunc func() error) {
-					if err := deferFunc(); err != nil {
+			for _, closeFunc := range deviceCloseFuncs {
+				defer func(closeFunc func() error) {
+					if err := closeFunc(); err != nil {
 						errs = errors.Join(errs, err)
 					}
-				}(deferFunc)
+				}(closeFunc)
 			}
 
 			return
@@ -462,6 +508,70 @@ func StartPeer(
 			panic(internalCtx.Err())
 		case <-allDevicesReceivedCtx.Done():
 			break
+		}
+
+		stage1Inputs := []peerStage1{
+			{
+				name:      config.StateName,
+				base:      statePath,
+				blockSize: stateBlockSizeStorage,
+			},
+			{
+				name:      config.MemoryName,
+				base:      memoryPath,
+				blockSize: memoryBlockSizeStorage,
+			},
+			{
+				name:      config.InitramfsName,
+				base:      initramfsPath,
+				blockSize: initramfsBlockSizeStorage,
+			},
+			{
+				name:      config.KernelName,
+				base:      kernelPath,
+				blockSize: kernelBlockSizeStorage,
+			},
+			{
+				name:      config.DiskName,
+				base:      diskPath,
+				blockSize: diskBlockSizeStorage,
+			},
+			{
+				name:      config.ConfigName,
+				base:      configPath,
+				blockSize: configBlockSizeStorage,
+			},
+		}
+
+		_, deferFuncs, err := iutils.ConcurrentMap(
+			stage1Inputs,
+			func(index int, input peerStage1, _ *struct{}, addDefer func(deferFunc func() error)) error {
+				if slices.ContainsFunc(
+					receivedDevices,
+					func(r string) bool {
+						return input.name == r
+					},
+				) {
+					return nil
+				}
+
+				// TODO: Set up locally-backed device
+
+				return nil
+			},
+		)
+
+		// Make sure that we schedule the `deferFuncs` even if we get an error during device setup
+		for _, deferFuncs := range deferFuncs {
+			for _, deferFunc := range deferFuncs {
+				deviceCloseFuncsLock.Lock()
+				deviceCloseFuncs = append(deviceCloseFuncs, deferFunc) // defer deferFunc()
+				deviceCloseFuncsLock.Unlock()
+			}
+		}
+
+		if err != nil {
+			panic(err)
 		}
 
 		select {

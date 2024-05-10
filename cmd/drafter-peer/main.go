@@ -43,9 +43,21 @@ func main() {
 	diskPath := flag.String("disk-path", filepath.Join("out", "package", "drafter.drftdisk"), "Disk path")
 	configPath := flag.String("config-path", filepath.Join("out", "package", "drafter.drftconfig"), "Config path")
 
-	raddr := flag.String("raddr", "localhost:1337", "Remote address to connect to")
+	stateBlockSizeStorage := flag.Uint("state-block-size-storage", 1024*64, "State block size for storage")
+	memoryBlockSizeStorage := flag.Uint("memory-block-size-storage", 1024*64, "Memory block size for storage")
+	initramfsBlockSizeStorage := flag.Uint("initramfs-block-size-storage", 1024*64, "initramfs block size for storage")
+	kernelBlockSizeStorage := flag.Uint("kernel-block-size-storage", 1024*64, "Kernel block size for storage")
+	diskBlockSizeStorage := flag.Uint("disk-block-size-storage", 1024*64, "Disk block size for storage")
+	configBlockSizeStorage := flag.Uint("config-block-size-storage", 1024*64, "Config block size for storage")
 
-	nbdBlockSize := flag.Uint64("nbd-block-size", 4096, "NBD block size to use")
+	stateBlockSizeDevice := flag.Uint64("state-block-size-device", 4096, "State block size for NBD device")
+	memoryBlockSizeDevice := flag.Uint64("memory-block-size-device", 4096, "Memory block size for NBD device")
+	initramfsBlockSizeDevice := flag.Uint64("initramfs-block-size-device", 4096, "initramfs block size NBD for device")
+	kernelBlockSizeDevice := flag.Uint64("kernel-block-size-device", 4096, "Kernel block size for NBD device")
+	diskBlockSizeDevice := flag.Uint64("disk-block-size-device", 4096, "Disk block size for NBD device")
+	configBlockSizeDevice := flag.Uint64("config-block-size-device", 4096, "Config block size for NBD device")
+
+	raddr := flag.String("raddr", "localhost:1337", "Remote address to connect to")
 
 	flag.Parse()
 
@@ -160,6 +172,20 @@ func main() {
 		*diskPath,
 		*configPath,
 
+		uint32(*stateBlockSizeStorage),
+		uint32(*memoryBlockSizeStorage),
+		uint32(*initramfsBlockSizeStorage),
+		uint32(*kernelBlockSizeStorage),
+		uint32(*diskBlockSizeStorage),
+		uint32(*configBlockSizeStorage),
+
+		*stateBlockSizeDevice,
+		*memoryBlockSizeDevice,
+		*initramfsBlockSizeDevice,
+		*kernelBlockSizeDevice,
+		*diskBlockSizeDevice,
+		*configBlockSizeDevice,
+
 		[]io.Reader{conn},
 		[]io.Writer{conn},
 
@@ -184,8 +210,6 @@ func main() {
 				log.Println("Completed all migrations")
 			},
 		},
-
-		*nbdBlockSize,
 	)
 
 	if migratedPeer.Wait != nil {
