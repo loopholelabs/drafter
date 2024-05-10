@@ -203,14 +203,14 @@ func Terminate(
 		deviceCloseFuncsLock.Lock()
 		defer deviceCloseFuncsLock.Unlock()
 
-		for _, deferFunc := range deviceCloseFuncs {
-			defer func(deferFunc func() error) {
+		for _, closeFunc := range deviceCloseFuncs {
+			defer func(closeFunc func() error) {
 				defer handlePanics(true)()
 
-				if err := deferFunc(); err != nil {
+				if err := closeFunc(); err != nil {
 					panic(err)
 				}
-			}(deferFunc)
+			}(closeFunc)
 		}
 	}()
 

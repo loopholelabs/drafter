@@ -24,14 +24,14 @@ import (
 	"github.com/loopholelabs/silo/pkg/storage/volatilitymonitor"
 )
 
-type stage1 struct {
+type registryStage1 struct {
 	name      string
-	blockSize uint32
 	base      string
+	blockSize uint32
 }
 
 type Device struct {
-	prev stage1
+	prev registryStage1
 
 	size        uint64
 	storage     *modules.Lockable
@@ -61,42 +61,42 @@ func OpenDevices(
 
 	hooks OpenDevicesHooks,
 ) ([]Device, []func() error, error) {
-	stage1Inputs := []stage1{
+	stage1Inputs := []registryStage1{
 		{
 			name:      iconfig.StateName,
-			blockSize: stateBlockSize,
 			base:      statePath,
+			blockSize: stateBlockSize,
 		},
 		{
 			name:      iconfig.MemoryName,
-			blockSize: memoryBlockSize,
 			base:      memoryPath,
+			blockSize: memoryBlockSize,
 		},
 		{
 			name:      iconfig.InitramfsName,
-			blockSize: initramfsBlockSize,
 			base:      initramfsPath,
+			blockSize: initramfsBlockSize,
 		},
 		{
 			name:      iconfig.KernelName,
-			blockSize: kernelBlockSize,
 			base:      kernelPath,
+			blockSize: kernelBlockSize,
 		},
 		{
 			name:      iconfig.DiskName,
-			blockSize: diskBlockSize,
 			base:      diskPath,
+			blockSize: diskBlockSize,
 		},
 		{
 			name:      iconfig.ConfigName,
-			blockSize: configBlockSize,
 			base:      configPath,
+			blockSize: configBlockSize,
 		},
 	}
 
 	devices, deferFuncs, err := iutils.ConcurrentMap(
 		stage1Inputs,
-		func(index int, input stage1, output *Device, addDefer func(deferFunc func() error)) error {
+		func(index int, input registryStage1, output *Device, addDefer func(deferFunc func() error)) error {
 			output.prev = input
 
 			stat, err := os.Stat(input.base)
