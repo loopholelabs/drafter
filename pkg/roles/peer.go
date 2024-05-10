@@ -436,6 +436,27 @@ func StartPeer(
 			}
 		})
 
+		// We don't track this because we return the close function
+		handleGoroutinePanics(false, func() {
+			select {
+			// Failure case; we cancelled the internal context before all devices are ready
+			case <-internalCtx.Done():
+				if err := migratedPeer.Close(); err != nil {
+					panic(err)
+				}
+
+			// Happy case; all devices are ready and we want to wait with closing the devices until we stop the Firecracker process
+			case <-allDevicesReadyCtx.Done():
+				<-hypervisorCtx.Done()
+
+				if err := migratedPeer.Close(); err != nil {
+					panic(err)
+				}
+
+				break
+			}
+		})
+
 		select {
 		case <-internalCtx.Done():
 			panic(internalCtx.Err())
