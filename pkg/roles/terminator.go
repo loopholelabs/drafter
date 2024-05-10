@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/loopholelabs/drafter/pkg/config"
 	"github.com/loopholelabs/drafter/pkg/utils"
@@ -61,6 +62,10 @@ func Terminate(
 	defer cancel()
 	defer handlePanics(false)()
 
+	var (
+		deviceCloseFuncsLock sync.Mutex
+		deviceCloseFuncs     []func() error
+	)
 	pro := protocol.NewProtocolRW(
 		ctx,
 		readers,
@@ -114,6 +119,10 @@ func Terminate(
 					if err != nil {
 						panic(err)
 					}
+
+					deviceCloseFuncsLock.Lock()
+					deviceCloseFuncs = append(deviceCloseFuncs, storage.Close) // defer storage.Close()
+					deviceCloseFuncsLock.Unlock()
 
 					var remote *waitingcache.WaitingCacheRemote
 					local, remote = waitingcache.NewWaitingCache(storage, int(di.Block_size))
@@ -187,6 +196,23 @@ func Terminate(
 				}
 			})
 		})
+
+	defer func() {
+		defer handlePanics(true)()
+
+		deviceCloseFuncsLock.Lock()
+		defer deviceCloseFuncsLock.Unlock()
+
+		for _, deferFunc := range deviceCloseFuncs {
+			defer func(deferFunc func() error) {
+				defer handlePanics(true)()
+
+				if err := deferFunc(); err != nil {
+					panic(err)
+				}
+			}(deferFunc)
+		}
+	}()
 
 	if err := pro.Handle(); err != nil && !errors.Is(err, io.EOF) {
 		panic(err)
