@@ -68,8 +68,12 @@ type MigratedPeer struct {
 }
 
 type peerStage1 struct {
-	name      string
-	base      string
+	name string
+
+	base    string
+	overlay string
+	state   string
+
 	blockSize uint32
 }
 
@@ -82,12 +86,26 @@ type Peer struct {
 	MigrateFrom func(
 		ctx context.Context,
 
-		statePath,
-		memoryPath,
-		initramfsPath,
-		kernelPath,
-		diskPath,
-		configPath string,
+		stateBasePath,
+		memoryBasePath,
+		initramfsBasePath,
+		kernelBasePath,
+		diskBasePath,
+		configBasePath,
+
+		configOverlayPath,
+		diskOverlayPath,
+		initramfsOverlayPath,
+		kernelOverlayPath,
+		memoryOverlayPath,
+		stateOverlayPath,
+
+		configStatePath,
+		diskStatePath,
+		initramfsStatePath,
+		kernelStatePath,
+		memoryStatePath,
+		stateStatePath string,
 
 		stateBlockSizeStorage,
 		memoryBlockSizeStorage,
@@ -181,12 +199,26 @@ func StartPeer(
 	peer.MigrateFrom = func(
 		ctx context.Context,
 
-		statePath,
-		memoryPath,
-		initramfsPath,
-		kernelPath,
-		diskPath,
-		configPath string,
+		stateBasePath,
+		memoryBasePath,
+		initramfsBasePath,
+		kernelBasePath,
+		diskBasePath,
+		configBasePath,
+
+		configOverlayPath,
+		diskOverlayPath,
+		initramfsOverlayPath,
+		kernelOverlayPath,
+		memoryOverlayPath,
+		stateOverlayPath,
+
+		configStatePath,
+		diskStatePath,
+		initramfsStatePath,
+		kernelStatePath,
+		memoryStatePath,
+		stateStatePath string,
 
 		stateBlockSizeStorage,
 		memoryBlockSizeStorage,
@@ -273,27 +305,27 @@ func StartPeer(
 							)
 							switch di.Name {
 							case config.ConfigName:
-								path = configPath
+								path = configBasePath
 								blockSizeDevice = configBlockSizeDevice
 
 							case config.DiskName:
-								path = diskPath
+								path = diskBasePath
 								blockSizeDevice = diskBlockSizeDevice
 
 							case config.InitramfsName:
-								path = initramfsPath
+								path = initramfsBasePath
 								blockSizeDevice = initramfsBlockSizeDevice
 
 							case config.KernelName:
-								path = kernelPath
+								path = kernelBasePath
 								blockSizeDevice = kernelBlockSizeDevice
 
 							case config.MemoryName:
-								path = memoryPath
+								path = memoryBasePath
 								blockSizeDevice = memoryBlockSizeDevice
 
 							case config.StateName:
-								path = statePath
+								path = stateBasePath
 								blockSizeDevice = stateBlockSizeDevice
 							}
 
@@ -547,33 +579,57 @@ func StartPeer(
 
 		allStage1Inputs := []peerStage1{
 			{
-				name:      config.StateName,
-				base:      statePath,
+				name: config.StateName,
+
+				base:    stateBasePath,
+				overlay: stateOverlayPath,
+				state:   stateStatePath,
+
 				blockSize: stateBlockSizeStorage,
 			},
 			{
-				name:      config.MemoryName,
-				base:      memoryPath,
+				name: config.MemoryName,
+
+				base:    memoryBasePath,
+				overlay: memoryOverlayPath,
+				state:   memoryStatePath,
+
 				blockSize: memoryBlockSizeStorage,
 			},
 			{
-				name:      config.InitramfsName,
-				base:      initramfsPath,
+				name: config.InitramfsName,
+
+				base:    initramfsBasePath,
+				overlay: initramfsOverlayPath,
+				state:   initramfsStatePath,
+
 				blockSize: initramfsBlockSizeStorage,
 			},
 			{
-				name:      config.KernelName,
-				base:      kernelPath,
+				name: config.KernelName,
+
+				base:    kernelBasePath,
+				overlay: kernelOverlayPath,
+				state:   kernelStatePath,
+
 				blockSize: kernelBlockSizeStorage,
 			},
 			{
-				name:      config.DiskName,
-				base:      diskPath,
+				name: config.DiskName,
+
+				base:    diskBasePath,
+				overlay: diskOverlayPath,
+				state:   diskStatePath,
+
 				blockSize: diskBlockSizeStorage,
 			},
 			{
-				name:      config.ConfigName,
-				base:      configPath,
+				name: config.ConfigName,
+
+				base:    configBasePath,
+				overlay: configOverlayPath,
+				state:   configStatePath,
+
 				blockSize: configBlockSizeStorage,
 			},
 		}
@@ -614,14 +670,43 @@ func StartPeer(
 					return err
 				}
 
-				src, device, err := sdevice.NewDevice(&sconfig.DeviceSchema{
-					Name:      input.name,
-					System:    "file",
-					Location:  input.base,
-					Size:      fmt.Sprintf("%v", stat.Size()),
-					BlockSize: fmt.Sprintf("%v", input.blockSize), // TODO: Allow specifying a separate NBD/device block size like we do for for received remote devices - currently we use the storage size for both here
-					Expose:    true,
-				})
+				var (
+					src    storage.StorageProvider
+					device storage.ExposedStorage
+				)
+				if strings.TrimSpace(input.overlay) == "" || strings.TrimSpace(input.state) == "" {
+					src, device, err = sdevice.NewDevice(&sconfig.DeviceSchema{
+						Name:      input.name,
+						System:    "file",
+						Location:  input.base,
+						Size:      fmt.Sprintf("%v", stat.Size()),
+						BlockSize: fmt.Sprintf("%v", input.blockSize), // TODO: Allow specifying a separate NBD/device block size like we do for for received remote devices - currently we use the storage size for both here
+						Expose:    true,
+					})
+				} else {
+					if err := os.MkdirAll(filepath.Dir(input.overlay), os.ModePerm); err != nil {
+						return err
+					}
+
+					if err := os.MkdirAll(filepath.Dir(input.state), os.ModePerm); err != nil {
+						return err
+					}
+
+					src, device, err = sdevice.NewDevice(&sconfig.DeviceSchema{
+						Name:      input.name,
+						System:    "sparsefile",
+						Location:  input.overlay,
+						Size:      fmt.Sprintf("%v", stat.Size()),
+						BlockSize: fmt.Sprintf("%v", input.blockSize), // TODO: Allow specifying a separate NBD/device block size like we do for for received remote devices - currently we use the storage size for both here
+						Expose:    true,
+						ROSource: &sconfig.DeviceSchema{
+							Name:     input.state,
+							System:   "file",
+							Location: input.base,
+							Size:     fmt.Sprintf("%v", stat.Size()),
+						},
+					})
+				}
 				if err != nil {
 					return err
 				}
@@ -696,7 +781,7 @@ func StartPeer(
 		}
 
 		migratedPeer.Resume = func(ctx context.Context, resumeTimeout time.Duration) (resumedPeer *ResumedRunner, errs error) {
-			packageConfigFile, err := os.Open(configPath)
+			packageConfigFile, err := os.Open(configBasePath)
 			if err != nil {
 				return nil, err
 			}
