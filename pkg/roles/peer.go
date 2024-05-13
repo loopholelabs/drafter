@@ -284,40 +284,26 @@ func StartPeer(
 							defer handlePanics(false)()
 
 							var (
-								base    = ""
-								overlay = ""
-								state   = ""
+								base = ""
 							)
 							switch di.Name {
 							case config.ConfigName:
 								base = configBasePath
-								overlay = configOverlayPath
-								state = configStatePath
 
 							case config.DiskName:
 								base = diskBasePath
-								overlay = diskOverlayPath
-								state = diskStatePath
 
 							case config.InitramfsName:
 								base = initramfsBasePath
-								overlay = initramfsOverlayPath
-								state = initramfsStatePath
 
 							case config.KernelName:
 								base = kernelBasePath
-								overlay = kernelOverlayPath
-								state = kernelStatePath
 
 							case config.MemoryName:
 								base = memoryBasePath
-								overlay = memoryOverlayPath
-								state = memoryStatePath
 
 							case config.StateName:
 								base = stateBasePath
-								overlay = stateOverlayPath
-								state = stateStatePath
 							}
 
 							if strings.TrimSpace(base) == "" {
@@ -338,43 +324,14 @@ func StartPeer(
 								panic(err)
 							}
 
-							var (
-								src    storage.StorageProvider
-								device storage.ExposedStorage
-							)
-							if strings.TrimSpace(overlay) == "" || strings.TrimSpace(state) == "" {
-								src, device, err = sdevice.NewDevice(&sconfig.DeviceSchema{
-									Name:      di.Name,
-									System:    "file",
-									Location:  base,
-									Size:      fmt.Sprintf("%v", di.Size),
-									BlockSize: fmt.Sprintf("%v", di.Block_size),
-									Expose:    true,
-								})
-							} else {
-								if err := os.MkdirAll(filepath.Dir(overlay), os.ModePerm); err != nil {
-									panic(err)
-								}
-
-								if err := os.MkdirAll(filepath.Dir(state), os.ModePerm); err != nil {
-									panic(err)
-								}
-
-								src, device, err = sdevice.NewDevice(&sconfig.DeviceSchema{
-									Name:      di.Name,
-									System:    "sparsefile",
-									Location:  overlay,
-									Size:      fmt.Sprintf("%v", di.Size),
-									BlockSize: fmt.Sprintf("%v", di.Block_size),
-									Expose:    true,
-									ROSource: &sconfig.DeviceSchema{
-										Name:     state,
-										System:   "file",
-										Location: base,
-										Size:     fmt.Sprintf("%v", di.Size),
-									},
-								})
-							}
+							src, device, err := sdevice.NewDevice(&sconfig.DeviceSchema{
+								Name:      di.Name,
+								System:    "file",
+								Location:  base,
+								Size:      fmt.Sprintf("%v", di.Size),
+								BlockSize: fmt.Sprintf("%v", di.Block_size),
+								Expose:    true,
+							})
 							if err != nil {
 								panic(err)
 							}
