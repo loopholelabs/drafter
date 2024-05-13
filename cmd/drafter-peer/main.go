@@ -190,24 +190,35 @@ func main() {
 		[]io.Writer{conn},
 
 		roles.MigrateFromHooks{
-			OnDeviceReceived: func(deviceID uint32, name string) {
-				log.Println("Received device", deviceID, "with name", name)
+			OnRemoteDeviceReceived: func(remoteDeviceID uint32, name string) {
+				log.Println("Received remote device", remoteDeviceID, "with name", name)
 			},
-			OnDeviceExposed: func(deviceID uint32, path string) {
-				log.Println("Exposed device", deviceID, "at", path)
+			OnRemoteDeviceExposed: func(remoteDeviceID uint32, path string) {
+				log.Println("Exposed remote device", remoteDeviceID, "at", path)
 			},
-			OnDeviceAuthorityReceived: func(deviceID uint32) {
-				log.Println("Received authority for device", deviceID)
+			OnRemoteDeviceAuthorityReceived: func(remoteDeviceID uint32) {
+				log.Println("Received authority for remote device", remoteDeviceID)
 			},
-			OnDeviceMigrationCompleted: func(deviceID uint32) {
-				log.Println("Completed migration of device", deviceID)
+			OnRemoteDeviceMigrationCompleted: func(remoteDeviceID uint32) {
+				log.Println("Completed migration of remote device", remoteDeviceID)
 			},
 
-			OnAllDevicesReceived: func() {
-				log.Println("Received all devices")
+			OnRemoteAllDevicesReceived: func() {
+				log.Println("Received all remote devices")
 			},
-			OnAllMigrationsCompleted: func() {
-				log.Println("Completed all migrations")
+			OnRemoteAllMigrationsCompleted: func() {
+				log.Println("Completed all remote migrations")
+			},
+
+			OnLocalDeviceRequested: func(localDeviceID uint32, name string) {
+				log.Println("Requested local device", localDeviceID, "with name", name)
+			},
+			OnLocalDeviceExposed: func(localDeviceID uint32, path string) {
+				log.Println("Exposed local device", localDeviceID, "at", path)
+			},
+
+			OnLocalAllDevicesRequested: func() {
+				log.Println("Requested all local devices")
 			},
 		},
 	)

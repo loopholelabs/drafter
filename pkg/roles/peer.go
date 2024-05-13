@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -18,10 +19,16 @@ import (
 	"github.com/loopholelabs/drafter/pkg/config"
 	"github.com/loopholelabs/drafter/pkg/utils"
 	"github.com/loopholelabs/silo/pkg/storage"
+	"github.com/loopholelabs/silo/pkg/storage/blocks"
+	sconfig "github.com/loopholelabs/silo/pkg/storage/config"
+	sdevice "github.com/loopholelabs/silo/pkg/storage/device"
+	"github.com/loopholelabs/silo/pkg/storage/dirtytracker"
 	"github.com/loopholelabs/silo/pkg/storage/expose"
+	"github.com/loopholelabs/silo/pkg/storage/modules"
 	"github.com/loopholelabs/silo/pkg/storage/protocol"
 	"github.com/loopholelabs/silo/pkg/storage/protocol/packets"
 	"github.com/loopholelabs/silo/pkg/storage/sources"
+	"github.com/loopholelabs/silo/pkg/storage/volatilitymonitor"
 	"github.com/loopholelabs/silo/pkg/storage/waitingcache"
 	"golang.org/x/sys/unix"
 )
@@ -31,13 +38,18 @@ var (
 )
 
 type MigrateFromHooks struct {
-	OnDeviceReceived           func(deviceID uint32, name string)
-	OnDeviceExposed            func(deviceID uint32, path string)
-	OnDeviceAuthorityReceived  func(deviceID uint32)
-	OnDeviceMigrationCompleted func(deviceID uint32)
+	OnRemoteDeviceReceived           func(remoteDeviceID uint32, name string)
+	OnRemoteDeviceExposed            func(remoteDeviceID uint32, path string)
+	OnRemoteDeviceAuthorityReceived  func(remoteDeviceID uint32)
+	OnRemoteDeviceMigrationCompleted func(remoteDeviceID uint32)
 
-	OnAllDevicesReceived     func()
-	OnAllMigrationsCompleted func()
+	OnRemoteAllDevicesReceived     func()
+	OnRemoteAllMigrationsCompleted func()
+
+	OnLocalDeviceRequested func(localDeviceID uint32, name string)
+	OnLocalDeviceExposed   func(localDeviceID uint32, path string)
+
+	OnLocalAllDevicesRequested func()
 }
 
 type MigratedPeer struct {
@@ -203,11 +215,11 @@ func StartPeer(
 
 		// We use the background context here instead of the internal context because we want to distinguish
 		// between a context cancellation from the outside and getting a response
-		allDevicesReceivedCtx, cancelAllDevicesReceivedCtx := context.WithCancel(ctx)
-		defer cancelAllDevicesReceivedCtx()
+		allRemoteDevicesReceivedCtx, cancelAllRemoteDevicesReceivedCtx := context.WithCancel(ctx)
+		defer cancelAllRemoteDevicesReceivedCtx()
 
-		allDevicesReadyCtx, cancelAllDevicesReadyCtx := context.WithCancel(ctx)
-		defer cancelAllDevicesReadyCtx()
+		allRemoteDevicesReadyCtx, cancelAllRemoteDevicesReadyCtx := context.WithCancel(ctx)
+		defer cancelAllRemoteDevicesReadyCtx()
 
 		// We don't `defer cancelProtocolCtx()` this because we cancel in the wait function
 		protocolCtx, cancelProtocolCtx := context.WithCancel(ctx)
@@ -230,13 +242,13 @@ func StartPeer(
 
 		// Use an atomic counter and `allDevicesReadyCtx` and instead of a WaitGroup so that we can `select {}` without leaking a goroutine
 		var (
-			receivedButNotReadyDevices atomic.Int32
+			receivedButNotReadyRemoteDevices atomic.Int32
 
 			deviceCloseFuncsLock sync.Mutex
 			deviceCloseFuncs     []func() error
 
-			receivedDevicesLock sync.Mutex
-			receivedDevices     []string
+			receivedRemoteDevicesLock sync.Mutex
+			receivedRemoteDevices     []string
 		)
 		pro := protocol.NewProtocolRW(
 			protocolCtx, // We don't track this because we return the wait function
@@ -286,13 +298,13 @@ func StartPeer(
 							panic(ErrUnknownDeviceName)
 						}
 
-						receivedDevicesLock.Lock()
-						receivedDevices = append(receivedDevices, di.Name)
-						receivedDevicesLock.Unlock()
+						receivedRemoteDevicesLock.Lock()
+						receivedRemoteDevices = append(receivedRemoteDevices, di.Name)
+						receivedRemoteDevicesLock.Unlock()
 
-						receivedButNotReadyDevices.Add(1)
+						receivedButNotReadyRemoteDevices.Add(1)
 
-						if hook := hooks.OnDeviceReceived; hook != nil {
+						if hook := hooks.OnRemoteDeviceReceived; hook != nil {
 							hook(index, di.Name)
 						}
 
@@ -366,7 +378,7 @@ func StartPeer(
 							panic(err)
 						}
 
-						if hook := hooks.OnDeviceExposed; hook != nil {
+						if hook := hooks.OnRemoteDeviceExposed; hook != nil {
 							hook(index, devicePath)
 						}
 
@@ -399,24 +411,24 @@ func StartPeer(
 						case packets.EventCustom:
 							switch e.CustomType {
 							case byte(EventCustomAllDevicesSent):
-								cancelAllDevicesReceivedCtx()
+								cancelAllRemoteDevicesReceivedCtx()
 
-								if hook := hooks.OnAllDevicesReceived; hook != nil {
+								if hook := hooks.OnRemoteAllDevicesReceived; hook != nil {
 									hook()
 								}
 
 							case byte(EventCustomTransferAuthority):
-								if receivedButNotReadyDevices.Add(-1) <= 0 {
-									cancelAllDevicesReadyCtx()
+								if receivedButNotReadyRemoteDevices.Add(-1) <= 0 {
+									cancelAllRemoteDevicesReadyCtx()
 								}
 
-								if hook := hooks.OnDeviceAuthorityReceived; hook != nil {
+								if hook := hooks.OnRemoteDeviceAuthorityReceived; hook != nil {
 									hook(index)
 								}
 							}
 
 						case packets.EventCompleted:
-							if hook := hooks.OnDeviceMigrationCompleted; hook != nil {
+							if hook := hooks.OnRemoteDeviceMigrationCompleted; hook != nil {
 								hook(index)
 							}
 						}
@@ -443,7 +455,7 @@ func StartPeer(
 				return err
 			}
 
-			if hook := hooks.OnAllMigrationsCompleted; hook != nil {
+			if hook := hooks.OnRemoteAllMigrationsCompleted; hook != nil {
 				hook()
 			}
 
@@ -492,7 +504,7 @@ func StartPeer(
 				}
 
 			// Happy case; all devices are ready and we want to wait with closing the devices until we stop the Firecracker process
-			case <-allDevicesReadyCtx.Done():
+			case <-allRemoteDevicesReadyCtx.Done():
 				<-hypervisorCtx.Done()
 
 				if err := migratedPeer.Close(); err != nil {
@@ -506,11 +518,11 @@ func StartPeer(
 		select {
 		case <-internalCtx.Done():
 			panic(internalCtx.Err())
-		case <-allDevicesReceivedCtx.Done():
+		case <-allRemoteDevicesReceivedCtx.Done():
 			break
 		}
 
-		stage1Inputs := []peerStage1{
+		allStage1Inputs := []peerStage1{
 			{
 				name:      config.StateName,
 				base:      statePath,
@@ -543,19 +555,98 @@ func StartPeer(
 			},
 		}
 
+		stage1Inputs := []peerStage1{}
+		for _, input := range allStage1Inputs {
+			if slices.ContainsFunc(
+				receivedRemoteDevices,
+				func(r string) bool {
+					return input.name == r
+				},
+			) {
+				continue
+			}
+
+			stage1Inputs = append(stage1Inputs, input)
+		}
+
+		// Use an atomic counter instead of a WaitGroup so that we can wait without leaking a goroutine
+		var remainingRequestedLocalDevices atomic.Int32
+		remainingRequestedLocalDevices.Add(int32(len(stage1Inputs)))
+
 		_, deferFuncs, err := iutils.ConcurrentMap(
 			stage1Inputs,
 			func(index int, input peerStage1, _ *struct{}, addDefer func(deferFunc func() error)) error {
-				if slices.ContainsFunc(
-					receivedDevices,
-					func(r string) bool {
-						return input.name == r
-					},
-				) {
-					return nil
+				if hook := hooks.OnLocalDeviceRequested; hook != nil {
+					hook(uint32(index), input.name)
 				}
 
-				// TODO: Set up locally-backed device
+				if remainingRequestedLocalDevices.Add(-1) <= 0 {
+					if hook := hooks.OnLocalAllDevicesRequested; hook != nil {
+						hook()
+					}
+				}
+
+				stat, err := os.Stat(input.base)
+				if err != nil {
+					return err
+				}
+
+				src, device, err := sdevice.NewDevice(&sconfig.DeviceSchema{
+					Name:      input.name,
+					System:    "file",
+					Location:  input.base,
+					Size:      fmt.Sprintf("%v", stat.Size()),
+					BlockSize: fmt.Sprintf("%v", input.blockSize), // TODO: Allow specifying a separate NBD/device block size like we do for for received remote devices - currently we use the storage size for both here
+					Expose:    true,
+				})
+				if err != nil {
+					return err
+				}
+				addDefer(src.Close)
+				addDefer(device.Shutdown)
+
+				metrics := modules.NewMetrics(src)
+				dirtyLocal, _ := dirtytracker.NewDirtyTracker(metrics, int(input.blockSize))
+				monitor := volatilitymonitor.NewVolatilityMonitor(dirtyLocal, int(input.blockSize), 10*time.Second)
+
+				storage := modules.NewLockable(monitor)
+				addDefer(func() error {
+					storage.Unlock()
+
+					return nil
+				})
+
+				device.SetProvider(storage)
+
+				totalBlocks := (int(storage.Size()) + int(input.blockSize) - 1) / int(input.blockSize)
+
+				orderer := blocks.NewPriorityBlockOrder(totalBlocks, monitor)
+				orderer.AddAll()
+
+				devicePath := filepath.Join("/dev", device.Device())
+
+				deviceInfo, err := os.Stat(devicePath)
+				if err != nil {
+					return err
+				}
+
+				deviceStat, ok := deviceInfo.Sys().(*syscall.Stat_t)
+				if !ok {
+					return ErrCouldNotGetNBDDeviceStat
+				}
+
+				deviceMajor := uint64(deviceStat.Rdev / 256)
+				deviceMinor := uint64(deviceStat.Rdev % 256)
+
+				deviceID := int((deviceMajor << 8) | deviceMinor)
+
+				if err := unix.Mknod(filepath.Join(runner.VMPath, input.name), unix.S_IFBLK|0666, deviceID); err != nil {
+					return err
+				}
+
+				if hook := hooks.OnLocalDeviceExposed; hook != nil {
+					hook(uint32(index), devicePath)
+				}
 
 				return nil
 			},
@@ -577,7 +668,7 @@ func StartPeer(
 		select {
 		case <-internalCtx.Done():
 			panic(internalCtx.Err())
-		case <-allDevicesReadyCtx.Done():
+		case <-allRemoteDevicesReadyCtx.Done():
 			break
 		}
 
