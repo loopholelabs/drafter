@@ -3,6 +3,7 @@ package roles
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -12,9 +13,10 @@ import (
 	"github.com/loopholelabs/drafter/pkg/config"
 	"github.com/loopholelabs/drafter/pkg/utils"
 	"github.com/loopholelabs/silo/pkg/storage"
+	sconfig "github.com/loopholelabs/silo/pkg/storage/config"
+	"github.com/loopholelabs/silo/pkg/storage/device"
 	"github.com/loopholelabs/silo/pkg/storage/protocol"
 	"github.com/loopholelabs/silo/pkg/storage/protocol/packets"
-	"github.com/loopholelabs/silo/pkg/storage/sources"
 	"github.com/loopholelabs/silo/pkg/storage/waitingcache"
 )
 
@@ -115,27 +117,52 @@ func Terminate(
 						panic(err)
 					}
 
-					storage, err := sources.NewFileStorageCreate(path, int64(di.Size))
+					src, device, err := device.NewDevice(&sconfig.DeviceSchema{
+						Name:      di.Name,
+						System:    "file",
+						Location:  path,
+						Size:      fmt.Sprintf("%v", di.Size),
+						BlockSize: fmt.Sprintf("%v", di.Block_size),
+						Expose:    true,
+					})
 					if err != nil {
 						panic(err)
 					}
-
 					deviceCloseFuncsLock.Lock()
-					deviceCloseFuncs = append(deviceCloseFuncs, storage.Close) // defer storage.Close()
+					deviceCloseFuncs = append(deviceCloseFuncs, src.Close)       // defer src.Close()
+					deviceCloseFuncs = append(deviceCloseFuncs, device.Shutdown) // defer device.Shutdown()
 					deviceCloseFuncsLock.Unlock()
 
 					var remote *waitingcache.WaitingCacheRemote
-					local, remote = waitingcache.NewWaitingCache(storage, int(di.Block_size))
+					local, remote = waitingcache.NewWaitingCache(src, int(di.Block_size))
 					local.NeedAt = func(offset int64, length int32) {
+						// Only access the `from` protocol if it's not already closed
+						select {
+						case <-ctx.Done():
+							return
+
+						default:
+						}
+
 						if err := from.NeedAt(offset, length); err != nil {
 							panic(err)
 						}
 					}
 					local.DontNeedAt = func(offset int64, length int32) {
+						// Only access the `from` protocol if it's not already closed
+						select {
+						case <-ctx.Done():
+							return
+
+						default:
+						}
+
 						if err := from.DontNeedAt(offset, length); err != nil {
 							panic(err)
 						}
 					}
+
+					device.SetProvider(local)
 
 					return remote
 				},
