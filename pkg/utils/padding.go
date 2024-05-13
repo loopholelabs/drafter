@@ -3,7 +3,6 @@ package utils
 const (
 	// See https://pkg.go.dev/github.com/pojntfx/go-nbd@v0.3.2/pkg/client#pkg-constants
 	// We still need to set paddings even if Silo supports adding these offsets automatically because the runner doesn't use Silo
-	minimumBlockSize = 512  // This is the minimum value that works in practice, else the client stops with "invalid argument"
 	maximumBlockSize = 4096 // This is the maximum value that works in practice, else the client stops with "invalid argument"
 )
 

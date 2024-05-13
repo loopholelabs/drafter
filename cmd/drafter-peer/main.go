@@ -58,19 +58,12 @@ func main() {
 	memoryStatePath := flag.String("memory-state-path", filepath.Join("out", "overlay", "drafter.drftmemory.state"), "Memory state path")
 	stateStatePath := flag.String("state-state-path", filepath.Join("out", "overlay", "drafter.drftstate.state"), "State state path")
 
-	stateBlockSizeStorage := flag.Uint("state-block-size-storage", 1024*64, "State block size for storage")
-	memoryBlockSizeStorage := flag.Uint("memory-block-size-storage", 1024*64, "Memory block size for storage")
-	initramfsBlockSizeStorage := flag.Uint("initramfs-block-size-storage", 1024*64, "initramfs block size for storage")
-	kernelBlockSizeStorage := flag.Uint("kernel-block-size-storage", 1024*64, "Kernel block size for storage")
-	diskBlockSizeStorage := flag.Uint("disk-block-size-storage", 1024*64, "Disk block size for storage")
-	configBlockSizeStorage := flag.Uint("config-block-size-storage", 1024*64, "Config block size for storage")
-
-	stateBlockSizeDevice := flag.Uint64("state-block-size-device", 4096, "State block size for NBD device")
-	memoryBlockSizeDevice := flag.Uint64("memory-block-size-device", 4096, "Memory block size for NBD device")
-	initramfsBlockSizeDevice := flag.Uint64("initramfs-block-size-device", 4096, "initramfs block size NBD for device")
-	kernelBlockSizeDevice := flag.Uint64("kernel-block-size-device", 4096, "Kernel block size for NBD device")
-	diskBlockSizeDevice := flag.Uint64("disk-block-size-device", 4096, "Disk block size for NBD device")
-	configBlockSizeDevice := flag.Uint64("config-block-size-device", 4096, "Config block size for NBD device")
+	stateBlockSize := flag.Uint("state-block-size", 1024*64, "State block size")
+	memoryBlockSize := flag.Uint("memory-block-size", 1024*64, "Memory block size")
+	initramfsBlockSize := flag.Uint("initramfs-block-size", 1024*64, "initramfs block size")
+	kernelBlockSize := flag.Uint("kernel-block-size", 1024*64, "Kernel block size")
+	diskBlockSize := flag.Uint("disk-block-size", 1024*64, "Disk block size")
+	configBlockSize := flag.Uint("config-block-size", 1024*64, "Config block size")
 
 	raddr := flag.String("raddr", "localhost:1337", "Remote address to connect to (leave empty to disable)")
 
@@ -210,19 +203,12 @@ func main() {
 		*diskStatePath,
 		*configStatePath,
 
-		uint32(*stateBlockSizeStorage),
-		uint32(*memoryBlockSizeStorage),
-		uint32(*initramfsBlockSizeStorage),
-		uint32(*kernelBlockSizeStorage),
-		uint32(*diskBlockSizeStorage),
-		uint32(*configBlockSizeStorage),
-
-		*stateBlockSizeDevice,
-		*memoryBlockSizeDevice,
-		*initramfsBlockSizeDevice,
-		*kernelBlockSizeDevice,
-		*diskBlockSizeDevice,
-		*configBlockSizeDevice,
+		uint32(*stateBlockSize),
+		uint32(*memoryBlockSize),
+		uint32(*initramfsBlockSize),
+		uint32(*kernelBlockSize),
+		uint32(*diskBlockSize),
+		uint32(*configBlockSize),
 
 		readers,
 		writers,

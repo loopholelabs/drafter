@@ -23,11 +23,9 @@ import (
 	sconfig "github.com/loopholelabs/silo/pkg/storage/config"
 	sdevice "github.com/loopholelabs/silo/pkg/storage/device"
 	"github.com/loopholelabs/silo/pkg/storage/dirtytracker"
-	"github.com/loopholelabs/silo/pkg/storage/expose"
 	"github.com/loopholelabs/silo/pkg/storage/modules"
 	"github.com/loopholelabs/silo/pkg/storage/protocol"
 	"github.com/loopholelabs/silo/pkg/storage/protocol/packets"
-	"github.com/loopholelabs/silo/pkg/storage/sources"
 	"github.com/loopholelabs/silo/pkg/storage/volatilitymonitor"
 	"github.com/loopholelabs/silo/pkg/storage/waitingcache"
 	"golang.org/x/sys/unix"
@@ -107,19 +105,12 @@ type Peer struct {
 		memoryStatePath,
 		stateStatePath string,
 
-		stateBlockSizeStorage,
-		memoryBlockSizeStorage,
-		initramfsBlockSizeStorage,
-		kernelBlockSizeStorage,
-		diskBlockSizeStorage,
-		configBlockSizeStorage uint32,
-
-		stateBlockSizeDevice,
-		memoryBlockSizeDevice,
-		initramfsBlockSizeDevice,
-		kernelBlockSizeDevice,
-		diskBlockSizeDevice,
-		configBlockSizeDevice uint64,
+		stateBlockSize,
+		memoryBlockSize,
+		initramfsBlockSize,
+		kernelBlockSize,
+		diskBlockSize,
+		configBlockSize uint32,
 
 		readers []io.Reader,
 		writers []io.Writer,
@@ -220,19 +211,12 @@ func StartPeer(
 		memoryStatePath,
 		stateStatePath string,
 
-		stateBlockSizeStorage,
-		memoryBlockSizeStorage,
-		initramfsBlockSizeStorage,
-		kernelBlockSizeStorage,
-		diskBlockSizeStorage,
-		configBlockSizeStorage uint32,
-
-		stateBlockSizeDevice,
-		memoryBlockSizeDevice,
-		initramfsBlockSizeDevice,
-		kernelBlockSizeDevice,
-		diskBlockSizeDevice,
-		configBlockSizeDevice uint64,
+		stateBlockSize,
+		memoryBlockSize,
+		initramfsBlockSize,
+		kernelBlockSize,
+		diskBlockSize,
+		configBlockSize uint32,
 
 		readers []io.Reader,
 		writers []io.Writer,
@@ -300,36 +284,43 @@ func StartPeer(
 							defer handlePanics(false)()
 
 							var (
-								path            = ""
-								blockSizeDevice = uint64(0)
+								base    = ""
+								overlay = ""
+								state   = ""
 							)
 							switch di.Name {
 							case config.ConfigName:
-								path = configBasePath
-								blockSizeDevice = configBlockSizeDevice
+								base = configBasePath
+								overlay = configOverlayPath
+								state = configStatePath
 
 							case config.DiskName:
-								path = diskBasePath
-								blockSizeDevice = diskBlockSizeDevice
+								base = diskBasePath
+								overlay = diskOverlayPath
+								state = diskStatePath
 
 							case config.InitramfsName:
-								path = initramfsBasePath
-								blockSizeDevice = initramfsBlockSizeDevice
+								base = initramfsBasePath
+								overlay = initramfsOverlayPath
+								state = initramfsStatePath
 
 							case config.KernelName:
-								path = kernelBasePath
-								blockSizeDevice = kernelBlockSizeDevice
+								base = kernelBasePath
+								overlay = kernelOverlayPath
+								state = kernelStatePath
 
 							case config.MemoryName:
-								path = memoryBasePath
-								blockSizeDevice = memoryBlockSizeDevice
+								base = memoryBasePath
+								overlay = memoryOverlayPath
+								state = memoryStatePath
 
 							case config.StateName:
-								path = stateBasePath
-								blockSizeDevice = stateBlockSizeDevice
+								base = stateBasePath
+								overlay = stateOverlayPath
+								state = stateStatePath
 							}
 
-							if strings.TrimSpace(path) == "" {
+							if strings.TrimSpace(base) == "" {
 								panic(ErrUnknownDeviceName)
 							}
 
@@ -343,17 +334,57 @@ func StartPeer(
 								hook(index, di.Name)
 							}
 
-							if err := os.MkdirAll(filepath.Dir(path), os.ModePerm); err != nil {
+							if err := os.MkdirAll(filepath.Dir(base), os.ModePerm); err != nil {
 								panic(err)
 							}
 
-							storage, err := sources.NewFileStorageCreate(path, int64(di.Size))
+							var (
+								src    storage.StorageProvider
+								device storage.ExposedStorage
+							)
+							if strings.TrimSpace(overlay) == "" || strings.TrimSpace(state) == "" {
+								src, device, err = sdevice.NewDevice(&sconfig.DeviceSchema{
+									Name:      di.Name,
+									System:    "file",
+									Location:  base,
+									Size:      fmt.Sprintf("%v", di.Size),
+									BlockSize: fmt.Sprintf("%v", di.Block_size),
+									Expose:    true,
+								})
+							} else {
+								if err := os.MkdirAll(filepath.Dir(overlay), os.ModePerm); err != nil {
+									panic(err)
+								}
+
+								if err := os.MkdirAll(filepath.Dir(state), os.ModePerm); err != nil {
+									panic(err)
+								}
+
+								src, device, err = sdevice.NewDevice(&sconfig.DeviceSchema{
+									Name:      di.Name,
+									System:    "sparsefile",
+									Location:  overlay,
+									Size:      fmt.Sprintf("%v", di.Size),
+									BlockSize: fmt.Sprintf("%v", di.Block_size),
+									Expose:    true,
+									ROSource: &sconfig.DeviceSchema{
+										Name:     state,
+										System:   "file",
+										Location: base,
+										Size:     fmt.Sprintf("%v", di.Size),
+									},
+								})
+							}
 							if err != nil {
 								panic(err)
 							}
+							deviceCloseFuncsLock.Lock()
+							deviceCloseFuncs = append(deviceCloseFuncs, src.Close)       // defer src.Close()
+							deviceCloseFuncs = append(deviceCloseFuncs, device.Shutdown) // defer device.Shutdown()
+							deviceCloseFuncsLock.Unlock()
 
 							var remote *waitingcache.WaitingCacheRemote
-							local, remote = waitingcache.NewWaitingCache(storage, int(di.Block_size))
+							local, remote = waitingcache.NewWaitingCache(src, int(di.Block_size))
 							local.NeedAt = func(offset int64, length int32) {
 								// Only access the `from` protocol if it's not already closed
 								select {
@@ -381,16 +412,7 @@ func StartPeer(
 								}
 							}
 
-							device := expose.NewExposedStorageNBDNL(local, 1, 0, local.Size(), blockSizeDevice, true)
-
-							if err := device.Init(); err != nil {
-								panic(err)
-							}
-
-							deviceCloseFuncsLock.Lock()
-							deviceCloseFuncs = append(deviceCloseFuncs, device.Close)    // defer device.Close()
-							deviceCloseFuncs = append(deviceCloseFuncs, device.Shutdown) // defer device.Shutdown()
-							deviceCloseFuncsLock.Unlock()
+							device.SetProvider(local)
 
 							devicePath := filepath.Join("/dev", device.Device())
 
@@ -585,7 +607,7 @@ func StartPeer(
 				overlay: stateOverlayPath,
 				state:   stateStatePath,
 
-				blockSize: stateBlockSizeStorage,
+				blockSize: stateBlockSize,
 			},
 			{
 				name: config.MemoryName,
@@ -594,7 +616,7 @@ func StartPeer(
 				overlay: memoryOverlayPath,
 				state:   memoryStatePath,
 
-				blockSize: memoryBlockSizeStorage,
+				blockSize: memoryBlockSize,
 			},
 			{
 				name: config.InitramfsName,
@@ -603,7 +625,7 @@ func StartPeer(
 				overlay: initramfsOverlayPath,
 				state:   initramfsStatePath,
 
-				blockSize: initramfsBlockSizeStorage,
+				blockSize: initramfsBlockSize,
 			},
 			{
 				name: config.KernelName,
@@ -612,7 +634,7 @@ func StartPeer(
 				overlay: kernelOverlayPath,
 				state:   kernelStatePath,
 
-				blockSize: kernelBlockSizeStorage,
+				blockSize: kernelBlockSize,
 			},
 			{
 				name: config.DiskName,
@@ -621,7 +643,7 @@ func StartPeer(
 				overlay: diskOverlayPath,
 				state:   diskStatePath,
 
-				blockSize: diskBlockSizeStorage,
+				blockSize: diskBlockSize,
 			},
 			{
 				name: config.ConfigName,
@@ -630,7 +652,7 @@ func StartPeer(
 				overlay: configOverlayPath,
 				state:   configStatePath,
 
-				blockSize: configBlockSizeStorage,
+				blockSize: configBlockSize,
 			},
 		}
 
@@ -680,7 +702,7 @@ func StartPeer(
 						System:    "file",
 						Location:  input.base,
 						Size:      fmt.Sprintf("%v", stat.Size()),
-						BlockSize: fmt.Sprintf("%v", input.blockSize), // TODO: Allow specifying a separate NBD/device block size like we do for for received remote devices - currently we use the storage size for both here
+						BlockSize: fmt.Sprintf("%v", input.blockSize),
 						Expose:    true,
 					})
 				} else {
@@ -697,7 +719,7 @@ func StartPeer(
 						System:    "sparsefile",
 						Location:  input.overlay,
 						Size:      fmt.Sprintf("%v", stat.Size()),
-						BlockSize: fmt.Sprintf("%v", input.blockSize), // TODO: Allow specifying a separate NBD/device block size like we do for for received remote devices - currently we use the storage size for both here
+						BlockSize: fmt.Sprintf("%v", input.blockSize),
 						Expose:    true,
 						ROSource: &sconfig.DeviceSchema{
 							Name:     input.state,
@@ -717,16 +739,16 @@ func StartPeer(
 				dirtyLocal, _ := dirtytracker.NewDirtyTracker(metrics, int(input.blockSize))
 				monitor := volatilitymonitor.NewVolatilityMonitor(dirtyLocal, int(input.blockSize), 10*time.Second)
 
-				storage := modules.NewLockable(monitor)
+				local := modules.NewLockable(monitor)
 				addDefer(func() error {
-					storage.Unlock()
+					local.Unlock()
 
 					return nil
 				})
 
-				device.SetProvider(storage)
+				device.SetProvider(local)
 
-				totalBlocks := (int(storage.Size()) + int(input.blockSize) - 1) / int(input.blockSize)
+				totalBlocks := (int(local.Size()) + int(input.blockSize) - 1) / int(input.blockSize)
 
 				orderer := blocks.NewPriorityBlockOrder(totalBlocks, monitor)
 				orderer.AddAll()
