@@ -455,6 +455,22 @@ func StartPeer(
 				return err
 			}
 
+			// If it hasn't sent any devices, the remote Silo peer doesn't send `EventCustomAllDevicesSent`
+			// After the protocol has closed without errors, we can safely assume that we won't receive any
+			// additional devices, so we mark all devices as received and ready
+			select {
+			case <-allRemoteDevicesReceivedCtx.Done():
+			default:
+				cancelAllRemoteDevicesReceivedCtx()
+
+				// We need to call the hook manually too since we would otherwise only call if we received at least one device
+				if hook := hooks.OnRemoteAllDevicesReceived; hook != nil {
+					hook()
+				}
+			}
+
+			cancelAllRemoteDevicesReadyCtx()
+
 			if hook := hooks.OnRemoteAllMigrationsCompleted; hook != nil {
 				hook()
 			}
