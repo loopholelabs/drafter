@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"path/filepath"
 
+	"github.com/loopholelabs/drafter/pkg/config"
 	"github.com/loopholelabs/drafter/pkg/roles"
 	"github.com/loopholelabs/drafter/pkg/utils"
 )
@@ -30,6 +31,13 @@ func main() {
 	diskBlockSize := flag.Uint("disk-block-size", 1024*64, "Disk block size")
 	configBlockSize := flag.Uint("config-block-size", 1024*64, "Config block size")
 
+	configServe := flag.Bool("config-serve", true, "Whether to serve the config")
+	diskServe := flag.Bool("disk-serve", true, "Whether to serve the disk")
+	initramfsServe := flag.Bool("initramfs-serve", true, "Whether to serve the initramfs")
+	kernelServe := flag.Bool("kernel-serve", true, "Whether to serve the kernel")
+	memoryServe := flag.Bool("memory-serve", true, "Whether to serve the memory")
+	stateServe := flag.Bool("state-serve", true, "Whether to serve the state")
+
 	laddr := flag.String("laddr", ":1600", "Address to listen on")
 
 	concurrency := flag.Int("concurrency", 4096, "Amount of concurrent workers to use in migrations")
@@ -38,6 +46,55 @@ func main() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	devices := []roles.Device{}
+	if *configServe {
+		devices = append(devices, roles.Device{
+			Name:      config.ConfigName,
+			Base:      *configPath,
+			BlockSize: uint32(*configBlockSize),
+		})
+	}
+
+	if *diskServe {
+		devices = append(devices, roles.Device{
+			Name:      config.DiskName,
+			Base:      *diskPath,
+			BlockSize: uint32(*diskBlockSize),
+		})
+	}
+
+	if *initramfsServe {
+		devices = append(devices, roles.Device{
+			Name:      config.InitramfsName,
+			Base:      *initramfsPath,
+			BlockSize: uint32(*initramfsBlockSize),
+		})
+	}
+
+	if *kernelServe {
+		devices = append(devices, roles.Device{
+			Name:      config.KernelName,
+			Base:      *kernelPath,
+			BlockSize: uint32(*kernelBlockSize),
+		})
+	}
+
+	if *memoryServe {
+		devices = append(devices, roles.Device{
+			Name:      config.MemoryName,
+			Base:      *memoryPath,
+			BlockSize: uint32(*memoryBlockSize),
+		})
+	}
+
+	if *stateServe {
+		devices = append(devices, roles.Device{
+			Name:      config.StateName,
+			Base:      *statePath,
+			BlockSize: uint32(*stateBlockSize),
+		})
+	}
 
 	lis, err := net.Listen("tcp", *laddr)
 	if err != nil {
@@ -112,20 +169,8 @@ l:
 				}
 			}()
 
-			devices, defers, err := roles.OpenDevices(
-				*statePath,
-				*memoryPath,
-				*initramfsPath,
-				*kernelPath,
-				*diskPath,
-				*configPath,
-
-				uint32(*stateBlockSize),
-				uint32(*memoryBlockSize),
-				uint32(*initramfsBlockSize),
-				uint32(*kernelBlockSize),
-				uint32(*diskBlockSize),
-				uint32(*configBlockSize),
+			openedDevices, defers, err := roles.OpenDevices(
+				devices,
 
 				roles.OpenDevicesHooks{
 					OnDeviceOpened: func(deviceID uint32, name string) {
@@ -141,10 +186,10 @@ l:
 				defer deferFunc()
 			}
 
-			if err := roles.MigrateDevices(
+			if err := roles.MigrateOpenedDevices(
 				ctx,
 
-				devices,
+				openedDevices,
 				*concurrency,
 
 				[]io.Reader{conn},

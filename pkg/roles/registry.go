@@ -10,7 +10,6 @@ import (
 	"time"
 
 	iutils "github.com/loopholelabs/drafter/internal/utils"
-	iconfig "github.com/loopholelabs/drafter/pkg/config"
 	"github.com/loopholelabs/drafter/pkg/utils"
 	"github.com/loopholelabs/silo/pkg/storage"
 	"github.com/loopholelabs/silo/pkg/storage/blocks"
@@ -24,14 +23,14 @@ import (
 	"github.com/loopholelabs/silo/pkg/storage/volatilitymonitor"
 )
 
-type registryStage1 struct {
-	name      string
-	base      string
-	blockSize uint32
+type Device struct {
+	Name      string
+	Base      string
+	BlockSize uint32
 }
 
-type Device struct {
-	prev registryStage1
+type OpenedDevice struct {
+	Device Device
 
 	size        uint64
 	storage     *modules.Lockable
@@ -45,72 +44,27 @@ type OpenDevicesHooks struct {
 }
 
 func OpenDevices(
-	statePath,
-	memoryPath,
-	initramfsPath,
-	kernelPath,
-	diskPath,
-	configPath string,
-
-	stateBlockSize,
-	memoryBlockSize,
-	initramfsBlockSize,
-	kernelBlockSize,
-	diskBlockSize,
-	configBlockSize uint32,
+	devices []Device,
 
 	hooks OpenDevicesHooks,
-) ([]Device, []func() error, error) {
-	stage1Inputs := []registryStage1{
-		{
-			name:      iconfig.StateName,
-			base:      statePath,
-			blockSize: stateBlockSize,
-		},
-		{
-			name:      iconfig.MemoryName,
-			base:      memoryPath,
-			blockSize: memoryBlockSize,
-		},
-		{
-			name:      iconfig.InitramfsName,
-			base:      initramfsPath,
-			blockSize: initramfsBlockSize,
-		},
-		{
-			name:      iconfig.KernelName,
-			base:      kernelPath,
-			blockSize: kernelBlockSize,
-		},
-		{
-			name:      iconfig.DiskName,
-			base:      diskPath,
-			blockSize: diskBlockSize,
-		},
-		{
-			name:      iconfig.ConfigName,
-			base:      configPath,
-			blockSize: configBlockSize,
-		},
-	}
+) ([]OpenedDevice, []func() error, error) {
+	openedDevices, deferFuncs, err := iutils.ConcurrentMap(
+		devices,
+		func(index int, input Device, output *OpenedDevice, addDefer func(deferFunc func() error)) error {
+			output.Device = input
 
-	devices, deferFuncs, err := iutils.ConcurrentMap(
-		stage1Inputs,
-		func(index int, input registryStage1, output *Device, addDefer func(deferFunc func() error)) error {
-			output.prev = input
-
-			stat, err := os.Stat(input.base)
+			stat, err := os.Stat(input.Base)
 			if err != nil {
 				return err
 			}
 			output.size = uint64(stat.Size())
 
 			src, _, err := device.NewDevice(&config.DeviceSchema{
-				Name:      input.name,
+				Name:      input.Name,
 				System:    "file",
-				Location:  input.base,
+				Location:  input.Base,
 				Size:      fmt.Sprintf("%v", output.size),
-				BlockSize: fmt.Sprintf("%v", input.blockSize),
+				BlockSize: fmt.Sprintf("%v", input.BlockSize),
 				Expose:    false,
 			})
 			if err != nil {
@@ -119,9 +73,9 @@ func OpenDevices(
 			addDefer(src.Close)
 
 			metrics := modules.NewMetrics(src)
-			dirtyLocal, dirtyRemote := dirtytracker.NewDirtyTracker(metrics, int(input.blockSize))
+			dirtyLocal, dirtyRemote := dirtytracker.NewDirtyTracker(metrics, int(input.BlockSize))
 			output.dirtyRemote = dirtyRemote
-			monitor := volatilitymonitor.NewVolatilityMonitor(dirtyLocal, int(input.blockSize), 10*time.Second)
+			monitor := volatilitymonitor.NewVolatilityMonitor(dirtyLocal, int(input.BlockSize), 10*time.Second)
 
 			storage := modules.NewLockable(monitor)
 			output.storage = storage
@@ -131,7 +85,7 @@ func OpenDevices(
 				return nil
 			})
 
-			totalBlocks := (int(storage.Size()) + int(input.blockSize) - 1) / int(input.blockSize)
+			totalBlocks := (int(storage.Size()) + int(input.BlockSize) - 1) / int(input.BlockSize)
 			output.totalBlocks = totalBlocks
 
 			orderer := blocks.NewPriorityBlockOrder(totalBlocks, monitor)
@@ -139,7 +93,7 @@ func OpenDevices(
 			orderer.AddAll()
 
 			if hook := hooks.OnDeviceOpened; hook != nil {
-				hook(uint32(index), input.name)
+				hook(uint32(index), input.Name)
 			}
 
 			return nil
@@ -151,7 +105,7 @@ func OpenDevices(
 		defers = append(defers, deferFuncs...)
 	}
 
-	return devices, defers, err
+	return openedDevices, defers, err
 }
 
 type MigrateDevicesHooks struct {
@@ -164,10 +118,10 @@ type MigrateDevicesHooks struct {
 	OnAllMigrationsCompleted func()
 }
 
-func MigrateDevices(
+func MigrateOpenedDevices(
 	ctx context.Context,
 
-	devices []Device,
+	openedDevices []OpenedDevice,
 	concurrency int,
 
 	readers []io.Reader,
@@ -200,11 +154,11 @@ func MigrateDevices(
 	var devicesLeftToSend atomic.Int32
 
 	_, deferFuncs, err := iutils.ConcurrentMap(
-		devices,
-		func(index int, input Device, _ *struct{}, _ func(deferFunc func() error)) error {
+		openedDevices,
+		func(index int, input OpenedDevice, _ *struct{}, _ func(deferFunc func() error)) error {
 			to := protocol.NewToProtocol(input.storage.Size(), uint32(index), pro)
 
-			if err := to.SendDevInfo(input.prev.name, input.prev.blockSize); err != nil {
+			if err := to.SendDevInfo(input.Device.Name, input.Device.BlockSize); err != nil {
 				return err
 			}
 
@@ -213,7 +167,7 @@ func MigrateDevices(
 			}
 
 			devicesLeftToSend.Add(1)
-			if devicesLeftToSend.Load() >= int32(len(devices)) {
+			if devicesLeftToSend.Load() >= int32(len(openedDevices)) {
 				handleGoroutinePanics(true, func() {
 					if err := to.SendEvent(&packets.Event{
 						Type:       packets.EventCustom,
@@ -236,8 +190,8 @@ func MigrateDevices(
 						endOffset = uint64(input.storage.Size())
 					}
 
-					startBlock := int(offset / int64(input.prev.blockSize))
-					endBlock := int((endOffset-1)/uint64(input.prev.blockSize)) + 1
+					startBlock := int(offset / int64(input.Device.BlockSize))
+					endBlock := int((endOffset-1)/uint64(input.Device.BlockSize)) + 1
 					for b := startBlock; b < endBlock; b++ {
 						input.orderer.PrioritiseBlock(b)
 					}
@@ -264,7 +218,7 @@ func MigrateDevices(
 				}
 			})
 
-			cfg := migrator.NewMigratorConfig().WithBlockSize(int(input.prev.blockSize))
+			cfg := migrator.NewMigratorConfig().WithBlockSize(int(input.Device.BlockSize))
 			cfg.Concurrency = map[int]int{
 				storage.BlockTypeAny:      concurrency,
 				storage.BlockTypeStandard: concurrency,
