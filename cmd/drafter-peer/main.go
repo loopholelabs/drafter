@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/loopholelabs/drafter/pkg/config"
@@ -57,7 +58,7 @@ func main() {
 	diskBlockSizeDevice := flag.Uint64("disk-block-size-device", 4096, "Disk block size for NBD device")
 	configBlockSizeDevice := flag.Uint64("config-block-size-device", 4096, "Config block size for NBD device")
 
-	raddr := flag.String("raddr", "localhost:1337", "Remote address to connect to")
+	raddr := flag.String("raddr", "localhost:1337", "Remote address to connect to (leave empty to disable)")
 
 	flag.Parse()
 
@@ -74,13 +75,22 @@ func main() {
 		panic(err)
 	}
 
-	conn, err := net.Dial("tcp", *raddr)
-	if err != nil {
-		panic(err)
-	}
-	defer conn.Close()
+	var (
+		readers []io.Reader
+		writers []io.Writer
+	)
+	if strings.TrimSpace(*raddr) != "" {
+		conn, err := net.Dial("tcp", *raddr)
+		if err != nil {
+			panic(err)
+		}
+		defer conn.Close()
 
-	log.Println("Migrating from", conn.RemoteAddr())
+		log.Println("Migrating from", conn.RemoteAddr())
+
+		readers = []io.Reader{conn}
+		writers = []io.Writer{conn}
+	}
 
 	var errs error
 	defer func() {
@@ -186,8 +196,8 @@ func main() {
 		*diskBlockSizeDevice,
 		*configBlockSizeDevice,
 
-		[]io.Reader{conn},
-		[]io.Writer{conn},
+		readers,
+		writers,
 
 		roles.MigrateFromHooks{
 			OnRemoteDeviceReceived: func(remoteDeviceID uint32, name string) {

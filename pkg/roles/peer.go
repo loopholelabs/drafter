@@ -249,210 +249,217 @@ func StartPeer(
 
 			receivedRemoteDevicesLock sync.Mutex
 			receivedRemoteDevices     []string
+
+			pro *protocol.ProtocolRW
 		)
-		pro := protocol.NewProtocolRW(
-			protocolCtx, // We don't track this because we return the wait function
-			readers,
-			writers,
-			func(p protocol.Protocol, index uint32) {
-				var (
-					from  *protocol.FromProtocol
-					local *waitingcache.WaitingCacheLocal
-				)
-				from = protocol.NewFromProtocol(
-					index,
-					func(di *packets.DevInfo) storage.StorageProvider {
-						defer handlePanics(false)()
+		if len(readers) > 0 && len(writers) > 0 { // Only open the protocol if we want passed in readers and writers
+			pro = protocol.NewProtocolRW(
+				protocolCtx, // We don't track this because we return the wait function
+				readers,
+				writers,
+				func(p protocol.Protocol, index uint32) {
+					var (
+						from  *protocol.FromProtocol
+						local *waitingcache.WaitingCacheLocal
+					)
+					from = protocol.NewFromProtocol(
+						index,
+						func(di *packets.DevInfo) storage.StorageProvider {
+							defer handlePanics(false)()
 
-						var (
-							path            = ""
-							blockSizeDevice = uint64(0)
-						)
-						switch di.Name {
-						case config.ConfigName:
-							path = configPath
-							blockSizeDevice = configBlockSizeDevice
+							var (
+								path            = ""
+								blockSizeDevice = uint64(0)
+							)
+							switch di.Name {
+							case config.ConfigName:
+								path = configPath
+								blockSizeDevice = configBlockSizeDevice
 
-						case config.DiskName:
-							path = diskPath
-							blockSizeDevice = diskBlockSizeDevice
+							case config.DiskName:
+								path = diskPath
+								blockSizeDevice = diskBlockSizeDevice
 
-						case config.InitramfsName:
-							path = initramfsPath
-							blockSizeDevice = initramfsBlockSizeDevice
+							case config.InitramfsName:
+								path = initramfsPath
+								blockSizeDevice = initramfsBlockSizeDevice
 
-						case config.KernelName:
-							path = kernelPath
-							blockSizeDevice = kernelBlockSizeDevice
+							case config.KernelName:
+								path = kernelPath
+								blockSizeDevice = kernelBlockSizeDevice
 
-						case config.MemoryName:
-							path = memoryPath
-							blockSizeDevice = memoryBlockSizeDevice
+							case config.MemoryName:
+								path = memoryPath
+								blockSizeDevice = memoryBlockSizeDevice
 
-						case config.StateName:
-							path = statePath
-							blockSizeDevice = stateBlockSizeDevice
-						}
-
-						if strings.TrimSpace(path) == "" {
-							panic(ErrUnknownDeviceName)
-						}
-
-						receivedRemoteDevicesLock.Lock()
-						receivedRemoteDevices = append(receivedRemoteDevices, di.Name)
-						receivedRemoteDevicesLock.Unlock()
-
-						receivedButNotReadyRemoteDevices.Add(1)
-
-						if hook := hooks.OnRemoteDeviceReceived; hook != nil {
-							hook(index, di.Name)
-						}
-
-						if err := os.MkdirAll(filepath.Dir(path), os.ModePerm); err != nil {
-							panic(err)
-						}
-
-						storage, err := sources.NewFileStorageCreate(path, int64(di.Size))
-						if err != nil {
-							panic(err)
-						}
-
-						var remote *waitingcache.WaitingCacheRemote
-						local, remote = waitingcache.NewWaitingCache(storage, int(di.Block_size))
-						local.NeedAt = func(offset int64, length int32) {
-							// Only access the `from` protocol if it's not already closed
-							select {
-							case <-protocolCtx.Done():
-								return
-
-							default:
+							case config.StateName:
+								path = statePath
+								blockSizeDevice = stateBlockSizeDevice
 							}
 
-							if err := from.NeedAt(offset, length); err != nil {
+							if strings.TrimSpace(path) == "" {
+								panic(ErrUnknownDeviceName)
+							}
+
+							receivedRemoteDevicesLock.Lock()
+							receivedRemoteDevices = append(receivedRemoteDevices, di.Name)
+							receivedRemoteDevicesLock.Unlock()
+
+							receivedButNotReadyRemoteDevices.Add(1)
+
+							if hook := hooks.OnRemoteDeviceReceived; hook != nil {
+								hook(index, di.Name)
+							}
+
+							if err := os.MkdirAll(filepath.Dir(path), os.ModePerm); err != nil {
 								panic(err)
 							}
-						}
-						local.DontNeedAt = func(offset int64, length int32) {
-							// Only access the `from` protocol if it's not already closed
-							select {
-							case <-protocolCtx.Done():
-								return
 
-							default:
-							}
-
-							if err := from.DontNeedAt(offset, length); err != nil {
+							storage, err := sources.NewFileStorageCreate(path, int64(di.Size))
+							if err != nil {
 								panic(err)
 							}
-						}
 
-						device := expose.NewExposedStorageNBDNL(local, 1, 0, local.Size(), blockSizeDevice, true)
+							var remote *waitingcache.WaitingCacheRemote
+							local, remote = waitingcache.NewWaitingCache(storage, int(di.Block_size))
+							local.NeedAt = func(offset int64, length int32) {
+								// Only access the `from` protocol if it's not already closed
+								select {
+								case <-protocolCtx.Done():
+									return
 
-						if err := device.Init(); err != nil {
-							panic(err)
-						}
-
-						deviceCloseFuncsLock.Lock()
-						deviceCloseFuncs = append(deviceCloseFuncs, device.Close)    // defer device.Close()
-						deviceCloseFuncs = append(deviceCloseFuncs, device.Shutdown) // defer device.Shutdown()
-						deviceCloseFuncsLock.Unlock()
-
-						devicePath := filepath.Join("/dev", device.Device())
-
-						deviceInfo, err := os.Stat(devicePath)
-						if err != nil {
-							panic(err)
-						}
-
-						deviceStat, ok := deviceInfo.Sys().(*syscall.Stat_t)
-						if !ok {
-							panic(ErrCouldNotGetNBDDeviceStat)
-						}
-
-						deviceMajor := uint64(deviceStat.Rdev / 256)
-						deviceMinor := uint64(deviceStat.Rdev % 256)
-
-						deviceID := int((deviceMajor << 8) | deviceMinor)
-
-						if err := unix.Mknod(filepath.Join(runner.VMPath, di.Name), unix.S_IFBLK|0666, deviceID); err != nil {
-							panic(err)
-						}
-
-						if hook := hooks.OnRemoteDeviceExposed; hook != nil {
-							hook(index, devicePath)
-						}
-
-						return remote
-					},
-					p,
-				)
-
-				handleGoroutinePanics(true, func() {
-					if err := from.HandleReadAt(); err != nil {
-						panic(err)
-					}
-				})
-
-				handleGoroutinePanics(true, func() {
-					if err := from.HandleWriteAt(); err != nil {
-						panic(err)
-					}
-				})
-
-				handleGoroutinePanics(true, func() {
-					if err := from.HandleDevInfo(); err != nil {
-						panic(err)
-					}
-				})
-
-				handleGoroutinePanics(true, func() {
-					if err := from.HandleEvent(func(e *packets.Event) {
-						switch e.Type {
-						case packets.EventCustom:
-							switch e.CustomType {
-							case byte(EventCustomAllDevicesSent):
-								cancelAllRemoteDevicesReceivedCtx()
-
-								if hook := hooks.OnRemoteAllDevicesReceived; hook != nil {
-									hook()
+								default:
 								}
 
-							case byte(EventCustomTransferAuthority):
-								if receivedButNotReadyRemoteDevices.Add(-1) <= 0 {
-									cancelAllRemoteDevicesReadyCtx()
+								if err := from.NeedAt(offset, length); err != nil {
+									panic(err)
+								}
+							}
+							local.DontNeedAt = func(offset int64, length int32) {
+								// Only access the `from` protocol if it's not already closed
+								select {
+								case <-protocolCtx.Done():
+									return
+
+								default:
 								}
 
-								if hook := hooks.OnRemoteDeviceAuthorityReceived; hook != nil {
+								if err := from.DontNeedAt(offset, length); err != nil {
+									panic(err)
+								}
+							}
+
+							device := expose.NewExposedStorageNBDNL(local, 1, 0, local.Size(), blockSizeDevice, true)
+
+							if err := device.Init(); err != nil {
+								panic(err)
+							}
+
+							deviceCloseFuncsLock.Lock()
+							deviceCloseFuncs = append(deviceCloseFuncs, device.Close)    // defer device.Close()
+							deviceCloseFuncs = append(deviceCloseFuncs, device.Shutdown) // defer device.Shutdown()
+							deviceCloseFuncsLock.Unlock()
+
+							devicePath := filepath.Join("/dev", device.Device())
+
+							deviceInfo, err := os.Stat(devicePath)
+							if err != nil {
+								panic(err)
+							}
+
+							deviceStat, ok := deviceInfo.Sys().(*syscall.Stat_t)
+							if !ok {
+								panic(ErrCouldNotGetNBDDeviceStat)
+							}
+
+							deviceMajor := uint64(deviceStat.Rdev / 256)
+							deviceMinor := uint64(deviceStat.Rdev % 256)
+
+							deviceID := int((deviceMajor << 8) | deviceMinor)
+
+							if err := unix.Mknod(filepath.Join(runner.VMPath, di.Name), unix.S_IFBLK|0666, deviceID); err != nil {
+								panic(err)
+							}
+
+							if hook := hooks.OnRemoteDeviceExposed; hook != nil {
+								hook(index, devicePath)
+							}
+
+							return remote
+						},
+						p,
+					)
+
+					handleGoroutinePanics(true, func() {
+						if err := from.HandleReadAt(); err != nil {
+							panic(err)
+						}
+					})
+
+					handleGoroutinePanics(true, func() {
+						if err := from.HandleWriteAt(); err != nil {
+							panic(err)
+						}
+					})
+
+					handleGoroutinePanics(true, func() {
+						if err := from.HandleDevInfo(); err != nil {
+							panic(err)
+						}
+					})
+
+					handleGoroutinePanics(true, func() {
+						if err := from.HandleEvent(func(e *packets.Event) {
+							switch e.Type {
+							case packets.EventCustom:
+								switch e.CustomType {
+								case byte(EventCustomAllDevicesSent):
+									cancelAllRemoteDevicesReceivedCtx()
+
+									if hook := hooks.OnRemoteAllDevicesReceived; hook != nil {
+										hook()
+									}
+
+								case byte(EventCustomTransferAuthority):
+									if receivedButNotReadyRemoteDevices.Add(-1) <= 0 {
+										cancelAllRemoteDevicesReadyCtx()
+									}
+
+									if hook := hooks.OnRemoteDeviceAuthorityReceived; hook != nil {
+										hook(index)
+									}
+								}
+
+							case packets.EventCompleted:
+								if hook := hooks.OnRemoteDeviceMigrationCompleted; hook != nil {
 									hook(index)
 								}
 							}
+						}); err != nil {
+							panic(err)
+						}
+					})
 
-						case packets.EventCompleted:
-							if hook := hooks.OnRemoteDeviceMigrationCompleted; hook != nil {
-								hook(index)
+					handleGoroutinePanics(true, func() {
+						if err := from.HandleDirtyList(func(blocks []uint) {
+							if local != nil {
+								local.DirtyBlocks(blocks)
 							}
+						}); err != nil {
+							panic(err)
 						}
-					}); err != nil {
-						panic(err)
-					}
+					})
 				})
-
-				handleGoroutinePanics(true, func() {
-					if err := from.HandleDirtyList(func(blocks []uint) {
-						if local != nil {
-							local.DirtyBlocks(blocks)
-						}
-					}); err != nil {
-						panic(err)
-					}
-				})
-			})
+		}
 
 		migratedPeer.Wait = sync.OnceValue(func() error {
 			defer cancelProtocolCtx()
 
-			if err := pro.Handle(); err != nil && !errors.Is(err, io.EOF) {
-				return err
+			// If we haven't opened the protocol, don't wait for it
+			if pro != nil {
+				if err := pro.Handle(); err != nil && !errors.Is(err, io.EOF) {
+					return err
+				}
 			}
 
 			// If it hasn't sent any devices, the remote Silo peer doesn't send `EventCustomAllDevicesSent`
