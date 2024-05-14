@@ -59,10 +59,23 @@ type MigratedPeer struct {
 
 		resumeTimeout time.Duration,
 	) (
-		resumedPeer *ResumedRunner,
+		resumedPeer *ResumedPeer,
 
 		errs error,
 	)
+}
+
+type ResumedPeer struct {
+	Wait  func() error
+	Close func() error
+
+	SuspendAndCloseAgentServer func(ctx context.Context, resumeTimeout time.Duration) error
+
+	MakeMigratable func(ctx context.Context) (migratablePeer *MigratablePeer, errs error)
+}
+
+type MigratablePeer struct {
+	Close func()
 }
 
 type peerStage1 struct {
@@ -73,6 +86,27 @@ type peerStage1 struct {
 	state   string
 
 	blockSize uint32
+}
+
+type peerStage2 struct {
+	name string
+
+	blockSize uint32
+
+	id     uint32
+	remote bool
+
+	storage storage.StorageProvider
+	device  storage.ExposedStorage
+}
+
+type peerStage3 struct {
+	prev peerStage2
+
+	storage     *modules.Lockable
+	orderer     *blocks.PriorityBlockOrder
+	totalBlocks int
+	dirtyRemote *dirtytracker.DirtyTrackerRemote
 }
 
 type Peer struct {
@@ -263,8 +297,8 @@ func StartPeer(
 			deviceCloseFuncsLock sync.Mutex
 			deviceCloseFuncs     []func() error
 
-			receivedRemoteDevicesLock sync.Mutex
-			receivedRemoteDevices     []string
+			stage2InputsLock sync.Mutex
+			stage2Inputs     = []peerStage2{}
 
 			pro *protocol.ProtocolRW
 		)
@@ -309,10 +343,6 @@ func StartPeer(
 							if strings.TrimSpace(base) == "" {
 								panic(ErrUnknownDeviceName)
 							}
-
-							receivedRemoteDevicesLock.Lock()
-							receivedRemoteDevices = append(receivedRemoteDevices, di.Name)
-							receivedRemoteDevicesLock.Unlock()
 
 							receivedButNotReadyRemoteDevices.Add(1)
 
@@ -370,6 +400,20 @@ func StartPeer(
 							}
 
 							device.SetProvider(local)
+
+							stage2InputsLock.Lock()
+							stage2Inputs = append(stage2Inputs, peerStage2{
+								name: di.Name,
+
+								blockSize: di.Block_size,
+
+								id:     index,
+								remote: true,
+
+								storage: local,
+								device:  device,
+							})
+							stage2InputsLock.Unlock()
 
 							devicePath := filepath.Join("/dev", device.Device())
 
@@ -616,9 +660,9 @@ func StartPeer(
 		stage1Inputs := []peerStage1{}
 		for _, input := range allStage1Inputs {
 			if slices.ContainsFunc(
-				receivedRemoteDevices,
-				func(r string) bool {
-					return input.name == r
+				stage2Inputs,
+				func(r peerStage2) bool {
+					return input.name == r.name
 				},
 			) {
 				continue
@@ -650,11 +694,11 @@ func StartPeer(
 				}
 
 				var (
-					src    storage.StorageProvider
+					local  storage.StorageProvider
 					device storage.ExposedStorage
 				)
 				if strings.TrimSpace(input.overlay) == "" || strings.TrimSpace(input.state) == "" {
-					src, device, err = sdevice.NewDevice(&sconfig.DeviceSchema{
+					local, device, err = sdevice.NewDevice(&sconfig.DeviceSchema{
 						Name:      input.name,
 						System:    "file",
 						Location:  input.base,
@@ -671,7 +715,7 @@ func StartPeer(
 						return err
 					}
 
-					src, device, err = sdevice.NewDevice(&sconfig.DeviceSchema{
+					local, device, err = sdevice.NewDevice(&sconfig.DeviceSchema{
 						Name:      input.name,
 						System:    "sparsefile",
 						Location:  input.overlay,
@@ -689,26 +733,24 @@ func StartPeer(
 				if err != nil {
 					return err
 				}
-				addDefer(src.Close)
+				addDefer(local.Close)
 				addDefer(device.Shutdown)
-
-				metrics := modules.NewMetrics(src)
-				dirtyLocal, _ := dirtytracker.NewDirtyTracker(metrics, int(input.blockSize))
-				monitor := volatilitymonitor.NewVolatilityMonitor(dirtyLocal, int(input.blockSize), 10*time.Second)
-
-				local := modules.NewLockable(monitor)
-				addDefer(func() error {
-					local.Unlock()
-
-					return nil
-				})
 
 				device.SetProvider(local)
 
-				totalBlocks := (int(local.Size()) + int(input.blockSize) - 1) / int(input.blockSize)
+				stage2InputsLock.Lock()
+				stage2Inputs = append(stage2Inputs, peerStage2{
+					name: input.name,
 
-				orderer := blocks.NewPriorityBlockOrder(totalBlocks, monitor)
-				orderer.AddAll()
+					blockSize: input.blockSize,
+
+					id:     uint32(index),
+					remote: false,
+
+					storage: local,
+					device:  device,
+				})
+				stage2InputsLock.Unlock()
 
 				devicePath := filepath.Join("/dev", device.Device())
 
@@ -759,7 +801,7 @@ func StartPeer(
 			break
 		}
 
-		migratedPeer.Resume = func(ctx context.Context, resumeTimeout time.Duration) (resumedPeer *ResumedRunner, errs error) {
+		migratedPeer.Resume = func(ctx context.Context, resumeTimeout time.Duration) (resumedPeer *ResumedPeer, errs error) {
 			packageConfigFile, err := os.Open(configBasePath)
 			if err != nil {
 				return nil, err
@@ -771,7 +813,67 @@ func StartPeer(
 				return nil, err
 			}
 
-			return runner.Resume(ctx, resumeTimeout, packageConfig.AgentVSockPort)
+			resumedRunner, err := runner.Resume(ctx, resumeTimeout, packageConfig.AgentVSockPort)
+			if err != nil {
+				return nil, err
+			}
+
+			return &ResumedPeer{
+				Wait:  resumedRunner.Wait,
+				Close: resumedRunner.Close,
+
+				SuspendAndCloseAgentServer: resumedRunner.SuspendAndCloseAgentServer,
+
+				MakeMigratable: func(ctx context.Context) (migratablePeer *MigratablePeer, errs error) {
+					migratablePeer = &MigratablePeer{}
+
+					_, deferFuncs, err := iutils.ConcurrentMap(
+						stage2Inputs,
+						func(index int, input peerStage2, output *peerStage3, addDefer func(deferFunc func() error)) error {
+							output.prev = input
+
+							metrics := modules.NewMetrics(input.storage)
+							dirtyLocal, dirtyRemote := dirtytracker.NewDirtyTracker(metrics, int(input.blockSize))
+							output.dirtyRemote = dirtyRemote
+							monitor := volatilitymonitor.NewVolatilityMonitor(dirtyLocal, int(input.blockSize), 10*time.Second)
+
+							local := modules.NewLockable(monitor)
+							output.storage = local
+							addDefer(func() error {
+								local.Unlock()
+
+								return nil
+							})
+
+							input.device.SetProvider(local)
+
+							totalBlocks := (int(local.Size()) + int(input.blockSize) - 1) / int(input.blockSize)
+							output.totalBlocks = totalBlocks
+
+							orderer := blocks.NewPriorityBlockOrder(totalBlocks, monitor)
+							output.orderer = orderer
+							orderer.AddAll()
+
+							return nil
+						},
+					)
+
+					migratablePeer.Close = func() {
+						// Make sure that we schedule the `deferFuncs` even if we get an error
+						for _, deferFuncs := range deferFuncs {
+							for _, deferFunc := range deferFuncs {
+								defer deferFunc() // We can safely ignore errors here since we never call `addDefer` with a function that could return an error
+							}
+						}
+					}
+
+					if err != nil {
+						panic(err)
+					}
+
+					return
+				},
+			}, nil
 		}
 
 		return

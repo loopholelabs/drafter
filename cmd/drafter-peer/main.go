@@ -66,6 +66,7 @@ func main() {
 	configBlockSize := flag.Uint("config-block-size", 1024*64, "Config block size")
 
 	raddr := flag.String("raddr", "localhost:1337", "Remote address to connect to (leave empty to disable)")
+	laddr := flag.String("laddr", "localhost:1337", "Local address to listen on (leave empty to disable)")
 
 	flag.Parse()
 
@@ -307,6 +308,22 @@ func main() {
 		panic(err)
 	}
 
+	migratablePeer, err := resumedPeer.MakeMigratable(ctx)
+
+	if err != nil {
+		panic(err)
+	}
+
+	defer migratablePeer.Close()
+
+	lis, err := net.Listen("tcp", *laddr)
+	if err != nil {
+		panic(err)
+	}
+	defer lis.Close()
+
+	log.Println("Serving on", lis.Addr())
+
 	before = time.Now()
 
 	if err := resumedPeer.SuspendAndCloseAgentServer(ctx, *resumeTimeout); err != nil {
@@ -314,8 +331,6 @@ func main() {
 	}
 
 	log.Println("Suspend:", time.Since(before))
-
-	// TODO: Become migratable
 
 	log.Println("Shutting down")
 }
