@@ -32,7 +32,6 @@ type Device struct {
 type OpenedDevice struct {
 	Device Device
 
-	size        uint64
 	storage     *modules.Lockable
 	orderer     *blocks.PriorityBlockOrder
 	totalBlocks int
@@ -57,13 +56,12 @@ func OpenDevices(
 			if err != nil {
 				return err
 			}
-			output.size = uint64(stat.Size())
 
 			src, _, err := device.NewDevice(&config.DeviceSchema{
 				Name:      input.Name,
 				System:    "file",
 				Location:  input.Base,
-				Size:      fmt.Sprintf("%v", output.size),
+				Size:      fmt.Sprintf("%v", stat.Size()),
 				BlockSize: fmt.Sprintf("%v", input.BlockSize),
 				Expose:    false,
 			})
