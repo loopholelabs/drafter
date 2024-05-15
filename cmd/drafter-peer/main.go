@@ -68,6 +68,8 @@ func main() {
 	raddr := flag.String("raddr", "localhost:1337", "Remote address to connect to (leave empty to disable)")
 	laddr := flag.String("laddr", "localhost:1337", "Local address to listen on (leave empty to disable)")
 
+	concurrency := flag.Int("concurrency", 4096, "Amount of concurrent workers to use in migrations")
+
 	flag.Parse()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -232,7 +234,7 @@ func main() {
 				log.Println("Received all remote devices")
 			},
 			OnRemoteAllMigrationsCompleted: func() {
-				log.Println("Completed all remote migrations")
+				log.Println("Completed all remote device migrations")
 			},
 
 			OnLocalDeviceRequested: func(localDeviceID uint32, name string) {
@@ -308,14 +310,6 @@ func main() {
 		panic(err)
 	}
 
-	migratablePeer, err := resumedPeer.MakeMigratable(ctx)
-
-	if err != nil {
-		panic(err)
-	}
-
-	defer migratablePeer.Close()
-
 	lis, err := net.Listen("tcp", *laddr)
 	if err != nil {
 		panic(err)
@@ -324,13 +318,79 @@ func main() {
 
 	log.Println("Serving on", lis.Addr())
 
-	before = time.Now()
+	conn, err := lis.Accept()
+	if err != nil {
+		panic(err)
+	}
+	defer conn.Close()
 
-	if err := resumedPeer.SuspendAndCloseAgentServer(ctx, *resumeTimeout); err != nil {
+	log.Println("Migrating to", conn.RemoteAddr())
+
+	migratablePeer, err := resumedPeer.MakeMigratable(ctx)
+
+	if err != nil {
 		panic(err)
 	}
 
-	log.Println("Suspend:", time.Since(before))
+	defer migratablePeer.Close()
+
+	before = time.Now()
+	if err := migratablePeer.MigrateTo(
+		ctx,
+
+		*resumeTimeout,
+		*concurrency,
+
+		[]io.Reader{conn},
+		[]io.Writer{conn},
+
+		roles.MigrateToHooks{
+			OnBeforeSuspend: func() {
+				before = time.Now()
+			},
+			OnAfterSuspend: func() {
+				log.Println("Suspend:", time.Since(before))
+			},
+
+			OnDeviceSent: func(deviceID uint32, remote bool) {
+				if remote {
+					log.Println("Sent remote device", deviceID)
+				} else {
+					log.Println("Sent local device", deviceID)
+				}
+			},
+			OnDeviceAuthoritySent: func(deviceID uint32, remote bool) {
+				if remote {
+					log.Println("Sent authority for remote device", deviceID)
+				} else {
+					log.Println("Sent authority for local device", deviceID)
+				}
+			},
+			OnDeviceMigrationProgress: func(deviceID uint32, remote bool, ready, total int) {
+				if remote {
+					log.Println("Migrated", ready, "of", total, "blocks for remote device", deviceID)
+				} else {
+					log.Println("Migrated", ready, "of", total, "blocks for local device", deviceID)
+				}
+			},
+			OnDeviceMigrationCompleted: func(deviceID uint32, remote bool) {
+				if remote {
+					log.Println("Completed migration of remote device", deviceID)
+				} else {
+					log.Println("Completed migration of local device", deviceID)
+				}
+			},
+
+			OnAllDevicesSent: func() {
+				log.Println("Sent all devices")
+			},
+			OnAllMigrationsCompleted: func() {
+				log.Println("Completed all device migrations")
+			},
+		},
+	); err != nil {
+		panic(err)
+	}
 
 	log.Println("Shutting down")
 }

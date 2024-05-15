@@ -92,7 +92,7 @@ func main() {
 				log.Println("Received all devices")
 			},
 			OnAllMigrationsCompleted: func() {
-				log.Println("Completed all migrations")
+				log.Println("Completed all device migrations")
 			},
 		},
 	); err != nil {

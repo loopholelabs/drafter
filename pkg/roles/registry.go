@@ -275,7 +275,7 @@ func MigrateOpenedDevices(
 
 	for _, deferFuncs := range deferFuncs {
 		for _, deferFunc := range deferFuncs {
-			defer deferFunc()
+			defer deferFunc() // We can safely ignore errors here since we never call `addDefer` with a function that could return an error
 		}
 	}
 

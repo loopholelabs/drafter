@@ -42,7 +42,7 @@ type ResumedRunner struct {
 	Close func() error
 
 	Msync                      func(ctx context.Context) error
-	SuspendAndCloseAgentServer func(ctx context.Context, resumeTimeout time.Duration) error
+	SuspendAndCloseAgentServer func(ctx context.Context, suspendTimeout time.Duration) error
 }
 
 func StartRunner(
@@ -287,9 +287,9 @@ func StartRunner(
 			)
 		}
 
-		resumedRunner.SuspendAndCloseAgentServer = func(ctx context.Context, resumeTimeout time.Duration) error {
+		resumedRunner.SuspendAndCloseAgentServer = func(ctx context.Context, suspendTimeout time.Duration) error {
 			{
-				ctx, cancel := context.WithTimeout(ctx, resumeTimeout)
+				ctx, cancel := context.WithTimeout(ctx, suspendTimeout)
 				defer cancel()
 
 				if err := acceptingAgent.Remote.BeforeSuspend(ctx); err != nil {
