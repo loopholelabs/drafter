@@ -47,7 +47,11 @@ func DialContext(
 				panic(err)
 			}
 
-			panic(ctx.Err())
+			if err := ctx.Err(); err != nil {
+				panic(ctx.Err())
+			}
+
+			return
 		}
 	})
 

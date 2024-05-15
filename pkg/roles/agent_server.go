@@ -113,7 +113,11 @@ func StartAgentServer(
 			defer closeLock.Unlock()
 
 			if closed && errors.Is(err, net.ErrClosed) { // Don't treat closed errors as errors if we closed the connection
-				panic(internalCtx.Err())
+				if err := internalCtx.Err(); err != nil {
+					panic(internalCtx.Err())
+				}
+
+				return
 			}
 
 			panic(errors.Join(ErrAgentClientAcceptFailed, err))
@@ -223,7 +227,11 @@ func StartAgentServer(
 
 		select {
 		case <-internalCtx.Done():
-			panic(internalCtx.Err())
+			if err := internalCtx.Err(); err != nil {
+				panic(internalCtx.Err())
+			}
+
+			return
 		case <-readyCtx.Done():
 			break
 		}

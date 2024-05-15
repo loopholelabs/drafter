@@ -621,7 +621,11 @@ func StartPeer(
 
 		select {
 		case <-internalCtx.Done():
-			panic(internalCtx.Err())
+			if err := internalCtx.Err(); err != nil {
+				panic(internalCtx.Err())
+			}
+
+			return
 		case <-allRemoteDevicesReceivedCtx.Done():
 			break
 		}
@@ -822,7 +826,11 @@ func StartPeer(
 
 		select {
 		case <-internalCtx.Done():
-			panic(internalCtx.Err())
+			if err := internalCtx.Err(); err != nil {
+				panic(internalCtx.Err())
+			}
+
+			return
 		case <-allRemoteDevicesReadyCtx.Done():
 			break
 		}

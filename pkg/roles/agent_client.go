@@ -173,7 +173,11 @@ func StartAgentClient(
 
 	select {
 	case <-internalCtx.Done():
-		panic(internalCtx.Err())
+		if err := internalCtx.Err(); err != nil {
+			panic(internalCtx.Err())
+		}
+
+		return
 	case <-readyCtx.Done():
 		break
 	}
