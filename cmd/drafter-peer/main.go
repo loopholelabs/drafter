@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"io"
 	"log"
@@ -11,6 +12,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/loopholelabs/drafter/pkg/config"
@@ -118,11 +120,19 @@ func main() {
 	defer cancel()
 	defer handlePanics(false)()
 
+	bubbleSignals := false
+
+	done := make(chan os.Signal, 1)
 	go func() {
-		done := make(chan os.Signal, 1)
 		signal.Notify(done, os.Interrupt)
 
-		<-done
+		v := <-done
+
+		if bubbleSignals {
+			done <- v
+
+			return
+		}
 
 		log.Println("Exiting gracefully")
 
@@ -310,18 +320,73 @@ func main() {
 		panic(err)
 	}
 
+	var (
+		closeLock sync.Mutex
+		closed    bool
+	)
 	lis, err := net.Listen("tcp", *laddr)
 	if err != nil {
 		panic(err)
 	}
 	defer lis.Close()
+	defer func() {
+		closeLock.Lock()
+		defer closeLock.Unlock()
+
+		closed = true
+	}()
 
 	log.Println("Serving on", lis.Addr())
 
-	conn, err := lis.Accept()
-	if err != nil {
-		panic(err)
+	// We use `context.Background` here because we want to distinguish between a cancellation and a successful accept
+	// We select between `acceptedCtx` and `ctx` on all code paths so we don't leak the context
+	acceptedCtx, cancelAcceptedCtx := context.WithCancel(context.Background())
+	defer cancelAcceptedCtx()
+
+	var conn net.Conn
+	handleGoroutinePanics(true, func() {
+		conn, err = lis.Accept()
+		if err != nil {
+			closeLock.Lock()
+			defer closeLock.Unlock()
+
+			if closed && errors.Is(err, net.ErrClosed) { // Don't treat closed errors as errors if we closed the connection
+				if err := ctx.Err(); err != nil {
+					panic(ctx.Err())
+				}
+
+				return
+			}
+
+			panic(err)
+		}
+
+		cancelAcceptedCtx()
+	})
+
+	bubbleSignals = true
+
+	select {
+	case <-ctx.Done():
+		return
+
+	case <-done:
+		before = time.Now()
+
+		if err := resumedPeer.SuspendAndCloseAgentServer(ctx, *resumeTimeout); err != nil {
+			panic(err)
+		}
+
+		log.Println("Suspend:", time.Since(before))
+
+		log.Println("Shutting down")
+
+		return
+
+	case <-acceptedCtx.Done():
+		break
 	}
+
 	defer conn.Close()
 
 	log.Println("Migrating to", conn.RemoteAddr())

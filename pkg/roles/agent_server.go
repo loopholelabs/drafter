@@ -67,12 +67,12 @@ func StartAgentServer(
 		closeLock.Lock()
 		defer closeLock.Unlock()
 
+		closed = true
+
 		// We need to remove this file first so that the client can't try to reconnect
 		_ = os.Remove(agentServer.VSockPath) // We ignore errors here since the file might already have been removed, but we don't want to use `RemoveAll` cause it could remove a directory
 
 		_ = lis.Close() // We ignore errors here since we might interrupt a network connection
-
-		closed = true
 	}
 
 	agentServer.Accept = func(acceptCtx context.Context, remoteCtx context.Context) (acceptingAgentServer *AcceptingAgentServer, errs error) {
@@ -122,9 +122,9 @@ func StartAgentServer(
 		acceptingAgentServer.Close = func() error {
 			closeLock.Lock()
 
-			_ = conn.Close() // We ignore errors here since we might interrupt a network connection
-
 			closed = true
+
+			_ = conn.Close() // We ignore errors here since we might interrupt a network connection
 
 			closeLock.Unlock()
 

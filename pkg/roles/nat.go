@@ -157,11 +157,11 @@ func CreateNAT(
 		defer closeLock.Unlock()
 
 		if !closed {
+			closed = true
+
 			if err := network.RemoveNAT(hostInterface); err != nil {
 				errs = errors.Join(errs, err)
 			}
-
-			closed = true
 		}
 
 		// No need to call `.Wait()` here since `.Wait()` is just waiting for us to cancel the in-progress context

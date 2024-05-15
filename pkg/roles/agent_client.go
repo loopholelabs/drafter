@@ -86,9 +86,9 @@ func StartAgentClient(
 		closeLock.Lock()
 		defer closeLock.Unlock()
 
-		_ = conn.Close() // We ignore errors here since we might interrupt a network connection
-
 		closed = true
+
+		_ = conn.Close() // We ignore errors here since we might interrupt a network connection
 	}
 
 	// We intentionally don't call `wg.Add` and `wg.Done` here - we are ok with leaking this
