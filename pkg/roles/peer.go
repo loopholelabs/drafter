@@ -291,10 +291,10 @@ func StartPeer(
 
 		// We use the background context here instead of the internal context because we want to distinguish
 		// between a context cancellation from the outside and getting a response
-		allRemoteDevicesReceivedCtx, cancelAllRemoteDevicesReceivedCtx := context.WithCancel(ctx)
+		allRemoteDevicesReceivedCtx, cancelAllRemoteDevicesReceivedCtx := context.WithCancel(context.Background())
 		defer cancelAllRemoteDevicesReceivedCtx()
 
-		allRemoteDevicesReadyCtx, cancelAllRemoteDevicesReadyCtx := context.WithCancel(ctx)
+		allRemoteDevicesReadyCtx, cancelAllRemoteDevicesReadyCtx := context.WithCancel(context.Background())
 		defer cancelAllRemoteDevicesReadyCtx()
 
 		// We don't `defer cancelProtocolCtx()` this because we cancel in the wait function
@@ -458,8 +458,18 @@ func StartPeer(
 
 							deviceID := int((deviceMajor << 8) | deviceMinor)
 
-							if err := unix.Mknod(filepath.Join(runner.VMPath, di.Name), unix.S_IFBLK|0666, deviceID); err != nil {
-								panic(err)
+							select {
+							case <-internalCtx.Done():
+								if err := internalCtx.Err(); err != nil {
+									panic(internalCtx.Err())
+								}
+
+								return nil
+
+							default:
+								if err := unix.Mknod(filepath.Join(runner.VMPath, di.Name), unix.S_IFBLK|0666, deviceID); err != nil {
+									panic(err)
+								}
 							}
 
 							if hook := hooks.OnRemoteDeviceExposed; hook != nil {
@@ -799,8 +809,18 @@ func StartPeer(
 
 				deviceID := int((deviceMajor << 8) | deviceMinor)
 
-				if err := unix.Mknod(filepath.Join(runner.VMPath, input.name), unix.S_IFBLK|0666, deviceID); err != nil {
-					return err
+				select {
+				case <-internalCtx.Done():
+					if err := internalCtx.Err(); err != nil {
+						return internalCtx.Err()
+					}
+
+					return nil
+
+				default:
+					if err := unix.Mknod(filepath.Join(runner.VMPath, input.name), unix.S_IFBLK|0666, deviceID); err != nil {
+						return err
+					}
 				}
 
 				if hook := hooks.OnLocalDeviceExposed; hook != nil {

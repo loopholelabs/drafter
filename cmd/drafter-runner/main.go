@@ -294,8 +294,18 @@ func main() {
 
 			dev := int((major << 8) | minor)
 
-			if err := unix.Mknod(filepath.Join(runner.VMPath, resource[0]), unix.S_IFBLK|0666, dev); err != nil {
-				panic(err)
+			select {
+			case <-ctx.Done():
+				if err := ctx.Err(); err != nil {
+					panic(ctx.Err())
+				}
+
+				return
+
+			default:
+				if err := unix.Mknod(filepath.Join(runner.VMPath, resource[0]), unix.S_IFBLK|0666, dev); err != nil {
+					panic(err)
+				}
 			}
 		}
 	}

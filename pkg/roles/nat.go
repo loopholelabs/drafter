@@ -57,7 +57,7 @@ func CreateNAT(
 
 	// We use the background context here instead of the internal context because we want to distinguish
 	// between a context cancellation from the outside and getting a response
-	readyCtx, cancelReadyCtx := context.WithCancel(ctx)
+	readyCtx, cancelReadyCtx := context.WithCancel(context.Background())
 	defer cancelReadyCtx()
 
 	internalCtx, handlePanics, handleGoroutinePanics, cancel, wait, _ := utils.GetPanicHandler(
