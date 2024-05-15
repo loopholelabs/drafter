@@ -79,10 +79,12 @@ type MigrateToHooks struct {
 	OnBeforeSuspend func()
 	OnAfterSuspend  func()
 
-	OnDeviceSent               func(deviceID uint32, remote bool)
-	OnDeviceAuthoritySent      func(deviceID uint32, remote bool)
-	OnDeviceMigrationProgress  func(deviceID uint32, remote bool, ready int, total int)
-	OnDeviceMigrationCompleted func(deviceID uint32, remote bool)
+	OnDeviceSent                       func(deviceID uint32, remote bool)
+	OnDeviceAuthoritySent              func(deviceID uint32, remote bool)
+	OnDeviceInitialMigrationProgress   func(deviceID uint32, remote bool, ready int, total int)
+	OnDeviceContinousMigrationProgress func(deviceID uint32, remote bool, delta int)
+	OnDeviceFinalMigrationProgress     func(deviceID uint32, remote bool, delta int)
+	OnDeviceMigrationCompleted         func(deviceID uint32, remote bool)
 
 	OnAllDevicesSent         func()
 	OnAllMigrationsCompleted func()
@@ -93,6 +95,27 @@ type MigratablePeer struct {
 
 	MigrateTo func(
 		ctx context.Context,
+
+		stateMaxDirtyBlocks,
+		memoryMaxDirtyBlocks,
+		initramfsMaxDirtyBlocks,
+		kernelMaxDirtyBlocks,
+		diskMaxDirtyBlocks,
+		configMaxDirtyBlocks,
+
+		stateMinCycles,
+		memoryMinCycles,
+		initramfsMinCycles,
+		kernelMinCycles,
+		diskMinCycles,
+		configMinCycles,
+
+		stateMaxCycles,
+		memoryMaxCycles,
+		initramfsMaxCycles,
+		kernelMaxCycles,
+		diskMaxCycles,
+		configMaxCycles int,
 
 		suspendTimeout time.Duration,
 		concurrency int,
@@ -931,6 +954,27 @@ func StartPeer(
 					migratablePeer.MigrateTo = func(
 						ctx context.Context,
 
+						stateMaxDirtyBlocks,
+						memoryMaxDirtyBlocks,
+						initramfsMaxDirtyBlocks,
+						kernelMaxDirtyBlocks,
+						diskMaxDirtyBlocks,
+						configMaxDirtyBlocks,
+
+						stateMinCycles,
+						memoryMinCycles,
+						initramfsMinCycles,
+						kernelMinCycles,
+						diskMinCycles,
+						configMinCycles,
+
+						stateMaxCycles,
+						memoryMaxCycles,
+						initramfsMaxCycles,
+						kernelMaxCycles,
+						diskMaxCycles,
+						configMaxCycles int,
+
 						suspendTimeout time.Duration,
 						concurrency int,
 
@@ -948,18 +992,6 @@ func StartPeer(
 						defer cancel()
 						defer handlePanics(false)()
 
-						if hook := hooks.OnBeforeSuspend; hook != nil {
-							hook()
-						}
-
-						if err := resumedPeer.SuspendAndCloseAgentServer(ctx, suspendTimeout); err != nil {
-							panic(err)
-						}
-
-						if hook := hooks.OnAfterSuspend; hook != nil {
-							hook()
-						}
-
 						pro := protocol.NewProtocolRW(
 							ctx,
 							readers,
@@ -973,7 +1005,33 @@ func StartPeer(
 							}
 						})
 
-						var devicesLeftToSend atomic.Int32
+						var (
+							devicesLeftToSend                 atomic.Int32
+							devicesLeftToTransferAuthorityFor atomic.Int32
+
+							suspendedVMLock sync.Mutex
+							suspendedVM     bool
+						)
+
+						suspendVM := sync.OnceValue(func() error {
+							if hook := hooks.OnBeforeSuspend; hook != nil {
+								hook()
+							}
+
+							if err := resumedPeer.SuspendAndCloseAgentServer(ctx, suspendTimeout); err != nil {
+								return err
+							}
+
+							if hook := hooks.OnAfterSuspend; hook != nil {
+								hook()
+							}
+
+							suspendedVMLock.Lock()
+							suspendedVM = true
+							suspendedVMLock.Unlock()
+
+							return nil
+						})
 
 						_, deferFuncs, err := iutils.ConcurrentMap(
 							stage3Inputs,
@@ -1048,7 +1106,7 @@ func StartPeer(
 									storage.BlockTypePriority: concurrency,
 								}
 								cfg.Progress_handler = func(p *migrator.MigrationProgress) {
-									if hook := hooks.OnDeviceMigrationProgress; hook != nil {
+									if hook := hooks.OnDeviceInitialMigrationProgress; hook != nil {
 										hook(uint32(index), input.prev.remote, p.Ready_blocks, p.Total_blocks)
 									}
 								}
@@ -1058,21 +1116,136 @@ func StartPeer(
 									return err
 								}
 
-								handleGoroutinePanics(true, func() {
-									if err := to.SendEvent(&packets.Event{
-										Type:       packets.EventCustom,
-										CustomType: byte(EventCustomTransferAuthority),
-									}); err != nil {
-										panic(err)
-									}
-
-									if hook := hooks.OnDeviceAuthoritySent; hook != nil {
-										hook(uint32(index), input.prev.remote)
-									}
-								})
-
 								if err := mig.Migrate(input.totalBlocks); err != nil {
 									return err
+								}
+
+								if err := mig.WaitForCompletion(); err != nil {
+									return err
+								}
+
+								markDeviceAsReadyForAuthorityTransfer := sync.OnceFunc(func() {
+									devicesLeftToTransferAuthorityFor.Add(1)
+								})
+
+								var (
+									maxDirtyBlocks int
+									minCycles      int
+									maxCycles      int
+								)
+								switch input.prev.name {
+								case config.ConfigName:
+									maxDirtyBlocks = configMaxDirtyBlocks
+									minCycles = configMinCycles
+									maxCycles = configMaxCycles
+
+								case config.DiskName:
+									maxDirtyBlocks = diskMaxDirtyBlocks
+									minCycles = diskMinCycles
+									maxCycles = diskMaxCycles
+
+								case config.InitramfsName:
+									maxDirtyBlocks = initramfsMaxDirtyBlocks
+									minCycles = initramfsMinCycles
+									maxCycles = initramfsMaxCycles
+
+								case config.KernelName:
+									maxDirtyBlocks = kernelMaxDirtyBlocks
+									minCycles = kernelMinCycles
+									maxCycles = kernelMaxCycles
+
+								case config.MemoryName:
+									maxDirtyBlocks = memoryMaxDirtyBlocks
+									minCycles = memoryMinCycles
+									maxCycles = memoryMaxCycles
+
+								case config.StateName:
+									maxDirtyBlocks = stateMaxDirtyBlocks
+									minCycles = stateMinCycles
+									maxCycles = stateMaxCycles
+
+									// No need for a default case/check here - we validate that all resources have valid names earlier
+								}
+
+								var (
+									finalDirtyBlocks              []uint
+									cyclesBelowDirtyBlockTreshold = 0
+									totalCycles                   = 0
+								)
+								for {
+									if err := resumedRunner.Msync(ctx); err != nil {
+										return err
+									}
+
+									blocks := mig.GetLatestDirty()
+									if blocks == nil {
+										mig.Unlock()
+
+										suspendedVMLock.Lock()
+										if suspendedVM {
+											suspendedVMLock.Unlock()
+
+											break
+										}
+										suspendedVMLock.Unlock()
+									}
+
+									if err := to.DirtyList(blocks); err != nil {
+										return err
+									}
+
+									if hook := hooks.OnDeviceContinousMigrationProgress; hook != nil {
+										hook(uint32(index), input.prev.remote, len(blocks))
+									}
+
+									totalCycles++
+									if len(blocks) < maxDirtyBlocks {
+										cyclesBelowDirtyBlockTreshold++
+										if cyclesBelowDirtyBlockTreshold > minCycles {
+											markDeviceAsReadyForAuthorityTransfer()
+										}
+									} else if totalCycles > maxCycles {
+										markDeviceAsReadyForAuthorityTransfer()
+									} else {
+										cyclesBelowDirtyBlockTreshold = 0
+									}
+
+									if devicesLeftToTransferAuthorityFor.Load() >= int32(len(stage3Inputs)) {
+										if err := suspendVM(); err != nil {
+											return err
+										}
+									}
+
+									suspendedVMLock.Lock()
+									if suspendedVM {
+										finalDirtyBlocks = append(finalDirtyBlocks, blocks...)
+									} else {
+										if err := mig.MigrateDirty(blocks); err != nil {
+											suspendedVMLock.Unlock()
+
+											return err
+										}
+									}
+									suspendedVMLock.Unlock()
+								}
+
+								if err := to.SendEvent(&packets.Event{
+									Type:       packets.EventCustom,
+									CustomType: byte(EventCustomTransferAuthority),
+								}); err != nil {
+									panic(err)
+								}
+
+								if hook := hooks.OnDeviceAuthoritySent; hook != nil {
+									hook(uint32(index), input.prev.remote)
+								}
+
+								if err := mig.MigrateDirty(finalDirtyBlocks); err != nil {
+									return err
+								}
+
+								if hook := hooks.OnDeviceFinalMigrationProgress; hook != nil {
+									hook(uint32(index), input.prev.remote, len(finalDirtyBlocks))
 								}
 
 								if err := mig.WaitForCompletion(); err != nil {

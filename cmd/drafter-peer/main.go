@@ -67,6 +67,27 @@ func main() {
 	diskBlockSize := flag.Uint("disk-block-size", 1024*64, "Disk block size")
 	configBlockSize := flag.Uint("config-block-size", 1024*64, "Config block size")
 
+	stateMaxDirtyBlocks := flag.Int("state-max-dirty-blocks", 200, "Maximum amount of dirty blocks per continous migration cycle after which to transfer authority for state")
+	memoryMaxDirtyBlocks := flag.Int("memory-max-dirty-blocks", 200, "Maximum amount of dirty blocks per continous migration cycle after which to transfer authority for memory")
+	initramfsMaxDirtyBlocks := flag.Int("initramfs-max-dirty-blocks", 200, "Maximum amount of dirty blocks per continous migration cycle after which to transfer authority for initramfs")
+	kernelMaxDirtyBlocks := flag.Int("kernel-max-dirty-blocks", 200, "Maximum amount of dirty blocks per continous migration cycle after which to transfer authority for kernel")
+	diskMaxDirtyBlocks := flag.Int("disk-max-dirty-blocks", 200, "Maximum amount of dirty blocks per continous migration cycle after which to transfer authority for disk")
+	configMaxDirtyBlocks := flag.Int("config-max-dirty-blocks", 200, "Maximum amount of dirty blocks per continous migration cycle after which to transfer authority for config")
+
+	stateMinCycles := flag.Int("state-min-cycles", 5, "Minimum amount of subsequent continuous migration cycles below the maximum dirty block count after which to transfer authority for state")
+	memoryMinCycles := flag.Int("memory-min-cycles", 5, "Minimum amount of subsequent continuous migration cycles below the maximum dirty block count after which to transfer authority for memory")
+	initramfsMinCycles := flag.Int("initramfs-min-cycles", 5, "Minimum amount of subsequent continuous migration cycles below the maximum dirty block count after which to transfer authority for initramfs")
+	kernelMinCycles := flag.Int("kernel-min-cycles", 5, "Minimum amount of subsequent continuous migration cycles below the maximum dirty block count after which to transfer authority for kernel")
+	diskMinCycles := flag.Int("disk-min-cycles", 5, "Minimum amount of subsequent continuous migration cycles below the maximum dirty block count after which to transfer authority for disk")
+	configMinCycles := flag.Int("config-min-cycles", 5, "Minimum amount of subsequent continuous migration cycles below the maximum dirty block count after which to transfer authority for config")
+
+	stateMaxCycles := flag.Int("state-max-cycles", 20, "Maximum amount of total migration cycles after which to transfer authority for state, even if a cycle is above the maximum dirty block count")
+	memoryMaxCycles := flag.Int("memory-max-cycles", 20, "Maximum amount of total migration cycles after which to transfer authority for memory, even if a cycle is above the maximum dirty block count")
+	initramfsMaxCycles := flag.Int("initramfs-max-cycles", 20, "Maximum amount of total migration cycles after which to transfer authority for initramfs, even if a cycle is above the maximum dirty block count")
+	kernelMaxCycles := flag.Int("kernel-max-cycles", 20, "Maximum amount of total migration cycles after which to transfer authority for kernel, even if a cycle is above the maximum dirty block count")
+	diskMaxCycles := flag.Int("disk-max-cycles", 20, "Maximum amount of total migration cycles after which to transfer authority for disk, even if a cycle is above the maximum dirty block count")
+	configMaxCycles := flag.Int("config-max-cycles", 20, "Maximum amount of total migration cycles after which to transfer authority for config, even if a cycle is above the maximum dirty block count")
+
 	raddr := flag.String("raddr", "localhost:1337", "Remote address to connect to (leave empty to disable)")
 	laddr := flag.String("laddr", "localhost:1337", "Local address to listen on (leave empty to disable)")
 
@@ -403,6 +424,27 @@ func main() {
 	if err := migratablePeer.MigrateTo(
 		ctx,
 
+		*stateMaxDirtyBlocks,
+		*memoryMaxDirtyBlocks,
+		*initramfsMaxDirtyBlocks,
+		*kernelMaxDirtyBlocks,
+		*diskMaxDirtyBlocks,
+		*configMaxDirtyBlocks,
+
+		*stateMinCycles,
+		*memoryMinCycles,
+		*initramfsMinCycles,
+		*kernelMinCycles,
+		*diskMinCycles,
+		*configMinCycles,
+
+		*stateMaxCycles,
+		*memoryMaxCycles,
+		*initramfsMaxCycles,
+		*kernelMaxCycles,
+		*diskMaxCycles,
+		*configMaxCycles,
+
 		*resumeTimeout,
 		*concurrency,
 
@@ -431,11 +473,25 @@ func main() {
 					log.Println("Sent authority for local device", deviceID)
 				}
 			},
-			OnDeviceMigrationProgress: func(deviceID uint32, remote bool, ready, total int) {
+			OnDeviceInitialMigrationProgress: func(deviceID uint32, remote bool, ready, total int) {
 				if remote {
-					log.Println("Migrated", ready, "of", total, "blocks for remote device", deviceID)
+					log.Println("Migrated", ready, "of", total, "initial blocks for remote device", deviceID)
 				} else {
-					log.Println("Migrated", ready, "of", total, "blocks for local device", deviceID)
+					log.Println("Migrated", ready, "of", total, "initial blocks for local device", deviceID)
+				}
+			},
+			OnDeviceContinousMigrationProgress: func(deviceID uint32, remote bool, delta int) {
+				if remote {
+					log.Println("Migrated", delta, "continous blocks for remote device", deviceID)
+				} else {
+					log.Println("Migrated", delta, "continous blocks for local device", deviceID)
+				}
+			},
+			OnDeviceFinalMigrationProgress: func(deviceID uint32, remote bool, delta int) {
+				if remote {
+					log.Println("Migrated", delta, "final blocks for remote device", deviceID)
+				} else {
+					log.Println("Migrated", delta, "final blocks for local device", deviceID)
 				}
 			},
 			OnDeviceMigrationCompleted: func(deviceID uint32, remote bool) {
