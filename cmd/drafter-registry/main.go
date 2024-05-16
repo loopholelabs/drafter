@@ -31,12 +31,12 @@ func main() {
 	diskBlockSize := flag.Uint("disk-block-size", 1024*64, "Disk block size")
 	configBlockSize := flag.Uint("config-block-size", 1024*64, "Config block size")
 
-	configServe := flag.Bool("config-serve", true, "Whether to serve the config")
-	diskServe := flag.Bool("disk-serve", true, "Whether to serve the disk")
+	stateServe := flag.Bool("state-serve", true, "Whether to serve the state")
+	memoryServe := flag.Bool("memory-serve", true, "Whether to serve the memory")
 	initramfsServe := flag.Bool("initramfs-serve", true, "Whether to serve the initramfs")
 	kernelServe := flag.Bool("kernel-serve", true, "Whether to serve the kernel")
-	memoryServe := flag.Bool("memory-serve", true, "Whether to serve the memory")
-	stateServe := flag.Bool("state-serve", true, "Whether to serve the state")
+	diskServe := flag.Bool("disk-serve", true, "Whether to serve the disk")
+	configServe := flag.Bool("config-serve", true, "Whether to serve the config")
 
 	laddr := flag.String("laddr", ":1600", "Address to listen on")
 
@@ -48,19 +48,20 @@ func main() {
 	defer cancel()
 
 	devices := []roles.Device{}
-	if *configServe {
+
+	if *stateServe {
 		devices = append(devices, roles.Device{
-			Name:      config.ConfigName,
-			Base:      *configPath,
-			BlockSize: uint32(*configBlockSize),
+			Name:      config.StateName,
+			Base:      *statePath,
+			BlockSize: uint32(*stateBlockSize),
 		})
 	}
 
-	if *diskServe {
+	if *memoryServe {
 		devices = append(devices, roles.Device{
-			Name:      config.DiskName,
-			Base:      *diskPath,
-			BlockSize: uint32(*diskBlockSize),
+			Name:      config.MemoryName,
+			Base:      *memoryPath,
+			BlockSize: uint32(*memoryBlockSize),
 		})
 	}
 
@@ -80,19 +81,19 @@ func main() {
 		})
 	}
 
-	if *memoryServe {
+	if *diskServe {
 		devices = append(devices, roles.Device{
-			Name:      config.MemoryName,
-			Base:      *memoryPath,
-			BlockSize: uint32(*memoryBlockSize),
+			Name:      config.DiskName,
+			Base:      *diskPath,
+			BlockSize: uint32(*diskBlockSize),
 		})
 	}
 
-	if *stateServe {
+	if *configServe {
 		devices = append(devices, roles.Device{
-			Name:      config.StateName,
-			Base:      *statePath,
-			BlockSize: uint32(*stateBlockSize),
+			Name:      config.ConfigName,
+			Base:      *configPath,
+			BlockSize: uint32(*configBlockSize),
 		})
 	}
 

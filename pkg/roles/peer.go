@@ -117,6 +117,13 @@ type MigratablePeer struct {
 		diskMaxCycles,
 		configMaxCycles int,
 
+		stateServe,
+		memoryServe,
+		initramfsServe,
+		kernelServe,
+		diskServe,
+		configServe bool,
+
 		suspendTimeout time.Duration,
 		concurrency int,
 
@@ -904,7 +911,7 @@ func StartPeer(
 				MakeMigratable: func(ctx context.Context) (migratablePeer *MigratablePeer, errs error) {
 					migratablePeer = &MigratablePeer{}
 
-					stage3Inputs, deferFuncs, err := iutils.ConcurrentMap(
+					allStage3Inputs, deferFuncs, err := iutils.ConcurrentMap(
 						stage2Inputs,
 						func(index int, input peerStage2, output *peerStage3, addDefer func(deferFunc func() error)) error {
 							output.prev = input
@@ -975,6 +982,13 @@ func StartPeer(
 						diskMaxCycles,
 						configMaxCycles int,
 
+						stateServe,
+						memoryServe,
+						initramfsServe,
+						kernelServe,
+						diskServe,
+						configServe bool,
+
 						suspendTimeout time.Duration,
 						concurrency int,
 
@@ -1033,9 +1047,68 @@ func StartPeer(
 							return nil
 						})
 
+						stage3Inputs := []peerStage3{}
+						for _, input := range allStage3Inputs {
+							var serve bool
+							switch input.prev.name {
+							case config.ConfigName:
+								serve = configServe
+
+							case config.DiskName:
+								serve = diskServe
+
+							case config.InitramfsName:
+								serve = initramfsServe
+
+							case config.KernelName:
+								serve = kernelServe
+
+							case config.MemoryName:
+								serve = memoryServe
+
+							case config.StateName:
+								serve = stateServe
+
+								// No need for a default case/check here - we validate that all resources have valid names earlier
+							}
+
+							if !serve {
+								continue
+							}
+
+							stage3Inputs = append(stage3Inputs, input)
+						}
+
 						_, deferFuncs, err := iutils.ConcurrentMap(
 							stage3Inputs,
 							func(index int, input peerStage3, _ *struct{}, _ func(deferFunc func() error)) error {
+								var serve bool
+								switch input.prev.name {
+								case config.ConfigName:
+									serve = configServe
+
+								case config.DiskName:
+									serve = diskServe
+
+								case config.InitramfsName:
+									serve = initramfsServe
+
+								case config.KernelName:
+									serve = kernelServe
+
+								case config.MemoryName:
+									serve = memoryServe
+
+								case config.StateName:
+									serve = stateServe
+
+									// No need for a default case/check here - we validate that all resources have valid names earlier
+								}
+
+								if !serve {
+									return nil
+								}
+
 								to := protocol.NewToProtocol(input.storage.Size(), uint32(index), pro)
 
 								if err := to.SendDevInfo(input.prev.name, input.prev.blockSize); err != nil {

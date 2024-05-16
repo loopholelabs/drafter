@@ -88,6 +88,13 @@ func main() {
 	diskMaxCycles := flag.Int("disk-max-cycles", 20, "Maximum amount of total migration cycles after which to transfer authority for disk, even if a cycle is above the maximum dirty block count")
 	configMaxCycles := flag.Int("config-max-cycles", 20, "Maximum amount of total migration cycles after which to transfer authority for config, even if a cycle is above the maximum dirty block count")
 
+	stateServe := flag.Bool("state-serve", true, "Whether to serve the state")
+	memoryServe := flag.Bool("memory-serve", true, "Whether to serve the memory")
+	initramfsServe := flag.Bool("initramfs-serve", true, "Whether to serve the initramfs")
+	kernelServe := flag.Bool("kernel-serve", true, "Whether to serve the kernel")
+	diskServe := flag.Bool("disk-serve", true, "Whether to serve the disk")
+	configServe := flag.Bool("config-serve", true, "Whether to serve the config")
+
 	raddr := flag.String("raddr", "localhost:1337", "Remote address to connect to (leave empty to disable)")
 	laddr := flag.String("laddr", "localhost:1337", "Local address to listen on (leave empty to disable)")
 
@@ -444,6 +451,13 @@ func main() {
 		*kernelMaxCycles,
 		*diskMaxCycles,
 		*configMaxCycles,
+
+		*stateServe,
+		*memoryServe,
+		*initramfsServe,
+		*kernelServe,
+		*diskServe,
+		*configServe,
 
 		*resumeTimeout,
 		*concurrency,
