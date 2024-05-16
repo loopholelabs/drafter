@@ -533,6 +533,9 @@ command_background=true
 pidfile="/run/\${RC_SVCNAME}.pid"
 output_log="/dev/kmsg"
 error_log="/dev/kmsg"
+supervisor=supervise-daemon
+respawn_delay=2
+respawn_max=0
 
 depend() {
 	need net ${SERVICE_DEPENDENCY}
