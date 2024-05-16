@@ -348,6 +348,28 @@ func main() {
 		panic(err)
 	}
 
+	if strings.TrimSpace(*laddr) == "" {
+		bubbleSignals = true
+
+		select {
+		case <-ctx.Done():
+			return
+
+		case <-done:
+			before = time.Now()
+
+			if err := resumedPeer.SuspendAndCloseAgentServer(ctx, *resumeTimeout); err != nil {
+				panic(err)
+			}
+
+			log.Println("Suspend:", time.Since(before))
+
+			log.Println("Shutting down")
+
+			return
+		}
+	}
+
 	var (
 		closeLock sync.Mutex
 		closed    bool
