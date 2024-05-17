@@ -1027,12 +1027,16 @@ func StartPeer(
 							suspendedVM     bool
 						)
 
-						suspendVM := sync.OnceValue(func() error {
+						suspendAndMsyncVM := sync.OnceValue(func() error {
 							if hook := hooks.OnBeforeSuspend; hook != nil {
 								hook()
 							}
 
 							if err := resumedPeer.SuspendAndCloseAgentServer(ctx, suspendTimeout); err != nil {
+								return err
+							}
+
+							if err := resumedRunner.Msync(ctx); err != nil {
 								return err
 							}
 
@@ -1241,14 +1245,22 @@ func StartPeer(
 								}
 
 								var (
-									finalDirtyBlocks              []uint
 									cyclesBelowDirtyBlockTreshold = 0
 									totalCycles                   = 0
+									ongoingMigrationsWg           sync.WaitGroup
 								)
 								for {
-									if err := resumedRunner.Msync(ctx); err != nil {
-										return err
+									suspendedVMLock.Lock()
+									if !suspendedVM {
+										if err := resumedRunner.Msync(ctx); err != nil {
+											suspendedVMLock.Unlock()
+
+											return err
+										}
 									}
+									suspendedVMLock.Unlock()
+
+									ongoingMigrationsWg.Wait()
 
 									blocks := mig.GetLatestDirty()
 									if blocks == nil {
@@ -1263,12 +1275,32 @@ func StartPeer(
 										suspendedVMLock.Unlock()
 									}
 
-									if err := to.DirtyList(blocks); err != nil {
-										return err
-									}
+									if blocks != nil {
+										if err := to.DirtyList(blocks); err != nil {
+											return err
+										}
 
-									if hook := hooks.OnDeviceContinousMigrationProgress; hook != nil {
-										hook(uint32(index), input.prev.remote, len(blocks))
+										ongoingMigrationsWg.Add(1)
+										handleGoroutinePanics(true, func() {
+											defer ongoingMigrationsWg.Done()
+
+											if err := mig.MigrateDirty(blocks); err != nil {
+												panic(err)
+											}
+
+											suspendedVMLock.Lock()
+											defer suspendedVMLock.Unlock()
+
+											if suspendedVM {
+												if hook := hooks.OnDeviceFinalMigrationProgress; hook != nil {
+													hook(uint32(index), input.prev.remote, len(blocks))
+												}
+											} else {
+												if hook := hooks.OnDeviceContinousMigrationProgress; hook != nil {
+													hook(uint32(index), input.prev.remote, len(blocks))
+												}
+											}
+										})
 									}
 
 									totalCycles++
@@ -1284,22 +1316,10 @@ func StartPeer(
 									}
 
 									if devicesLeftToTransferAuthorityFor.Load() >= int32(len(stage3Inputs)) {
-										if err := suspendVM(); err != nil {
+										if err := suspendAndMsyncVM(); err != nil {
 											return err
 										}
 									}
-
-									suspendedVMLock.Lock()
-									if suspendedVM {
-										finalDirtyBlocks = append(finalDirtyBlocks, blocks...)
-									} else {
-										if err := mig.MigrateDirty(blocks); err != nil {
-											suspendedVMLock.Unlock()
-
-											return err
-										}
-									}
-									suspendedVMLock.Unlock()
 								}
 
 								if err := to.SendEvent(&packets.Event{
@@ -1311,14 +1331,6 @@ func StartPeer(
 
 								if hook := hooks.OnDeviceAuthoritySent; hook != nil {
 									hook(uint32(index), input.prev.remote)
-								}
-
-								if err := mig.MigrateDirty(finalDirtyBlocks); err != nil {
-									return err
-								}
-
-								if hook := hooks.OnDeviceFinalMigrationProgress; hook != nil {
-									hook(uint32(index), input.prev.remote, len(finalDirtyBlocks))
 								}
 
 								if err := mig.WaitForCompletion(); err != nil {
