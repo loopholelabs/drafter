@@ -70,8 +70,7 @@ func OpenDevices(
 			}
 			addDefer(src.Close)
 
-			metrics := modules.NewMetrics(src)
-			dirtyLocal, dirtyRemote := dirtytracker.NewDirtyTracker(metrics, int(input.BlockSize))
+			dirtyLocal, dirtyRemote := dirtytracker.NewDirtyTracker(src, int(input.BlockSize))
 			output.dirtyRemote = dirtyRemote
 			monitor := volatilitymonitor.NewVolatilityMonitor(dirtyLocal, int(input.BlockSize), 10*time.Second)
 

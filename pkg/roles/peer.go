@@ -964,8 +964,7 @@ func StartPeer(
 								// No need for a default case/check here - we validate that all resources have valid names earlier
 							}
 
-							metrics := modules.NewMetrics(input.storage)
-							dirtyLocal, dirtyRemote := dirtytracker.NewDirtyTracker(metrics, int(input.blockSize))
+							dirtyLocal, dirtyRemote := dirtytracker.NewDirtyTracker(input.storage, int(input.blockSize))
 							output.dirtyRemote = dirtyRemote
 							monitor := volatilitymonitor.NewVolatilityMonitor(dirtyLocal, int(input.blockSize), expiry)
 
