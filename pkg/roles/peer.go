@@ -72,7 +72,16 @@ type ResumedPeer struct {
 
 	SuspendAndCloseAgentServer func(ctx context.Context, resumeTimeout time.Duration) error
 
-	MakeMigratable func(ctx context.Context) (migratablePeer *MigratablePeer, errs error)
+	MakeMigratable func(
+		ctx context.Context,
+
+		stateExpiry,
+		memoryExpiry,
+		initramfsExpiry,
+		kernelExpiry,
+		diskExpiry,
+		configExpiry time.Duration,
+	) (migratablePeer *MigratablePeer, errs error)
 }
 
 type MigrateToHooks struct {
@@ -915,7 +924,16 @@ func StartPeer(
 
 				SuspendAndCloseAgentServer: resumedRunner.SuspendAndCloseAgentServer,
 
-				MakeMigratable: func(ctx context.Context) (migratablePeer *MigratablePeer, errs error) {
+				MakeMigratable: func(
+					ctx context.Context,
+
+					stateExpiry,
+					memoryExpiry,
+					initramfsExpiry,
+					kernelExpiry,
+					diskExpiry,
+					configExpiry time.Duration,
+				) (migratablePeer *MigratablePeer, errs error) {
 					migratablePeer = &MigratablePeer{}
 
 					allStage3Inputs, deferFuncs, err := iutils.ConcurrentMap(
@@ -923,10 +941,33 @@ func StartPeer(
 						func(index int, input peerStage2, output *peerStage3, addDefer func(deferFunc func() error)) error {
 							output.prev = input
 
+							var expiry time.Duration
+							switch input.name {
+							case config.ConfigName:
+								expiry = configExpiry
+
+							case config.DiskName:
+								expiry = diskExpiry
+
+							case config.InitramfsName:
+								expiry = initramfsExpiry
+
+							case config.KernelName:
+								expiry = kernelExpiry
+
+							case config.MemoryName:
+								expiry = memoryExpiry
+
+							case config.StateName:
+								expiry = stateExpiry
+
+								// No need for a default case/check here - we validate that all resources have valid names earlier
+							}
+
 							metrics := modules.NewMetrics(input.storage)
 							dirtyLocal, dirtyRemote := dirtytracker.NewDirtyTracker(metrics, int(input.blockSize))
 							output.dirtyRemote = dirtyRemote
-							monitor := volatilitymonitor.NewVolatilityMonitor(dirtyLocal, int(input.blockSize), 10*time.Second)
+							monitor := volatilitymonitor.NewVolatilityMonitor(dirtyLocal, int(input.blockSize), expiry)
 
 							local := modules.NewLockable(monitor)
 							output.storage = local

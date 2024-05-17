@@ -95,6 +95,13 @@ func main() {
 	diskCycleThrottle := flag.Duration("disk-cycle-throttle", time.Millisecond*500, "Time to wait in each cycle before checking for changes again during continuous migration for disk")
 	configCycleThrottle := flag.Duration("config-cycle-throttle", time.Millisecond*500, "Time to wait in each cycle before checking for changes again during continuous migration for config")
 
+	stateExpiry := flag.Duration("state-expiry", time.Second, "Time without changes after which to expire a block's volatile status during continuous and final migration for state")
+	memoryExpiry := flag.Duration("memory-expiry", time.Second, "Time without changes after which to expire a block's volatile status during continuous and final migration for memory")
+	initramfsExpiry := flag.Duration("initramfs-expiry", time.Second, "Time without changes after which to expire a block's volatile status during continuous and final migration for initramfs")
+	kernelExpiry := flag.Duration("kernel-expiry", time.Second, "Time without changes after which to expire a block's volatile status during continuous and final migration for kernel")
+	diskExpiry := flag.Duration("disk-expiry", time.Second, "Time without changes after which to expire a block's volatile status during continuous and final migration for disk")
+	configExpiry := flag.Duration("config-expiry", time.Second, "Time without changes after which to expire a block's volatile status during continuous and final migration for config")
+
 	stateServe := flag.Bool("state-serve", true, "Whether to serve the state")
 	memoryServe := flag.Bool("memory-serve", true, "Whether to serve the memory")
 	initramfsServe := flag.Bool("initramfs-serve", true, "Whether to serve the initramfs")
@@ -448,7 +455,16 @@ func main() {
 
 	log.Println("Migrating to", conn.RemoteAddr())
 
-	migratablePeer, err := resumedPeer.MakeMigratable(ctx)
+	migratablePeer, err := resumedPeer.MakeMigratable(
+		ctx,
+
+		*stateExpiry,
+		*memoryExpiry,
+		*initramfsExpiry,
+		*kernelExpiry,
+		*diskExpiry,
+		*configExpiry,
+	)
 
 	if err != nil {
 		panic(err)
