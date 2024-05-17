@@ -117,6 +117,13 @@ type MigratablePeer struct {
 		diskMaxCycles,
 		configMaxCycles int,
 
+		stateCycleThrottle,
+		memoryCycleThrottle,
+		initramfsCycleThrottle,
+		kernelCycleThrottle,
+		diskCycleThrottle,
+		configCycleThrottle time.Duration,
+
 		stateServe,
 		memoryServe,
 		initramfsServe,
@@ -982,6 +989,13 @@ func StartPeer(
 						diskMaxCycles,
 						configMaxCycles int,
 
+						stateCycleThrottle,
+						memoryCycleThrottle,
+						initramfsCycleThrottle,
+						kernelCycleThrottle,
+						diskCycleThrottle,
+						configCycleThrottle time.Duration,
+
 						stateServe,
 						memoryServe,
 						initramfsServe,
@@ -1216,37 +1230,44 @@ func StartPeer(
 									maxDirtyBlocks int
 									minCycles      int
 									maxCycles      int
+									cycleThrottle  time.Duration
 								)
 								switch input.prev.name {
 								case config.ConfigName:
 									maxDirtyBlocks = configMaxDirtyBlocks
 									minCycles = configMinCycles
 									maxCycles = configMaxCycles
+									cycleThrottle = configCycleThrottle
 
 								case config.DiskName:
 									maxDirtyBlocks = diskMaxDirtyBlocks
 									minCycles = diskMinCycles
 									maxCycles = diskMaxCycles
+									cycleThrottle = diskCycleThrottle
 
 								case config.InitramfsName:
 									maxDirtyBlocks = initramfsMaxDirtyBlocks
 									minCycles = initramfsMinCycles
 									maxCycles = initramfsMaxCycles
+									cycleThrottle = initramfsCycleThrottle
 
 								case config.KernelName:
 									maxDirtyBlocks = kernelMaxDirtyBlocks
 									minCycles = kernelMinCycles
 									maxCycles = kernelMaxCycles
+									cycleThrottle = kernelCycleThrottle
 
 								case config.MemoryName:
 									maxDirtyBlocks = memoryMaxDirtyBlocks
 									minCycles = memoryMinCycles
 									maxCycles = memoryMaxCycles
+									cycleThrottle = memoryCycleThrottle
 
 								case config.StateName:
 									maxDirtyBlocks = stateMaxDirtyBlocks
 									minCycles = stateMinCycles
 									maxCycles = stateMaxCycles
+									cycleThrottle = stateCycleThrottle
 
 									// No need for a default case/check here - we validate that all resources have valid names earlier
 								}
@@ -1258,7 +1279,8 @@ func StartPeer(
 								)
 								for {
 									suspendedVMLock.Lock()
-									if !suspendedVM {
+									// We only need to `msync` for the memory because `msync` only affects the memory
+									if !suspendedVM && input.prev.name == config.MemoryName {
 										if err := resumedRunner.Msync(ctx); err != nil {
 											suspendedVMLock.Unlock()
 
@@ -1316,11 +1338,11 @@ func StartPeer(
 
 										// We use the background context here instead of the internal context because we want to distinguish
 										// between a context cancellation from the outside and getting a response
-										throttleCtx, cancelThrottleCtx := context.WithTimeout(context.Background(), time.Millisecond*500)
-										defer cancelThrottleCtx()
+										cycleThrottleCtx, cancelCycleThrottleCtx := context.WithTimeout(context.Background(), cycleThrottle)
+										defer cancelCycleThrottleCtx()
 
 										select {
-										case <-throttleCtx.Done():
+										case <-cycleThrottleCtx.Done():
 											break
 
 										case <-suspendedVMCtx.Done():

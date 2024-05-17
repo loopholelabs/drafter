@@ -88,6 +88,13 @@ func main() {
 	diskMaxCycles := flag.Int("disk-max-cycles", 20, "Maximum amount of total migration cycles after which to transfer authority for disk, even if a cycle is above the maximum dirty block count")
 	configMaxCycles := flag.Int("config-max-cycles", 20, "Maximum amount of total migration cycles after which to transfer authority for config, even if a cycle is above the maximum dirty block count")
 
+	stateCycleThrottle := flag.Duration("state-cycle-throttle", time.Millisecond*500, "Time to wait in each cycle before checking for changes again during continuous migration for state")
+	memoryCycleThrottle := flag.Duration("memory-cycle-throttle", time.Millisecond*500, "Time to wait in each cycle before checking for changes again during continuous migration for memory")
+	initramfsCycleThrottle := flag.Duration("initramfs-cycle-throttle", time.Millisecond*500, "Time to wait in each cycle before checking for changes again during continuous migration for initramfs")
+	kernelCycleThrottle := flag.Duration("kernel-cycle-throttle", time.Millisecond*500, "Time to wait in each cycle before checking for changes again during continuous migration for kernel")
+	diskCycleThrottle := flag.Duration("disk-cycle-throttle", time.Millisecond*500, "Time to wait in each cycle before checking for changes again during continuous migration for disk")
+	configCycleThrottle := flag.Duration("config-cycle-throttle", time.Millisecond*500, "Time to wait in each cycle before checking for changes again during continuous migration for config")
+
 	stateServe := flag.Bool("state-serve", true, "Whether to serve the state")
 	memoryServe := flag.Bool("memory-serve", true, "Whether to serve the memory")
 	initramfsServe := flag.Bool("initramfs-serve", true, "Whether to serve the initramfs")
@@ -473,6 +480,13 @@ func main() {
 		*kernelMaxCycles,
 		*diskMaxCycles,
 		*configMaxCycles,
+
+		*stateCycleThrottle,
+		*memoryCycleThrottle,
+		*initramfsCycleThrottle,
+		*kernelCycleThrottle,
+		*diskCycleThrottle,
+		*configCycleThrottle,
 
 		*stateServe,
 		*memoryServe,
