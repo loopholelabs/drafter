@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/loopholelabs/drafter/pkg/config"
 	"github.com/loopholelabs/drafter/pkg/roles"
 	"github.com/loopholelabs/drafter/pkg/utils"
 )
@@ -53,7 +52,7 @@ func main() {
 	cpuCount := flag.Int("cpu-count", 1, "CPU count")
 	memorySize := flag.Int("memory-size", 1024, "Memory size (in MB)")
 	cpuTemplate := flag.String("cpu-template", "None", "Firecracker CPU template (see https://github.com/firecracker-microvm/firecracker/blob/main/docs/cpu_templates/cpu-templates.md#static-cpu-templates for the options)")
-	bootArgs := flag.String("boot-args", config.DefaultBootArgs, "Boot/kernel arguments")
+	bootArgs := flag.String("boot-args", roles.DefaultBootArgs, "Boot/kernel arguments")
 
 	flag.Parse()
 
@@ -111,19 +110,19 @@ func main() {
 		*diskOutputPath,
 		*configOutputPath,
 
-		config.VMConfiguration{
+		roles.VMConfiguration{
 			CPUCount:    *cpuCount,
 			MemorySize:  *memorySize,
 			CPUTemplate: *cpuTemplate,
 
 			BootArgs: *bootArgs,
 		},
-		config.LivenessConfiguration{
+		roles.LivenessConfiguration{
 			LivenessVSockPort: uint32(*livenessVSockPort),
 			ResumeTimeout:     *resumeTimeout,
 		},
 
-		config.HypervisorConfiguration{
+		roles.HypervisorConfiguration{
 			FirecrackerBin: firecrackerBin,
 			JailerBin:      jailerBin,
 
@@ -139,24 +138,24 @@ func main() {
 			EnableOutput: *enableOutput,
 			EnableInput:  *enableInput,
 		},
-		config.NetworkConfiguration{
+		roles.NetworkConfiguration{
 			Interface: *iface,
 			MAC:       *mac,
 		},
-		config.AgentConfiguration{
+		roles.AgentConfiguration{
 			AgentVSockPort: uint32(*agentVSockPort),
 			ResumeTimeout:  *resumeTimeout,
 		},
 
-		config.KnownNamesConfiguration{
-			InitramfsName: config.InitramfsName,
-			KernelName:    config.KernelName,
-			DiskName:      config.DiskName,
+		roles.KnownNamesConfiguration{
+			InitramfsName: roles.InitramfsName,
+			KernelName:    roles.KernelName,
+			DiskName:      roles.DiskName,
 
-			StateName:  config.StateName,
-			MemoryName: config.MemoryName,
+			StateName:  roles.StateName,
+			MemoryName: roles.MemoryName,
 
-			ConfigName: config.ConfigName,
+			ConfigName: roles.ConfigName,
 		},
 	); err != nil {
 		panic(err)

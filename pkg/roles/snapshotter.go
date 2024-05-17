@@ -9,16 +9,38 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/loopholelabs/drafter/internal/firecracker"
 	iutils "github.com/loopholelabs/drafter/internal/utils"
-	"github.com/loopholelabs/drafter/pkg/config"
+	"github.com/loopholelabs/drafter/pkg/ipc"
 	"github.com/loopholelabs/drafter/pkg/utils"
 )
 
 var (
 	ErrCouldNotGetDeviceStat = errors.New("could not get NBD device stat")
 )
+
+type AgentConfiguration struct {
+	AgentVSockPort uint32
+	ResumeTimeout  time.Duration
+}
+
+type LivenessConfiguration struct {
+	LivenessVSockPort uint32
+	ResumeTimeout     time.Duration
+}
+
+type KnownNamesConfiguration struct {
+	InitramfsName string
+	KernelName    string
+	DiskName      string
+
+	StateName  string
+	MemoryName string
+
+	ConfigName string
+}
 
 func CreateSnapshot(
 	ctx context.Context,
@@ -34,14 +56,14 @@ func CreateSnapshot(
 	diskOutputPath string,
 	configOutputPath string,
 
-	vmConfiguration config.VMConfiguration,
-	livenessConfiguration config.LivenessConfiguration,
+	vmConfiguration VMConfiguration,
+	livenessConfiguration LivenessConfiguration,
 
-	hypervisorConfiguration config.HypervisorConfiguration,
-	networkConfiguration config.NetworkConfiguration,
-	agentConfiguration config.AgentConfiguration,
+	hypervisorConfiguration HypervisorConfiguration,
+	networkConfiguration NetworkConfiguration,
+	agentConfiguration AgentConfiguration,
 
-	knownNamesConfiguration config.KnownNamesConfiguration,
+	knownNamesConfiguration KnownNamesConfiguration,
 ) (errs error) {
 	ctx, handlePanics, handleGoroutinePanics, cancel, wait, _ := utils.GetPanicHandler(
 		ctx,
@@ -86,8 +108,8 @@ func CreateSnapshot(
 		}
 	})
 
-	liveness := NewLivenessServer(
-		filepath.Join(server.VMPath, VSockName),
+	liveness := ipc.NewLivenessServer(
+		filepath.Join(server.VMPath, vsockName),
 		uint32(livenessConfiguration.LivenessVSockPort),
 	)
 
@@ -101,8 +123,8 @@ func CreateSnapshot(
 		panic(err)
 	}
 
-	agent, err := StartAgentServer(
-		filepath.Join(server.VMPath, VSockName),
+	agent, err := ipc.StartAgentServer(
+		filepath.Join(server.VMPath, vsockName),
 		uint32(agentConfiguration.AgentVSockPort),
 	)
 	if err != nil {
@@ -223,12 +245,12 @@ func CreateSnapshot(
 		networkConfiguration.Interface,
 		networkConfiguration.MAC,
 
-		VSockName,
-		config.VSockCIDGuest,
+		vsockName,
+		ipc.VSockCIDGuest,
 	); err != nil {
 		panic(err)
 	}
-	defer os.Remove(filepath.Join(server.VMPath, VSockName))
+	defer os.Remove(filepath.Join(server.VMPath, vsockName))
 
 	{
 		receiveCtx, cancel := context.WithTimeout(ctx, livenessConfiguration.ResumeTimeout)
@@ -239,7 +261,7 @@ func CreateSnapshot(
 		}
 	}
 
-	var acceptingAgent *AcceptingAgentServer
+	var acceptingAgent *ipc.AcceptingAgentServer
 	{
 		acceptCtx, cancel := context.WithTimeout(ctx, agentConfiguration.ResumeTimeout)
 		defer cancel()
@@ -281,7 +303,7 @@ func CreateSnapshot(
 		panic(err)
 	}
 
-	packageConfig, err := json.Marshal(config.PackageConfiguration{
+	packageConfig, err := json.Marshal(PackageConfiguration{
 		AgentVSockPort: agentConfiguration.AgentVSockPort,
 	})
 	if err != nil {

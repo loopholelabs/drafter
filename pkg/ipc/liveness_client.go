@@ -1,4 +1,4 @@
-package roles
+package ipc
 
 import (
 	"context"

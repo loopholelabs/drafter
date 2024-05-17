@@ -15,7 +15,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/loopholelabs/drafter/pkg/config"
 	"github.com/loopholelabs/drafter/pkg/roles"
 	"github.com/loopholelabs/drafter/pkg/utils"
 )
@@ -51,14 +50,14 @@ func main() {
 	initramfsOverlayPath := flag.String("initramfs-overlay-path", filepath.Join("out", "overlay", "drafter.drftinitramfs.overlay"), "initramfs overlay path (ignored for devices migrated from raddr)")
 	kernelOverlayPath := flag.String("kernel-overlay-path", filepath.Join("out", "overlay", "drafter.drftkernel.overlay"), "Kernel overlay path (ignored for devices migrated from raddr)")
 	diskOverlayPath := flag.String("disk-overlay-path", filepath.Join("out", "overlay", "drafter.drftdisk.overlay"), "Disk overlay path (ignored for devices migrated from raddr)")
-	configOverlayPath := flag.String("config-overlay-path", filepath.Join("out", "overlay", "drafter.drftconfig.overlay"), "Config overlay path (ignored for devices migrated from raddr)")
+	configOverlayPath := flag.String("config-overlay-path", filepath.Join("out", "overlay", "drafter.drftroles.overlay"), "Config overlay path (ignored for devices migrated from raddr)")
 
 	stateStatePath := flag.String("state-state-path", filepath.Join("out", "overlay", "drafter.drftstate.state"), "State state path (ignored for devices migrated from raddr)")
 	memoryStatePath := flag.String("memory-state-path", filepath.Join("out", "overlay", "drafter.drftmemory.state"), "Memory state path (ignored for devices migrated from raddr)")
 	initramfsStatePath := flag.String("initramfs-state-path", filepath.Join("out", "overlay", "drafter.drftinitramfs.state"), "initramfs state path (ignored for devices migrated from raddr)")
 	kernelStatePath := flag.String("kernel-state-path", filepath.Join("out", "overlay", "drafter.drftkernel.state"), "Kernel state path (ignored for devices migrated from raddr)")
 	diskStatePath := flag.String("disk-state-path", filepath.Join("out", "overlay", "drafter.drftdisk.state"), "Disk state path (ignored for devices migrated from raddr)")
-	configStatePath := flag.String("config-state-path", filepath.Join("out", "overlay", "drafter.drftconfig.state"), "Config state path (ignored for devices migrated from raddr)")
+	configStatePath := flag.String("config-state-path", filepath.Join("out", "overlay", "drafter.drftroles.state"), "Config state path (ignored for devices migrated from raddr)")
 
 	stateBlockSize := flag.Uint("state-block-size", 1024*64, "State block size")
 	memoryBlockSize := flag.Uint("memory-block-size", 1024*64, "Memory block size")
@@ -185,7 +184,7 @@ func main() {
 		ctx,
 		context.Background(), // Never give up on rescue operations
 
-		config.HypervisorConfiguration{
+		roles.HypervisorConfiguration{
 			FirecrackerBin: firecrackerBin,
 			JailerBin:      jailerBin,
 
@@ -202,8 +201,8 @@ func main() {
 			EnableInput:  *enableInput,
 		},
 
-		config.StateName,
-		config.MemoryName,
+		roles.StateName,
+		roles.MemoryName,
 	)
 
 	if peer.Wait != nil {

@@ -11,8 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loopholelabs/drafter/pkg/config"
-	"github.com/loopholelabs/drafter/pkg/roles"
+	"github.com/loopholelabs/drafter/pkg/ipc"
 	"github.com/loopholelabs/drafter/pkg/utils"
 )
 
@@ -56,7 +55,7 @@ func main() {
 		cancel()
 	}()
 
-	agentClient := roles.NewAgentClient(
+	agentClient := ipc.NewAgentClient(
 		func(ctx context.Context) error {
 			log.Println("Running pre-suspend command")
 
@@ -96,11 +95,11 @@ func main() {
 			dialCtx, cancelDialCtx := context.WithTimeout(ctx, *vsockTimeout)
 			defer cancelDialCtx()
 
-			connectedAgentClient, err := roles.StartAgentClient(
+			connectedAgentClient, err := ipc.StartAgentClient(
 				dialCtx,
 				ctx,
 
-				config.VSockCIDHost,
+				ipc.VSockCIDHost,
 				uint32(*vsockPort),
 
 				agentClient,

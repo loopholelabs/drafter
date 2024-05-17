@@ -10,7 +10,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/loopholelabs/drafter/pkg/config"
 	"github.com/loopholelabs/drafter/pkg/utils"
 	"github.com/loopholelabs/silo/pkg/storage"
 	sconfig "github.com/loopholelabs/silo/pkg/storage/config"
@@ -86,22 +85,22 @@ func Terminate(
 						path = ""
 					)
 					switch di.Name {
-					case config.ConfigName:
+					case ConfigName:
 						path = configPath
 
-					case config.DiskName:
+					case DiskName:
 						path = diskPath
 
-					case config.InitramfsName:
+					case InitramfsName:
 						path = initramfsPath
 
-					case config.KernelName:
+					case KernelName:
 						path = kernelPath
 
-					case config.MemoryName:
+					case MemoryName:
 						path = memoryPath
 
-					case config.StateName:
+					case StateName:
 						path = statePath
 					}
 

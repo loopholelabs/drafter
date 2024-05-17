@@ -1,4 +1,4 @@
-package config
+package ipc
 
 const (
 	VSockCIDHost  = 2

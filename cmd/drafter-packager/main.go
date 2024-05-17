@@ -4,7 +4,6 @@ import (
 	"flag"
 	"path/filepath"
 
-	"github.com/loopholelabs/drafter/pkg/config"
 	"github.com/loopholelabs/drafter/pkg/roles"
 )
 
@@ -22,15 +21,15 @@ func main() {
 
 	flag.Parse()
 
-	knownNamesConfiguration := config.KnownNamesConfiguration{
-		InitramfsName: config.InitramfsName,
-		KernelName:    config.KernelName,
-		DiskName:      config.DiskName,
+	knownNamesConfiguration := roles.KnownNamesConfiguration{
+		InitramfsName: roles.InitramfsName,
+		KernelName:    roles.KernelName,
+		DiskName:      roles.DiskName,
 
-		StateName:  config.StateName,
-		MemoryName: config.MemoryName,
+		StateName:  roles.StateName,
+		MemoryName: roles.MemoryName,
 
-		ConfigName: config.ConfigName,
+		ConfigName: roles.ConfigName,
 	}
 
 	if *extract {

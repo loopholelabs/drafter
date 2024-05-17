@@ -11,7 +11,6 @@ import (
 	"os/signal"
 	"path/filepath"
 
-	"github.com/loopholelabs/drafter/pkg/config"
 	"github.com/loopholelabs/drafter/pkg/roles"
 	"github.com/loopholelabs/drafter/pkg/utils"
 )
@@ -51,7 +50,7 @@ func main() {
 
 	if *stateServe {
 		devices = append(devices, roles.Device{
-			Name:      config.StateName,
+			Name:      roles.StateName,
 			Base:      *statePath,
 			BlockSize: uint32(*stateBlockSize),
 		})
@@ -59,7 +58,7 @@ func main() {
 
 	if *memoryServe {
 		devices = append(devices, roles.Device{
-			Name:      config.MemoryName,
+			Name:      roles.MemoryName,
 			Base:      *memoryPath,
 			BlockSize: uint32(*memoryBlockSize),
 		})
@@ -67,7 +66,7 @@ func main() {
 
 	if *initramfsServe {
 		devices = append(devices, roles.Device{
-			Name:      config.InitramfsName,
+			Name:      roles.InitramfsName,
 			Base:      *initramfsPath,
 			BlockSize: uint32(*initramfsBlockSize),
 		})
@@ -75,7 +74,7 @@ func main() {
 
 	if *kernelServe {
 		devices = append(devices, roles.Device{
-			Name:      config.KernelName,
+			Name:      roles.KernelName,
 			Base:      *kernelPath,
 			BlockSize: uint32(*kernelBlockSize),
 		})
@@ -83,7 +82,7 @@ func main() {
 
 	if *diskServe {
 		devices = append(devices, roles.Device{
-			Name:      config.DiskName,
+			Name:      roles.DiskName,
 			Base:      *diskPath,
 			BlockSize: uint32(*diskBlockSize),
 		})
@@ -91,7 +90,7 @@ func main() {
 
 	if *configServe {
 		devices = append(devices, roles.Device{
-			Name:      config.ConfigName,
+			Name:      roles.ConfigName,
 			Base:      *configPath,
 			BlockSize: uint32(*configBlockSize),
 		})

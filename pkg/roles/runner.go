@@ -11,13 +11,47 @@ import (
 	"time"
 
 	"github.com/loopholelabs/drafter/internal/firecracker"
-	"github.com/loopholelabs/drafter/pkg/config"
+	"github.com/loopholelabs/drafter/pkg/ipc"
 	"github.com/loopholelabs/drafter/pkg/utils"
 )
 
 const (
-	VSockName = "drafter.drftsock"
+	vsockName = "drafter.drftsock"
 )
+
+type HypervisorConfiguration struct {
+	FirecrackerBin string
+	JailerBin      string
+
+	ChrootBaseDir string
+
+	UID int
+	GID int
+
+	NetNS         string
+	NumaNode      int
+	CgroupVersion int
+
+	EnableOutput bool
+	EnableInput  bool
+}
+
+type NetworkConfiguration struct {
+	Interface string
+	MAC       string
+}
+
+type VMConfiguration struct {
+	CPUCount    int
+	MemorySize  int
+	CPUTemplate string
+
+	BootArgs string
+}
+
+type PackageConfiguration struct {
+	AgentVSockPort uint32 `json:"agentVSockPort"`
+}
 
 type Runner struct {
 	VMPath string
@@ -48,7 +82,7 @@ type ResumedRunner struct {
 func StartRunner(
 	hypervisorCtx context.Context,
 	rescueCtx context.Context,
-	hypervisorConfiguration config.HypervisorConfiguration,
+	hypervisorConfiguration HypervisorConfiguration,
 
 	stateName string,
 	memoryName string,
@@ -155,8 +189,8 @@ func StartRunner(
 		defer ongoingResumeWg.Done()
 
 		var (
-			agent                   *AgentServer
-			acceptingAgent          *AcceptingAgentServer
+			agent                   *ipc.AgentServer
+			acceptingAgent          *ipc.AcceptingAgentServer
 			suspendOnPanicWithError = false
 		)
 
@@ -207,8 +241,8 @@ func StartRunner(
 			}
 		})
 
-		agent, err = StartAgentServer(
-			filepath.Join(server.VMPath, VSockName),
+		agent, err = ipc.StartAgentServer(
+			filepath.Join(server.VMPath, vsockName),
 			uint32(agentVSockPort),
 		)
 		if err != nil {

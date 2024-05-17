@@ -6,8 +6,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-
-	"github.com/loopholelabs/drafter/pkg/config"
 )
 
 var (
@@ -35,7 +33,7 @@ func ArchivePackage(
 
 	packageOutputPath string,
 
-	knownNamesConfiguration config.KnownNamesConfiguration,
+	knownNamesConfiguration KnownNamesConfiguration,
 ) error {
 	resources := []resource{
 		{
@@ -115,7 +113,7 @@ func ExtractPackage(
 	diskOutputPath string,
 	configOutputPath string,
 
-	knownNamesConfiguration config.KnownNamesConfiguration,
+	knownNamesConfiguration KnownNamesConfiguration,
 ) error {
 	resources := []resource{
 		{

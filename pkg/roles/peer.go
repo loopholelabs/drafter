@@ -16,7 +16,6 @@ import (
 	"time"
 
 	iutils "github.com/loopholelabs/drafter/internal/utils"
-	"github.com/loopholelabs/drafter/pkg/config"
 	"github.com/loopholelabs/drafter/pkg/utils"
 	"github.com/loopholelabs/silo/pkg/storage"
 	"github.com/loopholelabs/silo/pkg/storage/blocks"
@@ -232,7 +231,7 @@ type Peer struct {
 func StartPeer(
 	hypervisorCtx context.Context,
 	rescueCtx context.Context,
-	hypervisorConfiguration config.HypervisorConfiguration,
+	hypervisorConfiguration HypervisorConfiguration,
 
 	stateName string,
 	memoryName string,
@@ -393,22 +392,22 @@ func StartPeer(
 								base = ""
 							)
 							switch di.Name {
-							case config.ConfigName:
+							case ConfigName:
 								base = configBasePath
 
-							case config.DiskName:
+							case DiskName:
 								base = diskBasePath
 
-							case config.InitramfsName:
+							case InitramfsName:
 								base = initramfsBasePath
 
-							case config.KernelName:
+							case KernelName:
 								base = kernelBasePath
 
-							case config.MemoryName:
+							case MemoryName:
 								base = memoryBasePath
 
-							case config.StateName:
+							case StateName:
 								base = stateBasePath
 							}
 
@@ -688,7 +687,7 @@ func StartPeer(
 
 		allStage1Inputs := []peerStage1{
 			{
-				name: config.StateName,
+				name: StateName,
 
 				base:    stateBasePath,
 				overlay: stateOverlayPath,
@@ -697,7 +696,7 @@ func StartPeer(
 				blockSize: stateBlockSize,
 			},
 			{
-				name: config.MemoryName,
+				name: MemoryName,
 
 				base:    memoryBasePath,
 				overlay: memoryOverlayPath,
@@ -706,7 +705,7 @@ func StartPeer(
 				blockSize: memoryBlockSize,
 			},
 			{
-				name: config.InitramfsName,
+				name: InitramfsName,
 
 				base:    initramfsBasePath,
 				overlay: initramfsOverlayPath,
@@ -715,7 +714,7 @@ func StartPeer(
 				blockSize: initramfsBlockSize,
 			},
 			{
-				name: config.KernelName,
+				name: KernelName,
 
 				base:    kernelBasePath,
 				overlay: kernelOverlayPath,
@@ -724,7 +723,7 @@ func StartPeer(
 				blockSize: kernelBlockSize,
 			},
 			{
-				name: config.DiskName,
+				name: DiskName,
 
 				base:    diskBasePath,
 				overlay: diskOverlayPath,
@@ -733,7 +732,7 @@ func StartPeer(
 				blockSize: diskBlockSize,
 			},
 			{
-				name: config.ConfigName,
+				name: ConfigName,
 
 				base:    configBasePath,
 				overlay: configOverlayPath,
@@ -908,7 +907,7 @@ func StartPeer(
 			}
 			defer packageConfigFile.Close()
 
-			var packageConfig config.PackageConfiguration
+			var packageConfig PackageConfiguration
 			if err := json.NewDecoder(packageConfigFile).Decode(&packageConfig); err != nil {
 				return nil, err
 			}
@@ -943,22 +942,22 @@ func StartPeer(
 
 							var expiry time.Duration
 							switch input.name {
-							case config.ConfigName:
+							case ConfigName:
 								expiry = configExpiry
 
-							case config.DiskName:
+							case DiskName:
 								expiry = diskExpiry
 
-							case config.InitramfsName:
+							case InitramfsName:
 								expiry = initramfsExpiry
 
-							case config.KernelName:
+							case KernelName:
 								expiry = kernelExpiry
 
-							case config.MemoryName:
+							case MemoryName:
 								expiry = memoryExpiry
 
-							case config.StateName:
+							case StateName:
 								expiry = stateExpiry
 
 								// No need for a default case/check here - we validate that all resources have valid names earlier
@@ -1116,22 +1115,22 @@ func StartPeer(
 						for _, input := range allStage3Inputs {
 							var serve bool
 							switch input.prev.name {
-							case config.ConfigName:
+							case ConfigName:
 								serve = configServe
 
-							case config.DiskName:
+							case DiskName:
 								serve = diskServe
 
-							case config.InitramfsName:
+							case InitramfsName:
 								serve = initramfsServe
 
-							case config.KernelName:
+							case KernelName:
 								serve = kernelServe
 
-							case config.MemoryName:
+							case MemoryName:
 								serve = memoryServe
 
-							case config.StateName:
+							case StateName:
 								serve = stateServe
 
 								// No need for a default case/check here - we validate that all resources have valid names earlier
@@ -1149,22 +1148,22 @@ func StartPeer(
 							func(index int, input peerStage3, _ *struct{}, _ func(deferFunc func() error)) error {
 								var serve bool
 								switch input.prev.name {
-								case config.ConfigName:
+								case ConfigName:
 									serve = configServe
 
-								case config.DiskName:
+								case DiskName:
 									serve = diskServe
 
-								case config.InitramfsName:
+								case InitramfsName:
 									serve = initramfsServe
 
-								case config.KernelName:
+								case KernelName:
 									serve = kernelServe
 
-								case config.MemoryName:
+								case MemoryName:
 									serve = memoryServe
 
-								case config.StateName:
+								case StateName:
 									serve = stateServe
 
 									// No need for a default case/check here - we validate that all resources have valid names earlier
@@ -1273,37 +1272,37 @@ func StartPeer(
 									cycleThrottle  time.Duration
 								)
 								switch input.prev.name {
-								case config.ConfigName:
+								case ConfigName:
 									maxDirtyBlocks = configMaxDirtyBlocks
 									minCycles = configMinCycles
 									maxCycles = configMaxCycles
 									cycleThrottle = configCycleThrottle
 
-								case config.DiskName:
+								case DiskName:
 									maxDirtyBlocks = diskMaxDirtyBlocks
 									minCycles = diskMinCycles
 									maxCycles = diskMaxCycles
 									cycleThrottle = diskCycleThrottle
 
-								case config.InitramfsName:
+								case InitramfsName:
 									maxDirtyBlocks = initramfsMaxDirtyBlocks
 									minCycles = initramfsMinCycles
 									maxCycles = initramfsMaxCycles
 									cycleThrottle = initramfsCycleThrottle
 
-								case config.KernelName:
+								case KernelName:
 									maxDirtyBlocks = kernelMaxDirtyBlocks
 									minCycles = kernelMinCycles
 									maxCycles = kernelMaxCycles
 									cycleThrottle = kernelCycleThrottle
 
-								case config.MemoryName:
+								case MemoryName:
 									maxDirtyBlocks = memoryMaxDirtyBlocks
 									minCycles = memoryMinCycles
 									maxCycles = memoryMaxCycles
 									cycleThrottle = memoryCycleThrottle
 
-								case config.StateName:
+								case StateName:
 									maxDirtyBlocks = stateMaxDirtyBlocks
 									minCycles = stateMinCycles
 									maxCycles = stateMaxCycles
@@ -1320,7 +1319,7 @@ func StartPeer(
 								for {
 									suspendedVMLock.Lock()
 									// We only need to `msync` for the memory because `msync` only affects the memory
-									if !suspendedVM && input.prev.name == config.MemoryName {
+									if !suspendedVM && input.prev.name == MemoryName {
 										if err := resumedRunner.Msync(ctx); err != nil {
 											suspendedVMLock.Unlock()
 

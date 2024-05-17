@@ -13,7 +13,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/loopholelabs/drafter/pkg/config"
 	"github.com/loopholelabs/drafter/pkg/roles"
 	"github.com/loopholelabs/drafter/pkg/utils"
 	"golang.org/x/sys/unix"
@@ -69,7 +68,7 @@ func main() {
 	}
 	defer configFile.Close()
 
-	var packageConfig config.PackageConfiguration
+	var packageConfig roles.PackageConfiguration
 	if err := json.NewDecoder(configFile).Decode(&packageConfig); err != nil {
 		panic(err)
 	}
@@ -115,7 +114,7 @@ func main() {
 		ctx,
 		context.Background(), // Never give up on rescue operations
 
-		config.HypervisorConfiguration{
+		roles.HypervisorConfiguration{
 			FirecrackerBin: firecrackerBin,
 			JailerBin:      jailerBin,
 
@@ -132,8 +131,8 @@ func main() {
 			EnableInput:  *enableInput,
 		},
 
-		config.StateName,
-		config.MemoryName,
+		roles.StateName,
+		roles.MemoryName,
 	)
 
 	if runner.Wait != nil {
@@ -166,24 +165,24 @@ func main() {
 
 	resources := [][2]string{
 		{
-			config.InitramfsName,
+			roles.InitramfsName,
 			*initramfsPath,
 		},
 		{
-			config.KernelName,
+			roles.KernelName,
 			*kernelPath,
 		},
 		{
-			config.DiskName,
+			roles.DiskName,
 			*diskPath,
 		},
 
 		{
-			config.StateName,
+			roles.StateName,
 			*statePath,
 		},
 		{
-			config.MemoryName,
+			roles.MemoryName,
 			*memoryPath,
 		},
 	}
