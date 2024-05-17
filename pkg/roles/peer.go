@@ -1027,6 +1027,11 @@ func StartPeer(
 							suspendedVM     bool
 						)
 
+						// We use the background context here instead of the internal context because we want to distinguish
+						// between a context cancellation from the outside and getting a response
+						suspendedVMCtx, cancelSuspendedVMCtx := context.WithCancel(context.Background())
+						defer cancelSuspendedVMCtx()
+
 						suspendAndMsyncVM := sync.OnceValue(func() error {
 							if hook := hooks.OnBeforeSuspend; hook != nil {
 								hook()
@@ -1047,6 +1052,8 @@ func StartPeer(
 							suspendedVMLock.Lock()
 							suspendedVM = true
 							suspendedVMLock.Unlock()
+
+							cancelSuspendedVMCtx()
 
 							return nil
 						})
@@ -1301,6 +1308,33 @@ func StartPeer(
 												}
 											}
 										})
+									}
+
+									suspendedVMLock.Lock()
+									if !suspendedVM && !(devicesLeftToTransferAuthorityFor.Load() >= int32(len(stage3Inputs))) {
+										suspendedVMLock.Unlock()
+
+										// We use the background context here instead of the internal context because we want to distinguish
+										// between a context cancellation from the outside and getting a response
+										throttleCtx, cancelThrottleCtx := context.WithTimeout(context.Background(), time.Millisecond*500)
+										defer cancelThrottleCtx()
+
+										select {
+										case <-throttleCtx.Done():
+											break
+
+										case <-suspendedVMCtx.Done():
+											break
+
+										case <-ctx.Done(): // ctx is the internalCtx here
+											if err := ctx.Err(); err != nil {
+												return ctx.Err()
+											}
+
+											return nil
+										}
+									} else {
+										suspendedVMLock.Unlock()
 									}
 
 									totalCycles++
