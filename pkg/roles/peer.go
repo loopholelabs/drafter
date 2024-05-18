@@ -35,6 +35,14 @@ var (
 	ErrCouldNotGetNBDDeviceStat = errors.New("could not get NBD device stat")
 )
 
+type MigrateFromDeviceConfiguration struct {
+	BasePath,
+	OverlayPath,
+	StatePath string
+
+	BlockSize uint32
+}
+
 type MigrateFromHooks struct {
 	OnRemoteDeviceReceived           func(remoteDeviceID uint32, name string)
 	OnRemoteDeviceExposed            func(remoteDeviceID uint32, path string)
@@ -83,6 +91,16 @@ type ResumedPeer struct {
 	) (migratablePeer *MigratablePeer, errs error)
 }
 
+type MigrateToDeviceConfiguration struct {
+	MaxDirtyBlocks,
+	MinCycles,
+	MaxCycles int
+
+	CycleThrottle time.Duration
+
+	Serve bool
+}
+
 type MigrateToHooks struct {
 	OnBeforeSuspend func()
 	OnAfterSuspend  func()
@@ -104,40 +122,12 @@ type MigratablePeer struct {
 	MigrateTo func(
 		ctx context.Context,
 
-		stateMaxDirtyBlocks,
-		memoryMaxDirtyBlocks,
-		initramfsMaxDirtyBlocks,
-		kernelMaxDirtyBlocks,
-		diskMaxDirtyBlocks,
-		configMaxDirtyBlocks,
-
-		stateMinCycles,
-		memoryMinCycles,
-		initramfsMinCycles,
-		kernelMinCycles,
-		diskMinCycles,
-		configMinCycles,
-
-		stateMaxCycles,
-		memoryMaxCycles,
-		initramfsMaxCycles,
-		kernelMaxCycles,
-		diskMaxCycles,
-		configMaxCycles int,
-
-		stateCycleThrottle,
-		memoryCycleThrottle,
-		initramfsCycleThrottle,
-		kernelCycleThrottle,
-		diskCycleThrottle,
-		configCycleThrottle time.Duration,
-
-		stateServe,
-		memoryServe,
-		initramfsServe,
-		kernelServe,
-		diskServe,
-		configServe bool,
+		stateDeviceConfiguration,
+		memoryDeviceConfiguration,
+		initramfsDeviceConfiguration,
+		kernelDeviceConfiguration,
+		diskDeviceConfiguration,
+		configDeviceConfiguration MigrateToDeviceConfiguration,
 
 		suspendTimeout time.Duration,
 		concurrency int,
@@ -189,33 +179,12 @@ type Peer struct {
 	MigrateFrom func(
 		ctx context.Context,
 
-		stateBasePath,
-		memoryBasePath,
-		initramfsBasePath,
-		kernelBasePath,
-		diskBasePath,
-		configBasePath,
-
-		stateOverlayPath,
-		memoryOverlayPath,
-		initramfsOverlayPath,
-		kernelOverlayPath,
-		diskOverlayPath,
-		configOverlayPath,
-
-		stateStatePath,
-		memoryStatePath,
-		initramfsStatePath,
-		kernelStatePath,
-		diskStatePath,
-		configStatePath string,
-
-		stateBlockSize,
-		memoryBlockSize,
-		initramfsBlockSize,
-		kernelBlockSize,
-		diskBlockSize,
-		configBlockSize uint32,
+		stateDeviceConfiguration,
+		memoryDeviceConfiguration,
+		initramfsDeviceConfiguration,
+		kernelDeviceConfiguration,
+		diskDeviceConfiguration,
+		configDeviceConfiguration MigrateFromDeviceConfiguration,
 
 		readers []io.Reader,
 		writers []io.Writer,
@@ -295,33 +264,12 @@ func StartPeer(
 	peer.MigrateFrom = func(
 		ctx context.Context,
 
-		stateBasePath,
-		memoryBasePath,
-		initramfsBasePath,
-		kernelBasePath,
-		diskBasePath,
-		configBasePath,
-
-		stateOverlayPath,
-		memoryOverlayPath,
-		initramfsOverlayPath,
-		kernelOverlayPath,
-		diskOverlayPath,
-		configOverlayPath,
-
-		stateStatePath,
-		memoryStatePath,
-		initramfsStatePath,
-		kernelStatePath,
-		diskStatePath,
-		configStatePath string,
-
-		stateBlockSize,
-		memoryBlockSize,
-		initramfsBlockSize,
-		kernelBlockSize,
-		diskBlockSize,
-		configBlockSize uint32,
+		stateDeviceConfiguration,
+		memoryDeviceConfiguration,
+		initramfsDeviceConfiguration,
+		kernelDeviceConfiguration,
+		diskDeviceConfiguration,
+		configDeviceConfiguration MigrateFromDeviceConfiguration,
 
 		readers []io.Reader,
 		writers []io.Writer,
@@ -393,22 +341,22 @@ func StartPeer(
 							)
 							switch di.Name {
 							case ConfigName:
-								base = configBasePath
+								base = configDeviceConfiguration.BasePath
 
 							case DiskName:
-								base = diskBasePath
+								base = diskDeviceConfiguration.BasePath
 
 							case InitramfsName:
-								base = initramfsBasePath
+								base = initramfsDeviceConfiguration.BasePath
 
 							case KernelName:
-								base = kernelBasePath
+								base = kernelDeviceConfiguration.BasePath
 
 							case MemoryName:
-								base = memoryBasePath
+								base = memoryDeviceConfiguration.BasePath
 
 							case StateName:
-								base = stateBasePath
+								base = stateDeviceConfiguration.BasePath
 							}
 
 							if strings.TrimSpace(base) == "" {
@@ -689,56 +637,56 @@ func StartPeer(
 			{
 				name: StateName,
 
-				base:    stateBasePath,
-				overlay: stateOverlayPath,
-				state:   stateStatePath,
+				base:    stateDeviceConfiguration.BasePath,
+				overlay: stateDeviceConfiguration.OverlayPath,
+				state:   stateDeviceConfiguration.StatePath,
 
-				blockSize: stateBlockSize,
+				blockSize: stateDeviceConfiguration.BlockSize,
 			},
 			{
 				name: MemoryName,
 
-				base:    memoryBasePath,
-				overlay: memoryOverlayPath,
-				state:   memoryStatePath,
+				base:    memoryDeviceConfiguration.BasePath,
+				overlay: memoryDeviceConfiguration.OverlayPath,
+				state:   memoryDeviceConfiguration.StatePath,
 
-				blockSize: memoryBlockSize,
+				blockSize: memoryDeviceConfiguration.BlockSize,
 			},
 			{
 				name: InitramfsName,
 
-				base:    initramfsBasePath,
-				overlay: initramfsOverlayPath,
-				state:   initramfsStatePath,
+				base:    initramfsDeviceConfiguration.BasePath,
+				overlay: initramfsDeviceConfiguration.OverlayPath,
+				state:   initramfsDeviceConfiguration.StatePath,
 
-				blockSize: initramfsBlockSize,
+				blockSize: initramfsDeviceConfiguration.BlockSize,
 			},
 			{
 				name: KernelName,
 
-				base:    kernelBasePath,
-				overlay: kernelOverlayPath,
-				state:   kernelStatePath,
+				base:    kernelDeviceConfiguration.BasePath,
+				overlay: kernelDeviceConfiguration.OverlayPath,
+				state:   kernelDeviceConfiguration.StatePath,
 
-				blockSize: kernelBlockSize,
+				blockSize: kernelDeviceConfiguration.BlockSize,
 			},
 			{
 				name: DiskName,
 
-				base:    diskBasePath,
-				overlay: diskOverlayPath,
-				state:   diskStatePath,
+				base:    diskDeviceConfiguration.BasePath,
+				overlay: diskDeviceConfiguration.OverlayPath,
+				state:   diskDeviceConfiguration.StatePath,
 
-				blockSize: diskBlockSize,
+				blockSize: diskDeviceConfiguration.BlockSize,
 			},
 			{
 				name: ConfigName,
 
-				base:    configBasePath,
-				overlay: configOverlayPath,
-				state:   configStatePath,
+				base:    configDeviceConfiguration.BasePath,
+				overlay: configDeviceConfiguration.OverlayPath,
+				state:   configDeviceConfiguration.StatePath,
 
-				blockSize: configBlockSize,
+				blockSize: configDeviceConfiguration.BlockSize,
 			},
 		}
 
@@ -901,7 +849,7 @@ func StartPeer(
 		}
 
 		migratedPeer.Resume = func(ctx context.Context, resumeTimeout time.Duration) (resumedPeer *ResumedPeer, errs error) {
-			packageConfigFile, err := os.Open(configBasePath)
+			packageConfigFile, err := os.Open(configDeviceConfiguration.BasePath)
 			if err != nil {
 				return nil, err
 			}
@@ -1007,40 +955,12 @@ func StartPeer(
 					migratablePeer.MigrateTo = func(
 						ctx context.Context,
 
-						stateMaxDirtyBlocks,
-						memoryMaxDirtyBlocks,
-						initramfsMaxDirtyBlocks,
-						kernelMaxDirtyBlocks,
-						diskMaxDirtyBlocks,
-						configMaxDirtyBlocks,
-
-						stateMinCycles,
-						memoryMinCycles,
-						initramfsMinCycles,
-						kernelMinCycles,
-						diskMinCycles,
-						configMinCycles,
-
-						stateMaxCycles,
-						memoryMaxCycles,
-						initramfsMaxCycles,
-						kernelMaxCycles,
-						diskMaxCycles,
-						configMaxCycles int,
-
-						stateCycleThrottle,
-						memoryCycleThrottle,
-						initramfsCycleThrottle,
-						kernelCycleThrottle,
-						diskCycleThrottle,
-						configCycleThrottle time.Duration,
-
-						stateServe,
-						memoryServe,
-						initramfsServe,
-						kernelServe,
-						diskServe,
-						configServe bool,
+						stateDeviceConfiguration,
+						memoryDeviceConfiguration,
+						initramfsDeviceConfiguration,
+						kernelDeviceConfiguration,
+						diskDeviceConfiguration,
+						configDeviceConfiguration MigrateToDeviceConfiguration,
 
 						suspendTimeout time.Duration,
 						concurrency int,
@@ -1116,22 +1036,22 @@ func StartPeer(
 							var serve bool
 							switch input.prev.name {
 							case ConfigName:
-								serve = configServe
+								serve = configDeviceConfiguration.Serve
 
 							case DiskName:
-								serve = diskServe
+								serve = diskDeviceConfiguration.Serve
 
 							case InitramfsName:
-								serve = initramfsServe
+								serve = initramfsDeviceConfiguration.Serve
 
 							case KernelName:
-								serve = kernelServe
+								serve = kernelDeviceConfiguration.Serve
 
 							case MemoryName:
-								serve = memoryServe
+								serve = memoryDeviceConfiguration.Serve
 
 							case StateName:
-								serve = stateServe
+								serve = stateDeviceConfiguration.Serve
 
 								// No need for a default case/check here - we validate that all resources have valid names earlier
 							}
@@ -1149,22 +1069,22 @@ func StartPeer(
 								var serve bool
 								switch input.prev.name {
 								case ConfigName:
-									serve = configServe
+									serve = configDeviceConfiguration.Serve
 
 								case DiskName:
-									serve = diskServe
+									serve = diskDeviceConfiguration.Serve
 
 								case InitramfsName:
-									serve = initramfsServe
+									serve = initramfsDeviceConfiguration.Serve
 
 								case KernelName:
-									serve = kernelServe
+									serve = kernelDeviceConfiguration.Serve
 
 								case MemoryName:
-									serve = memoryServe
+									serve = memoryDeviceConfiguration.Serve
 
 								case StateName:
-									serve = stateServe
+									serve = stateDeviceConfiguration.Serve
 
 									// No need for a default case/check here - we validate that all resources have valid names earlier
 								}
@@ -1269,44 +1189,51 @@ func StartPeer(
 									maxDirtyBlocks int
 									minCycles      int
 									maxCycles      int
-									cycleThrottle  time.Duration
+
+									cycleThrottle time.Duration
 								)
 								switch input.prev.name {
 								case ConfigName:
-									maxDirtyBlocks = configMaxDirtyBlocks
-									minCycles = configMinCycles
-									maxCycles = configMaxCycles
-									cycleThrottle = configCycleThrottle
+									maxDirtyBlocks = configDeviceConfiguration.MaxDirtyBlocks
+									minCycles = configDeviceConfiguration.MinCycles
+									maxCycles = configDeviceConfiguration.MaxCycles
+
+									cycleThrottle = configDeviceConfiguration.CycleThrottle
 
 								case DiskName:
-									maxDirtyBlocks = diskMaxDirtyBlocks
-									minCycles = diskMinCycles
-									maxCycles = diskMaxCycles
-									cycleThrottle = diskCycleThrottle
+									maxDirtyBlocks = diskDeviceConfiguration.MaxDirtyBlocks
+									minCycles = diskDeviceConfiguration.MinCycles
+									maxCycles = diskDeviceConfiguration.MaxCycles
+
+									cycleThrottle = diskDeviceConfiguration.CycleThrottle
 
 								case InitramfsName:
-									maxDirtyBlocks = initramfsMaxDirtyBlocks
-									minCycles = initramfsMinCycles
-									maxCycles = initramfsMaxCycles
-									cycleThrottle = initramfsCycleThrottle
+									maxDirtyBlocks = initramfsDeviceConfiguration.MaxDirtyBlocks
+									minCycles = initramfsDeviceConfiguration.MinCycles
+									maxCycles = initramfsDeviceConfiguration.MaxCycles
+
+									cycleThrottle = initramfsDeviceConfiguration.CycleThrottle
 
 								case KernelName:
-									maxDirtyBlocks = kernelMaxDirtyBlocks
-									minCycles = kernelMinCycles
-									maxCycles = kernelMaxCycles
-									cycleThrottle = kernelCycleThrottle
+									maxDirtyBlocks = kernelDeviceConfiguration.MaxDirtyBlocks
+									minCycles = kernelDeviceConfiguration.MinCycles
+									maxCycles = kernelDeviceConfiguration.MaxCycles
+
+									cycleThrottle = kernelDeviceConfiguration.CycleThrottle
 
 								case MemoryName:
-									maxDirtyBlocks = memoryMaxDirtyBlocks
-									minCycles = memoryMinCycles
-									maxCycles = memoryMaxCycles
-									cycleThrottle = memoryCycleThrottle
+									maxDirtyBlocks = memoryDeviceConfiguration.MaxDirtyBlocks
+									minCycles = memoryDeviceConfiguration.MinCycles
+									maxCycles = memoryDeviceConfiguration.MaxCycles
+
+									cycleThrottle = memoryDeviceConfiguration.CycleThrottle
 
 								case StateName:
-									maxDirtyBlocks = stateMaxDirtyBlocks
-									minCycles = stateMinCycles
-									maxCycles = stateMaxCycles
-									cycleThrottle = stateCycleThrottle
+									maxDirtyBlocks = stateDeviceConfiguration.MaxDirtyBlocks
+									minCycles = stateDeviceConfiguration.MinCycles
+									maxCycles = stateDeviceConfiguration.MaxCycles
+
+									cycleThrottle = stateDeviceConfiguration.CycleThrottle
 
 									// No need for a default case/check here - we validate that all resources have valid names earlier
 								}

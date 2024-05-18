@@ -236,33 +236,48 @@ func main() {
 	migratedPeer, err := peer.MigrateFrom(
 		ctx,
 
-		*stateBasePath,
-		*memoryBasePath,
-		*initramfsBasePath,
-		*kernelBasePath,
-		*diskBasePath,
-		*configBasePath,
+		roles.MigrateFromDeviceConfiguration{
+			BasePath:    *stateBasePath,
+			OverlayPath: *stateOverlayPath,
+			StatePath:   *stateStatePath,
 
-		*stateOverlayPath,
-		*memoryOverlayPath,
-		*initramfsOverlayPath,
-		*kernelOverlayPath,
-		*diskOverlayPath,
-		*configOverlayPath,
+			BlockSize: uint32(*stateBlockSize),
+		},
+		roles.MigrateFromDeviceConfiguration{
+			BasePath:    *memoryBasePath,
+			OverlayPath: *memoryOverlayPath,
+			StatePath:   *memoryStatePath,
 
-		*stateStatePath,
-		*memoryStatePath,
-		*initramfsStatePath,
-		*kernelStatePath,
-		*diskStatePath,
-		*configStatePath,
+			BlockSize: uint32(*memoryBlockSize),
+		},
+		roles.MigrateFromDeviceConfiguration{
+			BasePath:    *initramfsBasePath,
+			OverlayPath: *initramfsOverlayPath,
+			StatePath:   *initramfsStatePath,
 
-		uint32(*stateBlockSize),
-		uint32(*memoryBlockSize),
-		uint32(*initramfsBlockSize),
-		uint32(*kernelBlockSize),
-		uint32(*diskBlockSize),
-		uint32(*configBlockSize),
+			BlockSize: uint32(*initramfsBlockSize),
+		},
+		roles.MigrateFromDeviceConfiguration{
+			BasePath:    *kernelBasePath,
+			OverlayPath: *kernelOverlayPath,
+			StatePath:   *kernelStatePath,
+
+			BlockSize: uint32(*kernelBlockSize),
+		},
+		roles.MigrateFromDeviceConfiguration{
+			BasePath:    *diskBasePath,
+			OverlayPath: *diskOverlayPath,
+			StatePath:   *diskStatePath,
+
+			BlockSize: uint32(*diskBlockSize),
+		},
+		roles.MigrateFromDeviceConfiguration{
+			BasePath:    *configBasePath,
+			OverlayPath: *configOverlayPath,
+			StatePath:   *configStatePath,
+
+			BlockSize: uint32(*configBlockSize),
+		},
 
 		readers,
 		writers,
@@ -475,40 +490,60 @@ func main() {
 	if err := migratablePeer.MigrateTo(
 		ctx,
 
-		*stateMaxDirtyBlocks,
-		*memoryMaxDirtyBlocks,
-		*initramfsMaxDirtyBlocks,
-		*kernelMaxDirtyBlocks,
-		*diskMaxDirtyBlocks,
-		*configMaxDirtyBlocks,
+		roles.MigrateToDeviceConfiguration{
+			MaxDirtyBlocks: *stateMaxDirtyBlocks,
+			MinCycles:      *stateMinCycles,
+			MaxCycles:      *stateMaxCycles,
 
-		*stateMinCycles,
-		*memoryMinCycles,
-		*initramfsMinCycles,
-		*kernelMinCycles,
-		*diskMinCycles,
-		*configMinCycles,
+			CycleThrottle: *stateCycleThrottle,
 
-		*stateMaxCycles,
-		*memoryMaxCycles,
-		*initramfsMaxCycles,
-		*kernelMaxCycles,
-		*diskMaxCycles,
-		*configMaxCycles,
+			Serve: *stateServe,
+		},
+		roles.MigrateToDeviceConfiguration{
+			MaxDirtyBlocks: *memoryMaxDirtyBlocks,
+			MinCycles:      *memoryMinCycles,
+			MaxCycles:      *memoryMaxCycles,
 
-		*stateCycleThrottle,
-		*memoryCycleThrottle,
-		*initramfsCycleThrottle,
-		*kernelCycleThrottle,
-		*diskCycleThrottle,
-		*configCycleThrottle,
+			CycleThrottle: *memoryCycleThrottle,
 
-		*stateServe,
-		*memoryServe,
-		*initramfsServe,
-		*kernelServe,
-		*diskServe,
-		*configServe,
+			Serve: *memoryServe,
+		},
+		roles.MigrateToDeviceConfiguration{
+			MaxDirtyBlocks: *initramfsMaxDirtyBlocks,
+			MinCycles:      *initramfsMinCycles,
+			MaxCycles:      *initramfsMaxCycles,
+
+			CycleThrottle: *initramfsCycleThrottle,
+
+			Serve: *initramfsServe,
+		},
+		roles.MigrateToDeviceConfiguration{
+			MaxDirtyBlocks: *kernelMaxDirtyBlocks,
+			MinCycles:      *kernelMinCycles,
+			MaxCycles:      *kernelMaxCycles,
+
+			CycleThrottle: *kernelCycleThrottle,
+
+			Serve: *kernelServe,
+		},
+		roles.MigrateToDeviceConfiguration{
+			MaxDirtyBlocks: *diskMaxDirtyBlocks,
+			MinCycles:      *diskMinCycles,
+			MaxCycles:      *diskMaxCycles,
+
+			CycleThrottle: *diskCycleThrottle,
+
+			Serve: *diskServe,
+		},
+		roles.MigrateToDeviceConfiguration{
+			MaxDirtyBlocks: *configMaxDirtyBlocks,
+			MinCycles:      *configMinCycles,
+			MaxCycles:      *configMaxCycles,
+
+			CycleThrottle: *configCycleThrottle,
+
+			Serve: *configServe,
+		},
 
 		*resumeTimeout,
 		*concurrency,
