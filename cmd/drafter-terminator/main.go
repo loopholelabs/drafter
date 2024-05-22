@@ -29,14 +29,6 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	conn, err := net.Dial("tcp", *raddr)
-	if err != nil {
-		panic(err)
-	}
-	defer conn.Close()
-
-	log.Println("Migrating from", conn.RemoteAddr())
-
 	var errs error
 	defer func() {
 		if errs != nil {
@@ -63,6 +55,14 @@ func main() {
 
 		cancel()
 	}()
+
+	conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", *raddr)
+	if err != nil {
+		panic(err)
+	}
+	defer conn.Close()
+
+	log.Println("Migrating from", conn.RemoteAddr())
 
 	if err := roles.Terminate(
 		ctx,

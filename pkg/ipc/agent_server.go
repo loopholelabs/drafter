@@ -170,7 +170,7 @@ func StartAgentServer(
 
 			remoteCtx, // This resource outlives the current scope, so we use the external context
 
-			&rpc.Options{
+			&rpc.RegistryHooks{
 				OnClientConnect: func(remoteID string) {
 					cancelReadyCtx()
 				},
@@ -200,6 +200,8 @@ func StartAgentServer(
 				func(data json.RawMessage, v any) error {
 					return json.Unmarshal([]byte(data), v)
 				},
+
+				nil,
 			); err != nil {
 				closeLock.Lock()
 				defer closeLock.Unlock()

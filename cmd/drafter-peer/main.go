@@ -118,33 +118,6 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	firecrackerBin, err := exec.LookPath(*rawFirecrackerBin)
-	if err != nil {
-		panic(err)
-	}
-
-	jailerBin, err := exec.LookPath(*rawJailerBin)
-	if err != nil {
-		panic(err)
-	}
-
-	var (
-		readers []io.Reader
-		writers []io.Writer
-	)
-	if strings.TrimSpace(*raddr) != "" {
-		conn, err := net.Dial("tcp", *raddr)
-		if err != nil {
-			panic(err)
-		}
-		defer conn.Close()
-
-		log.Println("Migrating from", conn.RemoteAddr())
-
-		readers = []io.Reader{conn}
-		writers = []io.Writer{conn}
-	}
-
 	var errs error
 	defer func() {
 		if errs != nil {
@@ -179,6 +152,33 @@ func main() {
 
 		cancel()
 	}()
+
+	firecrackerBin, err := exec.LookPath(*rawFirecrackerBin)
+	if err != nil {
+		panic(err)
+	}
+
+	jailerBin, err := exec.LookPath(*rawJailerBin)
+	if err != nil {
+		panic(err)
+	}
+
+	var (
+		readers []io.Reader
+		writers []io.Writer
+	)
+	if strings.TrimSpace(*raddr) != "" {
+		conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", *raddr)
+		if err != nil {
+			panic(err)
+		}
+		defer conn.Close()
+
+		log.Println("Migrating from", conn.RemoteAddr())
+
+		readers = []io.Reader{conn}
+		writers = []io.Writer{conn}
+	}
 
 	peer, err := roles.StartPeer(
 		ctx,
