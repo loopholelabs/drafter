@@ -169,7 +169,7 @@ func StartRunner(
 	firecrackerClient := &http.Client{
 		Transport: &http.Transport{
 			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-				return net.Dial("unix", filepath.Join(runner.VMPath, firecracker.FirecrackerSocketName))
+				return (&net.Dialer{}).DialContext(ctx, "unix", filepath.Join(runner.VMPath, firecracker.FirecrackerSocketName))
 			},
 		},
 	}

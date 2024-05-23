@@ -139,7 +139,7 @@ func CreateSnapshot(
 	client := &http.Client{
 		Transport: &http.Transport{
 			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-				return net.Dial("unix", filepath.Join(server.VMPath, firecracker.FirecrackerSocketName))
+				return (&net.Dialer{}).DialContext(ctx, "unix", filepath.Join(server.VMPath, firecracker.FirecrackerSocketName))
 			},
 		},
 	}
