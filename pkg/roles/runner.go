@@ -202,8 +202,8 @@ func StartRunner(
 			utils.GetPanicHandlerHooks{
 				OnAfterRecover: func() {
 					if suspendOnPanicWithError {
-						suspendCtx, cancel := context.WithTimeout(rescueCtx, rescueTimeout)
-						defer cancel()
+						suspendCtx, cancelSuspendCtx := context.WithTimeout(rescueCtx, rescueTimeout)
+						defer cancelSuspendCtx()
 
 						// Connections need to be closed before creating the snapshot
 						if acceptingAgent != nil && acceptingAgent.Close != nil {
@@ -264,24 +264,24 @@ func StartRunner(
 			panic(err)
 		}
 
-		if err := firecracker.ResumeSnapshot(
-			internalCtx,
-
-			firecrackerClient,
-
-			stateName,
-			memoryName,
-		); err != nil {
-			panic(err)
-		}
-
-		suspendOnPanicWithError = true
-
 		{
-			acceptCtx, cancel := context.WithTimeout(ctx, resumeTimeout)
-			defer cancel()
+			resumeSnapshotAndAcceptCtx, cancelResumeSnapshotAndAcceptCtx := context.WithTimeout(internalCtx, resumeTimeout)
+			defer cancelResumeSnapshotAndAcceptCtx()
 
-			acceptingAgent, err = agent.Accept(acceptCtx, ctx)
+			if err := firecracker.ResumeSnapshot(
+				resumeSnapshotAndAcceptCtx,
+
+				firecrackerClient,
+
+				stateName,
+				memoryName,
+			); err != nil {
+				panic(err)
+			}
+
+			suspendOnPanicWithError = true
+
+			acceptingAgent, err = agent.Accept(resumeSnapshotAndAcceptCtx, ctx)
 			if err != nil {
 				panic(err)
 			}
@@ -306,11 +306,13 @@ func StartRunner(
 			return resumedRunner.Wait()
 		}
 
-		ctx, cancelResumeCtx := context.WithTimeout(internalCtx, resumeTimeout)
-		defer cancelResumeCtx()
+		{
+			afterResumeCtx, cancelAfterResumeCtx := context.WithTimeout(internalCtx, resumeTimeout)
+			defer cancelAfterResumeCtx()
 
-		if err := acceptingAgent.Remote.AfterResume(ctx); err != nil {
-			panic(err)
+			if err := acceptingAgent.Remote.AfterResume(afterResumeCtx); err != nil {
+				panic(err)
+			}
 		}
 
 		resumedRunner.Msync = func(ctx context.Context) error {
@@ -327,13 +329,11 @@ func StartRunner(
 		}
 
 		resumedRunner.SuspendAndCloseAgentServer = func(ctx context.Context, suspendTimeout time.Duration) error {
-			{
-				ctx, cancel := context.WithTimeout(ctx, suspendTimeout)
-				defer cancel()
+			suspendCtx, cancelSuspendCtx := context.WithTimeout(ctx, suspendTimeout)
+			defer cancelSuspendCtx()
 
-				if err := acceptingAgent.Remote.BeforeSuspend(ctx); err != nil {
-					panic(err)
-				}
+			if err := acceptingAgent.Remote.BeforeSuspend(suspendCtx); err != nil {
+				panic(err)
 			}
 
 			// Connections need to be closed before creating the snapshot
@@ -343,7 +343,7 @@ func StartRunner(
 			agent.Close()
 
 			return firecracker.CreateSnapshot(
-				ctx,
+				suspendCtx,
 
 				firecrackerClient,
 
