@@ -65,7 +65,8 @@ type MigratedPeer struct {
 	Resume func(
 		ctx context.Context,
 
-		resumeTimeout time.Duration,
+		resumeTimeout,
+		rescueTimeout time.Duration,
 	) (
 		resumedPeer *ResumedPeer,
 
@@ -847,7 +848,12 @@ func StartPeer(
 			break
 		}
 
-		migratedPeer.Resume = func(ctx context.Context, resumeTimeout time.Duration) (resumedPeer *ResumedPeer, errs error) {
+		migratedPeer.Resume = func(
+			ctx context.Context,
+
+			resumeTimeout,
+			rescueTimeout time.Duration,
+		) (resumedPeer *ResumedPeer, errs error) {
 			packageConfigFile, err := os.Open(configDeviceConfiguration.BasePath)
 			if err != nil {
 				return nil, err
@@ -859,7 +865,7 @@ func StartPeer(
 				return nil, err
 			}
 
-			resumedRunner, err := runner.Resume(ctx, resumeTimeout, packageConfig.AgentVSockPort)
+			resumedRunner, err := runner.Resume(ctx, resumeTimeout, rescueTimeout, packageConfig.AgentVSockPort)
 			if err != nil {
 				return nil, err
 			}

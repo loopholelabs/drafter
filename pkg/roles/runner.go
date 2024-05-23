@@ -63,6 +63,7 @@ type Runner struct {
 		ctx context.Context,
 
 		resumeTimeout time.Duration,
+		rescueTimeout time.Duration,
 		agentVSockPort uint32,
 	) (
 		resumedRunner *ResumedRunner,
@@ -176,7 +177,8 @@ func StartRunner(
 	runner.Resume = func(
 		ctx context.Context,
 
-		resumeTimeout time.Duration,
+		resumeTimeout,
+		rescueTimeout time.Duration,
 		agentVSockPort uint32,
 	) (
 		resumedRunner *ResumedRunner,
@@ -200,6 +202,9 @@ func StartRunner(
 			utils.GetPanicHandlerHooks{
 				OnAfterRecover: func() {
 					if suspendOnPanicWithError {
+						suspendCtx, cancel := context.WithTimeout(rescueCtx, rescueTimeout)
+						defer cancel()
+
 						// Connections need to be closed before creating the snapshot
 						if acceptingAgent != nil && acceptingAgent.Close != nil {
 							if e := acceptingAgent.Close(); e != nil {
@@ -212,7 +217,7 @@ func StartRunner(
 
 						// If a resume failed, flush the snapshot so that we can re-try
 						if e := firecracker.CreateSnapshot(
-							rescueCtx, // We use a separate context here so that we can
+							suspendCtx, // We use a separate context here so that we can
 							// cancel the snapshot create action independently of the resume
 							// ctx, which is typically cancelled already
 

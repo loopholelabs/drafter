@@ -32,6 +32,7 @@ func main() {
 	enableInput := flag.Bool("enable-input", false, "Whether to enable VM stdin")
 
 	resumeTimeout := flag.Duration("resume-timeout", time.Minute, "Maximum amount of time to wait for agent and liveness to resume")
+	rescueTimeout := flag.Duration("rescue-timeout", time.Minute, "Maximum amount of time to wait for rescue operations")
 
 	netns := flag.String("netns", "ark0", "Network namespace to run Firecracker in")
 
@@ -350,6 +351,7 @@ func main() {
 		ctx,
 
 		*resumeTimeout,
+		*rescueTimeout,
 	)
 
 	if err != nil {
