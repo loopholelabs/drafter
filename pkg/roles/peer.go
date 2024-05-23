@@ -385,7 +385,6 @@ func StartPeer(
 								panic(err)
 							}
 							deviceCloseFuncsLock.Lock()
-							deviceCloseFuncs = append(deviceCloseFuncs, src.Close)       // defer src.Close()
 							deviceCloseFuncs = append(deviceCloseFuncs, device.Shutdown) // defer device.Shutdown()
 							deviceCloseFuncsLock.Unlock()
 
