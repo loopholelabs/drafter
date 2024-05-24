@@ -387,6 +387,8 @@ func StartPeer(
 							}
 							deviceCloseFuncsLock.Lock()
 							deviceCloseFuncs = append(deviceCloseFuncs, device.Shutdown) // defer device.Shutdown()
+							// We have to close the runner before we close the devices
+							deviceCloseFuncs = append(deviceCloseFuncs, runner.Close) // defer runner.Close()
 							deviceCloseFuncsLock.Unlock()
 
 							var remote *waitingcache.WaitingCacheRemote
@@ -569,11 +571,6 @@ func StartPeer(
 			return nil
 		})
 		migratedPeer.Close = func() (errs error) {
-			// We have to close the runner before we close the devices
-			if err := runner.Close(); err != nil {
-				errs = errors.Join(errs, err)
-			}
-
 			defer func() {
 				if err := migratedPeer.Wait(); err != nil {
 					errs = errors.Join(errs, err)
