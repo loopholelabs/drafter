@@ -155,7 +155,7 @@ func MigrateOpenedDevices(
 		func(index int, input OpenedDevice, _ *struct{}, _ func(deferFunc func() error)) error {
 			to := protocol.NewToProtocol(input.storage.Size(), uint32(index), pro)
 
-			if err := to.SendDevInfo(input.Device.Name, input.Device.BlockSize); err != nil {
+			if err := to.SendDevInfo(input.Device.Name, input.Device.BlockSize, ""); err != nil {
 				return err
 			}
 

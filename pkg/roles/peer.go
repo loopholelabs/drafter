@@ -1097,7 +1097,7 @@ func StartPeer(
 
 								to := protocol.NewToProtocol(input.storage.Size(), uint32(index), pro)
 
-								if err := to.SendDevInfo(input.prev.name, input.prev.blockSize); err != nil {
+								if err := to.SendDevInfo(input.prev.name, input.prev.blockSize, ""); err != nil {
 									return err
 								}
 
@@ -1273,7 +1273,7 @@ func StartPeer(
 									}
 
 									if blocks != nil {
-										if err := to.DirtyList(blocks); err != nil {
+										if err := to.DirtyList(int(input.prev.blockSize), blocks); err != nil {
 											return err
 										}
 
