@@ -23,6 +23,10 @@ import (
 	"github.com/loopholelabs/silo/pkg/storage/volatilitymonitor"
 )
 
+var (
+	ErrCouldNotContinueWithMigration = errors.New("could not continue with migration")
+)
+
 type Device struct {
 	Name      string
 	Base      string
@@ -221,6 +225,13 @@ func MigrateOpenedDevices(
 				storage.BlockTypeStandard: concurrency,
 				storage.BlockTypeDirty:    concurrency,
 				storage.BlockTypePriority: concurrency,
+			}
+			cfg.Error_handler = func(b *storage.BlockInfo, err error) {
+				defer handlePanics(false)()
+
+				if err != nil {
+					panic(errors.Join(ErrCouldNotContinueWithMigration, err))
+				}
 			}
 			cfg.Progress_handler = func(p *migrator.MigrationProgress) {
 				if hook := hooks.OnDeviceMigrationProgress; hook != nil {

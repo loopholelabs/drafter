@@ -1164,6 +1164,13 @@ func StartPeer(
 									storage.BlockTypeDirty:    concurrency,
 									storage.BlockTypePriority: concurrency,
 								}
+								cfg.Error_handler = func(b *storage.BlockInfo, err error) {
+									defer handlePanics(false)()
+
+									if err != nil {
+										panic(errors.Join(ErrCouldNotContinueWithMigration, err))
+									}
+								}
 								cfg.Progress_handler = func(p *migrator.MigrationProgress) {
 									if hook := hooks.OnDeviceInitialMigrationProgress; hook != nil {
 										hook(uint32(index), input.prev.remote, p.Ready_blocks, p.Total_blocks)
