@@ -226,6 +226,40 @@ func MigrateOpenedDevices(
 				storage.BlockTypeDirty:    concurrency,
 				storage.BlockTypePriority: concurrency,
 			}
+			cfg.Locker_handler = func() {
+				defer handlePanics(false)()
+
+				if err := to.SendEvent(&packets.Event{
+					Type: packets.EventPreLock,
+				}); err != nil {
+					panic(err)
+				}
+
+				input.storage.Lock()
+
+				if err := to.SendEvent(&packets.Event{
+					Type: packets.EventPostLock,
+				}); err != nil {
+					panic(err)
+				}
+			}
+			cfg.Unlocker_handler = func() {
+				defer handlePanics(false)()
+
+				if err := to.SendEvent(&packets.Event{
+					Type: packets.EventPreUnlock,
+				}); err != nil {
+					panic(err)
+				}
+
+				input.storage.Unlock()
+
+				if err := to.SendEvent(&packets.Event{
+					Type: packets.EventPostUnlock,
+				}); err != nil {
+					panic(err)
+				}
+			}
 			cfg.Error_handler = func(b *storage.BlockInfo, err error) {
 				defer handlePanics(false)()
 
