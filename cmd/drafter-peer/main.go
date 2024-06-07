@@ -21,9 +21,21 @@ import (
 )
 
 type CompositeDevices struct {
-	MigrateFromDevices    []roles.MigrateFromDevice    `json:"migrateFromDevices"`
-	MakeMigratableDevices []roles.MakeMigratableDevice `json:"makeMigratableDevices"`
-	MigrateToDevices      []roles.MigrateToDevice      `json:"migrateToDevices"`
+	Name string `json:"name"`
+
+	Base    string `json:"base"`
+	Overlay string `json:"overlay"`
+	State   string `json:"state"`
+
+	BlockSize uint32 `json:"blockSize"`
+
+	Expiry time.Duration `json:"expiry"`
+
+	MaxDirtyBlocks int `json:"maxDirtyBlocks"`
+	MinCycles      int `json:"minCycles"`
+	MaxCycles      int `json:"maxCycles"`
+
+	CycleThrottle time.Duration `json:"cycleThrottle"`
 }
 
 func main() {
@@ -46,182 +58,128 @@ func main() {
 	numaNode := flag.Int("numa-node", 0, "NUMA node to run Firecracker in")
 	cgroupVersion := flag.Int("cgroup-version", 2, "Cgroup version to use for Jailer")
 
-	defaultDevices, err := json.Marshal(CompositeDevices{
-		MigrateFromDevices: []roles.MigrateFromDevice{
-			{
-				Name: roles.StateName,
+	defaultDevices, err := json.Marshal([]CompositeDevices{
+		{
+			Name: roles.StateName,
 
-				Base:    filepath.Join("out", "package", "drafter.drftstate"),
-				Overlay: filepath.Join("out", "overlay", "drafter.drftstate"),
-				State:   filepath.Join("out", "state", "drafter.drftstate"),
+			Base:    filepath.Join("out", "package", "drafter.drftstate"),
+			Overlay: filepath.Join("out", "overlay", "drafter.drftstate"),
+			State:   filepath.Join("out", "state", "drafter.drftstate"),
 
-				BlockSize: 1024 * 64,
-			},
-			{
-				Name: roles.MemoryName,
+			BlockSize: 1024 * 64,
 
-				Base:    filepath.Join("out", "package", "drafter.drftmemory"),
-				Overlay: filepath.Join("out", "overlay", "drafter.drftmemory"),
-				State:   filepath.Join("out", "state", "drafter.drftmemory"),
+			Expiry: time.Second,
 
-				BlockSize: 1024 * 64,
-			},
+			MaxDirtyBlocks: 200,
+			MinCycles:      5,
+			MaxCycles:      20,
 
-			{
-				Name: roles.InitramfsName,
-
-				Base:    filepath.Join("out", "package", "drafter.drftinitramfs"),
-				Overlay: filepath.Join("out", "overlay", "drafter.drftinitramfs"),
-				State:   filepath.Join("out", "state", "drafter.drftinitramfs"),
-
-				BlockSize: 1024 * 64,
-			},
-			{
-				Name: roles.KernelName,
-
-				Base:    filepath.Join("out", "package", "drafter.drftkernel"),
-				Overlay: filepath.Join("out", "overlay", "drafter.drftkernel"),
-				State:   filepath.Join("out", "state", "drafter.drftkernel"),
-
-				BlockSize: 1024 * 64,
-			},
-			{
-				Name: roles.DiskName,
-
-				Base:    filepath.Join("out", "package", "drafter.drftdisk"),
-				Overlay: filepath.Join("out", "overlay", "drafter.drftdisk"),
-				State:   filepath.Join("out", "state", "drafter.drftdisk"),
-
-				BlockSize: 1024 * 64,
-			},
-
-			{
-				Name: roles.ConfigName,
-
-				Base:    filepath.Join("out", "package", "drafter.drftconfig"),
-				Overlay: filepath.Join("out", "overlay", "drafter.drftconfig"),
-				State:   filepath.Join("out", "state", "drafter.drftconfig"),
-
-				BlockSize: 1024 * 64,
-			},
-
-			{
-				Name: "oci",
-
-				Base:    filepath.Join("out", "package", "drafter.drftoci"),
-				Overlay: filepath.Join("out", "overlay", "drafter.drftoci"),
-				State:   filepath.Join("out", "state", "drafter.drftoci"),
-
-				BlockSize: 1024 * 64,
-			},
+			CycleThrottle: time.Millisecond * 500,
 		},
-		MakeMigratableDevices: []roles.MakeMigratableDevice{
-			{
-				Name: roles.StateName,
+		{
+			Name: roles.MemoryName,
 
-				Expiry: time.Second,
-			},
-			{
-				Name: roles.MemoryName,
+			Base:    filepath.Join("out", "package", "drafter.drftmemory"),
+			Overlay: filepath.Join("out", "overlay", "drafter.drftmemory"),
+			State:   filepath.Join("out", "state", "drafter.drftmemory"),
 
-				Expiry: time.Second,
-			},
+			BlockSize: 1024 * 64,
 
-			{
-				Name: roles.InitramfsName,
+			Expiry: time.Second,
 
-				Expiry: time.Second,
-			},
-			{
-				Name: roles.KernelName,
+			MaxDirtyBlocks: 200,
+			MinCycles:      5,
+			MaxCycles:      20,
 
-				Expiry: time.Second,
-			},
-			{
-				Name: roles.DiskName,
-
-				Expiry: time.Second,
-			},
-
-			{
-				Name: roles.ConfigName,
-
-				Expiry: time.Second,
-			},
-
-			{
-				Name: "oci",
-
-				Expiry: time.Second,
-			},
+			CycleThrottle: time.Millisecond * 500,
 		},
-		MigrateToDevices: []roles.MigrateToDevice{
-			{
-				Name: roles.StateName,
 
-				MaxDirtyBlocks: 200,
-				MinCycles:      5,
-				MaxCycles:      20,
+		{
+			Name: roles.InitramfsName,
 
-				CycleThrottle: time.Millisecond * 500,
-			},
-			{
-				Name: roles.MemoryName,
+			Base:    filepath.Join("out", "package", "drafter.drftinitramfs"),
+			Overlay: filepath.Join("out", "overlay", "drafter.drftinitramfs"),
+			State:   filepath.Join("out", "state", "drafter.drftinitramfs"),
 
-				MaxDirtyBlocks: 200,
-				MinCycles:      5,
-				MaxCycles:      20,
+			BlockSize: 1024 * 64,
 
-				CycleThrottle: time.Millisecond * 500,
-			},
+			Expiry: time.Second,
 
-			{
-				Name: roles.InitramfsName,
+			MaxDirtyBlocks: 200,
+			MinCycles:      5,
+			MaxCycles:      20,
 
-				MaxDirtyBlocks: 200,
-				MinCycles:      5,
-				MaxCycles:      20,
+			CycleThrottle: time.Millisecond * 500,
+		},
+		{
+			Name: roles.KernelName,
 
-				CycleThrottle: time.Millisecond * 500,
-			},
-			{
-				Name: roles.KernelName,
+			Base:    filepath.Join("out", "package", "drafter.drftkernel"),
+			Overlay: filepath.Join("out", "overlay", "drafter.drftkernel"),
+			State:   filepath.Join("out", "state", "drafter.drftkernel"),
 
-				MaxDirtyBlocks: 200,
-				MinCycles:      5,
-				MaxCycles:      20,
+			BlockSize: 1024 * 64,
 
-				CycleThrottle: time.Millisecond * 500,
-			},
-			{
-				Name: roles.DiskName,
+			Expiry: time.Second,
 
-				MaxDirtyBlocks: 200,
-				MinCycles:      5,
-				MaxCycles:      20,
+			MaxDirtyBlocks: 200,
+			MinCycles:      5,
+			MaxCycles:      20,
 
-				CycleThrottle: time.Millisecond * 500,
-			},
+			CycleThrottle: time.Millisecond * 500,
+		},
+		{
+			Name: roles.DiskName,
 
-			{
-				Name: roles.ConfigName,
+			Base:    filepath.Join("out", "package", "drafter.drftdisk"),
+			Overlay: filepath.Join("out", "overlay", "drafter.drftdisk"),
+			State:   filepath.Join("out", "state", "drafter.drftdisk"),
 
-				MaxDirtyBlocks: 200,
-				MinCycles:      5,
-				MaxCycles:      20,
+			BlockSize: 1024 * 64,
 
-				CycleThrottle: time.Millisecond * 500,
-			},
+			Expiry: time.Second,
 
-			{
-				Name: "oci",
+			MaxDirtyBlocks: 200,
+			MinCycles:      5,
+			MaxCycles:      20,
 
-				MaxDirtyBlocks: 200,
-				MinCycles:      5,
-				MaxCycles:      20,
+			CycleThrottle: time.Millisecond * 500,
+		},
 
-				CycleThrottle: time.Millisecond * 500,
-			},
+		{
+			Name: roles.ConfigName,
+
+			Base:    filepath.Join("out", "package", "drafter.drftconfig"),
+			Overlay: filepath.Join("out", "overlay", "drafter.drftconfig"),
+			State:   filepath.Join("out", "state", "drafter.drftconfig"),
+
+			BlockSize: 1024 * 64,
+
+			Expiry: time.Second,
+
+			MaxDirtyBlocks: 200,
+			MinCycles:      5,
+			MaxCycles:      20,
+
+			CycleThrottle: time.Millisecond * 500,
+		},
+
+		{
+			Name: "oci",
+
+			Base:    filepath.Join("out", "package", "drafter.drftoci"),
+			Overlay: filepath.Join("out", "overlay", "drafter.drftoci"),
+			State:   filepath.Join("out", "state", "drafter.drftoci"),
+
+			BlockSize: 1024 * 64,
+
+			Expiry: time.Second,
+
+			MaxDirtyBlocks: 200,
+			MinCycles:      5,
+			MaxCycles:      20,
+
+			CycleThrottle: time.Millisecond * 500,
 		},
 	})
 	if err != nil {
@@ -240,7 +198,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	var devices CompositeDevices
+	var devices []CompositeDevices
 	if err := json.Unmarshal([]byte(*rawDevices), &devices); err != nil {
 		panic(err)
 	}
@@ -360,10 +318,23 @@ func main() {
 		}
 	})
 
+	migrateFromDevices := []roles.MigrateFromDevice{}
+	for _, device := range devices {
+		migrateFromDevices = append(migrateFromDevices, roles.MigrateFromDevice{
+			Name: device.Name,
+
+			Base:    device.Base,
+			Overlay: device.Overlay,
+			State:   device.State,
+
+			BlockSize: device.BlockSize,
+		})
+	}
+
 	migratedPeer, err := peer.MigrateFrom(
 		ctx,
 
-		devices.MigrateFromDevices,
+		migrateFromDevices,
 
 		readers,
 		writers,
@@ -556,10 +527,19 @@ func main() {
 
 	log.Println("Migrating to", conn.RemoteAddr())
 
+	makeMigratableDevices := []roles.MakeMigratableDevice{}
+	for _, device := range devices {
+		makeMigratableDevices = append(makeMigratableDevices, roles.MakeMigratableDevice{
+			Name: device.Name,
+
+			Expiry: device.Expiry,
+		})
+	}
+
 	migratablePeer, err := resumedPeer.MakeMigratable(
 		ctx,
 
-		devices.MakeMigratableDevices,
+		makeMigratableDevices,
 	)
 
 	if err != nil {
@@ -568,11 +548,24 @@ func main() {
 
 	defer migratablePeer.Close()
 
+	migrateToDevices := []roles.MigrateToDevice{}
+	for _, device := range devices {
+		migrateToDevices = append(migrateToDevices, roles.MigrateToDevice{
+			Name: device.Name,
+
+			MaxDirtyBlocks: device.MaxDirtyBlocks,
+			MinCycles:      device.MinCycles,
+			MaxCycles:      device.MaxCycles,
+
+			CycleThrottle: device.CycleThrottle,
+		})
+	}
+
 	before = time.Now()
 	if err := migratablePeer.MigrateTo(
 		ctx,
 
-		devices.MigrateToDevices,
+		migrateToDevices,
 
 		*resumeTimeout,
 		*concurrency,
