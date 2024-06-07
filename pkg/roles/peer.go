@@ -548,6 +548,11 @@ func StartPeer(
 			return nil
 		})
 		migratedPeer.Close = func() (errs error) {
+			// We have to close the runner before we close the devices
+			if err := runner.Close(); err != nil {
+				errs = errors.Join(errs, err)
+			}
+
 			defer func() {
 				if err := migratedPeer.Wait(); err != nil {
 					errs = errors.Join(errs, err)
