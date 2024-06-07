@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"io"
@@ -18,6 +19,12 @@ import (
 	"github.com/loopholelabs/drafter/pkg/roles"
 	"github.com/loopholelabs/drafter/pkg/utils"
 )
+
+type CompositeDevices struct {
+	MigrateFromDevices    []roles.MigrateFromDevice    `json:"migrateFromDevices"`
+	MakeMigratableDevices []roles.MakeMigratableDevice `json:"makeMigratableDevices"`
+	MigrateToDevices      []roles.MigrateToDevice      `json:"migrateToDevices"`
+}
 
 func main() {
 	rawFirecrackerBin := flag.String("firecracker-bin", "firecracker", "Firecracker binary")
@@ -39,75 +46,189 @@ func main() {
 	numaNode := flag.Int("numa-node", 0, "NUMA node to run Firecracker in")
 	cgroupVersion := flag.Int("cgroup-version", 2, "Cgroup version to use for Jailer")
 
-	stateBasePath := flag.String("state-base-path", filepath.Join("out", "package", "drafter.drftstate"), "State base path")
-	memoryBasePath := flag.String("memory-base-path", filepath.Join("out", "package", "drafter.drftmemory"), "Memory base path")
-	initramfsBasePath := flag.String("initramfs-base-path", filepath.Join("out", "package", "drafter.drftinitramfs"), "initramfs base path")
-	kernelBasePath := flag.String("kernel-base-path", filepath.Join("out", "package", "drafter.drftkernel"), "Kernel base path")
-	diskBasePath := flag.String("disk-base-path", filepath.Join("out", "package", "drafter.drftdisk"), "Disk base path")
-	configBasePath := flag.String("config-base-path", filepath.Join("out", "package", "drafter.drftconfig"), "Config base path")
+	defaultDevices, err := json.Marshal(CompositeDevices{
+		MigrateFromDevices: []roles.MigrateFromDevice{
+			{
+				Name: roles.StateName,
 
-	stateOverlayPath := flag.String("state-overlay-path", filepath.Join("out", "overlay", "drafter.drftstate.overlay"), "State overlay path (ignored for devices migrated from raddr)")
-	memoryOverlayPath := flag.String("memory-overlay-path", filepath.Join("out", "overlay", "drafter.drftmemory.overlay"), "Memory overlay path (ignored for devices migrated from raddr)")
-	initramfsOverlayPath := flag.String("initramfs-overlay-path", filepath.Join("out", "overlay", "drafter.drftinitramfs.overlay"), "initramfs overlay path (ignored for devices migrated from raddr)")
-	kernelOverlayPath := flag.String("kernel-overlay-path", filepath.Join("out", "overlay", "drafter.drftkernel.overlay"), "Kernel overlay path (ignored for devices migrated from raddr)")
-	diskOverlayPath := flag.String("disk-overlay-path", filepath.Join("out", "overlay", "drafter.drftdisk.overlay"), "Disk overlay path (ignored for devices migrated from raddr)")
-	configOverlayPath := flag.String("config-overlay-path", filepath.Join("out", "overlay", "drafter.drftroles.overlay"), "Config overlay path (ignored for devices migrated from raddr)")
+				Base:    filepath.Join("out", "package", "drafter.drftstate"),
+				Overlay: filepath.Join("out", "overlay", "drafter.drftstate"),
+				State:   filepath.Join("out", "state", "drafter.drftstate"),
 
-	stateStatePath := flag.String("state-state-path", filepath.Join("out", "overlay", "drafter.drftstate.state"), "State state path (ignored for devices migrated from raddr)")
-	memoryStatePath := flag.String("memory-state-path", filepath.Join("out", "overlay", "drafter.drftmemory.state"), "Memory state path (ignored for devices migrated from raddr)")
-	initramfsStatePath := flag.String("initramfs-state-path", filepath.Join("out", "overlay", "drafter.drftinitramfs.state"), "initramfs state path (ignored for devices migrated from raddr)")
-	kernelStatePath := flag.String("kernel-state-path", filepath.Join("out", "overlay", "drafter.drftkernel.state"), "Kernel state path (ignored for devices migrated from raddr)")
-	diskStatePath := flag.String("disk-state-path", filepath.Join("out", "overlay", "drafter.drftdisk.state"), "Disk state path (ignored for devices migrated from raddr)")
-	configStatePath := flag.String("config-state-path", filepath.Join("out", "overlay", "drafter.drftroles.state"), "Config state path (ignored for devices migrated from raddr)")
+				BlockSize: 1024 * 64,
+			},
+			{
+				Name: roles.MemoryName,
 
-	stateBlockSize := flag.Uint("state-block-size", 1024*64, "State block size")
-	memoryBlockSize := flag.Uint("memory-block-size", 1024*64, "Memory block size")
-	initramfsBlockSize := flag.Uint("initramfs-block-size", 1024*64, "initramfs block size")
-	kernelBlockSize := flag.Uint("kernel-block-size", 1024*64, "Kernel block size")
-	diskBlockSize := flag.Uint("disk-block-size", 1024*64, "Disk block size")
-	configBlockSize := flag.Uint("config-block-size", 1024*64, "Config block size")
+				Base:    filepath.Join("out", "package", "drafter.drftmemory"),
+				Overlay: filepath.Join("out", "overlay", "drafter.drftmemory"),
+				State:   filepath.Join("out", "state", "drafter.drftmemory"),
 
-	stateMaxDirtyBlocks := flag.Int("state-max-dirty-blocks", 200, "Maximum amount of dirty blocks per continous migration cycle after which to transfer authority for state")
-	memoryMaxDirtyBlocks := flag.Int("memory-max-dirty-blocks", 200, "Maximum amount of dirty blocks per continous migration cycle after which to transfer authority for memory")
-	initramfsMaxDirtyBlocks := flag.Int("initramfs-max-dirty-blocks", 200, "Maximum amount of dirty blocks per continous migration cycle after which to transfer authority for initramfs")
-	kernelMaxDirtyBlocks := flag.Int("kernel-max-dirty-blocks", 200, "Maximum amount of dirty blocks per continous migration cycle after which to transfer authority for kernel")
-	diskMaxDirtyBlocks := flag.Int("disk-max-dirty-blocks", 200, "Maximum amount of dirty blocks per continous migration cycle after which to transfer authority for disk")
-	configMaxDirtyBlocks := flag.Int("config-max-dirty-blocks", 200, "Maximum amount of dirty blocks per continous migration cycle after which to transfer authority for config")
+				BlockSize: 1024 * 64,
+			},
 
-	stateMinCycles := flag.Int("state-min-cycles", 5, "Minimum amount of subsequent continuous migration cycles below the maximum dirty block count after which to transfer authority for state")
-	memoryMinCycles := flag.Int("memory-min-cycles", 5, "Minimum amount of subsequent continuous migration cycles below the maximum dirty block count after which to transfer authority for memory")
-	initramfsMinCycles := flag.Int("initramfs-min-cycles", 5, "Minimum amount of subsequent continuous migration cycles below the maximum dirty block count after which to transfer authority for initramfs")
-	kernelMinCycles := flag.Int("kernel-min-cycles", 5, "Minimum amount of subsequent continuous migration cycles below the maximum dirty block count after which to transfer authority for kernel")
-	diskMinCycles := flag.Int("disk-min-cycles", 5, "Minimum amount of subsequent continuous migration cycles below the maximum dirty block count after which to transfer authority for disk")
-	configMinCycles := flag.Int("config-min-cycles", 5, "Minimum amount of subsequent continuous migration cycles below the maximum dirty block count after which to transfer authority for config")
+			{
+				Name: roles.InitramfsName,
 
-	stateMaxCycles := flag.Int("state-max-cycles", 20, "Maximum amount of total migration cycles after which to transfer authority for state, even if a cycle is above the maximum dirty block count")
-	memoryMaxCycles := flag.Int("memory-max-cycles", 20, "Maximum amount of total migration cycles after which to transfer authority for memory, even if a cycle is above the maximum dirty block count")
-	initramfsMaxCycles := flag.Int("initramfs-max-cycles", 20, "Maximum amount of total migration cycles after which to transfer authority for initramfs, even if a cycle is above the maximum dirty block count")
-	kernelMaxCycles := flag.Int("kernel-max-cycles", 20, "Maximum amount of total migration cycles after which to transfer authority for kernel, even if a cycle is above the maximum dirty block count")
-	diskMaxCycles := flag.Int("disk-max-cycles", 20, "Maximum amount of total migration cycles after which to transfer authority for disk, even if a cycle is above the maximum dirty block count")
-	configMaxCycles := flag.Int("config-max-cycles", 20, "Maximum amount of total migration cycles after which to transfer authority for config, even if a cycle is above the maximum dirty block count")
+				Base:    filepath.Join("out", "package", "drafter.drftinitramfs"),
+				Overlay: filepath.Join("out", "overlay", "drafter.drftinitramfs"),
+				State:   filepath.Join("out", "state", "drafter.drftinitramfs"),
 
-	stateCycleThrottle := flag.Duration("state-cycle-throttle", time.Millisecond*500, "Time to wait in each cycle before checking for changes again during continuous migration for state")
-	memoryCycleThrottle := flag.Duration("memory-cycle-throttle", time.Millisecond*500, "Time to wait in each cycle before checking for changes again during continuous migration for memory")
-	initramfsCycleThrottle := flag.Duration("initramfs-cycle-throttle", time.Millisecond*500, "Time to wait in each cycle before checking for changes again during continuous migration for initramfs")
-	kernelCycleThrottle := flag.Duration("kernel-cycle-throttle", time.Millisecond*500, "Time to wait in each cycle before checking for changes again during continuous migration for kernel")
-	diskCycleThrottle := flag.Duration("disk-cycle-throttle", time.Millisecond*500, "Time to wait in each cycle before checking for changes again during continuous migration for disk")
-	configCycleThrottle := flag.Duration("config-cycle-throttle", time.Millisecond*500, "Time to wait in each cycle before checking for changes again during continuous migration for config")
+				BlockSize: 1024 * 64,
+			},
+			{
+				Name: roles.KernelName,
 
-	stateExpiry := flag.Duration("state-expiry", time.Second, "Time without changes after which to expire a block's volatile status during continuous and final migration for state")
-	memoryExpiry := flag.Duration("memory-expiry", time.Second, "Time without changes after which to expire a block's volatile status during continuous and final migration for memory")
-	initramfsExpiry := flag.Duration("initramfs-expiry", time.Second, "Time without changes after which to expire a block's volatile status during continuous and final migration for initramfs")
-	kernelExpiry := flag.Duration("kernel-expiry", time.Second, "Time without changes after which to expire a block's volatile status during continuous and final migration for kernel")
-	diskExpiry := flag.Duration("disk-expiry", time.Second, "Time without changes after which to expire a block's volatile status during continuous and final migration for disk")
-	configExpiry := flag.Duration("config-expiry", time.Second, "Time without changes after which to expire a block's volatile status during continuous and final migration for config")
+				Base:    filepath.Join("out", "package", "drafter.drftkernel"),
+				Overlay: filepath.Join("out", "overlay", "drafter.drftkernel"),
+				State:   filepath.Join("out", "state", "drafter.drftkernel"),
 
-	stateServe := flag.Bool("state-serve", true, "Whether to serve the state")
-	memoryServe := flag.Bool("memory-serve", true, "Whether to serve the memory")
-	initramfsServe := flag.Bool("initramfs-serve", true, "Whether to serve the initramfs")
-	kernelServe := flag.Bool("kernel-serve", true, "Whether to serve the kernel")
-	diskServe := flag.Bool("disk-serve", true, "Whether to serve the disk")
-	configServe := flag.Bool("config-serve", true, "Whether to serve the config")
+				BlockSize: 1024 * 64,
+			},
+			{
+				Name: roles.DiskName,
+
+				Base:    filepath.Join("out", "package", "drafter.drftdisk"),
+				Overlay: filepath.Join("out", "overlay", "drafter.drftdisk"),
+				State:   filepath.Join("out", "state", "drafter.drftdisk"),
+
+				BlockSize: 1024 * 64,
+			},
+
+			{
+				Name: roles.ConfigName,
+
+				Base:    filepath.Join("out", "package", "drafter.drftconfig"),
+				Overlay: filepath.Join("out", "overlay", "drafter.drftconfig"),
+				State:   filepath.Join("out", "state", "drafter.drftconfig"),
+
+				BlockSize: 1024 * 64,
+			},
+
+			{
+				Name: "oci",
+
+				Base:    filepath.Join("out", "package", "drafter.drftoci"),
+				Overlay: filepath.Join("out", "overlay", "drafter.drftoci"),
+				State:   filepath.Join("out", "state", "drafter.drftoci"),
+
+				BlockSize: 1024 * 64,
+			},
+		},
+		MakeMigratableDevices: []roles.MakeMigratableDevice{
+			{
+				Name: roles.StateName,
+
+				Expiry: time.Second,
+			},
+			{
+				Name: roles.MemoryName,
+
+				Expiry: time.Second,
+			},
+
+			{
+				Name: roles.InitramfsName,
+
+				Expiry: time.Second,
+			},
+			{
+				Name: roles.KernelName,
+
+				Expiry: time.Second,
+			},
+			{
+				Name: roles.DiskName,
+
+				Expiry: time.Second,
+			},
+
+			{
+				Name: roles.ConfigName,
+
+				Expiry: time.Second,
+			},
+
+			{
+				Name: "oci",
+
+				Expiry: time.Second,
+			},
+		},
+		MigrateToDevices: []roles.MigrateToDevice{
+			{
+				Name: roles.StateName,
+
+				MaxDirtyBlocks: 200,
+				MinCycles:      5,
+				MaxCycles:      20,
+
+				CycleThrottle: time.Millisecond * 500,
+			},
+			{
+				Name: roles.MemoryName,
+
+				MaxDirtyBlocks: 200,
+				MinCycles:      5,
+				MaxCycles:      20,
+
+				CycleThrottle: time.Millisecond * 500,
+			},
+
+			{
+				Name: roles.InitramfsName,
+
+				MaxDirtyBlocks: 200,
+				MinCycles:      5,
+				MaxCycles:      20,
+
+				CycleThrottle: time.Millisecond * 500,
+			},
+			{
+				Name: roles.KernelName,
+
+				MaxDirtyBlocks: 200,
+				MinCycles:      5,
+				MaxCycles:      20,
+
+				CycleThrottle: time.Millisecond * 500,
+			},
+			{
+				Name: roles.DiskName,
+
+				MaxDirtyBlocks: 200,
+				MinCycles:      5,
+				MaxCycles:      20,
+
+				CycleThrottle: time.Millisecond * 500,
+			},
+
+			{
+				Name: roles.ConfigName,
+
+				MaxDirtyBlocks: 200,
+				MinCycles:      5,
+				MaxCycles:      20,
+
+				CycleThrottle: time.Millisecond * 500,
+			},
+
+			{
+				Name: "oci",
+
+				MaxDirtyBlocks: 200,
+				MinCycles:      5,
+				MaxCycles:      20,
+
+				CycleThrottle: time.Millisecond * 500,
+			},
+		},
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	rawDevices := flag.String("devices", string(defaultDevices), "Devices configuration")
 
 	raddr := flag.String("raddr", "localhost:1337", "Remote address to connect to (leave empty to disable)")
 	laddr := flag.String("laddr", "localhost:1337", "Local address to listen on (leave empty to disable)")
@@ -118,6 +239,11 @@ func main() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	var devices CompositeDevices
+	if err := json.Unmarshal([]byte(*rawDevices), &devices); err != nil {
+		panic(err)
+	}
 
 	var errs error
 	defer func() {
@@ -237,48 +363,7 @@ func main() {
 	migratedPeer, err := peer.MigrateFrom(
 		ctx,
 
-		roles.MigrateFromDeviceConfiguration{
-			BasePath:    *stateBasePath,
-			OverlayPath: *stateOverlayPath,
-			StatePath:   *stateStatePath,
-
-			BlockSize: uint32(*stateBlockSize),
-		},
-		roles.MigrateFromDeviceConfiguration{
-			BasePath:    *memoryBasePath,
-			OverlayPath: *memoryOverlayPath,
-			StatePath:   *memoryStatePath,
-
-			BlockSize: uint32(*memoryBlockSize),
-		},
-		roles.MigrateFromDeviceConfiguration{
-			BasePath:    *initramfsBasePath,
-			OverlayPath: *initramfsOverlayPath,
-			StatePath:   *initramfsStatePath,
-
-			BlockSize: uint32(*initramfsBlockSize),
-		},
-		roles.MigrateFromDeviceConfiguration{
-			BasePath:    *kernelBasePath,
-			OverlayPath: *kernelOverlayPath,
-			StatePath:   *kernelStatePath,
-
-			BlockSize: uint32(*kernelBlockSize),
-		},
-		roles.MigrateFromDeviceConfiguration{
-			BasePath:    *diskBasePath,
-			OverlayPath: *diskOverlayPath,
-			StatePath:   *diskStatePath,
-
-			BlockSize: uint32(*diskBlockSize),
-		},
-		roles.MigrateFromDeviceConfiguration{
-			BasePath:    *configBasePath,
-			OverlayPath: *configOverlayPath,
-			StatePath:   *configStatePath,
-
-			BlockSize: uint32(*configBlockSize),
-		},
+		devices.MigrateFromDevices,
 
 		readers,
 		writers,
@@ -474,12 +559,7 @@ func main() {
 	migratablePeer, err := resumedPeer.MakeMigratable(
 		ctx,
 
-		*stateExpiry,
-		*memoryExpiry,
-		*initramfsExpiry,
-		*kernelExpiry,
-		*diskExpiry,
-		*configExpiry,
+		devices.MakeMigratableDevices,
 	)
 
 	if err != nil {
@@ -492,60 +572,7 @@ func main() {
 	if err := migratablePeer.MigrateTo(
 		ctx,
 
-		roles.MigrateToDeviceConfiguration{
-			MaxDirtyBlocks: *stateMaxDirtyBlocks,
-			MinCycles:      *stateMinCycles,
-			MaxCycles:      *stateMaxCycles,
-
-			CycleThrottle: *stateCycleThrottle,
-
-			Serve: *stateServe,
-		},
-		roles.MigrateToDeviceConfiguration{
-			MaxDirtyBlocks: *memoryMaxDirtyBlocks,
-			MinCycles:      *memoryMinCycles,
-			MaxCycles:      *memoryMaxCycles,
-
-			CycleThrottle: *memoryCycleThrottle,
-
-			Serve: *memoryServe,
-		},
-		roles.MigrateToDeviceConfiguration{
-			MaxDirtyBlocks: *initramfsMaxDirtyBlocks,
-			MinCycles:      *initramfsMinCycles,
-			MaxCycles:      *initramfsMaxCycles,
-
-			CycleThrottle: *initramfsCycleThrottle,
-
-			Serve: *initramfsServe,
-		},
-		roles.MigrateToDeviceConfiguration{
-			MaxDirtyBlocks: *kernelMaxDirtyBlocks,
-			MinCycles:      *kernelMinCycles,
-			MaxCycles:      *kernelMaxCycles,
-
-			CycleThrottle: *kernelCycleThrottle,
-
-			Serve: *kernelServe,
-		},
-		roles.MigrateToDeviceConfiguration{
-			MaxDirtyBlocks: *diskMaxDirtyBlocks,
-			MinCycles:      *diskMinCycles,
-			MaxCycles:      *diskMaxCycles,
-
-			CycleThrottle: *diskCycleThrottle,
-
-			Serve: *diskServe,
-		},
-		roles.MigrateToDeviceConfiguration{
-			MaxDirtyBlocks: *configMaxDirtyBlocks,
-			MinCycles:      *configMinCycles,
-			MaxCycles:      *configMaxCycles,
-
-			CycleThrottle: *configCycleThrottle,
-
-			Serve: *configServe,
-		},
+		devices.MigrateToDevices,
 
 		*resumeTimeout,
 		*concurrency,

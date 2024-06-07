@@ -30,6 +30,11 @@ var (
 	ErrUnknownDeviceName = errors.New("unknown device name")
 )
 
+type TerminatorDevice struct {
+	Name   string `json:"name"`
+	Output string `json:"output"`
+}
+
 type TerminateHooks struct {
 	OnDeviceReceived           func(deviceID uint32, name string)
 	OnDeviceAuthorityReceived  func(deviceID uint32)
@@ -42,12 +47,7 @@ type TerminateHooks struct {
 func Terminate(
 	ctx context.Context,
 
-	statePath,
-	memoryPath,
-	initramfsPath,
-	kernelPath,
-	diskPath,
-	configPath string,
+	devices []TerminatorDevice,
 
 	readers []io.Reader,
 	writers []io.Writer,
@@ -81,27 +81,13 @@ func Terminate(
 				func(di *packets.DevInfo) storage.StorageProvider {
 					defer handlePanics(false)()
 
-					var (
-						path = ""
-					)
-					switch di.Name {
-					case ConfigName:
-						path = configPath
+					path := ""
+					for _, device := range devices {
+						if di.Name == device.Name {
+							path = device.Output
 
-					case DiskName:
-						path = diskPath
-
-					case InitramfsName:
-						path = initramfsPath
-
-					case KernelName:
-						path = kernelPath
-
-					case MemoryName:
-						path = memoryPath
-
-					case StateName:
-						path = statePath
+							break
+						}
 					}
 
 					if strings.TrimSpace(path) == "" {

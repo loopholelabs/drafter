@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"io"
 	"log"
@@ -15,12 +16,44 @@ import (
 )
 
 func main() {
-	statePath := flag.String("state-path", filepath.Join("out", "package", "drafter.drftstate"), "State path")
-	memoryPath := flag.String("memory-path", filepath.Join("out", "package", "drafter.drftmemory"), "Memory path")
-	initramfsPath := flag.String("initramfs-path", filepath.Join("out", "package", "drafter.drftinitramfs"), "initramfs path")
-	kernelPath := flag.String("kernel-path", filepath.Join("out", "package", "drafter.drftkernel"), "Kernel path")
-	diskPath := flag.String("disk-path", filepath.Join("out", "package", "drafter.drftdisk"), "Disk path")
-	configPath := flag.String("config-path", filepath.Join("out", "package", "drafter.drftconfig"), "Config path")
+	defaultDevices, err := json.Marshal([]roles.TerminatorDevice{
+		{
+			Name:   roles.StateName,
+			Output: filepath.Join("out", "package", "drafter.drftstate"),
+		},
+		{
+			Name:   roles.MemoryName,
+			Output: filepath.Join("out", "package", "drafter.drftmemory"),
+		},
+
+		{
+			Name:   roles.InitramfsName,
+			Output: filepath.Join("out", "package", "drafter.drftinitramfs"),
+		},
+		{
+			Name:   roles.KernelName,
+			Output: filepath.Join("out", "package", "drafter.drftkernel"),
+		},
+		{
+			Name:   roles.DiskName,
+			Output: filepath.Join("out", "package", "drafter.drftdisk"),
+		},
+
+		{
+			Name:   roles.ConfigName,
+			Output: filepath.Join("out", "package", "drafter.drftconfig"),
+		},
+
+		{
+			Name:   "oci",
+			Output: filepath.Join("out", "package", "drafter.drftoci"),
+		},
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	rawDevices := flag.String("devices", string(defaultDevices), "Devices configuration")
 
 	raddr := flag.String("raddr", "localhost:1337", "Remote address to connect to")
 
@@ -28,6 +61,11 @@ func main() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	var devices []roles.TerminatorDevice
+	if err := json.Unmarshal([]byte(*rawDevices), &devices); err != nil {
+		panic(err)
+	}
 
 	var errs error
 	defer func() {
@@ -67,12 +105,7 @@ func main() {
 	if err := roles.Terminate(
 		ctx,
 
-		*statePath,
-		*memoryPath,
-		*initramfsPath,
-		*kernelPath,
-		*diskPath,
-		*configPath,
+		devices,
 
 		[]io.Reader{conn},
 		[]io.Writer{conn},

@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/loopholelabs/drafter/internal/firecracker"
@@ -31,30 +33,16 @@ type LivenessConfiguration struct {
 	ResumeTimeout     time.Duration
 }
 
-type KnownNamesConfiguration struct {
-	InitramfsName string
-	KernelName    string
-	DiskName      string
-
-	StateName  string
-	MemoryName string
-
-	ConfigName string
+type SnapshotDevice struct {
+	Name   string `json:"name"`
+	Input  string `json:"input"`
+	Output string `json:"output"`
 }
 
 func CreateSnapshot(
 	ctx context.Context,
 
-	initramfsInputPath string,
-	kernelInputPath string,
-	diskInputPath string,
-
-	stateOutputPath string,
-	memoryOutputPath string,
-	initramfsOutputPath string,
-	kernelOutputPath string,
-	diskOutputPath string,
-	configOutputPath string,
+	devices []SnapshotDevice,
 
 	vmConfiguration VMConfiguration,
 	livenessConfiguration LivenessConfiguration,
@@ -62,8 +50,6 @@ func CreateSnapshot(
 	hypervisorConfiguration HypervisorConfiguration,
 	networkConfiguration NetworkConfiguration,
 	agentConfiguration AgentConfiguration,
-
-	knownNamesConfiguration KnownNamesConfiguration,
 ) (errs error) {
 	ctx, handlePanics, handleGoroutinePanics, cancel, wait, _ := utils.GetPanicHandler(
 		ctx,
@@ -151,56 +137,29 @@ func CreateSnapshot(
 			return
 		}
 
-		for _, resource := range [][2]string{
-			{
-				knownNamesConfiguration.InitramfsName,
-				initramfsOutputPath,
-			},
-			{
-				knownNamesConfiguration.KernelName,
-				kernelOutputPath,
-			},
-			{
-				knownNamesConfiguration.DiskName,
-				diskOutputPath,
-			},
-
-			{
-				knownNamesConfiguration.StateName,
-				stateOutputPath,
-			},
-			{
-				knownNamesConfiguration.MemoryName,
-				memoryOutputPath,
-			},
-
-			{
-				knownNamesConfiguration.ConfigName,
-				configOutputPath,
-			},
-		} {
-			inputFile, err := os.Open(filepath.Join(server.VMPath, resource[0]))
+		for _, device := range devices {
+			inputFile, err := os.Open(filepath.Join(server.VMPath, device.Name))
 			if err != nil {
 				panic(err)
 			}
 			defer inputFile.Close()
 
-			if err := os.MkdirAll(filepath.Dir(resource[1]), os.ModePerm); err != nil {
+			if err := os.MkdirAll(filepath.Dir(device.Output), os.ModePerm); err != nil {
 				panic(err)
 			}
 
-			outputFile, err := os.OpenFile(resource[1], os.O_CREATE|os.O_TRUNC|os.O_WRONLY, os.ModePerm)
+			outputFile, err := os.OpenFile(device.Output, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, os.ModePerm)
 			if err != nil {
 				panic(err)
 			}
 			defer outputFile.Close()
 
-			resourceSize, err := io.Copy(outputFile, inputFile)
+			deviceSize, err := io.Copy(outputFile, inputFile)
 			if err != nil {
 				panic(err)
 			}
 
-			if paddingLength := utils.GetBlockDevicePadding(resourceSize); paddingLength > 0 {
+			if paddingLength := utils.GetBlockDevicePadding(deviceSize); paddingLength > 0 {
 				if _, err := outputFile.Write(make([]byte, paddingLength)); err != nil {
 					panic(err)
 				}
@@ -210,22 +169,17 @@ func CreateSnapshot(
 	// We need to stop the Firecracker process from using the mount before we can unmount it
 	defer server.Close()
 
-	var (
-		initramfsWorkingPath = filepath.Join(server.VMPath, knownNamesConfiguration.InitramfsName)
-		kernelWorkingPath    = filepath.Join(server.VMPath, knownNamesConfiguration.KernelName)
-		diskWorkingPath      = filepath.Join(server.VMPath, knownNamesConfiguration.DiskName)
-	)
+	disks := []string{}
+	for _, device := range devices {
+		if strings.TrimSpace(device.Input) != "" {
+			if _, err := iutils.CopyFile(device.Input, filepath.Join(server.VMPath, device.Name), hypervisorConfiguration.UID, hypervisorConfiguration.GID); err != nil {
+				panic(err)
+			}
+		}
 
-	if _, err := iutils.CopyFile(initramfsInputPath, initramfsWorkingPath, hypervisorConfiguration.UID, hypervisorConfiguration.GID); err != nil {
-		panic(err)
-	}
-
-	if _, err := iutils.CopyFile(kernelInputPath, kernelWorkingPath, hypervisorConfiguration.UID, hypervisorConfiguration.GID); err != nil {
-		panic(err)
-	}
-
-	if _, err := iutils.CopyFile(diskInputPath, diskWorkingPath, hypervisorConfiguration.UID, hypervisorConfiguration.GID); err != nil {
-		panic(err)
+		if !slices.Contains(KnownNames, device.Name) || device.Name == DiskName {
+			disks = append(disks, device.Name)
+		}
 	}
 
 	if err := firecracker.StartVM(
@@ -233,9 +187,10 @@ func CreateSnapshot(
 
 		client,
 
-		knownNamesConfiguration.InitramfsName,
-		knownNamesConfiguration.KernelName,
-		knownNamesConfiguration.DiskName,
+		InitramfsName,
+		KernelName,
+
+		disks,
 
 		vmConfiguration.CPUCount,
 		vmConfiguration.MemorySize,
@@ -295,8 +250,8 @@ func CreateSnapshot(
 
 		client,
 
-		knownNamesConfiguration.StateName,
-		knownNamesConfiguration.MemoryName,
+		StateName,
+		MemoryName,
 
 		firecracker.SnapshotTypeFull,
 	); err != nil {
@@ -310,7 +265,7 @@ func CreateSnapshot(
 		panic(err)
 	}
 
-	outputFile, err := os.OpenFile(filepath.Join(server.VMPath, knownNamesConfiguration.ConfigName), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, os.ModePerm)
+	outputFile, err := os.OpenFile(filepath.Join(server.VMPath, ConfigName), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, os.ModePerm)
 	if err != nil {
 		panic(err)
 	}
@@ -320,7 +275,7 @@ func CreateSnapshot(
 		panic(err)
 	}
 
-	if err := os.Chown(filepath.Join(server.VMPath, knownNamesConfiguration.ConfigName), hypervisorConfiguration.UID, hypervisorConfiguration.GID); err != nil {
+	if err := os.Chown(filepath.Join(server.VMPath, ConfigName), hypervisorConfiguration.UID, hypervisorConfiguration.GID); err != nil {
 		panic(err)
 	}
 

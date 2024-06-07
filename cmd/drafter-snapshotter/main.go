@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"log"
 	"os"
@@ -38,16 +39,48 @@ func main() {
 	livenessVSockPort := flag.Int("liveness-vsock-port", 25, "Liveness VSock port")
 	agentVSockPort := flag.Int("agent-vsock-port", 26, "Agent VSock port")
 
-	initramfsInputPath := flag.String("initramfs-input-path", filepath.Join("out", "blueprint", "drafter.drftinitramfs"), "initramfs input path")
-	kernelInputPath := flag.String("kernel-input-path", filepath.Join("out", "blueprint", "drafter.drftkernel"), "Kernel input path")
-	diskInputPath := flag.String("disk-input-path", filepath.Join("out", "blueprint", "drafter.drftdisk"), "Disk input path")
+	defaultDevices, err := json.Marshal([]roles.SnapshotDevice{
+		{
+			Name:   roles.StateName,
+			Output: filepath.Join("out", "package", "drafter.drftstate"),
+		},
+		{
+			Name:   roles.MemoryName,
+			Output: filepath.Join("out", "package", "drafter.drftmemory"),
+		},
 
-	stateOutputPath := flag.String("state-output-path", filepath.Join("out", "package", "drafter.drftstate"), "State output path")
-	memoryOutputPath := flag.String("memory-output-path", filepath.Join("out", "package", "drafter.drftmemory"), "Memory output path")
-	initramfsOutputPath := flag.String("initramfs-output-path", filepath.Join("out", "package", "drafter.drftinitramfs"), "initramfs output path")
-	kernelOutputPath := flag.String("kernel-output-path", filepath.Join("out", "package", "drafter.drftkernel"), "Kernel output path")
-	diskOutputPath := flag.String("disk-output-path", filepath.Join("out", "package", "drafter.drftdisk"), "Disk output path")
-	configOutputPath := flag.String("config-output-path", filepath.Join("out", "package", "drafter.drftconfig"), "Config output path")
+		{
+			Name:   roles.InitramfsName,
+			Input:  filepath.Join("out", "blueprint", "drafter.drftinitramfs"),
+			Output: filepath.Join("out", "package", "drafter.drftinitramfs"),
+		},
+		{
+			Name:   roles.KernelName,
+			Input:  filepath.Join("out", "blueprint", "drafter.drftkernel"),
+			Output: filepath.Join("out", "package", "drafter.drftkernel"),
+		},
+		{
+			Name:   roles.DiskName,
+			Input:  filepath.Join("out", "blueprint", "drafter.drftdisk"),
+			Output: filepath.Join("out", "package", "drafter.drftdisk"),
+		},
+
+		{
+			Name:   roles.ConfigName,
+			Output: filepath.Join("out", "package", "drafter.drftconfig"),
+		},
+
+		{
+			Name:   "oci",
+			Input:  filepath.Join("out", "blueprint", "drafter.drftoci"),
+			Output: filepath.Join("out", "package", "drafter.drftoci"),
+		},
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	rawDevices := flag.String("devices", string(defaultDevices), "Devices configuration")
 
 	cpuCount := flag.Int("cpu-count", 1, "CPU count")
 	memorySize := flag.Int("memory-size", 1024, "Memory size (in MB)")
@@ -58,6 +91,11 @@ func main() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	var devices []roles.SnapshotDevice
+	if err := json.Unmarshal([]byte(*rawDevices), &devices); err != nil {
+		panic(err)
+	}
 
 	firecrackerBin, err := exec.LookPath(*rawFirecrackerBin)
 	if err != nil {
@@ -99,16 +137,7 @@ func main() {
 	if err := roles.CreateSnapshot(
 		ctx,
 
-		*initramfsInputPath,
-		*kernelInputPath,
-		*diskInputPath,
-
-		*stateOutputPath,
-		*memoryOutputPath,
-		*initramfsOutputPath,
-		*kernelOutputPath,
-		*diskOutputPath,
-		*configOutputPath,
+		devices,
 
 		roles.VMConfiguration{
 			CPUCount:    *cpuCount,
@@ -145,17 +174,6 @@ func main() {
 		roles.AgentConfiguration{
 			AgentVSockPort: uint32(*agentVSockPort),
 			ResumeTimeout:  *resumeTimeout,
-		},
-
-		roles.KnownNamesConfiguration{
-			InitramfsName: roles.InitramfsName,
-			KernelName:    roles.KernelName,
-			DiskName:      roles.DiskName,
-
-			StateName:  roles.StateName,
-			MemoryName: roles.MemoryName,
-
-			ConfigName: roles.ConfigName,
 		},
 	); err != nil {
 		panic(err)

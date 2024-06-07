@@ -70,7 +70,8 @@ func StartVM(
 
 	initramfsPath string,
 	kernelPath string,
-	diskPath string,
+
+	disks []string,
 
 	cpuCount int,
 	memorySize int,
@@ -97,19 +98,21 @@ func StartVM(
 		return errors.Join(ErrCouldNotSetBootSource, err)
 	}
 
-	if err := submitJSON(
-		ctx,
-		http.MethodPut,
-		client,
-		&v1.Drive{
-			DriveID:      "root",
-			PathOnHost:   diskPath,
-			IsRootDevice: true,
-			IsReadOnly:   false,
-		},
-		path.Join("drives", "root"),
-	); err != nil {
-		return errors.Join(ErrCouldNotSetDrive, err)
+	for _, disk := range disks {
+		if err := submitJSON(
+			ctx,
+			http.MethodPut,
+			client,
+			&v1.Drive{
+				DriveID:      disk,
+				PathOnHost:   disk,
+				IsRootDevice: false,
+				IsReadOnly:   false,
+			},
+			path.Join("drives", disk),
+		); err != nil {
+			return errors.Join(ErrCouldNotSetDrive, err)
+		}
 	}
 
 	if err := submitJSON(

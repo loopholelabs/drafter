@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"path/filepath"
 
@@ -8,42 +9,61 @@ import (
 )
 
 func main() {
-	statePath := flag.String("state-path", filepath.Join("out", "package", "drafter.drftstate"), "State path")
-	memoryPath := flag.String("memory-path", filepath.Join("out", "package", "drafter.drftmemory"), "Memory path")
-	initramfsPath := flag.String("initramfs-path", filepath.Join("out", "package", "drafter.drftinitramfs"), "initramfs path")
-	kernelPath := flag.String("kernel-path", filepath.Join("out", "package", "drafter.drftkernel"), "Kernel path")
-	diskPath := flag.String("disk-path", filepath.Join("out", "package", "drafter.drftdisk"), "Disk path")
-	configPath := flag.String("config-path", filepath.Join("out", "package", "drafter.drftconfig"), "Config path")
+	defaultDevices, err := json.Marshal([]roles.PackagerDevice{
+		{
+			Name: roles.StateName,
+			Path: filepath.Join("out", "package", "drafter.drftstate"),
+		},
+		{
+			Name: roles.MemoryName,
+			Path: filepath.Join("out", "package", "drafter.drftmemory"),
+		},
 
-	packagePath := flag.String("package-path", filepath.Join("out", "redis.drft"), "Path to package file")
+		{
+			Name: roles.InitramfsName,
+			Path: filepath.Join("out", "package", "drafter.drftinitramfs"),
+		},
+		{
+			Name: roles.KernelName,
+			Path: filepath.Join("out", "package", "drafter.drftkernel"),
+		},
+		{
+			Name: roles.DiskName,
+			Path: filepath.Join("out", "package", "drafter.drftdisk"),
+		},
+
+		{
+			Name: roles.ConfigName,
+			Path: filepath.Join("out", "package", "drafter.drftconfig"),
+		},
+
+		{
+			Name: "oci",
+			Path: filepath.Join("out", "blueprint", "drafter.drftoci"),
+		},
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	rawDevices := flag.String("devices", string(defaultDevices), "Devices configuration")
+
+	packagePath := flag.String("package-path", filepath.Join("out", "app.drafterpackage"), "Path to package file")
 
 	extract := flag.Bool("extract", false, "Whether to extract or archive")
 
 	flag.Parse()
 
-	knownNamesConfiguration := roles.KnownNamesConfiguration{
-		InitramfsName: roles.InitramfsName,
-		KernelName:    roles.KernelName,
-		DiskName:      roles.DiskName,
-
-		StateName:  roles.StateName,
-		MemoryName: roles.MemoryName,
-
-		ConfigName: roles.ConfigName,
+	var devices []roles.PackagerDevice
+	if err := json.Unmarshal([]byte(*rawDevices), &devices); err != nil {
+		panic(err)
 	}
 
 	if *extract {
 		if err := roles.ExtractPackage(
 			*packagePath,
 
-			*statePath,
-			*memoryPath,
-			*initramfsPath,
-			*kernelPath,
-			*diskPath,
-			*configPath,
-
-			knownNamesConfiguration,
+			devices,
 		); err != nil {
 			panic(err)
 		}
@@ -52,16 +72,9 @@ func main() {
 	}
 
 	if err := roles.ArchivePackage(
-		*statePath,
-		*memoryPath,
-		*initramfsPath,
-		*kernelPath,
-		*diskPath,
-		*configPath,
+		devices,
 
 		*packagePath,
-
-		knownNamesConfiguration,
 	); err != nil {
 		panic(err)
 	}

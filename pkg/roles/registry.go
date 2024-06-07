@@ -27,14 +27,14 @@ var (
 	ErrCouldNotContinueWithMigration = errors.New("could not continue with migration")
 )
 
-type Device struct {
-	Name      string
-	Base      string
-	BlockSize uint32
+type RegistryDevice struct {
+	Name      string `json:"name"`
+	Input     string `json:"input"`
+	BlockSize uint32 `json:"blockSize"`
 }
 
-type OpenedDevice struct {
-	Device Device
+type OpenedRegistryDevice struct {
+	RegistryDevice RegistryDevice
 
 	storage     *modules.Lockable
 	orderer     *blocks.PriorityBlockOrder
@@ -47,16 +47,16 @@ type OpenDevicesHooks struct {
 }
 
 func OpenDevices(
-	devices []Device,
+	devices []RegistryDevice,
 
 	hooks OpenDevicesHooks,
-) ([]OpenedDevice, []func() error, error) {
+) ([]OpenedRegistryDevice, []func() error, error) {
 	openedDevices, deferFuncs, err := iutils.ConcurrentMap(
 		devices,
-		func(index int, input Device, output *OpenedDevice, addDefer func(deferFunc func() error)) error {
-			output.Device = input
+		func(index int, input RegistryDevice, output *OpenedRegistryDevice, addDefer func(deferFunc func() error)) error {
+			output.RegistryDevice = input
 
-			stat, err := os.Stat(input.Base)
+			stat, err := os.Stat(input.Input)
 			if err != nil {
 				return err
 			}
@@ -64,7 +64,7 @@ func OpenDevices(
 			src, _, err := device.NewDevice(&config.DeviceSchema{
 				Name:      input.Name,
 				System:    "file",
-				Location:  input.Base,
+				Location:  input.Input,
 				Size:      fmt.Sprintf("%v", stat.Size()),
 				BlockSize: fmt.Sprintf("%v", input.BlockSize),
 				Expose:    false,
@@ -122,7 +122,7 @@ type MigrateDevicesHooks struct {
 func MigrateOpenedDevices(
 	ctx context.Context,
 
-	openedDevices []OpenedDevice,
+	openedDevices []OpenedRegistryDevice,
 	concurrency int,
 
 	readers []io.Reader,
@@ -156,10 +156,10 @@ func MigrateOpenedDevices(
 
 	_, deferFuncs, err := iutils.ConcurrentMap(
 		openedDevices,
-		func(index int, input OpenedDevice, _ *struct{}, _ func(deferFunc func() error)) error {
+		func(index int, input OpenedRegistryDevice, _ *struct{}, _ func(deferFunc func() error)) error {
 			to := protocol.NewToProtocol(input.storage.Size(), uint32(index), pro)
 
-			if err := to.SendDevInfo(input.Device.Name, input.Device.BlockSize, ""); err != nil {
+			if err := to.SendDevInfo(input.RegistryDevice.Name, input.RegistryDevice.BlockSize, ""); err != nil {
 				return err
 			}
 
@@ -191,8 +191,8 @@ func MigrateOpenedDevices(
 						endOffset = uint64(input.storage.Size())
 					}
 
-					startBlock := int(offset / int64(input.Device.BlockSize))
-					endBlock := int((endOffset-1)/uint64(input.Device.BlockSize)) + 1
+					startBlock := int(offset / int64(input.RegistryDevice.BlockSize))
+					endBlock := int((endOffset-1)/uint64(input.RegistryDevice.BlockSize)) + 1
 					for b := startBlock; b < endBlock; b++ {
 						input.orderer.PrioritiseBlock(b)
 					}
@@ -219,7 +219,7 @@ func MigrateOpenedDevices(
 				}
 			})
 
-			cfg := migrator.NewMigratorConfig().WithBlockSize(int(input.Device.BlockSize))
+			cfg := migrator.NewMigratorConfig().WithBlockSize(int(input.RegistryDevice.BlockSize))
 			cfg.Concurrency = map[int]int{
 				storage.BlockTypeAny:      concurrency,
 				storage.BlockTypeStandard: concurrency,

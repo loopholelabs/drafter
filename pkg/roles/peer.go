@@ -32,15 +32,18 @@ import (
 )
 
 var (
+	ErrConfigFileNotFound       = errors.New("config file not found")
 	ErrCouldNotGetNBDDeviceStat = errors.New("could not get NBD device stat")
 )
 
-type MigrateFromDeviceConfiguration struct {
-	BasePath,
-	OverlayPath,
-	StatePath string
+type MigrateFromDevice struct {
+	Name string `json:"name"`
 
-	BlockSize uint32
+	Base    string `json:"base"`
+	Overlay string `json:"overlay"`
+	State   string `json:"state"`
+
+	BlockSize uint32 `json:"blockSize"`
 }
 
 type MigrateFromHooks struct {
@@ -74,6 +77,12 @@ type MigratedPeer struct {
 	)
 }
 
+type MakeMigratableDevice struct {
+	Name string `json:"name"`
+
+	Expiry time.Duration `json:"expiry"`
+}
+
 type ResumedPeer struct {
 	Wait  func() error
 	Close func() error
@@ -83,23 +92,18 @@ type ResumedPeer struct {
 	MakeMigratable func(
 		ctx context.Context,
 
-		stateExpiry,
-		memoryExpiry,
-		initramfsExpiry,
-		kernelExpiry,
-		diskExpiry,
-		configExpiry time.Duration,
+		devices []MakeMigratableDevice,
 	) (migratablePeer *MigratablePeer, errs error)
 }
 
-type MigrateToDeviceConfiguration struct {
-	MaxDirtyBlocks,
-	MinCycles,
-	MaxCycles int
+type MigrateToDevice struct {
+	Name string `json:"name"`
 
-	CycleThrottle time.Duration
+	MaxDirtyBlocks int `json:"maxDirtyBlocks"`
+	MinCycles      int `json:"minCycles"`
+	MaxCycles      int `json:"maxCycles"`
 
-	Serve bool
+	CycleThrottle time.Duration `json:"cycleThrottle"`
 }
 
 type MigrateToHooks struct {
@@ -123,12 +127,7 @@ type MigratablePeer struct {
 	MigrateTo func(
 		ctx context.Context,
 
-		stateDeviceConfiguration,
-		memoryDeviceConfiguration,
-		initramfsDeviceConfiguration,
-		kernelDeviceConfiguration,
-		diskDeviceConfiguration,
-		configDeviceConfiguration MigrateToDeviceConfiguration,
+		devices []MigrateToDevice,
 
 		suspendTimeout time.Duration,
 		concurrency int,
@@ -138,16 +137,6 @@ type MigratablePeer struct {
 
 		hooks MigrateToHooks,
 	) (errs error)
-}
-
-type peerStage1 struct {
-	name string
-
-	base    string
-	overlay string
-	state   string
-
-	blockSize uint32
 }
 
 type peerStage2 struct {
@@ -165,10 +154,22 @@ type peerStage2 struct {
 type peerStage3 struct {
 	prev peerStage2
 
+	makeMigratableDevice MakeMigratableDevice
+}
+
+type peerStage4 struct {
+	prev peerStage3
+
 	storage     *modules.Lockable
 	orderer     *blocks.PriorityBlockOrder
 	totalBlocks int
 	dirtyRemote *dirtytracker.DirtyTrackerRemote
+}
+
+type peerStage5 struct {
+	prev peerStage4
+
+	migrateToDevice MigrateToDevice
 }
 
 type Peer struct {
@@ -180,12 +181,7 @@ type Peer struct {
 	MigrateFrom func(
 		ctx context.Context,
 
-		stateDeviceConfiguration,
-		memoryDeviceConfiguration,
-		initramfsDeviceConfiguration,
-		kernelDeviceConfiguration,
-		diskDeviceConfiguration,
-		configDeviceConfiguration MigrateFromDeviceConfiguration,
+		devices []MigrateFromDevice,
 
 		readers []io.Reader,
 		writers []io.Writer,
@@ -265,12 +261,7 @@ func StartPeer(
 	peer.MigrateFrom = func(
 		ctx context.Context,
 
-		stateDeviceConfiguration,
-		memoryDeviceConfiguration,
-		initramfsDeviceConfiguration,
-		kernelDeviceConfiguration,
-		diskDeviceConfiguration,
-		configDeviceConfiguration MigrateFromDeviceConfiguration,
+		devices []MigrateFromDevice,
 
 		readers []io.Reader,
 		writers []io.Writer,
@@ -337,27 +328,13 @@ func StartPeer(
 						func(di *packets.DevInfo) storage.StorageProvider {
 							defer handlePanics(false)()
 
-							var (
-								base = ""
-							)
-							switch di.Name {
-							case ConfigName:
-								base = configDeviceConfiguration.BasePath
+							base := ""
+							for _, device := range devices {
+								if di.Name == device.Name {
+									base = device.Base
 
-							case DiskName:
-								base = diskDeviceConfiguration.BasePath
-
-							case InitramfsName:
-								base = initramfsDeviceConfiguration.BasePath
-
-							case KernelName:
-								base = kernelDeviceConfiguration.BasePath
-
-							case MemoryName:
-								base = memoryDeviceConfiguration.BasePath
-
-							case StateName:
-								base = stateDeviceConfiguration.BasePath
+									break
+								}
 							}
 
 							if strings.TrimSpace(base) == "" {
@@ -630,69 +607,12 @@ func StartPeer(
 			break
 		}
 
-		allStage1Inputs := []peerStage1{
-			{
-				name: StateName,
-
-				base:    stateDeviceConfiguration.BasePath,
-				overlay: stateDeviceConfiguration.OverlayPath,
-				state:   stateDeviceConfiguration.StatePath,
-
-				blockSize: stateDeviceConfiguration.BlockSize,
-			},
-			{
-				name: MemoryName,
-
-				base:    memoryDeviceConfiguration.BasePath,
-				overlay: memoryDeviceConfiguration.OverlayPath,
-				state:   memoryDeviceConfiguration.StatePath,
-
-				blockSize: memoryDeviceConfiguration.BlockSize,
-			},
-			{
-				name: InitramfsName,
-
-				base:    initramfsDeviceConfiguration.BasePath,
-				overlay: initramfsDeviceConfiguration.OverlayPath,
-				state:   initramfsDeviceConfiguration.StatePath,
-
-				blockSize: initramfsDeviceConfiguration.BlockSize,
-			},
-			{
-				name: KernelName,
-
-				base:    kernelDeviceConfiguration.BasePath,
-				overlay: kernelDeviceConfiguration.OverlayPath,
-				state:   kernelDeviceConfiguration.StatePath,
-
-				blockSize: kernelDeviceConfiguration.BlockSize,
-			},
-			{
-				name: DiskName,
-
-				base:    diskDeviceConfiguration.BasePath,
-				overlay: diskDeviceConfiguration.OverlayPath,
-				state:   diskDeviceConfiguration.StatePath,
-
-				blockSize: diskDeviceConfiguration.BlockSize,
-			},
-			{
-				name: ConfigName,
-
-				base:    configDeviceConfiguration.BasePath,
-				overlay: configDeviceConfiguration.OverlayPath,
-				state:   configDeviceConfiguration.StatePath,
-
-				blockSize: configDeviceConfiguration.BlockSize,
-			},
-		}
-
-		stage1Inputs := []peerStage1{}
-		for _, input := range allStage1Inputs {
+		stage1Inputs := []MigrateFromDevice{}
+		for _, input := range devices {
 			if slices.ContainsFunc(
 				stage2Inputs,
 				func(r peerStage2) bool {
-					return input.name == r.name
+					return input.Name == r.name
 				},
 			) {
 				continue
@@ -707,9 +627,9 @@ func StartPeer(
 
 		_, deferFuncs, err := iutils.ConcurrentMap(
 			stage1Inputs,
-			func(index int, input peerStage1, _ *struct{}, addDefer func(deferFunc func() error)) error {
+			func(index int, input MigrateFromDevice, _ *struct{}, addDefer func(deferFunc func() error)) error {
 				if hook := hooks.OnLocalDeviceRequested; hook != nil {
-					hook(uint32(index), input.name)
+					hook(uint32(index), input.Name)
 				}
 
 				if remainingRequestedLocalDevices.Add(-1) <= 0 {
@@ -718,7 +638,7 @@ func StartPeer(
 					}
 				}
 
-				stat, err := os.Stat(input.base)
+				stat, err := os.Stat(input.Base)
 				if err != nil {
 					return err
 				}
@@ -727,35 +647,35 @@ func StartPeer(
 					local  storage.StorageProvider
 					device storage.ExposedStorage
 				)
-				if strings.TrimSpace(input.overlay) == "" || strings.TrimSpace(input.state) == "" {
+				if strings.TrimSpace(input.Overlay) == "" || strings.TrimSpace(input.State) == "" {
 					local, device, err = sdevice.NewDevice(&sconfig.DeviceSchema{
-						Name:      input.name,
+						Name:      input.Name,
 						System:    "file",
-						Location:  input.base,
+						Location:  input.Base,
 						Size:      fmt.Sprintf("%v", stat.Size()),
-						BlockSize: fmt.Sprintf("%v", input.blockSize),
+						BlockSize: fmt.Sprintf("%v", input.BlockSize),
 						Expose:    true,
 					})
 				} else {
-					if err := os.MkdirAll(filepath.Dir(input.overlay), os.ModePerm); err != nil {
+					if err := os.MkdirAll(filepath.Dir(input.Overlay), os.ModePerm); err != nil {
 						return err
 					}
 
-					if err := os.MkdirAll(filepath.Dir(input.state), os.ModePerm); err != nil {
+					if err := os.MkdirAll(filepath.Dir(input.State), os.ModePerm); err != nil {
 						return err
 					}
 
 					local, device, err = sdevice.NewDevice(&sconfig.DeviceSchema{
-						Name:      input.name,
+						Name:      input.Name,
 						System:    "sparsefile",
-						Location:  input.overlay,
+						Location:  input.Overlay,
 						Size:      fmt.Sprintf("%v", stat.Size()),
-						BlockSize: fmt.Sprintf("%v", input.blockSize),
+						BlockSize: fmt.Sprintf("%v", input.BlockSize),
 						Expose:    true,
 						ROSource: &sconfig.DeviceSchema{
-							Name:     input.state,
+							Name:     input.State,
 							System:   "file",
-							Location: input.base,
+							Location: input.Base,
 							Size:     fmt.Sprintf("%v", stat.Size()),
 						},
 					})
@@ -770,9 +690,9 @@ func StartPeer(
 
 				stage2InputsLock.Lock()
 				stage2Inputs = append(stage2Inputs, peerStage2{
-					name: input.name,
+					name: input.Name,
 
-					blockSize: input.blockSize,
+					blockSize: input.BlockSize,
 
 					id:     uint32(index),
 					remote: false,
@@ -808,7 +728,7 @@ func StartPeer(
 					return nil
 
 				default:
-					if err := unix.Mknod(filepath.Join(runner.VMPath, input.name), unix.S_IFBLK|0666, deviceID); err != nil {
+					if err := unix.Mknod(filepath.Join(runner.VMPath, input.Name), unix.S_IFBLK|0666, deviceID); err != nil {
 						return err
 					}
 				}
@@ -851,7 +771,20 @@ func StartPeer(
 			resumeTimeout,
 			rescueTimeout time.Duration,
 		) (resumedPeer *ResumedPeer, errs error) {
-			packageConfigFile, err := os.Open(configDeviceConfiguration.BasePath)
+			configBasePath := ""
+			for _, device := range devices {
+				if device.Name == ConfigName {
+					configBasePath = device.Base
+
+					break
+				}
+			}
+
+			if strings.TrimSpace(configBasePath) == "" {
+				return nil, ErrConfigFileNotFound
+			}
+
+			packageConfigFile, err := os.Open(configBasePath)
 			if err != nil {
 				return nil, err
 			}
@@ -876,46 +809,41 @@ func StartPeer(
 				MakeMigratable: func(
 					ctx context.Context,
 
-					stateExpiry,
-					memoryExpiry,
-					initramfsExpiry,
-					kernelExpiry,
-					diskExpiry,
-					configExpiry time.Duration,
+					devices []MakeMigratableDevice,
 				) (migratablePeer *MigratablePeer, errs error) {
 					migratablePeer = &MigratablePeer{}
 
-					allStage3Inputs, deferFuncs, err := iutils.ConcurrentMap(
-						stage2Inputs,
-						func(index int, input peerStage2, output *peerStage3, addDefer func(deferFunc func() error)) error {
+					stage3Inputs := []peerStage3{}
+					for _, input := range stage2Inputs {
+						var makeMigratableDevice *MakeMigratableDevice
+						for _, device := range devices {
+							if device.Name == input.name {
+								makeMigratableDevice = &device
+
+								break
+							}
+						}
+
+						// We don't want to make this device migratable
+						if makeMigratableDevice == nil {
+							continue
+						}
+
+						stage3Inputs = append(stage3Inputs, peerStage3{
+							prev: input,
+
+							makeMigratableDevice: *makeMigratableDevice,
+						})
+					}
+
+					stage4Inputs, deferFuncs, err := iutils.ConcurrentMap(
+						stage3Inputs,
+						func(index int, input peerStage3, output *peerStage4, addDefer func(deferFunc func() error)) error {
 							output.prev = input
 
-							var expiry time.Duration
-							switch input.name {
-							case ConfigName:
-								expiry = configExpiry
-
-							case DiskName:
-								expiry = diskExpiry
-
-							case InitramfsName:
-								expiry = initramfsExpiry
-
-							case KernelName:
-								expiry = kernelExpiry
-
-							case MemoryName:
-								expiry = memoryExpiry
-
-							case StateName:
-								expiry = stateExpiry
-
-								// No need for a default case/check here - we validate that all resources have valid names earlier
-							}
-
-							dirtyLocal, dirtyRemote := dirtytracker.NewDirtyTracker(input.storage, int(input.blockSize))
+							dirtyLocal, dirtyRemote := dirtytracker.NewDirtyTracker(input.prev.storage, int(input.prev.blockSize))
 							output.dirtyRemote = dirtyRemote
-							monitor := volatilitymonitor.NewVolatilityMonitor(dirtyLocal, int(input.blockSize), expiry)
+							monitor := volatilitymonitor.NewVolatilityMonitor(dirtyLocal, int(input.prev.blockSize), input.makeMigratableDevice.Expiry)
 
 							local := modules.NewLockable(monitor)
 							output.storage = local
@@ -925,9 +853,9 @@ func StartPeer(
 								return nil
 							})
 
-							input.device.SetProvider(local)
+							input.prev.device.SetProvider(local)
 
-							totalBlocks := (int(local.Size()) + int(input.blockSize) - 1) / int(input.blockSize)
+							totalBlocks := (int(local.Size()) + int(input.prev.blockSize) - 1) / int(input.prev.blockSize)
 							output.totalBlocks = totalBlocks
 
 							orderer := blocks.NewPriorityBlockOrder(totalBlocks, monitor)
@@ -957,12 +885,7 @@ func StartPeer(
 					migratablePeer.MigrateTo = func(
 						ctx context.Context,
 
-						stateDeviceConfiguration,
-						memoryDeviceConfiguration,
-						initramfsDeviceConfiguration,
-						kernelDeviceConfiguration,
-						diskDeviceConfiguration,
-						configDeviceConfiguration MigrateToDeviceConfiguration,
+						devices []MigrateToDevice,
 
 						suspendTimeout time.Duration,
 						concurrency int,
@@ -1033,80 +956,44 @@ func StartPeer(
 							return nil
 						})
 
-						stage3Inputs := []peerStage3{}
-						for _, input := range allStage3Inputs {
-							var serve bool
-							switch input.prev.name {
-							case ConfigName:
-								serve = configDeviceConfiguration.Serve
+						stage5Inputs := []peerStage5{}
+						for _, input := range stage4Inputs {
+							var migrateToDevice *MigrateToDevice
+							for _, device := range devices {
+								if device.Name == input.prev.prev.name {
+									migrateToDevice = &device
 
-							case DiskName:
-								serve = diskDeviceConfiguration.Serve
-
-							case InitramfsName:
-								serve = initramfsDeviceConfiguration.Serve
-
-							case KernelName:
-								serve = kernelDeviceConfiguration.Serve
-
-							case MemoryName:
-								serve = memoryDeviceConfiguration.Serve
-
-							case StateName:
-								serve = stateDeviceConfiguration.Serve
-
-								// No need for a default case/check here - we validate that all resources have valid names earlier
+									break
+								}
 							}
 
-							if !serve {
+							// We don't want to serve this device
+							if migrateToDevice == nil {
 								continue
 							}
 
-							stage3Inputs = append(stage3Inputs, input)
+							stage5Inputs = append(stage5Inputs, peerStage5{
+								prev: input,
+
+								migrateToDevice: *migrateToDevice,
+							})
 						}
 
 						_, deferFuncs, err := iutils.ConcurrentMap(
-							stage3Inputs,
-							func(index int, input peerStage3, _ *struct{}, _ func(deferFunc func() error)) error {
-								var serve bool
-								switch input.prev.name {
-								case ConfigName:
-									serve = configDeviceConfiguration.Serve
+							stage5Inputs,
+							func(index int, input peerStage5, _ *struct{}, _ func(deferFunc func() error)) error {
+								to := protocol.NewToProtocol(input.prev.storage.Size(), uint32(index), pro)
 
-								case DiskName:
-									serve = diskDeviceConfiguration.Serve
-
-								case InitramfsName:
-									serve = initramfsDeviceConfiguration.Serve
-
-								case KernelName:
-									serve = kernelDeviceConfiguration.Serve
-
-								case MemoryName:
-									serve = memoryDeviceConfiguration.Serve
-
-								case StateName:
-									serve = stateDeviceConfiguration.Serve
-
-									// No need for a default case/check here - we validate that all resources have valid names earlier
-								}
-
-								if !serve {
-									return nil
-								}
-
-								to := protocol.NewToProtocol(input.storage.Size(), uint32(index), pro)
-
-								if err := to.SendDevInfo(input.prev.name, input.prev.blockSize, ""); err != nil {
+								if err := to.SendDevInfo(input.prev.prev.prev.name, input.prev.prev.prev.blockSize, ""); err != nil {
 									return err
 								}
 
 								if hook := hooks.OnDeviceSent; hook != nil {
-									hook(uint32(index), input.prev.remote)
+									hook(uint32(index), input.prev.prev.prev.remote)
 								}
 
 								devicesLeftToSend.Add(1)
-								if devicesLeftToSend.Load() >= int32(len(stage3Inputs)) {
+								if devicesLeftToSend.Load() >= int32(len(stage5Inputs)) {
 									handleGoroutinePanics(true, func() {
 										if err := to.SendEvent(&packets.Event{
 											Type:       packets.EventCustom,
@@ -1125,14 +1012,14 @@ func StartPeer(
 									if err := to.HandleNeedAt(func(offset int64, length int32) {
 										// Prioritize blocks
 										endOffset := uint64(offset + int64(length))
-										if endOffset > uint64(input.storage.Size()) {
-											endOffset = uint64(input.storage.Size())
+										if endOffset > uint64(input.prev.storage.Size()) {
+											endOffset = uint64(input.prev.storage.Size())
 										}
 
-										startBlock := int(offset / int64(input.prev.blockSize))
-										endBlock := int((endOffset-1)/uint64(input.prev.blockSize)) + 1
+										startBlock := int(offset / int64(input.prev.prev.prev.blockSize))
+										endBlock := int((endOffset-1)/uint64(input.prev.prev.prev.blockSize)) + 1
 										for b := startBlock; b < endBlock; b++ {
-											input.orderer.PrioritiseBlock(b)
+											input.prev.orderer.PrioritiseBlock(b)
 										}
 									}); err != nil {
 										panic(err)
@@ -1143,21 +1030,21 @@ func StartPeer(
 									if err := to.HandleDontNeedAt(func(offset int64, length int32) {
 										// Deprioritize blocks
 										endOffset := uint64(offset + int64(length))
-										if endOffset > uint64(input.storage.Size()) {
-											endOffset = uint64(input.storage.Size())
+										if endOffset > uint64(input.prev.storage.Size()) {
+											endOffset = uint64(input.prev.storage.Size())
 										}
 
-										startBlock := int(offset / int64(input.storage.Size()))
-										endBlock := int((endOffset-1)/uint64(input.storage.Size())) + 1
+										startBlock := int(offset / int64(input.prev.storage.Size()))
+										endBlock := int((endOffset-1)/uint64(input.prev.storage.Size())) + 1
 										for b := startBlock; b < endBlock; b++ {
-											input.orderer.Remove(b)
+											input.prev.orderer.Remove(b)
 										}
 									}); err != nil {
 										panic(err)
 									}
 								})
 
-								cfg := migrator.NewMigratorConfig().WithBlockSize(int(input.prev.blockSize))
+								cfg := migrator.NewMigratorConfig().WithBlockSize(int(input.prev.prev.prev.blockSize))
 								cfg.Concurrency = map[int]int{
 									storage.BlockTypeAny:      concurrency,
 									storage.BlockTypeStandard: concurrency,
@@ -1173,7 +1060,7 @@ func StartPeer(
 										panic(err)
 									}
 
-									input.storage.Lock()
+									input.prev.storage.Lock()
 
 									if err := to.SendEvent(&packets.Event{
 										Type: packets.EventPostLock,
@@ -1190,7 +1077,7 @@ func StartPeer(
 										panic(err)
 									}
 
-									input.storage.Unlock()
+									input.prev.storage.Unlock()
 
 									if err := to.SendEvent(&packets.Event{
 										Type: packets.EventPostUnlock,
@@ -1207,16 +1094,16 @@ func StartPeer(
 								}
 								cfg.Progress_handler = func(p *migrator.MigrationProgress) {
 									if hook := hooks.OnDeviceInitialMigrationProgress; hook != nil {
-										hook(uint32(index), input.prev.remote, p.Ready_blocks, p.Total_blocks)
+										hook(uint32(index), input.prev.prev.prev.remote, p.Ready_blocks, p.Total_blocks)
 									}
 								}
 
-								mig, err := migrator.NewMigrator(input.dirtyRemote, to, input.orderer, cfg)
+								mig, err := migrator.NewMigrator(input.prev.dirtyRemote, to, input.prev.orderer, cfg)
 								if err != nil {
 									return err
 								}
 
-								if err := mig.Migrate(input.totalBlocks); err != nil {
+								if err := mig.Migrate(input.prev.totalBlocks); err != nil {
 									return err
 								}
 
@@ -1229,59 +1116,6 @@ func StartPeer(
 								})
 
 								var (
-									maxDirtyBlocks int
-									minCycles      int
-									maxCycles      int
-
-									cycleThrottle time.Duration
-								)
-								switch input.prev.name {
-								case ConfigName:
-									maxDirtyBlocks = configDeviceConfiguration.MaxDirtyBlocks
-									minCycles = configDeviceConfiguration.MinCycles
-									maxCycles = configDeviceConfiguration.MaxCycles
-
-									cycleThrottle = configDeviceConfiguration.CycleThrottle
-
-								case DiskName:
-									maxDirtyBlocks = diskDeviceConfiguration.MaxDirtyBlocks
-									minCycles = diskDeviceConfiguration.MinCycles
-									maxCycles = diskDeviceConfiguration.MaxCycles
-
-									cycleThrottle = diskDeviceConfiguration.CycleThrottle
-
-								case InitramfsName:
-									maxDirtyBlocks = initramfsDeviceConfiguration.MaxDirtyBlocks
-									minCycles = initramfsDeviceConfiguration.MinCycles
-									maxCycles = initramfsDeviceConfiguration.MaxCycles
-
-									cycleThrottle = initramfsDeviceConfiguration.CycleThrottle
-
-								case KernelName:
-									maxDirtyBlocks = kernelDeviceConfiguration.MaxDirtyBlocks
-									minCycles = kernelDeviceConfiguration.MinCycles
-									maxCycles = kernelDeviceConfiguration.MaxCycles
-
-									cycleThrottle = kernelDeviceConfiguration.CycleThrottle
-
-								case MemoryName:
-									maxDirtyBlocks = memoryDeviceConfiguration.MaxDirtyBlocks
-									minCycles = memoryDeviceConfiguration.MinCycles
-									maxCycles = memoryDeviceConfiguration.MaxCycles
-
-									cycleThrottle = memoryDeviceConfiguration.CycleThrottle
-
-								case StateName:
-									maxDirtyBlocks = stateDeviceConfiguration.MaxDirtyBlocks
-									minCycles = stateDeviceConfiguration.MinCycles
-									maxCycles = stateDeviceConfiguration.MaxCycles
-
-									cycleThrottle = stateDeviceConfiguration.CycleThrottle
-
-									// No need for a default case/check here - we validate that all resources have valid names earlier
-								}
-
-								var (
 									cyclesBelowDirtyBlockTreshold = 0
 									totalCycles                   = 0
 									ongoingMigrationsWg           sync.WaitGroup
@@ -1289,7 +1123,7 @@ func StartPeer(
 								for {
 									suspendedVMLock.Lock()
 									// We only need to `msync` for the memory because `msync` only affects the memory
-									if !suspendedVM && input.prev.name == MemoryName {
+									if !suspendedVM && input.prev.prev.prev.name == MemoryName {
 										if err := resumedRunner.Msync(ctx); err != nil {
 											suspendedVMLock.Unlock()
 
@@ -1314,7 +1148,7 @@ func StartPeer(
 									}
 
 									if blocks != nil {
-										if err := to.DirtyList(int(input.prev.blockSize), blocks); err != nil {
+										if err := to.DirtyList(int(input.prev.prev.prev.blockSize), blocks); err != nil {
 											return err
 										}
 
@@ -1331,23 +1165,23 @@ func StartPeer(
 
 											if suspendedVM {
 												if hook := hooks.OnDeviceFinalMigrationProgress; hook != nil {
-													hook(uint32(index), input.prev.remote, len(blocks))
+													hook(uint32(index), input.prev.prev.prev.remote, len(blocks))
 												}
 											} else {
 												if hook := hooks.OnDeviceContinousMigrationProgress; hook != nil {
-													hook(uint32(index), input.prev.remote, len(blocks))
+													hook(uint32(index), input.prev.prev.prev.remote, len(blocks))
 												}
 											}
 										})
 									}
 
 									suspendedVMLock.Lock()
-									if !suspendedVM && !(devicesLeftToTransferAuthorityFor.Load() >= int32(len(stage3Inputs))) {
+									if !suspendedVM && !(devicesLeftToTransferAuthorityFor.Load() >= int32(len(stage5Inputs))) {
 										suspendedVMLock.Unlock()
 
 										// We use the background context here instead of the internal context because we want to distinguish
 										// between a context cancellation from the outside and getting a response
-										cycleThrottleCtx, cancelCycleThrottleCtx := context.WithTimeout(context.Background(), cycleThrottle)
+										cycleThrottleCtx, cancelCycleThrottleCtx := context.WithTimeout(context.Background(), input.migrateToDevice.CycleThrottle)
 										defer cancelCycleThrottleCtx()
 
 										select {
@@ -1369,18 +1203,18 @@ func StartPeer(
 									}
 
 									totalCycles++
-									if len(blocks) < maxDirtyBlocks {
+									if len(blocks) < input.migrateToDevice.MaxDirtyBlocks {
 										cyclesBelowDirtyBlockTreshold++
-										if cyclesBelowDirtyBlockTreshold > minCycles {
+										if cyclesBelowDirtyBlockTreshold > input.migrateToDevice.MinCycles {
 											markDeviceAsReadyForAuthorityTransfer()
 										}
-									} else if totalCycles > maxCycles {
+									} else if totalCycles > input.migrateToDevice.MaxCycles {
 										markDeviceAsReadyForAuthorityTransfer()
 									} else {
 										cyclesBelowDirtyBlockTreshold = 0
 									}
 
-									if devicesLeftToTransferAuthorityFor.Load() >= int32(len(stage3Inputs)) {
+									if devicesLeftToTransferAuthorityFor.Load() >= int32(len(stage5Inputs)) {
 										if err := suspendAndMsyncVM(); err != nil {
 											return err
 										}
@@ -1395,7 +1229,7 @@ func StartPeer(
 								}
 
 								if hook := hooks.OnDeviceAuthoritySent; hook != nil {
-									hook(uint32(index), input.prev.remote)
+									hook(uint32(index), input.prev.prev.prev.remote)
 								}
 
 								if err := mig.WaitForCompletion(); err != nil {
@@ -1409,7 +1243,7 @@ func StartPeer(
 								}
 
 								if hook := hooks.OnDeviceMigrationCompleted; hook != nil {
-									hook(uint32(index), input.prev.remote)
+									hook(uint32(index), input.prev.prev.prev.remote)
 								}
 
 								return nil

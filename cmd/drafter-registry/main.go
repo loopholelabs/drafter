@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -16,26 +17,51 @@ import (
 )
 
 func main() {
-	statePath := flag.String("state-path", filepath.Join("out", "package", "drafter.drftstate"), "State path")
-	memoryPath := flag.String("memory-path", filepath.Join("out", "package", "drafter.drftmemory"), "Memory path")
-	initramfsPath := flag.String("initramfs-path", filepath.Join("out", "package", "drafter.drftinitramfs"), "initramfs path")
-	kernelPath := flag.String("kernel-path", filepath.Join("out", "package", "drafter.drftkernel"), "Kernel path")
-	diskPath := flag.String("disk-path", filepath.Join("out", "package", "drafter.drftdisk"), "Disk path")
-	configPath := flag.String("config-path", filepath.Join("out", "package", "drafter.drftconfig"), "Config path")
+	defaultDevices, err := json.Marshal([]roles.RegistryDevice{
+		{
+			Name:      roles.StateName,
+			Input:     filepath.Join("out", "package", "drafter.drftstate"),
+			BlockSize: 1024 * 64,
+		},
+		{
+			Name:      roles.MemoryName,
+			Input:     filepath.Join("out", "package", "drafter.drftmemory"),
+			BlockSize: 1024 * 64,
+		},
 
-	stateBlockSize := flag.Uint("state-block-size", 1024*64, "State block size")
-	memoryBlockSize := flag.Uint("memory-block-size", 1024*64, "Memory block size")
-	initramfsBlockSize := flag.Uint("initramfs-block-size", 1024*64, "initramfs block size")
-	kernelBlockSize := flag.Uint("kernel-block-size", 1024*64, "Kernel block size")
-	diskBlockSize := flag.Uint("disk-block-size", 1024*64, "Disk block size")
-	configBlockSize := flag.Uint("config-block-size", 1024*64, "Config block size")
+		{
+			Name:      roles.InitramfsName,
+			Input:     filepath.Join("out", "package", "drafter.drftinitramfs"),
+			BlockSize: 1024 * 64,
+		},
+		{
+			Name:      roles.KernelName,
+			Input:     filepath.Join("out", "package", "drafter.drftkernel"),
+			BlockSize: 1024 * 64,
+		},
+		{
+			Name:      roles.DiskName,
+			Input:     filepath.Join("out", "package", "drafter.drftdisk"),
+			BlockSize: 1024 * 64,
+		},
 
-	stateServe := flag.Bool("state-serve", true, "Whether to serve the state")
-	memoryServe := flag.Bool("memory-serve", true, "Whether to serve the memory")
-	initramfsServe := flag.Bool("initramfs-serve", true, "Whether to serve the initramfs")
-	kernelServe := flag.Bool("kernel-serve", true, "Whether to serve the kernel")
-	diskServe := flag.Bool("disk-serve", true, "Whether to serve the disk")
-	configServe := flag.Bool("config-serve", true, "Whether to serve the config")
+		{
+			Name:      roles.ConfigName,
+			Input:     filepath.Join("out", "package", "drafter.drftconfig"),
+			BlockSize: 1024 * 64,
+		},
+
+		{
+			Name:      "oci",
+			Input:     filepath.Join("out", "blueprint", "drafter.drftoci"),
+			BlockSize: 1024 * 64,
+		},
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	rawDevices := flag.String("devices", string(defaultDevices), "Devices configuration")
 
 	laddr := flag.String("laddr", ":1600", "Address to listen on")
 
@@ -46,54 +72,9 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	devices := []roles.Device{}
-
-	if *stateServe {
-		devices = append(devices, roles.Device{
-			Name:      roles.StateName,
-			Base:      *statePath,
-			BlockSize: uint32(*stateBlockSize),
-		})
-	}
-
-	if *memoryServe {
-		devices = append(devices, roles.Device{
-			Name:      roles.MemoryName,
-			Base:      *memoryPath,
-			BlockSize: uint32(*memoryBlockSize),
-		})
-	}
-
-	if *initramfsServe {
-		devices = append(devices, roles.Device{
-			Name:      roles.InitramfsName,
-			Base:      *initramfsPath,
-			BlockSize: uint32(*initramfsBlockSize),
-		})
-	}
-
-	if *kernelServe {
-		devices = append(devices, roles.Device{
-			Name:      roles.KernelName,
-			Base:      *kernelPath,
-			BlockSize: uint32(*kernelBlockSize),
-		})
-	}
-
-	if *diskServe {
-		devices = append(devices, roles.Device{
-			Name:      roles.DiskName,
-			Base:      *diskPath,
-			BlockSize: uint32(*diskBlockSize),
-		})
-	}
-
-	if *configServe {
-		devices = append(devices, roles.Device{
-			Name:      roles.ConfigName,
-			Base:      *configPath,
-			BlockSize: uint32(*configBlockSize),
-		})
+	var devices []roles.RegistryDevice
+	if err := json.Unmarshal([]byte(*rawDevices), &devices); err != nil {
+		panic(err)
 	}
 
 	lis, err := net.Listen("tcp", *laddr)

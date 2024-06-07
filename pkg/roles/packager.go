@@ -3,67 +3,26 @@ package roles
 import (
 	"archive/tar"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 )
 
 var (
-	ErrMissingInitramfs = errors.New("missing initramfs")
-	ErrMissingKernel    = errors.New("missing kernel")
-	ErrMissingDisk      = errors.New("missing disk")
-	ErrMissingState     = errors.New("missing state")
-	ErrMissingMemory    = errors.New("missing memory")
-	ErrMissingConfig    = errors.New("missing config")
+	ErrMissingDevice = errors.New("missing resource")
 )
 
-type resource struct {
-	name string
-	path string
-	err  error
+type PackagerDevice struct {
+	Name string `json:"name"`
+	Path string `json:"path"`
 }
 
 func ArchivePackage(
-	stateInputPath string,
-	memoryInputPath string,
-	initramfsInputPath string,
-	kernelInputPath string,
-	diskInputPath string,
-	configInputPath string,
+	devices []PackagerDevice,
 
 	packageOutputPath string,
-
-	knownNamesConfiguration KnownNamesConfiguration,
 ) error {
-	resources := []resource{
-		{
-			name: knownNamesConfiguration.InitramfsName,
-			path: initramfsInputPath,
-		},
-		{
-			name: knownNamesConfiguration.KernelName,
-			path: kernelInputPath,
-		},
-		{
-			name: knownNamesConfiguration.DiskName,
-			path: diskInputPath,
-		},
-
-		{
-			name: knownNamesConfiguration.StateName,
-			path: stateInputPath,
-		},
-		{
-			name: knownNamesConfiguration.MemoryName,
-			path: memoryInputPath,
-		},
-
-		{
-			name: knownNamesConfiguration.ConfigName,
-			path: configInputPath,
-		},
-	}
-
 	packageOutputFile, err := os.OpenFile(packageOutputPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, os.ModePerm)
 	if err != nil {
 		return err
@@ -73,23 +32,23 @@ func ArchivePackage(
 	packageOutputArchive := tar.NewWriter(packageOutputFile)
 	defer packageOutputArchive.Close()
 
-	for _, resource := range resources {
-		info, err := os.Stat(resource.path)
+	for _, device := range devices {
+		info, err := os.Stat(device.Path)
 		if err != nil {
 			return err
 		}
 
-		header, err := tar.FileInfoHeader(info, resource.path)
+		header, err := tar.FileInfoHeader(info, device.Path)
 		if err != nil {
 			return err
 		}
-		header.Name = resource.name
+		header.Name = device.Name
 
 		if err := packageOutputArchive.WriteHeader(header); err != nil {
 			return err
 		}
 
-		f, err := os.Open(resource.path)
+		f, err := os.Open(device.Path)
 		if err != nil {
 			return err
 		}
@@ -106,50 +65,8 @@ func ArchivePackage(
 func ExtractPackage(
 	packageInputPath string,
 
-	stateOutputPath string,
-	memoryOutputPath string,
-	initramfsOutputPath string,
-	kernelOutputPath string,
-	diskOutputPath string,
-	configOutputPath string,
-
-	knownNamesConfiguration KnownNamesConfiguration,
+	devices []PackagerDevice,
 ) error {
-	resources := []resource{
-		{
-			name: knownNamesConfiguration.InitramfsName,
-			path: initramfsOutputPath,
-			err:  ErrMissingInitramfs,
-		},
-		{
-			name: knownNamesConfiguration.KernelName,
-			path: kernelOutputPath,
-			err:  ErrMissingKernel,
-		},
-		{
-			name: knownNamesConfiguration.DiskName,
-			path: diskOutputPath,
-			err:  ErrMissingDisk,
-		},
-
-		{
-			name: knownNamesConfiguration.StateName,
-			path: stateOutputPath,
-			err:  ErrMissingState,
-		},
-		{
-			name: knownNamesConfiguration.MemoryName,
-			path: memoryOutputPath,
-			err:  ErrMissingMemory,
-		},
-
-		{
-			name: knownNamesConfiguration.ConfigName,
-			path: configOutputPath,
-			err:  ErrMissingConfig,
-		},
-	}
-
 	packageFile, err := os.Open(packageInputPath)
 	if err != nil {
 		return err
@@ -158,7 +75,7 @@ func ExtractPackage(
 
 	packageArchive := tar.NewReader(packageFile)
 
-	for _, resource := range resources {
+	for _, device := range devices {
 		extracted := false
 		for {
 			header, err := packageArchive.Next()
@@ -170,15 +87,15 @@ func ExtractPackage(
 				return err
 			}
 
-			if header.Name != resource.name {
+			if header.Name != device.Name {
 				continue
 			}
 
-			if err := os.MkdirAll(filepath.Dir(resource.path), os.ModePerm); err != nil {
+			if err := os.MkdirAll(filepath.Dir(device.Path), os.ModePerm); err != nil {
 				return err
 			}
 
-			outputFile, err := os.OpenFile(resource.path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, os.ModePerm)
+			outputFile, err := os.OpenFile(device.Path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, os.ModePerm)
 			if err != nil {
 				return err
 			}
@@ -194,7 +111,8 @@ func ExtractPackage(
 		}
 
 		if !extracted {
-			return resource.err
+			// We join the more specific error here first
+			return errors.Join(fmt.Errorf("missing device: %s", device.Name), ErrMissingDevice)
 		}
 	}
 
