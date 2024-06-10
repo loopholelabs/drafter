@@ -71,15 +71,16 @@ func Terminate(
 		ctx,
 		readers,
 		writers,
-		func(p protocol.Protocol, index uint32) {
+		func(ctx context.Context, p protocol.Protocol, index uint32) {
 			var (
 				from  *protocol.FromProtocol
 				local *waitingcache.WaitingCacheLocal
 			)
 			from = protocol.NewFromProtocol(
+				ctx,
 				index,
 				func(di *packets.DevInfo) storage.StorageProvider {
-					defer handlePanics(false)()
+					// No need to `defer handlePanics` here - panics bubble upwards
 
 					path := ""
 					for _, device := range devices {
