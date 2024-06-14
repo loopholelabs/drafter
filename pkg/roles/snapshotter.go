@@ -187,7 +187,6 @@ func CreateSnapshot(
 
 		client,
 
-		InitramfsName,
 		KernelName,
 
 		disks,

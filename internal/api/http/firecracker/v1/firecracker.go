@@ -1,7 +1,6 @@
 package v1
 
 type BootSource struct {
-	InitrdPath      string `json:"initrd_path"`
 	KernelImagePath string `json:"kernel_image_path"`
 	BootArgs        string `json:"boot_args"`
 }

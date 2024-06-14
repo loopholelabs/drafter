@@ -68,7 +68,6 @@ func StartVM(
 
 	client *http.Client,
 
-	initramfsPath string,
 	kernelPath string,
 
 	disks []string,
@@ -89,7 +88,6 @@ func StartVM(
 		http.MethodPut,
 		client,
 		&v1.BootSource{
-			InitrdPath:      initramfsPath,
 			KernelImagePath: kernelPath,
 			BootArgs:        bootArgs,
 		},

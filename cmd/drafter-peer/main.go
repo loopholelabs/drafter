@@ -95,23 +95,6 @@ func main() {
 		},
 
 		{
-			Name: roles.InitramfsName,
-
-			Base:    filepath.Join("out", "package", "drafter.drftinitramfs"),
-			Overlay: filepath.Join("out", "overlay", "drafter.drftinitramfs"),
-			State:   filepath.Join("out", "state", "drafter.drftinitramfs"),
-
-			BlockSize: 1024 * 64,
-
-			Expiry: time.Second,
-
-			MaxDirtyBlocks: 200,
-			MinCycles:      5,
-			MaxCycles:      20,
-
-			CycleThrottle: time.Millisecond * 500,
-		},
-		{
 			Name: roles.KernelName,
 
 			Base:    filepath.Join("out", "package", "drafter.drftkernel"),

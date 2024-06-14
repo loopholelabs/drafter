@@ -1,9 +1,8 @@
 package roles
 
 const (
-	InitramfsName = "initramfs"
-	KernelName    = "kernel"
-	DiskName      = "disk"
+	KernelName = "kernel"
+	DiskName   = "disk"
 
 	StateName  = "state"
 	MemoryName = "memory"
@@ -13,7 +12,6 @@ const (
 
 var (
 	KnownNames = []string{
-		InitramfsName,
 		KernelName,
 		DiskName,
 

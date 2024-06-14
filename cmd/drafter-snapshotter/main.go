@@ -50,11 +50,6 @@ func main() {
 		},
 
 		{
-			Name:   roles.InitramfsName,
-			Input:  filepath.Join("out", "blueprint", "drafter.drftinitramfs"),
-			Output: filepath.Join("out", "package", "drafter.drftinitramfs"),
-		},
-		{
 			Name:   roles.KernelName,
 			Input:  filepath.Join("out", "blueprint", "drafter.drftkernel"),
 			Output: filepath.Join("out", "package", "drafter.drftkernel"),

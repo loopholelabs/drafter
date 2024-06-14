@@ -35,10 +35,6 @@ func main() {
 		},
 
 		{
-			Name: roles.InitramfsName,
-			Path: filepath.Join("out", "package", "drafter.drftinitramfs"),
-		},
-		{
 			Name: roles.KernelName,
 			Path: filepath.Join("out", "package", "drafter.drftkernel"),
 		},

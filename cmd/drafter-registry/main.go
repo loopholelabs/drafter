@@ -30,11 +30,6 @@ func main() {
 		},
 
 		{
-			Name:      roles.InitramfsName,
-			Input:     filepath.Join("out", "package", "drafter.drftinitramfs"),
-			BlockSize: 1024 * 64,
-		},
-		{
 			Name:      roles.KernelName,
 			Input:     filepath.Join("out", "package", "drafter.drftkernel"),
 			BlockSize: 1024 * 64,
