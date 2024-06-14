@@ -1,6 +1,7 @@
 [Unit]
 Description=Drafter agent daemon
-After=network.target
+After=network.target @DRAFTER_AGENT_SYSTEMD_DEPENDENCY@
+Requires=@DRAFTER_AGENT_SYSTEMD_DEPENDENCY@
 
 [Service]
 Type=simple
