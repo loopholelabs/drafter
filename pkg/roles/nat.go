@@ -42,6 +42,7 @@ func CreateNAT(
 
 	hostVethCIDR string,
 	namespaceVethCIDR string,
+	blockedSubnetCIDR string,
 
 	namespaceInterface string,
 	namespaceInterfaceGateway string,
@@ -50,6 +51,8 @@ func CreateNAT(
 	namespaceInterfaceMAC string,
 
 	namespacePrefix string,
+
+	allowIncomingTraffic bool,
 
 	hooks CreateNamespacesHooks,
 ) (namespaces *Namespaces, errs error) {
@@ -291,9 +294,11 @@ func CreateNAT(
 				namespaceInterfaceIP,
 				namespaceVeth.String(),
 
-				namespaceVethCIDR,
+				blockedSubnetCIDR,
 
 				namespaceInterfaceMAC,
+
+				allowIncomingTraffic,
 			)
 			if err := namespace.Open(); err != nil {
 				if e := namespace.Close(); e != nil {

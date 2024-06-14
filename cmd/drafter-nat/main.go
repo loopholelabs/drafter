@@ -16,6 +16,7 @@ func main() {
 
 	hostVethCIDR := flag.String("host-veth-cidr", "10.0.8.0/22", "CIDR for the veths outside the namespace")
 	namespaceVethCIDR := flag.String("namespace-veth-cidr", "10.0.15.0/24", "CIDR for the veths inside the namespace")
+	blockedSubnetCIDR := flag.String("blocked-subnet-cidr", "10.0.15.0/24", "CIDR to block for the namespace")
 
 	namespaceInterface := flag.String("namespace-interface", "tap0", "Name for the interface inside the namespace")
 	namespaceInterfaceGateway := flag.String("namespace-interface-gateway", "172.100.100.1", "Gateway for the interface inside the namespace")
@@ -24,6 +25,8 @@ func main() {
 	namespaceInterfaceMAC := flag.String("namespace-interface-mac", "02:0e:d9:fd:68:3d", "MAC address for the interface inside the namespace")
 
 	namespacePrefix := flag.String("namespace-prefix", "ark", "Prefix for the namespace IDs")
+
+	allowIncomingTraffic := flag.Bool("allow-incoming-traffic", true, "Whether to allow incoming traffic to the namespaces (at host-veth-internal-ip:port)")
 
 	flag.Parse()
 
@@ -65,6 +68,7 @@ func main() {
 
 		*hostVethCIDR,
 		*namespaceVethCIDR,
+		*blockedSubnetCIDR,
 
 		*namespaceInterface,
 		*namespaceInterfaceGateway,
@@ -73,6 +77,8 @@ func main() {
 		*namespaceInterfaceMAC,
 
 		*namespacePrefix,
+
+		*allowIncomingTraffic,
 
 		roles.CreateNamespacesHooks{
 			OnBeforeCreateNamespace: func(id string) {

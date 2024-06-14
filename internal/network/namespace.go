@@ -34,6 +34,8 @@ type Namespace struct {
 
 	parsedExternalAddr   *netlink.Addr
 	parsedDefaultAddress *netlink.Addr
+
+	allowIncomingTraffic bool
 }
 
 func NewNamespace(
@@ -54,6 +56,8 @@ func NewNamespace(
 	blockedSubnet string,
 
 	namespaceInterfaceMAC string,
+
+	allowIncomingTraffic bool,
 ) *Namespace {
 	return &Namespace{
 		id: id,
@@ -76,6 +80,8 @@ func NewNamespace(
 
 		veth0: fmt.Sprintf("%s-veth0", id),
 		veth1: fmt.Sprintf("%s-veth1", id),
+
+		allowIncomingTraffic: allowIncomingTraffic,
 	}
 }
 
@@ -218,6 +224,16 @@ func (n *Namespace) Open() error {
 		return err
 	}
 
+	if n.allowIncomingTraffic {
+		if err := iptable.Append("nat", "PREROUTING", "-d", n.hostVethInternalIP, "-j", "DNAT", "--to-destination", n.namespaceInterfaceIP); err != nil {
+			return err
+		}
+
+		if err := iptable.Append("nat", "POSTROUTING", "-d", n.namespaceInterfaceIP, "-j", "MASQUERADE"); err != nil {
+			return err
+		}
+	}
+
 	if err := netns.Set(originalNSHandle); err != nil {
 		return err
 	}
@@ -295,6 +311,16 @@ func (n *Namespace) Close() error {
 
 	if err = netns.Set(nsHandle); err != nil {
 		return err
+	}
+
+	if n.allowIncomingTraffic {
+		if err := iptable.Append("nat", "PREROUTING", "-d", n.hostVethInternalIP, "-j", "DNAT", "--to-destination", n.namespaceInterfaceIP); err != nil {
+			return err
+		}
+
+		if err := iptable.Append("nat", "POSTROUTING", "-d", n.namespaceInterfaceIP, "-j", "MASQUERADE"); err != nil {
+			return err
+		}
 	}
 
 	if err := iptable.Delete("nat", "PREROUTING", "-i", n.veth0, "-d", n.namespaceVethIP, "-j", "DNAT", "--to", n.namespaceInterfaceIP); err != nil {
