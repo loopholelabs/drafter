@@ -2237,7 +2237,7 @@ BR2_PACKAGE_EXPAT=y
 #
 # xml-security-c needs a toolchain w/ C++, wchar, dynamic library, threads, gcc >= 4.7
 #
-# BR2_PACKAGE_YAJL is not set
+BR2_PACKAGE_YAJL=y
 
 #
 # yaml-cpp needs a toolchain w/ C++, gcc >= 4.7
@@ -3695,7 +3695,7 @@ BR2_PACKAGE_CRIU_ARCH_SUPPORTS=y
 #
 # criu needs a glibc or musl toolchain w/ threads, host gcc >= 7, gcc >= 8, headers >= 4.18, C++, dynamic library, wchar
 #
-# BR2_PACKAGE_CRUN is not set
+BR2_PACKAGE_CRUN=y
 # BR2_PACKAGE_DAEMON is not set
 # BR2_PACKAGE_DC3DD is not set
 # BR2_PACKAGE_DCRON is not set
@@ -3969,7 +3969,7 @@ BR2_TARGET_ROOTFS_EXT2=y
 BR2_TARGET_ROOTFS_EXT2_4=y
 BR2_TARGET_ROOTFS_EXT2_GEN=4
 BR2_TARGET_ROOTFS_EXT2_REV=1
-# BR2_TARGET_ROOTFS_EXT2_LABEL is not set
+BR2_TARGET_ROOTFS_EXT2_LABEL="rootfs"
 BR2_TARGET_ROOTFS_EXT2_SIZE="384M"
 BR2_TARGET_ROOTFS_EXT2_INODES=0
 BR2_TARGET_ROOTFS_EXT2_INODE_SIZE=256
