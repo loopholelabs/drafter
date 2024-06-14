@@ -1,3 +1,3 @@
-source "$BR2_EXTERNAL_LOOPHOLE_LABS_SHIM_OS_PATH/package/drafter-liveness/Config.in"
-source "$BR2_EXTERNAL_LOOPHOLE_LABS_SHIM_OS_PATH/package/drafter-agent/Config.in"
-source "$BR2_EXTERNAL_LOOPHOLE_LABS_SHIM_OS_PATH/package/oci-runtime-bundle/Config.in"
+source "$BR2_EXTERNAL_LOOPHOLE_LABS_DRAFTER_OS_PATH/package/drafter-liveness/Config.in"
+source "$BR2_EXTERNAL_LOOPHOLE_LABS_DRAFTER_OS_PATH/package/drafter-agent/Config.in"
+source "$BR2_EXTERNAL_LOOPHOLE_LABS_DRAFTER_OS_PATH/package/oci-runtime-bundle/Config.in"
