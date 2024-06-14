@@ -1,0 +1,16 @@
+config BR2_PACKAGE_DRAFTER_LIVENESS
+    bool "drafter-liveness"
+    depends on BR2_PACKAGE_HOST_GO_TARGET_ARCH_SUPPORTS
+    select BR2_PACKAGE_HOST_GO
+    help
+      Drafter liveness daemon
+
+if BR2_PACKAGE_DRAFTER_LIVENESS
+
+config BR2_PACKAGE_DRAFTER_LIVENESS_VSOCK_PORT
+    string "vsock-port"
+    default "25"
+    help
+      The vsock port to connect to
+
+endif
