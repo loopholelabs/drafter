@@ -1,0 +1,27 @@
+config BR2_PACKAGE_OCI_RUNTIME_BUNDLE
+    bool "oci-runtime-bundle"
+    select BR2_PACKAGE_CRUN
+    help
+      OCI runtime bundle started by crun
+
+if BR2_PACKAGE_OCI_RUNTIME_BUNDLE
+
+config BR2_PACKAGE_OCI_RUNTIME_BUNDLE_MOUNT_DIR
+    string "oci-runtime-bundle-mount-dir"
+    default "oci-runtime-bundle"
+    help
+      Root-relative directory (must not be nested) to mount the OCI runtime bundle to (will be added to the fstab)
+
+config BR2_PACKAGE_OCI_RUNTIME_BUNDLE_MOUNT_LABEL
+    string "oci-runtime-bundle-mount-label"
+    default "oci"
+    help
+      Label of the EXT4 disk containing the OCI runtime bundle to mount
+
+config BR2_PACKAGE_OCI_RUNTIME_BUNDLE_CONTAINER_NAME
+    string "oci-runtime-bundle-container-name"
+    default "main"
+    help
+      Name to give to the container started by crun
+
+endif

@@ -1,0 +1,13 @@
+[Unit]
+Description=OCI runtime bundle
+After=network.target @OCI_RUNTIME_BUNDLE_MOUNT_DIR@.mount
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/crun run -b /@OCI_RUNTIME_BUNDLE_MOUNT_DIR@ @OCI_RUNTIME_BUNDLE_CONTAINER_NAME@
+StandardOutput=journal+console
+StandardError=journal+console
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

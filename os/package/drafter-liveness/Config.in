@@ -2,6 +2,7 @@ config BR2_PACKAGE_DRAFTER_LIVENESS
     bool "drafter-liveness"
     depends on BR2_PACKAGE_HOST_GO_TARGET_ARCH_SUPPORTS
     select BR2_PACKAGE_HOST_GO
+    select BR2_PACKAGE_DRAFTER_AGENT
     help
       Drafter liveness daemon
 
