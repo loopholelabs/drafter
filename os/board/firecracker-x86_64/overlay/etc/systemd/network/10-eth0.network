@@ -2,5 +2,5 @@
 Name=eth0
 
 [Network]
-Address=172.100.100.1/30
-Gateway=172.100.100.2
+Address=172.100.100.2/30
+Gateway=172.100.100.1
