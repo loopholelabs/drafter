@@ -2,7 +2,6 @@ config BR2_PACKAGE_DRAFTER_LIVENESS
     bool "drafter-liveness"
     depends on BR2_PACKAGE_HOST_GO_TARGET_ARCH_SUPPORTS
     select BR2_PACKAGE_HOST_GO
-    select BR2_PACKAGE_DRAFTER_AGENT
     help
       Drafter liveness daemon
 
@@ -13,5 +12,11 @@ config BR2_PACKAGE_DRAFTER_LIVENESS_VSOCK_PORT
     default "25"
     help
       The vsock port to connect to
+
+config BR2_PACKAGE_DRAFTER_LIVENESS_SYSTEMD_DEPENDENCY
+    string "systemd-dependency"
+    default "drafter-agent.service"
+    help
+      The systemd service to wait for before starting
 
 endif

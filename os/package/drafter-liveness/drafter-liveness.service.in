@@ -1,7 +1,7 @@
 [Unit]
 Description=Drafter liveness daemon
-After=network.target drafter-agent.service
-Requires=drafter-agent.service
+After=network.target @DRAFTER_LIVENESS_SYSTEMD_DEPENDENCY@
+Requires=@DRAFTER_LIVENESS_SYSTEMD_DEPENDENCY@
 
 [Service]
 Type=oneshot
