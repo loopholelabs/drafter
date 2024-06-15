@@ -2,12 +2,13 @@ package network
 
 import (
 	"os"
+	"path/filepath"
 
 	"github.com/coreos/go-iptables/iptables"
 )
 
 func CreateNAT(hostInterface string) error {
-	if err := os.WriteFile("/proc/sys/net/ipv4/ip_forward", []byte("1"), os.ModePerm); err != nil {
+	if err := os.WriteFile(filepath.Join("/proc", "sys", "net", "ipv4", "ip_forward"), []byte("1"), os.ModePerm); err != nil {
 		return err
 	}
 
