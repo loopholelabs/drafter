@@ -197,6 +197,7 @@ type Peer struct {
 func StartPeer(
 	hypervisorCtx context.Context,
 	rescueCtx context.Context,
+
 	hypervisorConfiguration HypervisorConfiguration,
 
 	stateName string,

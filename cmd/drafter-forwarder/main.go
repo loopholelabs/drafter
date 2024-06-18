@@ -1,178 +1,125 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
-	"errors"
 	"flag"
-	"fmt"
 	"log"
 	"net"
 	"os"
-	"path/filepath"
-	"runtime"
-	"time"
+	"os/signal"
 
-	"github.com/coreos/go-iptables/iptables"
-	"github.com/vishvananda/netns"
+	"github.com/loopholelabs/drafter/pkg/roles"
+	"github.com/loopholelabs/drafter/pkg/utils"
 )
-
-var (
-	errNoInternalHostVethFound = errors.New("no internal host veth found")
-)
-
-const (
-	loopbackAddr = "127.0.0.1"
-)
-
-type forwardConfiguration struct {
-	Netns        string `json:"netns"`
-	InternalPort int    `json:"internalPort"`
-	ExternalAddr string `json:"externalAddr"`
-	Protocol     string `json:"protocol"`
-}
 
 func main() {
 	rawHostVethCIDR := flag.String("host-veth-cidr", "10.0.8.0/22", "CIDR for the veths outside the namespace")
 
-	defaultForwards, err := json.Marshal([]forwardConfiguration{
+	defaultPortForwards, err := json.Marshal([]roles.PortForward{
 		{
 			Netns:        "ark0",
-			InternalPort: 6379,
-			ExternalAddr: "127.0.0.1:3333",
+			InternalPort: "6379",
 			Protocol:     "tcp",
+
+			ExternalAddr: "127.0.0.1:3333",
 		},
 	})
 	if err != nil {
 		panic(err)
 	}
 
-	rawForwards := flag.String("forwards", string(defaultForwards), "Forwards configuration (wildcard IPs like 0.0.0.0 are not valid, be explict)")
+	rawPortForwards := flag.String("port-forwards", string(defaultPortForwards), "Port forwards configuration (wildcard IPs like 0.0.0.0 are not valid, be explict)")
 
 	flag.Parse()
 
-	var forwards []forwardConfiguration
-	if err := json.Unmarshal([]byte(*rawForwards), &forwards); err != nil {
+	var portForwards []roles.PortForward
+	if err := json.Unmarshal([]byte(*rawPortForwards), &portForwards); err != nil {
 		panic(err)
 	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var errs error
+	defer func() {
+		if errs != nil {
+			panic(errs)
+		}
+	}()
+
+	ctx, handlePanics, handleGoroutinePanics, cancel, wait, _ := utils.GetPanicHandler(
+		ctx,
+		&errs,
+		utils.GetPanicHandlerHooks{},
+	)
+	defer wait()
+	defer cancel()
+	defer handlePanics(false)()
+
+	go func() {
+		done := make(chan os.Signal, 1)
+		signal.Notify(done, os.Interrupt)
+
+		<-done
+
+		log.Println("Exiting gracefully")
+
+		cancel()
+	}()
 
 	_, hostVethCIDR, err := net.ParseCIDR(*rawHostVethCIDR)
 	if err != nil {
 		panic(err)
 	}
 
-	iptable, err := iptables.New(
-		iptables.IPFamily(iptables.ProtocolIPv4),
-		iptables.Timeout(60),
+	forwardedPorts, err := roles.ForwardPorts(
+		ctx,
+
+		hostVethCIDR,
+		portForwards,
+
+		roles.PortForwardHooks{
+			OnAfterPortForward: func(portID int, netns, internalIP, internalPort, externalIP, externalPort, protocol string) {
+				log.Printf("Forwarding port with ID %v from %v:%v/%v in network namespace %v to %v:%v/%v", portID, internalIP, internalPort, protocol, netns, externalIP, externalPort, protocol)
+			},
+			OnBeforePortUnforward: func(portID int) {
+				log.Println("Unforwarding port with ID", portID)
+			},
+		},
 	)
+
+	if forwardedPorts.Wait != nil {
+		defer func() {
+			defer handlePanics(true)()
+
+			if err := forwardedPorts.Wait(); err != nil {
+				panic(err)
+			}
+		}()
+	}
+
 	if err != nil {
 		panic(err)
 	}
 
-	for _, forward := range forwards {
-		host, port, err := net.SplitHostPort(forward.ExternalAddr)
-		if err != nil {
+	defer func() {
+		defer handlePanics(true)()
+
+		if err := forwardedPorts.Close(); err != nil {
 			panic(err)
 		}
+	}()
 
-		if host == loopbackAddr {
-			if err := os.WriteFile(filepath.Join("/proc", "sys", "net", "ipv4", "conf", "all", "route_localnet"), []byte("1"), os.ModePerm); err != nil {
-				panic(err)
-			}
-
-			if err := os.WriteFile(filepath.Join("/proc", "sys", "net", "ipv4", "conf", "lo", "route_localnet"), []byte("1"), os.ModePerm); err != nil {
-				panic(err)
-			}
-		}
-
-		hostVethInternalIP, err := func() (string, error) {
-			runtime.LockOSThread()
-			defer runtime.UnlockOSThread()
-
-			originalNSHandle, err := netns.Get()
-			if err != nil {
-				return "", err
-			}
-			defer originalNSHandle.Close()
-			defer netns.Set(originalNSHandle)
-
-			nsHandle, err := netns.GetFromName(forward.Netns)
-			if err != nil {
-				return "", err
-			}
-			defer nsHandle.Close()
-
-			if err := netns.Set(nsHandle); err != nil {
-				return "", err
-			}
-
-			interfaces, err := net.Interfaces()
-			if err != nil {
-				return "", err
-			}
-
-			for _, iface := range interfaces {
-				addrs, err := iface.Addrs()
-				if err != nil {
-					return "", err
-				}
-
-				for _, addr := range addrs {
-					var ip net.IP
-					switch v := addr.(type) {
-					case *net.IPNet:
-						ip = v.IP
-					case *net.IPAddr:
-						ip = v.IP
-
-					default:
-						continue
-					}
-
-					if ip.IsLoopback() || ip.To4() == nil {
-						continue
-					}
-
-					if hostVethCIDR.Contains(ip) {
-						return ip.String(), nil
-					}
-				}
-			}
-
-			return "", errNoInternalHostVethFound
-		}()
-		if err != nil {
+	handleGoroutinePanics(true, func() {
+		if err := forwardedPorts.Wait(); err != nil {
 			panic(err)
 		}
+	})
 
-		if host != loopbackAddr {
-			if err := iptable.Append("filter", "FORWARD", "-d", hostVethInternalIP, "-j", "ACCEPT"); err != nil {
-				panic(err)
-			}
-			defer iptable.Delete("filter", "FORWARD", "-d", hostVethInternalIP, "-j", "ACCEPT")
+	log.Println("Forwarded all configured ports")
 
-			if err := iptable.Append("filter", "FORWARD", "-s", hostVethInternalIP, "-j", "ACCEPT"); err != nil {
-				panic(err)
-			}
-			defer iptable.Delete("filter", "FORWARD", "-s", hostVethInternalIP, "-j", "ACCEPT")
-		}
+	<-ctx.Done()
 
-		log.Println(forward.Netns, hostVethInternalIP, forward.InternalPort, "->", host, port, forward.Protocol)
-
-		if err := iptable.Append("nat", "OUTPUT", "-p", forward.Protocol, "-d", host, "--dport", port, "-j", "DNAT", "--to-destination", net.JoinHostPort(hostVethInternalIP, fmt.Sprintf("%v", forward.InternalPort))); err != nil {
-			panic(err)
-		}
-		defer iptable.Delete("nat", "OUTPUT", "-p", forward.Protocol, "-d", host, "--dport", port, "-j", "DNAT", "--to-destination", net.JoinHostPort(hostVethInternalIP, fmt.Sprintf("%v", forward.InternalPort)))
-
-		if err := iptable.Append("nat", "PREROUTING", "-p", forward.Protocol, "--dport", port, "-d", host, "-j", "DNAT", "--to-destination", net.JoinHostPort(hostVethInternalIP, fmt.Sprintf("%v", forward.InternalPort))); err != nil {
-			panic(err)
-		}
-		defer iptable.Delete("nat", "PREROUTING", "-p", forward.Protocol, "--dport", port, "-d", host, "-j", "DNAT", "--to-destination", net.JoinHostPort(hostVethInternalIP, fmt.Sprintf("%v", forward.InternalPort)))
-
-		if err := iptable.Append("nat", "POSTROUTING", "-p", forward.Protocol, "-d", hostVethInternalIP, "--dport", fmt.Sprintf("%v", forward.InternalPort), "-j", "MASQUERADE"); err != nil {
-			panic(err)
-		}
-		defer iptable.Delete("nat", "POSTROUTING", "-p", forward.Protocol, "-d", hostVethInternalIP, "--dport", fmt.Sprintf("%v", forward.InternalPort), "-j", "MASQUERADE")
-
-		time.Sleep(time.Second * 10)
-	}
+	log.Println("Shutting down")
 }

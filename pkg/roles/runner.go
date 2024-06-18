@@ -83,6 +83,7 @@ type ResumedRunner struct {
 func StartRunner(
 	hypervisorCtx context.Context,
 	rescueCtx context.Context,
+
 	hypervisorConfiguration HypervisorConfiguration,
 
 	stateName string,

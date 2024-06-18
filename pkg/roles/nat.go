@@ -38,6 +38,7 @@ type CreateNamespacesHooks struct {
 func CreateNAT(
 	ctx context.Context,
 	closeCtx context.Context,
+
 	hostInterface string,
 
 	hostVethCIDR string,
@@ -171,6 +172,7 @@ func CreateNAT(
 
 		return
 	}
+	// Future-proofing; if we decide that NATing should use a background copy loop like `socat`, we can wait for that loop to finish here and return any errors
 	namespaces.Wait = func() error {
 		<-closeInProgressContext.Done()
 
