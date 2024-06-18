@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	vsockName = "drafter.drftsock"
+	vsockName = "vsock.sock"
 )
 
 type HypervisorConfiguration struct {
