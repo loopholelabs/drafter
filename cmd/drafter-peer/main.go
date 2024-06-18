@@ -62,9 +62,9 @@ func main() {
 		{
 			Name: roles.StateName,
 
-			Base:    filepath.Join("out", "package", "drafter.drftstate"),
-			Overlay: filepath.Join("out", "overlay", "drafter.drftstate"),
-			State:   filepath.Join("out", "state", "drafter.drftstate"),
+			Base:    filepath.Join("out", "package", "state.bin"),
+			Overlay: filepath.Join("out", "overlay", "state.bin"),
+			State:   filepath.Join("out", "state", "state.bin"),
 
 			BlockSize: 1024 * 64,
 
@@ -79,9 +79,9 @@ func main() {
 		{
 			Name: roles.MemoryName,
 
-			Base:    filepath.Join("out", "package", "drafter.drftmemory"),
-			Overlay: filepath.Join("out", "overlay", "drafter.drftmemory"),
-			State:   filepath.Join("out", "state", "drafter.drftmemory"),
+			Base:    filepath.Join("out", "package", "memory.bin"),
+			Overlay: filepath.Join("out", "overlay", "memory.bin"),
+			State:   filepath.Join("out", "state", "memory.bin"),
 
 			BlockSize: 1024 * 64,
 
@@ -97,9 +97,9 @@ func main() {
 		{
 			Name: roles.KernelName,
 
-			Base:    filepath.Join("out", "package", "drafter.drftkernel"),
-			Overlay: filepath.Join("out", "overlay", "drafter.drftkernel"),
-			State:   filepath.Join("out", "state", "drafter.drftkernel"),
+			Base:    filepath.Join("out", "package", "vmlinux"),
+			Overlay: filepath.Join("out", "overlay", "vmlinux"),
+			State:   filepath.Join("out", "state", "vmlinux"),
 
 			BlockSize: 1024 * 64,
 
@@ -114,9 +114,9 @@ func main() {
 		{
 			Name: roles.DiskName,
 
-			Base:    filepath.Join("out", "package", "drafter.drftdisk"),
-			Overlay: filepath.Join("out", "overlay", "drafter.drftdisk"),
-			State:   filepath.Join("out", "state", "drafter.drftdisk"),
+			Base:    filepath.Join("out", "package", "rootfs.ext4"),
+			Overlay: filepath.Join("out", "overlay", "rootfs.ext4"),
+			State:   filepath.Join("out", "state", "rootfs.ext4"),
 
 			BlockSize: 1024 * 64,
 
@@ -132,9 +132,9 @@ func main() {
 		{
 			Name: roles.ConfigName,
 
-			Base:    filepath.Join("out", "package", "drafter.drftconfig"),
-			Overlay: filepath.Join("out", "overlay", "drafter.drftconfig"),
-			State:   filepath.Join("out", "state", "drafter.drftconfig"),
+			Base:    filepath.Join("out", "package", "config.json"),
+			Overlay: filepath.Join("out", "overlay", "config.json"),
+			State:   filepath.Join("out", "state", "config.json"),
 
 			BlockSize: 1024 * 64,
 
@@ -150,9 +150,9 @@ func main() {
 		{
 			Name: "oci",
 
-			Base:    filepath.Join("out", "package", "drafter.drftoci"),
-			Overlay: filepath.Join("out", "overlay", "drafter.drftoci"),
-			State:   filepath.Join("out", "state", "drafter.drftoci"),
+			Base:    filepath.Join("out", "package", "oci.ext4"),
+			Overlay: filepath.Join("out", "overlay", "oci.ext4"),
+			State:   filepath.Join("out", "state", "oci.ext4"),
 
 			BlockSize: 1024 * 64,
 

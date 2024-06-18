@@ -42,33 +42,33 @@ func main() {
 	defaultDevices, err := json.Marshal([]roles.SnapshotDevice{
 		{
 			Name:   roles.StateName,
-			Output: filepath.Join("out", "package", "drafter.drftstate"),
+			Output: filepath.Join("out", "package", "state.bin"),
 		},
 		{
 			Name:   roles.MemoryName,
-			Output: filepath.Join("out", "package", "drafter.drftmemory"),
+			Output: filepath.Join("out", "package", "memory.bin"),
 		},
 
 		{
 			Name:   roles.KernelName,
-			Input:  filepath.Join("out", "blueprint", "drafter.drftkernel"),
-			Output: filepath.Join("out", "package", "drafter.drftkernel"),
+			Input:  filepath.Join("out", "blueprint", "vmlinux"),
+			Output: filepath.Join("out", "package", "vmlinux"),
 		},
 		{
 			Name:   roles.DiskName,
-			Input:  filepath.Join("out", "blueprint", "drafter.drftdisk"),
-			Output: filepath.Join("out", "package", "drafter.drftdisk"),
+			Input:  filepath.Join("out", "blueprint", "rootfs.ext4"),
+			Output: filepath.Join("out", "package", "rootfs.ext4"),
 		},
 
 		{
 			Name:   roles.ConfigName,
-			Output: filepath.Join("out", "package", "drafter.drftconfig"),
+			Output: filepath.Join("out", "package", "config.json"),
 		},
 
 		{
 			Name:   "oci",
-			Input:  filepath.Join("out", "blueprint", "drafter.drftoci"),
-			Output: filepath.Join("out", "package", "drafter.drftoci"),
+			Input:  filepath.Join("out", "blueprint", "oci.ext4"),
+			Output: filepath.Join("out", "package", "oci.ext4"),
 		},
 	})
 	if err != nil {

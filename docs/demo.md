@@ -80,7 +80,7 @@ cd /tmp/kernel
 make -j$(nproc) vmlinux
 EOT
 
-cp /tmp/kernel/vmlinux out/blueprint/drafter.drftkernel
+cp /tmp/kernel/vmlinux out/blueprint/vmlinux
 ```
 
 #### 5.10
@@ -106,7 +106,7 @@ cd /tmp/kernel
 make -j$(nproc) vmlinux
 EOT
 
-cp /tmp/kernel/vmlinux out/blueprint/drafter.drftkernel
+cp /tmp/kernel/vmlinux out/blueprint/vmlinux
 ```
 
 ### Base
@@ -130,14 +130,14 @@ export DISK_SIZE="384M"
 export GATEWAY_IP="172.100.100.1"
 export GUEST_CIDR="172.100.100.2/30"
 
-qemu-img create -f raw out/blueprint/drafter.drftdisk ${DISK_SIZE}
-mkfs.ext4 out/blueprint/drafter.drftdisk
+qemu-img create -f raw out/blueprint/rootfs.ext4 ${DISK_SIZE}
+mkfs.ext4 out/blueprint/rootfs.ext4
 
 sudo umount /tmp/blueprint || true
 rm -rf /tmp/blueprint
 mkdir -p /tmp/blueprint
 
-sudo mount out/blueprint/drafter.drftdisk /tmp/blueprint
+sudo mount out/blueprint/rootfs.ext4 /tmp/blueprint
 sudo chown -R ${USER} /tmp/blueprint
 
 # # For 3.18
@@ -197,7 +197,7 @@ sudo umount /tmp/blueprint || true
 rm -rf /tmp/blueprint
 mkdir -p /tmp/blueprint
 
-sudo mount out/blueprint/drafter.drftdisk /tmp/blueprint
+sudo mount out/blueprint/rootfs.ext4 /tmp/blueprint
 sudo chown -R ${USER} /tmp/blueprint
 
 sudo chroot /tmp/blueprint sh - <<'EOT'
@@ -218,7 +218,7 @@ sudo umount /tmp/blueprint || true
 rm -rf /tmp/blueprint
 mkdir -p /tmp/blueprint
 
-sudo mount out/blueprint/drafter.drftdisk /tmp/blueprint
+sudo mount out/blueprint/rootfs.ext4 /tmp/blueprint
 sudo chown -R ${USER} /tmp/blueprint
 
 if [ ! -d /tmp/blueprint/root/cuberite ]; then
@@ -343,7 +343,7 @@ sudo umount /tmp/blueprint || true
 rm -rf /tmp/blueprint
 mkdir -p /tmp/blueprint
 
-sudo mount out/blueprint/drafter.drftdisk /tmp/blueprint
+sudo mount out/blueprint/rootfs.ext4 /tmp/blueprint
 sudo chown -R ${USER} /tmp/blueprint
 
 sudo mount -t proc proc /tmp/blueprint/proc
@@ -397,7 +397,7 @@ sudo umount /tmp/blueprint || true
 rm -rf /tmp/blueprint
 mkdir -p /tmp/blueprint
 
-sudo mount out/blueprint/drafter.drftdisk /tmp/blueprint
+sudo mount out/blueprint/rootfs.ext4 /tmp/blueprint
 sudo chown -R ${USER} /tmp/blueprint
 
 sudo mount --bind /dev /tmp/blueprint/dev
@@ -428,7 +428,7 @@ sudo umount /tmp/blueprint || true
 rm -rf /tmp/blueprint
 mkdir -p /tmp/blueprint
 
-sudo mount out/blueprint/drafter.drftdisk /tmp/blueprint
+sudo mount out/blueprint/rootfs.ext4 /tmp/blueprint
 sudo chown -R ${USER} /tmp/blueprint
 
 sudo chroot /tmp/blueprint sh - <<'EOT'
@@ -468,7 +468,7 @@ sudo umount /tmp/blueprint || true
 rm -rf /tmp/blueprint
 mkdir -p /tmp/blueprint
 
-sudo mount out/blueprint/drafter.drftdisk /tmp/blueprint
+sudo mount out/blueprint/rootfs.ext4 /tmp/blueprint
 sudo chown -R ${USER} /tmp/blueprint
 
 CGO_ENABLED=0 go build -o /tmp/blueprint/usr/sbin/drafter-liveness ./cmd/drafter-liveness
@@ -519,7 +519,7 @@ sudo umount /tmp/blueprint || true
 rm -rf /tmp/blueprint
 mkdir -p /tmp/blueprint
 
-sudo mount out/blueprint/drafter.drftdisk /tmp/blueprint
+sudo mount out/blueprint/rootfs.ext4 /tmp/blueprint
 sudo chown -R ${USER} /tmp/blueprint
 
 CGO_ENABLED=0 go build -o /tmp/blueprint/usr/sbin/drafter-agent ./cmd/drafter-agent
@@ -557,95 +557,95 @@ rm -rf /tmp/blueprint
 ```shell
 # For Redis (be sure to use a free namespace)
 sudo drafter-snapshotter --netns ark0 --memory-size 512 \
-    --state-output-path out/package/redis/drafter.drftstate \
-    --memory-output-path out/package/redis/drafter.drftmemory \
+    --state-output-path out/package/redis/state.bin \
+    --memory-output-path out/package/redis/memory.bin \
     --initramfs-output-path out/package/redis/drafter.drftinitramfs \
-    --kernel-output-path out/package/redis/drafter.drftkernel \
-    --disk-output-path out/package/redis/drafter.drftdisk \
-    --config-output-path out/package/redis/drafter.drftconfig
+    --kernel-output-path out/package/redis/vmlinux \
+    --disk-output-path out/package/redis/rootfs.ext4 \
+    --config-output-path out/package/redis/config.json
 
 # For Minecraft (Cuberite/1.12.2) (be sure to use a free namespace)
 sudo drafter-snapshotter --netns ark0 --memory-size 512 \
-    --state-output-path out/package/minecraft-cuberite/drafter.drftstate \
-    --memory-output-path out/package/minecraft-cuberite/drafter.drftmemory \
+    --state-output-path out/package/minecraft-cuberite/state.bin \
+    --memory-output-path out/package/minecraft-cuberite/memory.bin \
     --initramfs-output-path out/package/minecraft-cuberite/drafter.drftinitramfs \
-    --kernel-output-path out/package/minecraft-cuberite/drafter.drftkernel \
-    --disk-output-path out/package/minecraft-cuberite/drafter.drftdisk \
-    --config-output-path out/package/minecraft-cuberite/drafter.drftconfig
+    --kernel-output-path out/package/minecraft-cuberite/vmlinux \
+    --disk-output-path out/package/minecraft-cuberite/rootfs.ext4 \
+    --config-output-path out/package/minecraft-cuberite/config.json
 
 # For Minecraft (Official server; needs more RAM than the default 1024 MB) (be sure to use a free namespace)
 sudo drafter-snapshotter --netns ark0 --memory-size 1024 \
-    --state-output-path out/package/minecraft-official/drafter.drftstate \
-    --memory-output-path out/package/minecraft-official/drafter.drftmemory \
+    --state-output-path out/package/minecraft-official/state.bin \
+    --memory-output-path out/package/minecraft-official/memory.bin \
     --initramfs-output-path out/package/minecraft-official/drafter.drftinitramfs \
-    --kernel-output-path out/package/minecraft-official/drafter.drftkernel \
-    --disk-output-path out/package/minecraft-official/drafter.drftdisk \
-    --config-output-path out/package/minecraft-official/drafter.drftconfig
+    --kernel-output-path out/package/minecraft-official/vmlinux \
+    --disk-output-path out/package/minecraft-official/rootfs.ext4 \
+    --config-output-path out/package/minecraft-official/config.json
 
 # For PostgreSQL (be sure to use a free namespace)
 sudo drafter-snapshotter --netns ark0 --memory-size 512 \
-    --state-output-path out/package/postgresql/drafter.drftstate \
-    --memory-output-path out/package/postgresql/drafter.drftmemory \
+    --state-output-path out/package/postgresql/state.bin \
+    --memory-output-path out/package/postgresql/memory.bin \
     --initramfs-output-path out/package/postgresql/drafter.drftinitramfs \
-    --kernel-output-path out/package/postgresql/drafter.drftkernel \
-    --disk-output-path out/package/postgresql/drafter.drftdisk \
-    --config-output-path out/package/postgresql/drafter.drftconfig
+    --kernel-output-path out/package/postgresql/vmlinux \
+    --disk-output-path out/package/postgresql/rootfs.ext4 \
+    --config-output-path out/package/postgresql/config.json
 
 # For CRI-O (be sure to use a free namespace)
 sudo drafter-snapshotter --netns ark0 --memory-size 1024 \
-    --state-output-path out/package/cri-o/drafter.drftstate \
-    --memory-output-path out/package/cri-o/drafter.drftmemory \
+    --state-output-path out/package/cri-o/state.bin \
+    --memory-output-path out/package/cri-o/memory.bin \
     --initramfs-output-path out/package/cri-o/drafter.drftinitramfs \
-    --kernel-output-path out/package/cri-o/drafter.drftkernel \
-    --disk-output-path out/package/cri-o/drafter.drftdisk \
-    --config-output-path out/package/cri-o/drafter.drftconfig
+    --kernel-output-path out/package/cri-o/vmlinux \
+    --disk-output-path out/package/cri-o/rootfs.ext4 \
+    --config-output-path out/package/cri-o/config.json
 ```
 
 ```shell
 # For Redis
 sudo drafter-packager --package-path out/redis.drft \
-    --state-path out/package/redis/drafter.drftstate \
-    --memory-path out/package/redis/drafter.drftmemory \
+    --state-path out/package/redis/state.bin \
+    --memory-path out/package/redis/memory.bin \
     --initramfs-path out/package/redis/drafter.drftinitramfs \
-    --kernel-path out/package/redis/drafter.drftkernel \
-    --disk-path out/package/redis/drafter.drftdisk \
-    --config-path out/package/redis/drafter.drftconfig # Append --extract to extract the package instead
+    --kernel-path out/package/redis/vmlinux \
+    --disk-path out/package/redis/rootfs.ext4 \
+    --config-path out/package/redis/config.json # Append --extract to extract the package instead
 
 # For Minecraft (Cuberite/1.12.2)
 sudo drafter-packager --package-path out/minecraft-cuberite.drft \
-    --state-path out/package/minecraft-cuberite/drafter.drftstate \
-    --memory-path out/package/minecraft-cuberite/drafter.drftmemory \
+    --state-path out/package/minecraft-cuberite/state.bin \
+    --memory-path out/package/minecraft-cuberite/memory.bin \
     --initramfs-path out/package/minecraft-cuberite/drafter.drftinitramfs \
-    --kernel-path out/package/minecraft-cuberite/drafter.drftkernel \
-    --disk-path out/package/minecraft-cuberite/drafter.drftdisk \
-    --config-path out/package/minecraft-cuberite/drafter.drftconfig # Append --extract to extract the package instead
+    --kernel-path out/package/minecraft-cuberite/vmlinux \
+    --disk-path out/package/minecraft-cuberite/rootfs.ext4 \
+    --config-path out/package/minecraft-cuberite/config.json # Append --extract to extract the package instead
 
 # For Minecraft (Official server)
 sudo drafter-packager --package-path out/minecraft-official.drft \
-    --state-path out/package/minecraft-official/drafter.drftstate \
-    --memory-path out/package/minecraft-official/drafter.drftmemory \
+    --state-path out/package/minecraft-official/state.bin \
+    --memory-path out/package/minecraft-official/memory.bin \
     --initramfs-path out/package/minecraft-official/drafter.drftinitramfs \
-    --kernel-path out/package/minecraft-official/drafter.drftkernel \
-    --disk-path out/package/minecraft-official/drafter.drftdisk \
-    --config-path out/package/minecraft-official/drafter.drftconfig # Append --extract to extract the package instead
+    --kernel-path out/package/minecraft-official/vmlinux \
+    --disk-path out/package/minecraft-official/rootfs.ext4 \
+    --config-path out/package/minecraft-official/config.json # Append --extract to extract the package instead
 
 # For PostgreSQL
 sudo drafter-packager --package-path out/postgresql.drft \
-    --state-path out/package/postgresql/drafter.drftstate \
-    --memory-path out/package/postgresql/drafter.drftmemory \
+    --state-path out/package/postgresql/state.bin \
+    --memory-path out/package/postgresql/memory.bin \
     --initramfs-path out/package/postgresql/drafter.drftinitramfs \
-    --kernel-path out/package/postgresql/drafter.drftkernel \
-    --disk-path out/package/postgresql/drafter.drftdisk \
-    --config-path out/package/postgresql/drafter.drftconfig # Append --extract to extract the package instead
+    --kernel-path out/package/postgresql/vmlinux \
+    --disk-path out/package/postgresql/rootfs.ext4 \
+    --config-path out/package/postgresql/config.json # Append --extract to extract the package instead
 
 # For CRI-O
 sudo drafter-packager --package-path out/cri-o.drft \
-    --state-path out/package/cri-o/drafter.drftstate \
-    --memory-path out/package/cri-o/drafter.drftmemory \
+    --state-path out/package/cri-o/state.bin \
+    --memory-path out/package/cri-o/memory.bin \
     --initramfs-path out/package/cri-o/drafter.drftinitramfs \
-    --kernel-path out/package/cri-o/drafter.drftkernel \
-    --disk-path out/package/cri-o/drafter.drftdisk \
-    --config-path out/package/cri-o/drafter.drftconfig # Append --extract to extract the package instead
+    --kernel-path out/package/cri-o/vmlinux \
+    --disk-path out/package/cri-o/rootfs.ext4 \
+    --config-path out/package/cri-o/config.json # Append --extract to extract the package instead
 ```
 
 ```shell
@@ -686,23 +686,23 @@ These configurations lead to the following behavior:
 ### On a Workstation
 
 ```shell
-drafter-registry --state-path out/package/redis/drafter.drftstate \
-    --memory-path out/package/redis/drafter.drftmemory \
+drafter-registry --state-path out/package/redis/state.bin \
+    --memory-path out/package/redis/memory.bin \
     --initramfs-path out/package/redis/drafter.drftinitramfs \
-    --kernel-path out/package/redis/drafter.drftkernel \
-    --disk-path out/package/redis/drafter.drftdisk \
-    --config-path out/package/redis/drafter.drftconfig # Be sure to adjust the resource paths
+    --kernel-path out/package/redis/vmlinux \
+    --disk-path out/package/redis/rootfs.ext4 \
+    --config-path out/package/redis/config.json # Be sure to adjust the resource paths
 ```
 
 ```shell
 sudo drafter-peer --netns ark0 --state-raddr localhost:1600 --memory-raddr localhost:1601 --initramfs-raddr localhost:1602 --kernel-raddr localhost:1603 --disk-raddr localhost:1604 --config-raddr localhost:1605 --enable-input # If --enable-input is specified, CTRL-C is forwarded to the VM, so to stop the VM use `sudo pkill -2 drafter-peer` instead (be sure to use a free namespace)
 # Or alternatively, to make this first node become a registry instead of starting from a registry:
-sudo drafter-peer --netns ark0 --state-raddr='' --state-path out/package/redis/drafter.drftstate \
-    --memory-raddr='' --memory-path out/package/redis/drafter.drftmemory \
+sudo drafter-peer --netns ark0 --state-raddr='' --state-path out/package/redis/state.bin \
+    --memory-raddr='' --memory-path out/package/redis/memory.bin \
     --initramfs-raddr='' --initramfs-path out/package/redis/drafter.drftinitramfs \
-    --kernel-raddr='' --kernel-path out/package/redis/drafter.drftkernel \
-    --disk-raddr='' --disk-path out/package/redis/drafter.drftdisk \
-    --config-raddr='' --config-path out/package/redis/drafter.drftconfig \
+    --kernel-raddr='' --kernel-path out/package/redis/vmlinux \
+    --disk-raddr='' --disk-path out/package/redis/rootfs.ext4 \
+    --config-raddr='' --config-path out/package/redis/config.json \
     --enable-input
 ```
 
@@ -713,12 +713,12 @@ sudo drafter-peer --state-laddr='' --memory-laddr='' --initramfs-laddr='' --kern
 ```
 
 ```shell
-sudo drafter-peer --netns ark0 --state-path out/package/redis/drafter.drftstate \
-    --memory-path out/package/redis/drafter.drftmemory \
+sudo drafter-peer --netns ark0 --state-path out/package/redis/state.bin \
+    --memory-path out/package/redis/memory.bin \
     --initramfs-path out/package/redis/drafter.drftinitramfs \
-    --kernel-path out/package/redis/drafter.drftkernel \
-    --disk-path out/package/redis/drafter.drftdisk \
-    --config-path out/package/redis/drafter.drftconfig # Migrates to this peer without enabling input; CTRL-C to flush the snapshot, stop the VM, and write the changes back to the paths (be sure to use a free namespace)
+    --kernel-path out/package/redis/vmlinux \
+    --disk-path out/package/redis/rootfs.ext4 \
+    --config-path out/package/redis/config.json # Migrates to this peer without enabling input; CTRL-C to flush the snapshot, stop the VM, and write the changes back to the paths (be sure to use a free namespace)
 ```
 
 ### On a Cluster
@@ -735,23 +735,23 @@ export NODE_3_IP="145.40.95.151"
 ```
 
 ```shell
-drafter-registry --state-path out/package/redis/drafter.drftstate \
-    --memory-path out/package/redis/drafter.drftmemory \
+drafter-registry --state-path out/package/redis/state.bin \
+    --memory-path out/package/redis/memory.bin \
     --initramfs-path out/package/redis/drafter.drftinitramfs \
-    --kernel-path out/package/redis/drafter.drftkernel \
-    --disk-path out/package/redis/drafter.drftdisk \
-    --config-path out/package/redis/drafter.drftconfig # On ${REGISTRY_IP}; be sure to adjust the resource paths
+    --kernel-path out/package/redis/vmlinux \
+    --disk-path out/package/redis/rootfs.ext4 \
+    --config-path out/package/redis/config.json # On ${REGISTRY_IP}; be sure to adjust the resource paths
 ```
 
 ```shell
 sudo drafter-peer --netns ark0 --state-raddr ${REGISTRY_IP}:1600 --memory-raddr ${REGISTRY_IP}:1601 --initramfs-raddr ${REGISTRY_IP}:1602 --kernel-raddr ${REGISTRY_IP}:1603 --disk-raddr ${REGISTRY_IP}:1604 --config-raddr ${REGISTRY_IP}:1605 --enable-input # On ${NODE_1_IP}: If --enable-input is specified, CTRL-C is forwarded to the VM, so to stop the VM use `sudo pkill -2 drafter-peer` instead (be sure to use a free namespace)
 # Or alternatively, to make this first node become a registry instead of starting from a registry:
-sudo drafter-peer --netns ark0 --state-raddr='' --state-path out/package/redis/drafter.drftstate \
-    --memory-raddr='' --memory-path out/package/redis/drafter.drftmemory \
+sudo drafter-peer --netns ark0 --state-raddr='' --state-path out/package/redis/state.bin \
+    --memory-raddr='' --memory-path out/package/redis/memory.bin \
     --initramfs-raddr='' --initramfs-path out/package/redis/drafter.drftinitramfs \
-    --kernel-raddr='' --kernel-path out/package/redis/drafter.drftkernel \
-    --disk-raddr='' --disk-path out/package/redis/drafter.drftdisk \
-    --config-raddr='' --config-path out/package/redis/drafter.drftconfig \
+    --kernel-raddr='' --kernel-path out/package/redis/vmlinux \
+    --disk-raddr='' --disk-path out/package/redis/rootfs.ext4 \
+    --config-raddr='' --config-path out/package/redis/config.json \
     --enable-input
 ```
 
@@ -766,12 +766,12 @@ sudo drafter-peer --netns ark0 --state-raddr ${NODE_2_IP}:1500 --memory-raddr ${
 ```
 
 ```shell
-sudo drafter-peer --netns ark0 --state-raddr ${NODE_3_IP}:1500 --state-path out/package/redis/drafter.drftstate \
-    --memory-raddr ${NODE_3_IP}:1501 --memory-path out/package/redis/drafter.drftmemory \
+sudo drafter-peer --netns ark0 --state-raddr ${NODE_3_IP}:1500 --state-path out/package/redis/state.bin \
+    --memory-raddr ${NODE_3_IP}:1501 --memory-path out/package/redis/memory.bin \
     --initramfs-raddr ${NODE_3_IP}:1502 --initramfs-path out/package/redis/drafter.drftinitramfs \
-    --kernel-raddr ${NODE_3_IP}:1503 --kernel-path out/package/redis/drafter.drftkernel \
-    --disk-raddr ${NODE_3_IP}:1504 --disk-path out/package/redis/drafter.drftdisk \
-    --config-raddr ${NODE_3_IP}:1505 --config-path out/package/redis/drafter.drftconfig # On ${NODE_1_IP}: Migrates to this peer without enabling input; CTRL-C to flush the snapshot, stop the VM, and write the changes back to the paths (be sure to use a free namespace)
+    --kernel-raddr ${NODE_3_IP}:1503 --kernel-path out/package/redis/vmlinux \
+    --disk-raddr ${NODE_3_IP}:1504 --disk-path out/package/redis/rootfs.ext4 \
+    --config-raddr ${NODE_3_IP}:1505 --config-path out/package/redis/config.json # On ${NODE_1_IP}: Migrates to this peer without enabling input; CTRL-C to flush the snapshot, stop the VM, and write the changes back to the paths (be sure to use a free namespace)
 ```
 
 ## Tearing Down Workstation and Server Dependencies

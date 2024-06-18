@@ -20,35 +20,35 @@ func main() {
 	defaultDevices, err := json.Marshal([]roles.RegistryDevice{
 		{
 			Name:      roles.StateName,
-			Input:     filepath.Join("out", "package", "drafter.drftstate"),
+			Input:     filepath.Join("out", "package", "state.bin"),
 			BlockSize: 1024 * 64,
 		},
 		{
 			Name:      roles.MemoryName,
-			Input:     filepath.Join("out", "package", "drafter.drftmemory"),
+			Input:     filepath.Join("out", "package", "memory.bin"),
 			BlockSize: 1024 * 64,
 		},
 
 		{
 			Name:      roles.KernelName,
-			Input:     filepath.Join("out", "package", "drafter.drftkernel"),
+			Input:     filepath.Join("out", "package", "vmlinux"),
 			BlockSize: 1024 * 64,
 		},
 		{
 			Name:      roles.DiskName,
-			Input:     filepath.Join("out", "package", "drafter.drftdisk"),
+			Input:     filepath.Join("out", "package", "rootfs.ext4"),
 			BlockSize: 1024 * 64,
 		},
 
 		{
 			Name:      roles.ConfigName,
-			Input:     filepath.Join("out", "package", "drafter.drftconfig"),
+			Input:     filepath.Join("out", "package", "config.json"),
 			BlockSize: 1024 * 64,
 		},
 
 		{
 			Name:      "oci",
-			Input:     filepath.Join("out", "blueprint", "drafter.drftoci"),
+			Input:     filepath.Join("out", "blueprint", "oci.ext4"),
 			BlockSize: 1024 * 64,
 		},
 	})

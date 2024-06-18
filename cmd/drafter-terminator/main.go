@@ -19,30 +19,30 @@ func main() {
 	defaultDevices, err := json.Marshal([]roles.TerminatorDevice{
 		{
 			Name:   roles.StateName,
-			Output: filepath.Join("out", "package", "drafter.drftstate"),
+			Output: filepath.Join("out", "package", "state.bin"),
 		},
 		{
 			Name:   roles.MemoryName,
-			Output: filepath.Join("out", "package", "drafter.drftmemory"),
+			Output: filepath.Join("out", "package", "memory.bin"),
 		},
 
 		{
 			Name:   roles.KernelName,
-			Output: filepath.Join("out", "package", "drafter.drftkernel"),
+			Output: filepath.Join("out", "package", "vmlinux"),
 		},
 		{
 			Name:   roles.DiskName,
-			Output: filepath.Join("out", "package", "drafter.drftdisk"),
+			Output: filepath.Join("out", "package", "rootfs.ext4"),
 		},
 
 		{
 			Name:   roles.ConfigName,
-			Output: filepath.Join("out", "package", "drafter.drftconfig"),
+			Output: filepath.Join("out", "package", "config.json"),
 		},
 
 		{
 			Name:   "oci",
-			Output: filepath.Join("out", "package", "drafter.drftoci"),
+			Output: filepath.Join("out", "package", "oci.ext4"),
 		},
 	})
 	if err != nil {

@@ -12,30 +12,30 @@ func main() {
 	defaultDevices, err := json.Marshal([]roles.PackagerDevice{
 		{
 			Name: roles.StateName,
-			Path: filepath.Join("out", "package", "drafter.drftstate"),
+			Path: filepath.Join("out", "package", "state.bin"),
 		},
 		{
 			Name: roles.MemoryName,
-			Path: filepath.Join("out", "package", "drafter.drftmemory"),
+			Path: filepath.Join("out", "package", "memory.bin"),
 		},
 
 		{
 			Name: roles.KernelName,
-			Path: filepath.Join("out", "package", "drafter.drftkernel"),
+			Path: filepath.Join("out", "package", "vmlinux"),
 		},
 		{
 			Name: roles.DiskName,
-			Path: filepath.Join("out", "package", "drafter.drftdisk"),
+			Path: filepath.Join("out", "package", "rootfs.ext4"),
 		},
 
 		{
 			Name: roles.ConfigName,
-			Path: filepath.Join("out", "package", "drafter.drftconfig"),
+			Path: filepath.Join("out", "package", "config.json"),
 		},
 
 		{
 			Name: "oci",
-			Path: filepath.Join("out", "blueprint", "drafter.drftoci"),
+			Path: filepath.Join("out", "blueprint", "oci.ext4"),
 		},
 	})
 	if err != nil {
@@ -44,7 +44,7 @@ func main() {
 
 	rawDevices := flag.String("devices", string(defaultDevices), "Devices configuration")
 
-	packagePath := flag.String("package-path", filepath.Join("out", "app.drafterpackage"), "Path to package file")
+	packagePath := flag.String("package-path", filepath.Join("out", "app.tar"), "Path to package file")
 
 	extract := flag.Bool("extract", false, "Whether to extract or archive")
 
