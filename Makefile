@@ -12,7 +12,7 @@ obj = drafter-nat drafter-forwarder drafter-agent drafter-liveness drafter-snaps
 all: $(addprefix build/,$(obj))
 
 # Build
-build: $(addprefix build/,$(obj))
+build: $(addprefix build/,$(obj)) build/oci
 $(addprefix build/,$(obj)):
 ifdef DST
 	go build -o $(DST) ./cmd/$(subst build/,,$@)
@@ -21,12 +21,12 @@ else
 endif
 
 # Build OCI runtime bundle
-build-oci:
-	$(MAKE) unpack-oci
-	$(MAKE) pack-oci
+build/oci:
+	$(MAKE) unpack/oci
+	$(MAKE) pack/oci
 
 # Unpack OCI runtime bundle
-unpack-oci:
+unpack/oci:
 	rm -rf $(OUTPUT_DIR)/oci-image
 	mkdir -p $(OUTPUT_DIR)/oci-image
 	skopeo copy "$(OCI_IMAGE_URI)" oci:$(OUTPUT_DIR)/oci-image:latest
@@ -48,7 +48,7 @@ unpack-oci:
 	TMPFILE=$$(mktemp) && jq '.linux.namespaces |= map(select(.type != "network"))' $(OUTPUT_DIR)/oci-runtime-bundle/config.json > $${TMPFILE} && mv $${TMPFILE} $(OUTPUT_DIR)/oci-runtime-bundle/config.json
 
 # Pack OCI runtime bundle
-pack-oci:
+pack/oci:
 	rm -f $(OUTPUT_DIR)/blueprint/oci.ext4
 	mkdir -p $(OUTPUT_DIR)/blueprint
 	sudo mke2fs -b 4096 -t ext4 -L oci -d $(OUTPUT_DIR)/oci-runtime-bundle/ $(OUTPUT_DIR)/blueprint/oci.ext4 $$(umoci stat --image $(OUTPUT_DIR)/oci-image:latest --json | jq '[.history[] | select(.layer != null) | .layer.size] | add * 1.1 | ceil')
@@ -78,8 +78,12 @@ benchmark:
 	go test -timeout 3600s -bench=./... ./...
 
 # Clean
-clean:
+clean: clean/oci
 	rm -rf out
+
+# Clean OCI runtime bundle
+clean/oci:
+	rm -rf $(OUTPUT_DIR)/oci-image $(OUTPUT_DIR)/oci-runtime-bundle $(OUTPUT_DIR)/blueprint/oci.ext4
 
 # Dependencies
 depend:
