@@ -8,6 +8,8 @@ OCI_IMAGE_URI ?= docker://valkey/valkey:latest
 OCI_IMAGE_ARCHITECTURE ?= amd64
 OCI_IMAGE_HOSTNAME ?= drafterguest
 
+OS_URL ?= https://buildroot.org/downloads/buildroot-2024.02.3.tar.gz
+OS_DEFCONFIG ?= drafteros-firecracker-x86_64_defconfig
 
 # Private variables
 obj = drafter-nat drafter-forwarder drafter-agent drafter-liveness drafter-snapshotter drafter-packager drafter-runner drafter-registry drafter-peer drafter-terminator
@@ -88,5 +90,12 @@ clean/oci:
 	rm -rf $(OUTPUT_DIR)/oci-image $(OUTPUT_DIR)/oci-runtime-bundle $(OUTPUT_DIR)/blueprint/oci.ext4
 
 # Dependencies
-depend:
+depend: depend/os
 	go generate ./...
+
+# OS dependencies
+depend/os:
+	rm -rf $(OUTPUT_DIR)/buildroot
+	mkdir -p $(OUTPUT_DIR)/buildroot
+	curl -L $(OS_URL) | tar -xz -C $(OUTPUT_DIR)/buildroot --strip-components=1
+	cd $(OUTPUT_DIR)/buildroot && $(MAKE) BR2_EXTERNAL="../../os" $(OS_DEFCONFIG)
