@@ -2,6 +2,7 @@ package roles
 
 import (
 	"archive/tar"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -21,10 +22,12 @@ type PackagerDevice struct {
 }
 
 type PackagerHooks struct {
-	OnBeforeProcessFile func(name string)
+	OnBeforeProcessFile func(name, path string)
 }
 
 func ArchivePackage(
+	ctx context.Context,
+
 	devices []PackagerDevice,
 	packageOutputPath string,
 
@@ -46,8 +49,17 @@ func ArchivePackage(
 	defer packageOutputArchive.Close()
 
 	for _, device := range devices {
+	s:
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+
+		default:
+			break s
+		}
+
 		if hook := hooks.OnBeforeProcessFile; hook != nil {
-			hook(device.Name)
+			hook(device.Name, device.Path)
 		}
 
 		info, err := os.Stat(device.Path)
@@ -80,6 +92,8 @@ func ArchivePackage(
 }
 
 func ExtractPackage(
+	ctx context.Context,
+
 	packageInputPath string,
 	devices []PackagerDevice,
 
@@ -102,6 +116,15 @@ func ExtractPackage(
 	for _, device := range devices {
 		extracted := false
 		for {
+		s:
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+
+			default:
+				break s
+			}
+
 			header, err := packageArchive.Next()
 			if err != nil {
 				if err == io.EOF {
@@ -116,7 +139,7 @@ func ExtractPackage(
 			}
 
 			if hook := hooks.OnBeforeProcessFile; hook != nil {
-				hook(device.Name)
+				hook(device.Name, device.Path)
 			}
 
 			if err := os.MkdirAll(filepath.Dir(device.Path), os.ModePerm); err != nil {

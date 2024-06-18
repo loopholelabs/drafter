@@ -1,12 +1,16 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"log"
+	"os"
+	"os/signal"
 	"path/filepath"
 
 	"github.com/loopholelabs/drafter/pkg/roles"
+	"github.com/loopholelabs/drafter/pkg/utils"
 )
 
 func main() {
@@ -56,14 +60,46 @@ func main() {
 		panic(err)
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var errs error
+	defer func() {
+		if errs != nil {
+			panic(errs)
+		}
+	}()
+
+	ctx, handlePanics, _, cancel, wait, _ := utils.GetPanicHandler(
+		ctx,
+		&errs,
+		utils.GetPanicHandlerHooks{},
+	)
+	defer wait()
+	defer cancel()
+	defer handlePanics(false)()
+
+	go func() {
+		done := make(chan os.Signal, 1)
+		signal.Notify(done, os.Interrupt)
+
+		<-done
+
+		log.Println("Exiting gracefully")
+
+		cancel()
+	}()
+
 	if *extract {
 		if err := roles.ExtractPackage(
+			ctx,
+
 			*packagePath,
 			devices,
 
 			roles.PackagerHooks{
-				OnBeforeProcessFile: func(name string) {
-					log.Println("Extracting file", name)
+				OnBeforeProcessFile: func(name, path string) {
+					log.Println("Extracting device", name, "to", path)
 				},
 			},
 		); err != nil {
@@ -74,12 +110,14 @@ func main() {
 	}
 
 	if err := roles.ArchivePackage(
+		ctx,
+
 		devices,
 		*packagePath,
 
 		roles.PackagerHooks{
-			OnBeforeProcessFile: func(name string) {
-				log.Println("Archiving file", name)
+			OnBeforeProcessFile: func(name, path string) {
+				log.Println("Archiving device", name, "from", path)
 			},
 		},
 	); err != nil {
