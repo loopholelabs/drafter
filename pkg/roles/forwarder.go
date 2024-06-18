@@ -19,10 +19,6 @@ var (
 	ErrNoInternalHostVethFound = errors.New("no internal host veth found")
 )
 
-const (
-	loopbackAddr = "127.0.0.1"
-)
-
 type PortForward struct {
 	Netns        string `json:"netns"`
 	InternalPort string `json:"internalPort"`
@@ -97,7 +93,12 @@ func ForwardPorts(
 				return err
 			}
 
-			if host == loopbackAddr {
+			hostIP, err := net.ResolveIPAddr("ip", host)
+			if err != nil {
+				return err
+			}
+
+			if hostIP.IP.IsLoopback() {
 				if err := os.WriteFile(filepath.Join("/proc", "sys", "net", "ipv4", "conf", "all", "route_localnet"), []byte("1"), os.ModePerm); err != nil {
 					return err
 				}
@@ -151,7 +152,7 @@ func ForwardPorts(
 							continue
 						}
 
-						if ip.IsLoopback() || ip.To4() == nil {
+						if ip.IsLoopback() {
 							continue
 						}
 
@@ -175,7 +176,7 @@ func ForwardPorts(
 				break
 			}
 
-			if host != loopbackAddr {
+			if !hostIP.IP.IsLoopback() {
 				if err := iptable.Append("filter", "FORWARD", "-d", hostVethInternalIP, "-j", "ACCEPT"); err != nil {
 					return err
 				}
