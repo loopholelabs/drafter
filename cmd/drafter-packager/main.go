@@ -44,7 +44,7 @@ func main() {
 
 	rawDevices := flag.String("devices", string(defaultDevices), "Devices configuration")
 
-	packagePath := flag.String("package-path", filepath.Join("out", "app.tar"), "Path to package file")
+	packagePath := flag.String("package-path", filepath.Join("out", "app.tar.zst"), "Path to package file")
 
 	extract := flag.Bool("extract", false, "Whether to extract or archive")
 

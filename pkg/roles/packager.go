@@ -7,6 +7,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+
+	"github.com/klauspost/compress/zstd"
 )
 
 var (
@@ -20,7 +22,6 @@ type PackagerDevice struct {
 
 func ArchivePackage(
 	devices []PackagerDevice,
-
 	packageOutputPath string,
 ) error {
 	packageOutputFile, err := os.OpenFile(packageOutputPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, os.ModePerm)
@@ -29,7 +30,13 @@ func ArchivePackage(
 	}
 	defer packageOutputFile.Close()
 
-	packageOutputArchive := tar.NewWriter(packageOutputFile)
+	compressor, err := zstd.NewWriter(packageOutputFile)
+	if err != nil {
+		return err
+	}
+	defer compressor.Close()
+
+	packageOutputArchive := tar.NewWriter(compressor)
 	defer packageOutputArchive.Close()
 
 	for _, device := range devices {
@@ -64,7 +71,6 @@ func ArchivePackage(
 
 func ExtractPackage(
 	packageInputPath string,
-
 	devices []PackagerDevice,
 ) error {
 	packageFile, err := os.Open(packageInputPath)
@@ -73,7 +79,13 @@ func ExtractPackage(
 	}
 	defer packageFile.Close()
 
-	packageArchive := tar.NewReader(packageFile)
+	uncompressor, err := zstd.NewReader(packageFile)
+	if err != nil {
+		return err
+	}
+	defer uncompressor.Close()
+
+	packageArchive := tar.NewReader(uncompressor)
 
 	for _, device := range devices {
 		extracted := false
