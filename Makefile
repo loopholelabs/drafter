@@ -4,12 +4,10 @@ PREFIX ?= /usr/local
 OUTPUT_DIR ?= out
 DST ?=
 
-OCI_IMAGE_PROTOCOL ?= docker://
-OCI_IMAGE_REPO ?= valkey/valkey
-OCI_IMAGE_TAG ?= latest
-OCI_IMAGE_OS ?= linux
+OCI_IMAGE_URI ?= docker://valkey/valkey:latest
 OCI_IMAGE_ARCHITECTURE ?= amd64
 OCI_IMAGE_HOSTNAME ?= drafterguest
+
 
 # Private variables
 obj = drafter-nat drafter-forwarder drafter-agent drafter-liveness drafter-snapshotter drafter-packager drafter-runner drafter-registry drafter-peer drafter-terminator
@@ -33,7 +31,7 @@ build/oci:
 unpack/oci:
 	rm -rf $(OUTPUT_DIR)/oci-image
 	mkdir -p $(OUTPUT_DIR)/oci-image
-	skopeo copy "$(OCI_IMAGE_PROTOCOL)$(OCI_IMAGE_REPO)@$$(skopeo inspect --raw "$(OCI_IMAGE_PROTOCOL)$(OCI_IMAGE_REPO):$(OCI_IMAGE_TAG)" | jq -r '.manifests[] | select(.platform.os == "$(OCI_IMAGE_OS)" and .platform.architecture == "$(OCI_IMAGE_ARCHITECTURE)") | .digest')" oci:$(OUTPUT_DIR)/oci-image:latest
+	skopeo --override-arch $(OCI_IMAGE_ARCHITECTURE) copy $(OCI_IMAGE_URI) oci:$(OUTPUT_DIR)/oci-image:latest
 
 	sudo rm -rf $(OUTPUT_DIR)/oci-runtime-bundle
 	mkdir -p $(OUTPUT_DIR)/oci-runtime-bundle
