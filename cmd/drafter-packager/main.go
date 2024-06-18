@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"flag"
+	"log"
 	"path/filepath"
 
 	"github.com/loopholelabs/drafter/pkg/roles"
@@ -58,8 +59,13 @@ func main() {
 	if *extract {
 		if err := roles.ExtractPackage(
 			*packagePath,
-
 			devices,
+
+			roles.PackagerHooks{
+				OnBeforeProcessFile: func(name string) {
+					log.Println("Extracting file", name)
+				},
+			},
 		); err != nil {
 			panic(err)
 		}
@@ -69,8 +75,13 @@ func main() {
 
 	if err := roles.ArchivePackage(
 		devices,
-
 		*packagePath,
+
+		roles.PackagerHooks{
+			OnBeforeProcessFile: func(name string) {
+				log.Println("Archiving file", name)
+			},
+		},
 	); err != nil {
 		panic(err)
 	}

@@ -20,9 +20,15 @@ type PackagerDevice struct {
 	Path string `json:"path"`
 }
 
+type PackagerHooks struct {
+	OnBeforeProcessFile func(name string)
+}
+
 func ArchivePackage(
 	devices []PackagerDevice,
 	packageOutputPath string,
+
+	hooks PackagerHooks,
 ) error {
 	packageOutputFile, err := os.OpenFile(packageOutputPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, os.ModePerm)
 	if err != nil {
@@ -40,6 +46,10 @@ func ArchivePackage(
 	defer packageOutputArchive.Close()
 
 	for _, device := range devices {
+		if hook := hooks.OnBeforeProcessFile; hook != nil {
+			hook(device.Name)
+		}
+
 		info, err := os.Stat(device.Path)
 		if err != nil {
 			return err
@@ -72,6 +82,8 @@ func ArchivePackage(
 func ExtractPackage(
 	packageInputPath string,
 	devices []PackagerDevice,
+
+	hooks PackagerHooks,
 ) error {
 	packageFile, err := os.Open(packageInputPath)
 	if err != nil {
@@ -101,6 +113,10 @@ func ExtractPackage(
 
 			if header.Name != device.Name {
 				continue
+			}
+
+			if hook := hooks.OnBeforeProcessFile; hook != nil {
+				hook(device.Name)
 			}
 
 			if err := os.MkdirAll(filepath.Dir(device.Path), os.ModePerm); err != nil {
