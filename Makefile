@@ -8,7 +8,7 @@ OCI_IMAGE_URI ?= docker://valkey/valkey:latest
 OCI_IMAGE_ARCHITECTURE ?= amd64
 OCI_IMAGE_HOSTNAME ?= drafterguest
 
-OS_URL ?= https://buildroot.org/downloads/buildroot-2024.02.3.tar.gz
+OS_URL ?= https://buildroot.org/downloads/buildroot-2024.05.tar.gz
 OS_DEFCONFIG ?= drafteros-firecracker-x86_64_defconfig
 
 # Private variables
@@ -16,7 +16,7 @@ obj = drafter-nat drafter-forwarder drafter-agent drafter-liveness drafter-snaps
 all: $(addprefix build/,$(obj))
 
 # Build
-build: $(addprefix build/,$(obj)) build/oci
+build: $(addprefix build/,$(obj))
 $(addprefix build/,$(obj)):
 ifdef DST
 	go build -o $(DST) ./cmd/$(subst build/,,$@)
@@ -28,6 +28,15 @@ endif
 build/oci:
 	$(MAKE) unpack/oci
 	$(MAKE) pack/oci
+
+# Build OS
+build/os:
+	$(MAKE) -C $(OUTPUT_DIR)/buildroot BR2_EXTERNAL="../../os" drafter-liveness-reconfigure drafter-agent-reconfigure oci-runtime-bundle-reconfigure
+	$(MAKE) -C $(OUTPUT_DIR)/buildroot BR2_EXTERNAL="../../os"
+
+	mkdir -p $(OUTPUT_DIR)/blueprint
+	cp $(OUTPUT_DIR)/buildroot/output/images/vmlinux $(OUTPUT_DIR)/blueprint/vmlinux
+	cp $(OUTPUT_DIR)/buildroot/output/images/rootfs.ext4 $(OUTPUT_DIR)/blueprint/rootfs.ext4
 
 # Unpack OCI runtime bundle
 unpack/oci:
@@ -82,15 +91,19 @@ benchmark:
 	go test -timeout 3600s -bench=./... ./...
 
 # Clean
-clean: clean/oci
+clean:
 	rm -rf out
 
 # Clean OCI runtime bundle
 clean/oci:
 	rm -rf $(OUTPUT_DIR)/oci-image $(OUTPUT_DIR)/oci-runtime-bundle $(OUTPUT_DIR)/blueprint/oci.ext4
 
+# Clean OS
+clean/os:
+	rm -rf $(OUTPUT_DIR)/buildroot
+
 # Dependencies
-depend: depend/os
+depend:
 	go generate ./...
 
 # OS dependencies
@@ -98,4 +111,4 @@ depend/os:
 	rm -rf $(OUTPUT_DIR)/buildroot
 	mkdir -p $(OUTPUT_DIR)/buildroot
 	curl -L $(OS_URL) | tar -xz -C $(OUTPUT_DIR)/buildroot --strip-components=1
-	cd $(OUTPUT_DIR)/buildroot && $(MAKE) BR2_EXTERNAL="../../os" $(OS_DEFCONFIG)
+	$(MAKE) -C $(OUTPUT_DIR)/buildroot BR2_EXTERNAL="../../os" $(OS_DEFCONFIG)
