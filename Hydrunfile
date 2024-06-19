@@ -49,6 +49,51 @@ if [ "$1" = "go" ]; then
     # Build
     CGO_ENABLED=0 bagop -j "$(nproc)" -b "$2" -x '(android/*|ios/*|plan9/*|aix/*|linux/loong64|freebsd/*|wasip1/*|js/*|openbsd/*|windows/*|darwin/*|solaris/*|dragonfly/*|netbsd/*|illumos/*)' -p "make build/$2 DST=\$DST" -d out
 
+    exit 0
+fi
+
+# OS
+if [ "$1" = "os" ]; then
+    # Configure SSH access
+    eval "$(ssh-agent -s)"
+    ssh-add /tmp/ssh-key
+    mkdir -p ~/.ssh
+    ssh-keyscan github.com >>~/.ssh/known_hosts
+
+    # Install native dependencies
+    apt update
+    apt install -y curl make build-essential file cpio unzip rsync bc
+
+    # Configure Git
+    git config --global --add safe.directory '*'
+    git config --global url."ssh://git@github.com/".insteadOf "https://github.com/"
+
+    # Generate dependencies for packager
+    make depend
+
+    # Build packager
+    make build/drafter-packager
+
+    # Install packager
+    make install/drafter-packager
+
+    # Generate dependencies for OS
+    make depend/os OS_DEFCONFIG="$2"
+
+    # Build OS
+    FORCE_UNSAFE_CONFIGURE=1 make build/os
+
+    # Package OS
+    drafter-packager --package-path "out/$3" --devices '[
+      {
+        "name": "kernel",
+        "path": "out/package/vmlinux"
+      },
+      {
+        "name": "disk",
+        "path": "out/package/rootfs.ext4"
+      }
+    ]'
 
     exit 0
 fi
