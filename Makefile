@@ -10,6 +10,7 @@ OCI_IMAGE_HOSTNAME ?= drafterguest
 
 OS_URL ?= https://buildroot.org/downloads/buildroot-2024.05.tar.gz
 OS_DEFCONFIG ?= drafteros-firecracker-x86_64_defconfig
+OS_BR2_EXTERNAL ?= ../../os
 
 # Private variables
 obj = drafter-nat drafter-forwarder drafter-agent drafter-liveness drafter-snapshotter drafter-packager drafter-runner drafter-registry drafter-peer drafter-terminator
@@ -31,8 +32,8 @@ build/oci:
 
 # Build OS
 build/os:
-	$(MAKE) -C $(OUTPUT_DIR)/buildroot BR2_EXTERNAL="../../os" drafter-liveness-reconfigure drafter-agent-reconfigure oci-runtime-bundle-reconfigure
-	$(MAKE) -C $(OUTPUT_DIR)/buildroot BR2_EXTERNAL="../../os"
+	$(MAKE) -C $(OUTPUT_DIR)/buildroot BR2_EXTERNAL="$(OS_BR2_EXTERNAL)" drafter-liveness-reconfigure drafter-agent-reconfigure oci-runtime-bundle-reconfigure
+	$(MAKE) -C $(OUTPUT_DIR)/buildroot BR2_EXTERNAL="$(OS_BR2_EXTERNAL)"
 
 	mkdir -p $(OUTPUT_DIR)/blueprint
 	cp $(OUTPUT_DIR)/buildroot/output/images/vmlinux $(OUTPUT_DIR)/blueprint/vmlinux
@@ -40,7 +41,7 @@ build/os:
 
 # Configure OS
 config/os:
-	$(MAKE) -C $(OUTPUT_DIR)/buildroot BR2_EXTERNAL="../../os" menuconfig
+	$(MAKE) -C $(OUTPUT_DIR)/buildroot BR2_EXTERNAL="$(OS_BR2_EXTERNAL)" menuconfig
 
 # Unpack OCI runtime bundle
 unpack/oci:
@@ -115,4 +116,4 @@ depend/os:
 	rm -rf $(OUTPUT_DIR)/buildroot
 	mkdir -p $(OUTPUT_DIR)/buildroot
 	curl -L $(OS_URL) | tar -xz -C $(OUTPUT_DIR)/buildroot --strip-components=1
-	$(MAKE) -C $(OUTPUT_DIR)/buildroot BR2_EXTERNAL="../../os" $(OS_DEFCONFIG)
+	$(MAKE) -C $(OUTPUT_DIR)/buildroot BR2_EXTERNAL="$(OS_BR2_EXTERNAL)" $(OS_DEFCONFIG)
