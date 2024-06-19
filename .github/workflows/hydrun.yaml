@@ -15,6 +15,7 @@ jobs:
     strategy:
       matrix:
         target:
+          # Tests
           - id: test
             src: .
             os: golang:bookworm
@@ -22,6 +23,8 @@ jobs:
             cmd: GOFLAGS="-short" ./Hydrunfile test
             dst: out/nonexistent
             runner: depot-ubuntu-22.04-32
+
+          # Binaries
           - id: go.drafter-nat
             src: .
             os: golang:bookworm
@@ -92,6 +95,7 @@ jobs:
             cmd: ./Hydrunfile go drafter-terminator
             dst: out/*
             runner: depot-ubuntu-22.04-32
+          
 
     steps:
       - name: Maximize build space
