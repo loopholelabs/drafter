@@ -38,6 +38,10 @@ build/os:
 	cp $(OUTPUT_DIR)/buildroot/output/images/vmlinux $(OUTPUT_DIR)/blueprint/vmlinux
 	cp $(OUTPUT_DIR)/buildroot/output/images/rootfs.ext4 $(OUTPUT_DIR)/blueprint/rootfs.ext4
 
+# Configure OS
+config/os:
+	$(MAKE) -C $(OUTPUT_DIR)/buildroot BR2_EXTERNAL="../../os" menuconfig
+
 # Unpack OCI runtime bundle
 unpack/oci:
 	rm -rf $(OUTPUT_DIR)/oci-image
