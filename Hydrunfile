@@ -1,0 +1,47 @@
+#!/bin/bash
+
+set -e
+
+# Test
+if [ "$1" = "test" ]; then
+    # Configure SSH access
+    eval "$(ssh-agent -s)"
+    ssh-add /tmp/ssh-key
+
+    # Configure Git
+    git config --global --add safe.directory '*'
+
+    # Generate dependencies
+    make depend
+
+    # Run tests
+    make test
+
+    exit 0
+fi
+
+# Go
+if [ "$1" = "go" ]; then
+    # Configure SSH access
+    eval "$(ssh-agent -s)"
+    ssh-add /tmp/ssh-key
+
+    # Install native dependencies
+    apt update
+    apt install -y curl make
+
+    # Install bagop
+    curl -L -o /tmp/bagop "https://github.com/pojntfx/bagop/releases/latest/download/bagop.linux-$(uname -m)"
+    install /tmp/bagop /usr/local/bin
+
+    # Configure Git
+    git config --global --add safe.directory '*'
+
+    # Generate dependencies
+    make depend
+
+    # Build
+    CGO_ENABLED=0 bagop -j "$(nproc)" -b "$2" -x '(android/*|ios/*|plan9/*|aix/*|linux/loong64|freebsd/riscv64|wasip1/wasm|js/wasm)' -p "make build/$2 DST=\$DST" -d out
+
+    exit 0
+fi
