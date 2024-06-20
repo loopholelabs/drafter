@@ -95,15 +95,22 @@ jobs:
             cmd: ./Hydrunfile go drafter-terminator
             dst: out/*
             runner: depot-ubuntu-22.04-32
-          
+
           # OS
-          - id: os
+          - id: os.drafter-x86_64
             src: .
             os: golang:bookworm
             flags: -e '-v /tmp/ssh-key:/tmp/ssh-key'
             cmd: ./Hydrunfile os drafteros-firecracker-x86_64_defconfig drafteros-x86_64.tar.zst
             dst: out/drafteros-x86_64.tar.zst
             runner: depot-ubuntu-22.04-32
+          - id: os.drafter-aarch64
+            src: .
+            os: golang:bookworm
+            flags: -e '-v /tmp/ssh-key:/tmp/ssh-key'
+            cmd: ./Hydrunfile os drafteros-firecracker-aarch64_defconfig drafteros-aarch64.tar.zst
+            dst: out/drafteros-aarch64.tar.zst
+            runner: depot-ubuntu-22.04-arm-32
 
     steps:
       - name: Maximize build space
