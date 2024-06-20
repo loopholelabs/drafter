@@ -99,15 +99,15 @@ jobs:
           # OS
           - id: os.drafter-x86_64
             src: .
-            os: golang:bookworm
-            flags: -e '-v /tmp/ssh-key:/tmp/ssh-key'
+            os: fedora:40
+            flags: -e '-v /tmp/ssh-key:/tmp/ssh-key -v /tmp/ccache:/root/.buildroot-ccache'
             cmd: ./Hydrunfile os drafteros-firecracker-x86_64_defconfig drafteros-x86_64.tar.zst
             dst: out/drafteros-x86_64.tar.zst
             runner: depot-ubuntu-22.04-32
           - id: os.drafter-aarch64
             src: .
-            os: golang:bookworm
-            flags: -e '-v /tmp/ssh-key:/tmp/ssh-key'
+            os: fedora:40
+            flags: -e '-v /tmp/ssh-key:/tmp/ssh-key -v /tmp/ccache:/root/.buildroot-ccache'
             cmd: ./Hydrunfile os drafteros-firecracker-aarch64_defconfig drafteros-aarch64.tar.zst
             dst: out/drafteros-aarch64.tar.zst
             runner: depot-ubuntu-22.04-arm-32
@@ -120,6 +120,12 @@ jobs:
           sudo rm -rf /opt/ghc
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Restore ccache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            /tmp/ccache
+          key: cache-ccache-${{ matrix.target.id }}
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
       - name: Set up Docker Buildx
@@ -138,6 +144,12 @@ jobs:
         run: hydrun -o ${{ matrix.target.os }} ${{ matrix.target.flags }} "${{ matrix.target.cmd }}"
       - name: Fix permissions for output
         run: sudo chown -R $USER .
+      - name: Save ccache
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            /tmp/ccache
+          key: cache-ccache-${{ matrix.target.id }}
       - name: Upload output
         uses: actions/upload-artifact@v4
         with:
