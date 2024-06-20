@@ -6,12 +6,11 @@ on:
   schedule:
     - cron: "0 0 * * 0"
 
-permissions:
-  contents: write
-
 jobs:
   build-linux:
     runs-on: ${{ matrix.target.runner }}
+    permissions:
+      contents: read
     strategy:
       matrix:
         target:
@@ -202,6 +201,8 @@ jobs:
 
   publish-linux:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     needs: build-linux
 
     steps:
