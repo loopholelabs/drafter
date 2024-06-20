@@ -19,7 +19,7 @@ jobs:
           - id: test
             src: .
             os: golang:bookworm
-            flags: -e '-v /tmp/ssh-key:/tmp/ssh-key'
+            flags: -e '-v /tmp/ssh-key:/tmp/ssh-key -v /tmp/ccache:/root/.cache/go-build'
             cmd: GOFLAGS="-short" ./Hydrunfile test
             dst: out/nonexistent
             runner: depot-ubuntu-22.04-32
@@ -28,70 +28,70 @@ jobs:
           - id: go.drafter-nat
             src: .
             os: golang:bookworm
-            flags: -e '-v /tmp/ssh-key:/tmp/ssh-key'
+            flags: -e '-v /tmp/ssh-key:/tmp/ssh-key -v /tmp/ccache:/root/.cache/go-build'
             cmd: ./Hydrunfile go drafter-nat
             dst: out/*
             runner: depot-ubuntu-22.04-32
           - id: go.drafter-forwarder
             src: .
             os: golang:bookworm
-            flags: -e '-v /tmp/ssh-key:/tmp/ssh-key'
+            flags: -e '-v /tmp/ssh-key:/tmp/ssh-key -v /tmp/ccache:/root/.cache/go-build'
             cmd: ./Hydrunfile go drafter-forwarder
             dst: out/*
             runner: depot-ubuntu-22.04-32
           - id: go.drafter-agent
             src: .
             os: golang:bookworm
-            flags: -e '-v /tmp/ssh-key:/tmp/ssh-key'
+            flags: -e '-v /tmp/ssh-key:/tmp/ssh-key -v /tmp/ccache:/root/.cache/go-build'
             cmd: ./Hydrunfile go drafter-agent
             dst: out/*
             runner: depot-ubuntu-22.04-32
           - id: go.drafter-liveness
             src: .
             os: golang:bookworm
-            flags: -e '-v /tmp/ssh-key:/tmp/ssh-key'
+            flags: -e '-v /tmp/ssh-key:/tmp/ssh-key -v /tmp/ccache:/root/.cache/go-build'
             cmd: ./Hydrunfile go drafter-liveness
             dst: out/*
             runner: depot-ubuntu-22.04-32
           - id: go.drafter-snapshotter
             src: .
             os: golang:bookworm
-            flags: -e '-v /tmp/ssh-key:/tmp/ssh-key'
+            flags: -e '-v /tmp/ssh-key:/tmp/ssh-key -v /tmp/ccache:/root/.cache/go-build'
             cmd: ./Hydrunfile go drafter-snapshotter
             dst: out/*
             runner: depot-ubuntu-22.04-32
           - id: go.drafter-packager
             src: .
             os: golang:bookworm
-            flags: -e '-v /tmp/ssh-key:/tmp/ssh-key'
+            flags: -e '-v /tmp/ssh-key:/tmp/ssh-key -v /tmp/ccache:/root/.cache/go-build'
             cmd: ./Hydrunfile go drafter-packager
             dst: out/*
             runner: depot-ubuntu-22.04-32
           - id: go.drafter-runner
             src: .
             os: golang:bookworm
-            flags: -e '-v /tmp/ssh-key:/tmp/ssh-key'
+            flags: -e '-v /tmp/ssh-key:/tmp/ssh-key -v /tmp/ccache:/root/.cache/go-build'
             cmd: ./Hydrunfile go drafter-runner
             dst: out/*
             runner: depot-ubuntu-22.04-32
           - id: go.drafter-registry
             src: .
             os: golang:bookworm
-            flags: -e '-v /tmp/ssh-key:/tmp/ssh-key'
+            flags: -e '-v /tmp/ssh-key:/tmp/ssh-key -v /tmp/ccache:/root/.cache/go-build'
             cmd: ./Hydrunfile go drafter-registry
             dst: out/*
             runner: depot-ubuntu-22.04-32
           - id: go.drafter-peer
             src: .
             os: golang:bookworm
-            flags: -e '-v /tmp/ssh-key:/tmp/ssh-key'
+            flags: -e '-v /tmp/ssh-key:/tmp/ssh-key -v /tmp/ccache:/root/.cache/go-build'
             cmd: ./Hydrunfile go drafter-peer
             dst: out/*
             runner: depot-ubuntu-22.04-32
           - id: go.drafter-terminator
             src: .
             os: golang:bookworm
-            flags: -e '-v /tmp/ssh-key:/tmp/ssh-key'
+            flags: -e '-v /tmp/ssh-key:/tmp/ssh-key -v /tmp/ccache:/root/.cache/go-build'
             cmd: ./Hydrunfile go drafter-terminator
             dst: out/*
             runner: depot-ubuntu-22.04-32
@@ -100,14 +100,14 @@ jobs:
           - id: os.drafter-x86_64
             src: .
             os: fedora:40
-            flags: -e '-v /tmp/ssh-key:/tmp/ssh-key -v /tmp/ccache:/root/.buildroot-ccache'
+            flags: -e '-v /tmp/ssh-key:/tmp/ssh-key -v /tmp/ccache/go:/root/.cache/go-build -v /tmp/ccache/buildroot:/root/.buildroot-ccache'
             cmd: ./Hydrunfile os drafteros-firecracker-x86_64_defconfig drafteros-x86_64.tar.zst
             dst: out/drafteros-x86_64.tar.zst
             runner: depot-ubuntu-22.04-32
           - id: os.drafter-aarch64
             src: .
             os: fedora:40
-            flags: -e '-v /tmp/ssh-key:/tmp/ssh-key -v /tmp/ccache:/root/.buildroot-ccache'
+            flags: -e '-v /tmp/ssh-key:/tmp/ssh-key -v /tmp/ccache/go:/root/.cache/go-build -v /tmp/ccache/buildroot:/root/.buildroot-ccache'
             cmd: ./Hydrunfile os drafteros-firecracker-aarch64_defconfig drafteros-aarch64.tar.zst
             dst: out/drafteros-aarch64.tar.zst
             runner: depot-ubuntu-22.04-arm-32
