@@ -110,7 +110,7 @@ jobs:
             flags: -e '-v /tmp/ssh-key:/tmp/ssh-key -v /tmp/ccache/go:/root/.cache/go-build -v /tmp/ccache/buildroot:/root/.buildroot-ccache'
             cmd: ./Hydrunfile os drafteros-firecracker-aarch64_defconfig drafteros-aarch64.tar.zst
             dst: out/drafteros-aarch64.tar.zst
-            runner: depot-ubuntu-22.04-arm-32
+            runner: depot-ubuntu-22.04-32
 
     steps:
       - name: Maximize build space
