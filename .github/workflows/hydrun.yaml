@@ -156,11 +156,6 @@ jobs:
             runner: depot-ubuntu-22.04-32
 
     steps:
-      - name: Maximize build space
-        run: |
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /usr/local/lib/android
-          sudo rm -rf /opt/ghc
       - name: Checkout
         uses: actions/checkout@v4
       - name: Restore ccache
@@ -217,18 +212,16 @@ jobs:
         run: echo "##[set-output name=branch;]$(echo ${GITHUB_REF#refs/heads/})"
       - name: Publish pre-release to GitHub releases
         if: ${{ github.ref == 'refs/heads/replace-r3map-with-silo' }} # TODO: Set to `master` instead of `replace-r3map-with-silo` before this branch is merged
-        uses: marvinpinto/action-automatic-releases@latest
+        uses: softprops/action-gh-release@v2
         with:
-          repo_token: "${{ secrets.GITHUB_TOKEN }}"
-          automatic_release_tag: release-${{ steps.extract_branch.outputs.branch }}
+          tag_name: release-${{ steps.extract_branch.outputs.branch }}
           prerelease: true
           files: |
             /tmp/out/*/*
       - name: Publish release to GitHub releases
         if: startsWith(github.ref, 'refs/tags/v')
-        uses: marvinpinto/action-automatic-releases@latest
+        uses: softprops/action-gh-release@v2
         with:
-          repo_token: "${{ secrets.GITHUB_TOKEN }}"
           prerelease: false
           files: |
             /tmp/out/*/*
