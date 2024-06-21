@@ -1,10 +1,20 @@
+<img alt="Project icon" style="vertical-align: middle;" src="./docs/icon.svg" width="128" height="128" align="left">
+
 # Drafter
 
 Lean VM primitive with live migration support.
 
+<br/>
+
+[![hydrun CI](https://github.com/loopholelabs/drafter/actions/workflows/hydrun.yaml/badge.svg)](https://github.com/loopholelabs/drafter/actions/workflows/hydrun.yaml)
+
 ## Overview
 
 🚧 This project is a work-in-progress! Instructions will be added as soon as it is usable. 🚧
+
+## Acknowledgements
+
+- [Font Awesome](https://fontawesome.com/) provides the assets used for the icon and logo.
 
 ## Contributing
 
