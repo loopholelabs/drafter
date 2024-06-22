@@ -53,7 +53,70 @@ for BINARY in firecracker jailer; do
 done
 ```
 
-PVM installation instructions depend on your operating system; refer to [loopholelabs/linux-pvm-ci#installation](https://github.com/loopholelabs/linux-pvm-ci?tab=readme-ov-file#installation) for more information.
+PVM installation instructions depend on your operating system; refer to [loopholelabs/linux-pvm-ci#installation](https://github.com/loopholelabs/linux-pvm-ci?tab=readme-ov-file#installation) for more information. Verify that you have a KVM implementation (Intel, AMD or PVM) available by running the following:
+
+```shell
+$ file /dev/kvm # Should return "/dev/kvm: character special (10/232)"
+```
+
+Using Drafter for live migration also requires the NBD kernel module to be loaded, preferably with more devices than the default (12). You can increase the amount of available NBD devices by running the following:
+
+```shell
+$ sudo modprobe nbd nbds_max=4096
+```
+
+## Tutorial
+
+### 1. Downloading or Building a VM Blueprint
+
+To create a VM blueprint, you have two options: download a pre-built blueprint or build one from scratch. Blueprints are typically packaged as `.tar.zst` archives using `drafter-packager`.
+
+In this tutorial, we'll use Drafter to run the key-value store [Valkey](https://valkey.io/) (formerly Redis). We'll use two blueprints: the DrafterOS blueprint, a minimal Buildroot-based Linux OS for running OCI images, and the Valkey blueprint, which contains the Valkey OCI image. Note that you can also include Valkey or any other application directly in the base OS blueprint instead of using an OCI image.
+
+#### Downloading a Pre-Built VM Blueprint
+
+To download the pre-built blueprints for your architecture, execute the following commands:
+
+<!-- TODO: Use the latest release URL here before this branch is merged -->
+
+```shell
+$ mkdir -p out
+$ curl -Lo out/drafteros.tar.zst "https://github.com/loopholelabs/drafter/releases/download/release-replace-r3map-with-silo/drafteros-$(uname -m).tar.zst"
+$ curl -Lo out/oci-valkey.tar.zst "https://github.com/loopholelabs/drafter/releases/download/release-replace-r3map-with-silo/oci-valkey-$(uname -m).tar.zst"
+```
+
+Next, use `drafter-packager` to extract the blueprints:
+
+```shell
+$ drafter-packager --package-path out/drafteros.tar.zst --extract --devices '[
+  {
+    "name": "kernel",
+    "path": "out/blueprint/vmlinux"
+  },
+  {
+    "name": "disk",
+    "path": "out/blueprint/rootfs.ext4"
+  }
+]'
+$ drafter-packager --package-path out/oci-valkey.tar.zst --extract --devices '[
+  {
+    "name": "oci",
+    "path": "out/blueprint/oci.ext4"
+  }
+]'
+```
+
+#### Building a VM Blueprint Locally
+
+To build the blueprints locally instead, you can use the [included Makefile](./Makefile) with the following commands:
+
+```shell
+# Build the DrafterOS blueprint
+$ make build/os OS_DEFCONFIG=drafteros-firecracker-x86_64_defconfig # Or `drafteros-firecracker-x86_64_defconfig` if you're on `aarch64`
+# Build the Valkey OCI image blueprint
+$ sudo make build/oci OCI_IMAGE_URI=docker://valkey/valkey:latest OCI_IMAGE_ARCHITECTURE=amd64 # Or `arm64` if you're on `aarch64`
+```
+
 
 ## Reference
 
