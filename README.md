@@ -75,6 +75,9 @@ In this tutorial, we'll use Drafter to run the key-value store [Valkey](https://
 
 #### Downloading a Pre-Built VM Blueprint
 
+<details>
+  <summary>Expand section</summary>
+
 To download the pre-built blueprints for your architecture, execute the following commands:
 
 <!-- TODO: Use the latest release URL here before this branch is merged -->
@@ -106,7 +109,24 @@ $ drafter-packager --package-path out/oci-valkey.tar.zst --extract --devices '[
 ]'
 ```
 
+The output directory should now contain the VM blueprint files:
+
+```shell
+$ tree out/
+out/
+├── blueprint
+│   ├── oci.ext4
+│   ├── rootfs.ext4
+│   └── vmlinux
+# ...
+```
+
+</details>
+
 #### Building a VM Blueprint Locally
+
+<details>
+  <summary>Expand section</summary>
 
 To build the blueprints locally instead, you can use the [included Makefile](./Makefile) with the following commands:
 
@@ -115,6 +135,135 @@ To build the blueprints locally instead, you can use the [included Makefile](./M
 $ make build/os OS_DEFCONFIG=drafteros-firecracker-x86_64_defconfig # Or `drafteros-firecracker-x86_64_defconfig` if you're on `aarch64`
 # Build the Valkey OCI image blueprint
 $ sudo make build/oci OCI_IMAGE_URI=docker://valkey/valkey:latest OCI_IMAGE_ARCHITECTURE=amd64 # Or `arm64` if you're on `aarch64`
+```
+
+The output directory should now contain the VM blueprint files:
+
+```shell
+$ tree out/
+out/
+├── blueprint
+│   ├── oci.ext4
+│   ├── rootfs.ext4
+│   └── vmlinux
+# ...
+```
+
+You can optionally package the VM blueprint files using `drafter-packager` for distribution by running the following:
+
+```shell
+$ drafter-packager --package-path out/drafteros.tar.zst --devices '[
+  {
+    "name": "kernel",
+    "path": "out/blueprint/vmlinux"
+  },
+  {
+    "name": "disk",
+    "path": "out/blueprint/rootfs.ext4"
+  }
+]'
+$ drafter-packager --package-path out/oci-valkey.tar.zst --devices '[
+  {
+    "name": "oci",
+    "path": "out/blueprint/oci.ext4"
+  }
+]'
+```
+
+</details>
+
+### 2. Creating a VM Package with `drafter-snapshotter`
+
+Now that you have a blueprint available, you can create a VM package from it by using `drafter-snapshotter`. Drafter heavily relies on the use of snapshots to amortize kernel cold starts and application boot times. To get started, start the Drafter NAT so that the VM(s) can access the network:
+
+```shell
+$ sudo drafter-nat --host-interface wlp0s20f3 # Replace wlp0s20f3 with the network interface you want to route outgoing traffic from the VMs to
+```
+
+In a new terminal, start the snapshotter:
+
+> Using PVM? Make sure to pass a value to `--cpu-template`, e.g. `T2`, so that your snapshots are portable across hosts/different cloud providers with different CPU models!
+
+```shell
+$ sudo drafter-snapshotter --netns ark0 --devices '[
+  {
+    "name": "state",
+    "input": "",
+    "output": "out/package/state.bin"
+  },
+  {
+    "name": "memory",
+    "input": "",
+    "output": "out/package/memory.bin"
+  },
+  {
+    "name": "kernel",
+    "input": "out/blueprint/vmlinux",
+    "output": "out/package/vmlinux"
+  },
+  {
+    "name": "disk",
+    "input": "out/blueprint/rootfs.ext4",
+    "output": "out/package/rootfs.ext4"
+  },
+  {
+    "name": "config",
+    "input": "",
+    "output": "out/package/config.json"
+  },
+  {
+    "name": "oci",
+    "input": "out/blueprint/oci.ext4",
+    "output": "out/package/oci.ext4"
+  }
+]'
+```
+
+The output directory should now contain the VM package files with the snapshot:
+
+```shell
+$ tree out/
+out/
+# ...
+├── package
+│   ├── config.json
+│   ├── memory.bin
+│   ├── oci.ext4
+│   ├── rootfs.ext4
+│   ├── state.bin
+│   └── vmlinux
+# ...
+```
+
+You can optionally package the VM package files using `drafter-packager` for distribution by running the following:
+
+```shell
+$ drafter-packager --package-path out/valkey.tar.zst --devices '[
+  {
+    "name": "state",
+    "path": "out/package/state.bin"
+  },
+  {
+    "name": "memory",
+    "path": "out/package/memory.bin"
+  },
+  {
+    "name": "kernel",
+    "path": "out/package/vmlinux"
+  },
+  {
+    "name": "disk",
+    "path": "out/package/rootfs.ext4"
+  },
+  {
+    "name": "config",
+    "path": "out/package/config.json"
+  },
+  {
+    "name": "oci",
+    "path": "out/blueprint/oci.ext4"
+  }
+]'
 ```
 
 
