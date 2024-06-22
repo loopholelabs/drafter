@@ -295,7 +295,7 @@ Usage of drafter-terminator:
 
 ## Contributing
 
-Bug reports and pull requests are welcome on GitHub at [https://github.com/loopholelabs/drafter][gitrepo]. For more contribution information check out [the contribution guide](https://github.com/loopholelabs/drafter/blob/master/CONTRIBUTING.md).
+Bug reports and pull requests are welcome on GitHub at [https://github.com/loopholelabs/drafter](https://github.com/loopholelabs/drafter). For more contribution information check out [the contribution guide](./CONTRIBUTING.md).
 
 ## License
 
@@ -307,8 +307,4 @@ Everyone interacting in the Drafter project's codebases, issue trackers, chat ro
 
 ## Project Managed By:
 
-[![https://loopholelabs.io][loopholelabs]](https://loopholelabs.io)
-
-[gitrepo]: https://github.com/loopholelabs/drafter
-[loopholelabs]: https://cdn.loopholelabs.io/loopholelabs/LoopholeLabsLogo.svg
-[loophomepage]: https://loopholelabs.io
+[![https://loopholelabs.io](https://cdn.loopholelabs.io/loopholelabs/LoopholeLabsLogo.svg)](https://loopholelabs.io)
