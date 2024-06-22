@@ -16,11 +16,11 @@ Drafter is a fast and minimal VM manager with live migration support.
 
 It enables you to ...
 
-- **Snapshot, package, and distribute stateful VMs**: With an opinionated packaging format and simple developer tools (`drafter-snapshotter` and `drafter-runner`), managing, packaging, and distributing VMs becomes as straightforward as working with containers.
-- **Run OCI images as VMs**: In addition to running almost any Linux distribution (Alpine Linux, Fedora, Debian, Ubuntu etc.), Drafter can also run OCI images as VMs without the overhead of a nested Docker daemon or full CRI implementation. It uses a dynamic disk configuration system, an optional custom Buildroot-based OS to start the OCI image, and a familiar Docker-like networking configuration with `drafter-forwarder`.
+- **Snapshot, package, and distribute stateful VMs**: With an opinionated packaging format and simple developer tools, managing, packaging, and distributing VMs becomes as straightforward as working with containers.
+- **Run OCI images as VMs**: In addition to running almost any Linux distribution (Alpine Linux, Fedora, Debian, Ubuntu etc.), Drafter can also run OCI images as VMs without the overhead of a nested Docker daemon or full CRI implementation. It uses a dynamic disk configuration system, an optional custom Buildroot-based OS to start the OCI image, and a familiar Docker-like networking configuration.
 - **Easily live migrate VMs between heterogeneous nodes with no downtime**: Drafter leverages a [custom optimized Firecracker fork](https://github.com/loopholelabs/firecracker) and [patches to PVM](https://github.com/loopholelabs/linux-pvm-ci) to enable live migration of VMs between heterogeneous nodes/between data centers and cloud providers without hardware virtualization support, even across continents. With a [customizable hybrid pre- and post-copy strategy](https://pojntfx.github.io/networked-linux-memsync/main.pdf), migrations typically take below 100ms within the same datacenter and around 500ms for Europe ↔ North America migrations over the public internet, depending on the application.
 - **Hook into suspend and resume lifecycle with agents**: Drafter uses a VSock- and [panrpc](https://github.com/pojntfx/panrpc)-based agent system to signal to guest applications before a suspend/resume event, allowing them to react accordingly.
-- **Easily embed VMs inside your applications**: Drafter provides a powerful, context-aware [Go library](https://pkg.go.dev/github.com/pojntfx/loopholelabs/drafter) for all system components, including `drafter-nat` for guest-to-host networking, `drafter-forwarder` for local port-forwarding/host-to-guest networking, `drafter-agent` and `drafter-liveness` for responding to snapshots and suspend/resume events inside the guest, `drafter-snapshotter` for creating snapshots, `drafter-packager` for packaging VM images, `drafter-runner` for starting VM images locally, `drafter-registry` for serving VM images over the network, `drafter-peer` for starting and live migrating VMs over the network, and `drafter-terminator` for backing up a VM.
+- **Easily embed VMs inside your applications**: Drafter provides a powerful, context-aware [Go library](https://pkg.go.dev/github.com/pojntfx/loopholelabs/drafter) for all system components, including a NAT for guest-to-host networking, a forwarder for local port-forwarding/host-to-guest networking, an agent and liveness component for responding to snapshots and suspend/resume events inside the guest, a snapshotter for creating snapshots, a packager for packaging VM images, a runner for starting VM images locally, a registry for serving VM images over the network, a peer for starting and live migrating VMs over the network, and a terminator for backing up a VM.
 
 ## Installation
 
@@ -60,7 +60,7 @@ PVM installation instructions depend on your operating system; refer to [loophol
 <details>
   <summary>Expand command reference</summary>
 
-### `drafter-nat`
+### NAT
 
 ```shell
 $ drafter-nat --help
@@ -89,7 +89,7 @@ Usage of drafter-nat:
         CIDR for the veths inside the namespace (default "10.0.15.0/24")
 ```
 
-### `drafter-forwarder`
+### Forwarder
 
 ```shell
 $ drafter-forwarder --help
@@ -100,7 +100,7 @@ Usage of drafter-forwarder:
         Port forwards configuration (wildcard IPs like 0.0.0.0 are not valid, be explict) (default "[{\"netns\":\"ark0\",\"internalPort\":\"6379\",\"protocol\":\"tcp\",\"externalAddr\":\"127.0.0.1:3333\"}]")
 ```
 
-### `drafter-agent`
+### Agent
 
 ```shell
 $ drafter-agent --help
@@ -117,7 +117,7 @@ Usage of drafter-agent:
         VSock dial timeout (default 1m0s)
 ```
 
-### `drafter-liveness`
+### Liveness
 
 ```shell
 $ drafter-liveness --help
@@ -128,7 +128,7 @@ Usage of drafter-liveness:
         VSock dial timeout (default 1m0s)
 ```
 
-### `drafter-snapshotter`
+### Snapshotter
 
 ```shell
 $ drafter-snapshotter --help
@@ -175,7 +175,7 @@ Usage of drafter-snapshotter:
         User ID for the Firecracker process
 ```
 
-### `drafter-packager`
+### Packager
 
 ```shell
 $ drafter-packager --help
@@ -188,7 +188,7 @@ Usage of drafter-packager:
         Path to package file (default "out/app.tar.zst")
 ```
 
-### `drafter-runner`
+### Runner
 
 ```shell
 $ drafter-runner --help
@@ -221,7 +221,7 @@ Usage of drafter-runner:
         User ID for the Firecracker process
 ```
 
-### `drafter-registry`
+### Registry
 
 ```shell
 $ drafter-registry --help
@@ -234,7 +234,7 @@ Usage of drafter-registry:
         Address to listen on (default ":1600")
 ```
 
-### `drafter-peer`
+### Peer
 
 ```shell
 $ drafter-peer --help
@@ -273,7 +273,7 @@ Usage of drafter-peer:
         User ID for the Firecracker process
 ```
 
-### `drafter-terminator`
+### Terminator
 
 ```shell
 $ drafter-terminator --help
