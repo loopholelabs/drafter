@@ -188,12 +188,10 @@ In a new terminal, start the snapshotter:
 $ sudo drafter-snapshotter --netns ark0 --devices '[
   {
     "name": "state",
-    "input": "",
     "output": "out/package/state.bin"
   },
   {
     "name": "memory",
-    "input": "",
     "output": "out/package/memory.bin"
   },
   {
@@ -208,7 +206,6 @@ $ sudo drafter-snapshotter --netns ark0 --devices '[
   },
   {
     "name": "config",
-    "input": "",
     "output": "out/package/config.json"
   },
   {
@@ -266,6 +263,95 @@ $ drafter-packager --package-path out/valkey.tar.zst --devices '[
 ]'
 ```
 
+### 3. Creating a VM Instance from a Package with `drafter-runner`
+
+Now that we have a VM package, you can start it locally with `drafter-runner` by running the following:
+
+```shell
+$ sudo drafter-runner --netns ark0 --devices '[
+  {
+    "name": "state",
+    "path": "out/package/state.bin"
+  },
+  {
+    "name": "memory",
+    "path": "out/package/memory.bin"
+  },
+  {
+    "name": "kernel",
+    "path": "out/package/vmlinux"
+  },
+  {
+    "name": "disk",
+    "path": "out/package/rootfs.ext4"
+  },
+  {
+    "name": "config",
+    "path": "out/package/config.json"
+  },
+  {
+    "name": "oci",
+    "path": "out/blueprint/oci.ext4"
+  }
+]'
+```
+
+You should see the Valkey logs and a login prompt appear:
+
+```plaintext
+# ...
+[    0.902719] crun[383]: 1:M 22 Jun 2024 07:35:10.407 * Server initialized
+[    0.903232] crun[383]: 1:M 22 Jun 2024 07:35:10.408 * Ready to accept connections tcp
+
+Welcome to Loophole Labs DrafterOS
+drafterhost login:
+```
+
+By default, input is disabled. To enable it, pass the `--enable-input` flag to `drafter-runner`. To stop the VM, press `CTRL-C` or send the `SIGINT` signal to the `drafter-runner` process. Before stopping, `drafter-runner` takes a snapshot of the VM, which it uses to resume the VM the next time it is started.
+
+### 4. Forwarding a VM Instance Port with `drafter-forwarder`
+
+> Currently, Drafter's NAT only supports IPv4. IPv6 support is planned. If you need IPv6 support now, use a reverse proxy that binds to an IPv6 address on the host and forwards traffic to Drafter's forwarded port.
+
+To access the Valkey instance running inside the VM, you can forward its port to the host using `drafter-forwarder`. For example, to forward Valkey's TCP port `6379` to port `3333` on your local system (similar to Docker's `-p 6379:3333/tcp` flag), run the following command:
+
+```shell
+$ sudo drafter-forwarder --port-forwards '[
+  {
+    "netns": "ark0",
+    "internalPort": "6379",
+    "protocol": "tcp",
+    "externalAddr": "127.0.0.1:3333"
+  }
+]'
+```
+
+In a new terminal, connect to Valkey with:
+
+```shell
+$ valkey-cli -u redis://127.0.0.1:3333/0
+```
+
+Valkey is now accessible on your local system. To also expose it to your network on port `3333`, run the following command (replacing `192.168.12.31` with your IPv4 address):
+
+```shell
+$ sudo drafter-forwarder --port-forwards '[
+  {
+    "netns": "ark0",
+    "internalPort": "6379",
+    "protocol": "tcp",
+    "externalAddr": "127.0.0.1:3333"
+  },
+  {
+    "netns": "ark0",
+    "internalPort": "6379",
+    "protocol": "tcp",
+    "externalAddr": "192.168.12.31:3333"
+  }
+]'
+```
+
+Remember to open port `3333/tcp` on your firewall to make it reachable from your network. To access the port from both your local system (e.g. for a reverse proxy setup) and the network, you must forward it to both `127.0.0.1:3333` and `192.168.12.31:3333`.
 
 ## Reference
 
