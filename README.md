@@ -22,6 +22,14 @@ It enables you to ...
 - **Hook into suspend and resume lifecycle with agents**: Drafter uses a VSock- and [panrpc](https://github.com/pojntfx/panrpc)-based agent system to signal to guest applications before a suspend/resume event, allowing them to react accordingly.
 - **Easily embed VMs inside your applications**: Drafter provides a powerful, context-aware [Go library](https://pkg.go.dev/github.com/pojntfx/loopholelabs/drafter) for all system components, including a NAT for guest-to-host networking, a forwarder for local port-forwarding/host-to-guest networking, an agent and liveness component for responding to snapshots and suspend/resume events inside the guest, a snapshotter for creating snapshots, a packager for packaging VM images, a runner for starting VM images locally, a registry for serving VM images over the network, a peer for starting and live migrating VMs over the network, and a terminator for backing up a VM.
 
+**Want to see it in action?** See this snippet from our KubeCon talk where we live migrate a Minecraft server between two continents without downtime:
+
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=HrtX0JrjekE" target="_blank">
+    <img alt="YouTube thumbnail of the KubeCon talk on Drafter" width="60%" src="https://img.youtube.com/vi/HrtX0JrjekE/0.jpg" />
+  </a>
+</p>
+
 ## Installation
 
 Drafter is available as static binaries on [GitHub releases](https://github.com/loopholelabs/drafter/releases). On Linux, you can install them like so:
@@ -357,7 +365,7 @@ Remember to open port `3333/tcp` on your firewall to make it reachable from your
 
 While `drafter-runner` is useful for trying out VM packages locally, using `drafter-peer` is recommended for any advanced usage, such as creating multiple VM instances from the same VM package or live migrating VM instances between hosts.
 
-#### Create a Single VM Instance from a VM Package
+#### Creating a Single VM Instance from a VM Package
 
 <details>
   <summary>Expand section</summary>
@@ -443,7 +451,7 @@ $ sudo drafter-peer --netns ark0 --raddr '' --laddr '' --devices '[
 
 </details>
 
-#### Create Multiple Independent VM Instances from a Single VM Package
+#### Creating Multiple Independent VM Instances from a Single VM Package
 
 <details>
   <summary>Expand section</summary>
@@ -632,6 +640,199 @@ In a new terminal, you can now connect to the two independent Valkey instances w
 $ valkey-cli -u redis://127.0.0.1:3333/0
 # For the second instance
 $ valkey-cli -u redis://127.0.0.1:4444/0
+```
+
+</details>
+
+#### Live Migrating a VM Instance Across Processes and Hosts
+
+<details>
+  <summary>Expand section</summary>
+
+To live migrate a VM instance, first start a new VM instance and set its listen address using the `--laddr` option. If you want the VM to be migratable over the network instead of just the local system, use `--laddr ':1337'`:
+
+```shell
+$ sudo drafter-peer --netns ark0 --raddr '' --laddr 'localhost:1337' --devices '[
+  {
+    "name": "state",
+    "base": "out/package/state.bin",
+    "overlay": "out/instance-0/state.bin",
+    "state": "out/instance-0/state.bin",
+    "blockSize": 65536,
+    "expiry": 1000000000,
+    "maxDirtyBlocks": 200,
+    "minCycles": 5,
+    "maxCycles": 20,
+    "cycleThrottle": 500000000
+  },
+  {
+    "name": "memory",
+    "base": "out/package/memory.bin",
+    "overlay": "out/instance-0/memory.bin",
+    "state": "out/instance-0/memory.bin",
+    "blockSize": 65536,
+    "expiry": 1000000000,
+    "maxDirtyBlocks": 200,
+    "minCycles": 5,
+    "maxCycles": 20,
+    "cycleThrottle": 500000000
+  },
+  {
+    "name": "kernel",
+    "base": "out/package/vmlinux",
+    "overlay": "out/instance-0/vmlinux",
+    "state": "out/instance-0/vmlinux",
+    "blockSize": 65536,
+    "expiry": 1000000000,
+    "maxDirtyBlocks": 200,
+    "minCycles": 5,
+    "maxCycles": 20,
+    "cycleThrottle": 500000000
+  },
+  {
+    "name": "disk",
+    "base": "out/package/rootfs.ext4",
+    "overlay": "out/instance-0/rootfs.ext4",
+    "state": "out/instance-0/rootfs.ext4",
+    "blockSize": 65536,
+    "expiry": 1000000000,
+    "maxDirtyBlocks": 200,
+    "minCycles": 5,
+    "maxCycles": 20,
+    "cycleThrottle": 500000000
+  },
+  {
+    "name": "config",
+    "base": "out/package/config.json",
+    "overlay": "out/instance-0/config.json",
+    "state": "out/instance-0/config.json",
+    "blockSize": 65536,
+    "expiry": 1000000000,
+    "maxDirtyBlocks": 200,
+    "minCycles": 5,
+    "maxCycles": 20,
+    "cycleThrottle": 500000000
+  },
+  {
+    "name": "oci",
+    "base": "out/package/oci.ext4",
+    "overlay": "out/instance-0/oci.ext4",
+    "state": "out/instance-0/oci.ext4",
+    "blockSize": 65536,
+    "expiry": 1000000000,
+    "maxDirtyBlocks": 200,
+    "minCycles": 5,
+    "maxCycles": 20,
+    "cycleThrottle": 500000000
+  }
+]'
+```
+
+Once the instance has started, you should see output like this:
+
+```shell
+2024/06/24 13:43:11 Resumed VM in 139.720884ms on out/vms/firecracker/VKaFJFNJwPwM6QRoVwQV3i/root
+2024/06/24 13:43:11 Serving on 127.0.0.1:1337
+```
+
+Now that the VM instance is migratable, start a second peer and set its remote address to that of the first instance using the `--raddr` option. This can be done either on the local system (to migrate a VM instance between two processes) or over a network to a second host (to migrate a VM instance between two hosts).
+
+If you use PVM and a CPU template (see [installation](#installation)), this process should work across cloud providers and different CPU models, as long as the CPUs are from the same manufacturer (AMD to AMD and Intel to Intel migrations are supported; AMD to Intel migrations and vice versa will fail). If you're not using PVM, live migration typically only works if the exact same CPU model is used on both the first and second host.
+
+In this example, we'll pass `--laddr ''` to the second instance, which will not make it migratable again. If you want to make the instance migratable after the migration, set `--laddr` to a listen address of your choice. To migrate the VM, run the following command, replacing `--raddr 'localhost:1337'` with the actual remote address if you're migrating over the network:
+
+```shell
+$ sudo drafter-peer --netns ark1 --raddr 'localhost:1337' --laddr '' --devices '[
+  {
+    "name": "state",
+    "base": "out/package/state.bin",
+    "overlay": "out/instance-1/state.bin",
+    "state": "out/instance-1/state.bin",
+    "blockSize": 65536,
+    "expiry": 1000000000,
+    "maxDirtyBlocks": 200,
+    "minCycles": 5,
+    "maxCycles": 20,
+    "cycleThrottle": 500000000
+  },
+  {
+    "name": "memory",
+    "base": "out/package/memory.bin",
+    "overlay": "out/instance-1/memory.bin",
+    "state": "out/instance-1/memory.bin",
+    "blockSize": 65536,
+    "expiry": 1000000000,
+    "maxDirtyBlocks": 200,
+    "minCycles": 5,
+    "maxCycles": 20,
+    "cycleThrottle": 500000000
+  },
+  {
+    "name": "kernel",
+    "base": "out/package/vmlinux",
+    "overlay": "out/instance-1/vmlinux",
+    "state": "out/instance-1/vmlinux",
+    "blockSize": 65536,
+    "expiry": 1000000000,
+    "maxDirtyBlocks": 200,
+    "minCycles": 5,
+    "maxCycles": 20,
+    "cycleThrottle": 500000000
+  },
+  {
+    "name": "disk",
+    "base": "out/package/rootfs.ext4",
+    "overlay": "out/instance-1/rootfs.ext4",
+    "state": "out/instance-1/rootfs.ext4",
+    "blockSize": 65536,
+    "expiry": 1000000000,
+    "maxDirtyBlocks": 200,
+    "minCycles": 5,
+    "maxCycles": 20,
+    "cycleThrottle": 500000000
+  },
+  {
+    "name": "config",
+    "base": "out/package/config.json",
+    "overlay": "out/instance-1/config.json",
+    "state": "out/instance-1/config.json",
+    "blockSize": 65536,
+    "expiry": 1000000000,
+    "maxDirtyBlocks": 200,
+    "minCycles": 5,
+    "maxCycles": 20,
+    "cycleThrottle": 500000000
+  },
+  {
+    "name": "oci",
+    "base": "out/package/oci.ext4",
+    "overlay": "out/instance-1/oci.ext4",
+    "state": "out/instance-1/oci.ext4",
+    "blockSize": 65536,
+    "expiry": 1000000000,
+    "maxDirtyBlocks": 200,
+    "minCycles": 5,
+    "maxCycles": 20,
+    "cycleThrottle": 500000000
+  }
+]'
+```
+
+During the migration, on the first instance, you should see logs like the following right before the first process exits:
+
+```plaintext
+# ...
+2024/06/24 13:55:16 Migrated 16384 of 16384 initial blocks for local device 4
+2024/06/24 13:55:16 Completed migration of local device 4
+2024/06/24 13:55:16 Completed all device migrations
+2024/06/24 13:55:16 Shutting down
+```
+
+On the destination, after all devices have been migrated, you should see logs like this which indicate that the migration has completed successfully:
+
+```plaintext
+# ...
+2024/06/24 13:55:16 Resumed VM in 60.026997ms on out/vms/firecracker/39zY39Y9Gs8N4wPMs5WoLe/root
 ```
 
 </details>
