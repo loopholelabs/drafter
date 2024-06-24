@@ -353,6 +353,289 @@ $ sudo drafter-forwarder --port-forwards '[
 
 Remember to open port `3333/tcp` on your firewall to make it reachable from your network. To access the port from both your local system (e.g. for a reverse proxy setup) and the network, you must forward it to both `127.0.0.1:3333` and `192.168.12.31:3333`.
 
+### 5. Creating and Live Migrating VM Instances with `drafter-peer`
+
+While `drafter-runner` is useful for trying out VM packages locally, using `drafter-peer` is recommended for any advanced usage, such as creating multiple VM instances from the same VM package or live migrating VM instances between hosts.
+
+#### Create a Single VM Instance from a VM Package
+
+<details>
+  <summary>Expand section</summary>
+
+To replicate `drafter-runner` with `drafter-peer`, that is to say to create a single VM instance from a VM package where all changes get written back to the VM package, run the following:
+
+```shell
+$ sudo drafter-peer --netns ark0 --raddr '' --laddr '' --devices '[
+  {
+    "name": "state",
+    "base": "out/package/state.bin",
+    "overlay": "",
+    "state": "",
+    "blockSize": 65536,
+    "expiry": 1000000000,
+    "maxDirtyBlocks": 200,
+    "minCycles": 5,
+    "maxCycles": 20,
+    "cycleThrottle": 500000000
+  },
+  {
+    "name": "memory",
+    "base": "out/package/memory.bin",
+    "overlay": "",
+    "state": "",
+    "blockSize": 65536,
+    "expiry": 1000000000,
+    "maxDirtyBlocks": 200,
+    "minCycles": 5,
+    "maxCycles": 20,
+    "cycleThrottle": 500000000
+  },
+  {
+    "name": "kernel",
+    "base": "out/package/vmlinux",
+    "overlay": "",
+    "state": "",
+    "blockSize": 65536,
+    "expiry": 1000000000,
+    "maxDirtyBlocks": 200,
+    "minCycles": 5,
+    "maxCycles": 20,
+    "cycleThrottle": 500000000
+  },
+  {
+    "name": "disk",
+    "base": "out/package/rootfs.ext4",
+    "overlay": "",
+    "state": "",
+    "blockSize": 65536,
+    "expiry": 1000000000,
+    "maxDirtyBlocks": 200,
+    "minCycles": 5,
+    "maxCycles": 20,
+    "cycleThrottle": 500000000
+  },
+  {
+    "name": "config",
+    "base": "out/package/config.json",
+    "overlay": "",
+    "state": "",
+    "blockSize": 65536,
+    "expiry": 1000000000,
+    "maxDirtyBlocks": 200,
+    "minCycles": 5,
+    "maxCycles": 20,
+    "cycleThrottle": 500000000
+  },
+  {
+    "name": "oci",
+    "base": "out/package/oci.ext4",
+    "overlay": "",
+    "state": "",
+    "blockSize": 65536,
+    "expiry": 1000000000,
+    "maxDirtyBlocks": 200,
+    "minCycles": 5,
+    "maxCycles": 20,
+    "cycleThrottle": 500000000
+  }
+]'
+```
+
+</details>
+
+#### Create Multiple Independent VM Instances from a Single VM Package
+
+<details>
+  <summary>Expand section</summary>
+
+`drafter-peer` supports the use of a copy-on-write mechanism to allow creating two independent VM instances from the same VM package. To use it, run each VM in its own network namespace and define a different `overlay` and `state` file for each VM instance. Start the first VM like so:
+
+```shell
+$ sudo drafter-peer --netns ark0 --raddr '' --laddr '' --devices '[
+  {
+    "name": "state",
+    "base": "out/package/state.bin",
+    "overlay": "out/instance-0/state.bin",
+    "state": "out/instance-0/state.bin",
+    "blockSize": 65536,
+    "expiry": 1000000000,
+    "maxDirtyBlocks": 200,
+    "minCycles": 5,
+    "maxCycles": 20,
+    "cycleThrottle": 500000000
+  },
+  {
+    "name": "memory",
+    "base": "out/package/memory.bin",
+    "overlay": "out/instance-0/memory.bin",
+    "state": "out/instance-0/memory.bin",
+    "blockSize": 65536,
+    "expiry": 1000000000,
+    "maxDirtyBlocks": 200,
+    "minCycles": 5,
+    "maxCycles": 20,
+    "cycleThrottle": 500000000
+  },
+  {
+    "name": "kernel",
+    "base": "out/package/vmlinux",
+    "overlay": "out/instance-0/vmlinux",
+    "state": "out/instance-0/vmlinux",
+    "blockSize": 65536,
+    "expiry": 1000000000,
+    "maxDirtyBlocks": 200,
+    "minCycles": 5,
+    "maxCycles": 20,
+    "cycleThrottle": 500000000
+  },
+  {
+    "name": "disk",
+    "base": "out/package/rootfs.ext4",
+    "overlay": "out/instance-0/rootfs.ext4",
+    "state": "out/instance-0/rootfs.ext4",
+    "blockSize": 65536,
+    "expiry": 1000000000,
+    "maxDirtyBlocks": 200,
+    "minCycles": 5,
+    "maxCycles": 20,
+    "cycleThrottle": 500000000
+  },
+  {
+    "name": "config",
+    "base": "out/package/config.json",
+    "overlay": "out/instance-0/config.json",
+    "state": "out/instance-0/config.json",
+    "blockSize": 65536,
+    "expiry": 1000000000,
+    "maxDirtyBlocks": 200,
+    "minCycles": 5,
+    "maxCycles": 20,
+    "cycleThrottle": 500000000
+  },
+  {
+    "name": "oci",
+    "base": "out/package/oci.ext4",
+    "overlay": "out/instance-0/oci.ext4",
+    "state": "out/instance-0/oci.ext4",
+    "blockSize": 65536,
+    "expiry": 1000000000,
+    "maxDirtyBlocks": 200,
+    "minCycles": 5,
+    "maxCycles": 20,
+    "cycleThrottle": 500000000
+  }
+]'
+```
+
+Then start the second, independent VM from the same VM package like so:
+
+```shell
+$ sudo drafter-peer --netns ark1 --raddr '' --laddr '' --devices '[
+  {
+    "name": "state",
+    "base": "out/package/state.bin",
+    "overlay": "out/instance-1/state.bin",
+    "state": "out/instance-1/state.bin",
+    "blockSize": 65536,
+    "expiry": 1000000000,
+    "maxDirtyBlocks": 200,
+    "minCycles": 5,
+    "maxCycles": 20,
+    "cycleThrottle": 500000000
+  },
+  {
+    "name": "memory",
+    "base": "out/package/memory.bin",
+    "overlay": "out/instance-1/memory.bin",
+    "state": "out/instance-1/memory.bin",
+    "blockSize": 65536,
+    "expiry": 1000000000,
+    "maxDirtyBlocks": 200,
+    "minCycles": 5,
+    "maxCycles": 20,
+    "cycleThrottle": 500000000
+  },
+  {
+    "name": "kernel",
+    "base": "out/package/vmlinux",
+    "overlay": "out/instance-1/vmlinux",
+    "state": "out/instance-1/vmlinux",
+    "blockSize": 65536,
+    "expiry": 1000000000,
+    "maxDirtyBlocks": 200,
+    "minCycles": 5,
+    "maxCycles": 20,
+    "cycleThrottle": 500000000
+  },
+  {
+    "name": "disk",
+    "base": "out/package/rootfs.ext4",
+    "overlay": "out/instance-1/rootfs.ext4",
+    "state": "out/instance-1/rootfs.ext4",
+    "blockSize": 65536,
+    "expiry": 1000000000,
+    "maxDirtyBlocks": 200,
+    "minCycles": 5,
+    "maxCycles": 20,
+    "cycleThrottle": 500000000
+  },
+  {
+    "name": "config",
+    "base": "out/package/config.json",
+    "overlay": "out/instance-1/config.json",
+    "state": "out/instance-1/config.json",
+    "blockSize": 65536,
+    "expiry": 1000000000,
+    "maxDirtyBlocks": 200,
+    "minCycles": 5,
+    "maxCycles": 20,
+    "cycleThrottle": 500000000
+  },
+  {
+    "name": "oci",
+    "base": "out/package/oci.ext4",
+    "overlay": "out/instance-1/oci.ext4",
+    "state": "out/instance-1/oci.ext4",
+    "blockSize": 65536,
+    "expiry": 1000000000,
+    "maxDirtyBlocks": 200,
+    "minCycles": 5,
+    "maxCycles": 20,
+    "cycleThrottle": 500000000
+  }
+]'
+```
+
+You should now have two independent VM instances started from a single VM package. To access both instances on your local system, you can forward each instance's ports to a matching port on the host; to make the first instance's Valkey available on port `3333` on the host, and the second instance's Valkey available on port `4444` on the host, run:
+
+```shell
+$ sudo drafter-forwarder --port-forwards '[
+  {
+    "netns": "ark0",
+    "internalPort": "6379",
+    "protocol": "tcp",
+    "externalAddr": "127.0.0.1:3333"
+  },
+  {
+    "netns": "ark1",
+    "internalPort": "6379",
+    "protocol": "tcp",
+    "externalAddr": "127.0.0.1:4444"
+  }
+]'
+```
+
+In a new terminal, you can now connect to the two independent Valkey instances with:
+
+```shell
+# For the first instance
+$ valkey-cli -u redis://127.0.0.1:3333/0
+# For the second instance
+$ valkey-cli -u redis://127.0.0.1:4444/0
+```
+
+</details>
+
 ## Reference
 
 <details>
