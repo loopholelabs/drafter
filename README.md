@@ -8,7 +8,7 @@ Minimal VM primitive with live migration support.
 
 [![hydrun CI](https://github.com/loopholelabs/drafter/actions/workflows/hydrun.yaml/badge.svg)](https://github.com/loopholelabs/drafter/actions/workflows/hydrun.yaml)
 ![Go Version](https://img.shields.io/badge/go%20version-%3E=1.21-61CFDD.svg)
-[![Go Reference](https://pkg.go.dev/badge/github.com/pojntfx/loopholelabs/drafter.svg)](https://pkg.go.dev/github.com/pojntfx/loopholelabs/drafter)
+[![Go Reference](https://pkg.go.dev/badge/github.com/loopholelabs/drafter.svg)](https://pkg.go.dev/github.com/loopholelabs/drafter)
 
 ## Overview
 
@@ -20,12 +20,12 @@ It enables you to ...
 - **Run OCI images as VMs**: In addition to running almost any Linux distribution (Alpine Linux, Fedora, Debian, Ubuntu etc.), Drafter can also run OCI images as VMs without the overhead of a nested Docker daemon or full CRI implementation. It uses a dynamic disk configuration system, an optional custom Buildroot-based OS to start the OCI image, and a familiar Docker-like networking configuration.
 - **Easily live migrate VMs between heterogeneous nodes with no downtime**: Drafter leverages a [custom optimized Firecracker fork](https://github.com/loopholelabs/firecracker) and [patches to PVM](https://github.com/loopholelabs/linux-pvm-ci) to enable live migration of VMs between heterogeneous nodes/between data centers and cloud providers without hardware virtualization support, even across continents. With a [customizable hybrid pre- and post-copy strategy](https://pojntfx.github.io/networked-linux-memsync/main.pdf), migrations typically take below 100ms within the same datacenter and around 500ms for Europe ↔ North America migrations over the public internet, depending on the application.
 - **Hook into suspend and resume lifecycle with agents**: Drafter uses a VSock- and [panrpc](https://github.com/pojntfx/panrpc)-based agent system to signal to guest applications before a suspend/resume event, allowing them to react accordingly.
-- **Easily embed VMs inside your applications**: Drafter provides a powerful, context-aware [Go library](https://pkg.go.dev/github.com/pojntfx/loopholelabs/drafter) for all system components, including a NAT for guest-to-host networking, a forwarder for local port-forwarding/host-to-guest networking, an agent and liveness component for responding to snapshots and suspend/resume events inside the guest, a snapshotter for creating snapshots, a packager for packaging VM images, a runner for starting VM images locally, a registry for serving VM images over the network, a peer for starting and live migrating VMs over the network, and a terminator for backing up a VM.
+- **Easily embed VMs inside your applications**: Drafter provides a powerful, context-aware [Go library](https://pkg.go.dev/github.com/loopholelabs/drafter) for all system components, including a NAT for guest-to-host networking, a forwarder for local port-forwarding/host-to-guest networking, an agent and liveness component for responding to snapshots and suspend/resume events inside the guest, a snapshotter for creating snapshots, a packager for packaging VM images, a runner for starting VM images locally, a registry for serving VM images over the network, a peer for starting and live migrating VMs over the network, and a terminator for backing up a VM.
 
 **Want to see it in action?** See this snippet from our KubeCon talk where we live migrate a Minecraft server between two continents without downtime:
 
 <p align="center">
-  <a href="https://www.youtube.com/watch?v=HrtX0JrjekE" target="_blank">
+  <a href="https://youtu.be/HrtX0JrjekE?si=IOMP3pY-xyYSkKy1&t=1866" target="_blank">
     <img alt="YouTube thumbnail of the KubeCon talk on Drafter" width="60%" src="https://img.youtube.com/vi/HrtX0JrjekE/0.jpg" />
   </a>
 </p>
@@ -839,10 +839,26 @@ On the destination, after all devices have been migrated, you should see logs li
 
 ## Reference
 
+### Examples
+
+To make getting started with Drafter as a library easier, take a look at the following examples:
+
+- [**NAT**](./cmd/drafter-nat/main.go): Enables guest-to-host networking
+- [**Forwarder**](./cmd/drafter-forwarder/main.go): Enables local port-forwarding/host-to-guest networking
+- [**Agent**](./cmd/drafter-agent/main.go) and [**Liveness**](./cmd/drafter-liveness/main.go): Allow responding to snapshot and suspend/resume events within the guest
+- [**Snapshotter**](./cmd/drafter-snapshotter/main.go): Creates snapshots/VM packages from blueprints
+- [**Packager**](./cmd/drafter-packager/main.go): Packages VM instances into distributable packages
+- [**Runner**](./cmd/drafter-runner/main.go): Starts VM instances from packages locally
+- [**Registry**](./cmd/drafter-registry/main.go): Distributes VM packages across the network
+- [**Peer**](./cmd/drafter-peer/main.go): Live migrates VM instances across the network
+- [**Terminator**](./cmd/drafter-terminator/main.go): Handles backup operations for VMs
+
+### Command Line Arguments
+
 <details>
   <summary>Expand command reference</summary>
 
-### NAT
+#### NAT
 
 ```shell
 $ drafter-nat --help
@@ -871,7 +887,7 @@ Usage of drafter-nat:
         CIDR for the veths inside the namespace (default "10.0.15.0/24")
 ```
 
-### Forwarder
+#### Forwarder
 
 ```shell
 $ drafter-forwarder --help
@@ -882,7 +898,7 @@ Usage of drafter-forwarder:
         Port forwards configuration (wildcard IPs like 0.0.0.0 are not valid, be explict) (default "[{\"netns\":\"ark0\",\"internalPort\":\"6379\",\"protocol\":\"tcp\",\"externalAddr\":\"127.0.0.1:3333\"}]")
 ```
 
-### Agent
+#### Agent
 
 ```shell
 $ drafter-agent --help
@@ -899,7 +915,7 @@ Usage of drafter-agent:
         VSock dial timeout (default 1m0s)
 ```
 
-### Liveness
+#### Liveness
 
 ```shell
 $ drafter-liveness --help
@@ -910,7 +926,7 @@ Usage of drafter-liveness:
         VSock dial timeout (default 1m0s)
 ```
 
-### Snapshotter
+#### Snapshotter
 
 ```shell
 $ drafter-snapshotter --help
@@ -957,7 +973,7 @@ Usage of drafter-snapshotter:
         User ID for the Firecracker process
 ```
 
-### Packager
+#### Packager
 
 ```shell
 $ drafter-packager --help
@@ -970,7 +986,7 @@ Usage of drafter-packager:
         Path to package file (default "out/app.tar.zst")
 ```
 
-### Runner
+#### Runner
 
 ```shell
 $ drafter-runner --help
@@ -1003,7 +1019,7 @@ Usage of drafter-runner:
         User ID for the Firecracker process
 ```
 
-### Registry
+#### Registry
 
 ```shell
 $ drafter-registry --help
@@ -1016,7 +1032,7 @@ Usage of drafter-registry:
         Address to listen on (default ":1600")
 ```
 
-### Peer
+#### Peer
 
 ```shell
 $ drafter-peer --help
@@ -1055,7 +1071,7 @@ Usage of drafter-peer:
         User ID for the Firecracker process
 ```
 
-### Terminator
+#### Terminator
 
 ```shell
 $ drafter-terminator --help
@@ -1067,6 +1083,18 @@ Usage of drafter-terminator:
 ```
 
 </details>
+
+## FAQ
+
+### How Can I Embed Drafter in My Application?
+
+Integrating Drafter into your Go project is straightforward; it's a pure Go library that does not require CGo. To begin, you can add Drafter by running the following:
+
+```shell
+$ go get github.com/loopholelabs/drafter/...@latest
+```
+
+The [`pkg/roles`](https://pkg.go.dev/github.com/loopholelabs/drafter/pkg/roles) package includes all the necessary functionality for most usage scenarios. For practical implementation examples, refer to [examples](#examples).
 
 ## Acknowledgements
 
