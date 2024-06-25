@@ -95,7 +95,7 @@ func CreateSnapshot(
 	})
 
 	liveness := ipc.NewLivenessServer(
-		filepath.Join(server.VMPath, vsockName),
+		filepath.Join(server.VMPath, VSockName),
 		uint32(livenessConfiguration.LivenessVSockPort),
 	)
 
@@ -110,7 +110,7 @@ func CreateSnapshot(
 	}
 
 	agent, err := ipc.StartAgentServer(
-		filepath.Join(server.VMPath, vsockName),
+		filepath.Join(server.VMPath, VSockName),
 		uint32(agentConfiguration.AgentVSockPort),
 	)
 	if err != nil {
@@ -199,12 +199,12 @@ func CreateSnapshot(
 		networkConfiguration.Interface,
 		networkConfiguration.MAC,
 
-		vsockName,
+		VSockName,
 		ipc.VSockCIDGuest,
 	); err != nil {
 		panic(err)
 	}
-	defer os.Remove(filepath.Join(server.VMPath, vsockName))
+	defer os.Remove(filepath.Join(server.VMPath, VSockName))
 
 	{
 		receiveCtx, cancel := context.WithTimeout(ctx, livenessConfiguration.ResumeTimeout)

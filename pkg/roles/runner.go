@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	vsockName = "vsock.sock"
+	VSockName = "vsock.sock"
 )
 
 type HypervisorConfiguration struct {
@@ -248,7 +248,7 @@ func StartRunner(
 		})
 
 		agent, err = ipc.StartAgentServer(
-			filepath.Join(server.VMPath, vsockName),
+			filepath.Join(server.VMPath, VSockName),
 			uint32(agentVSockPort),
 		)
 		if err != nil {

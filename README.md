@@ -178,6 +178,8 @@ $ drafter-packager --package-path out/oci-valkey.tar.zst --devices '[
 ]'
 ```
 
+Drafter doesn't concern itself with the actual process of building the underlying VM images aside from this simple build tooling. If you're looking for a more advanced and streamlined process, like streaming conversion and startup of OCI images, a way to replicate/distribute packages or a build service, check out [Loophole Labs Architect](https://architect.run/).
+
 </details>
 
 ### 2. Creating a VM Package with `drafter-snapshotter`
@@ -271,6 +273,8 @@ $ drafter-packager --package-path out/valkey.tar.zst --devices '[
 ]'
 ```
 
+Note that unless you're using PVM (see [installation](#installation) and [Live Migrating a VM Instance Across Processes and Hosts](#live-migrating-a-vm-instance-across-processes-and-hosts) for more information), these snapshots are not generally portable across different hosts, even if you use CPU templates. If you're looking for a way to automate snapshot compatibility checks, host-specific builds or a snapshot creation service, check out [Loophole Labs Architect](https://architect.run/).
+
 ### 3. Creating a VM Instance from a Package with `drafter-runner`
 
 Now that we have a VM package, you can start it locally with `drafter-runner` by running the following:
@@ -319,7 +323,7 @@ By default, input is disabled. To enable it, pass the `--enable-input` flag to `
 
 ### 4. Forwarding a VM Instance Port with `drafter-forwarder`
 
-> Currently, Drafter's NAT only supports IPv4. IPv6 support is planned. If you need IPv6 support now, use a reverse proxy that binds to an IPv6 address on the host and forwards traffic to Drafter's forwarded port.
+> See [Does Drafter Support IPv6?](#does-drafter-support-ipv6) for more information on the current state of IPv6 support
 
 To access the Valkey instance running inside the VM, you can forward its port to the host using `drafter-forwarder`. For example, to forward Valkey's TCP port `6379` to port `3333` on your local system (similar to Docker's `-p 6379:3333/tcp` flag), run the following command:
 
@@ -359,7 +363,7 @@ $ sudo drafter-forwarder --port-forwards '[
 ]'
 ```
 
-Remember to open port `3333/tcp` on your firewall to make it reachable from your network. To access the port from both your local system (e.g. for a reverse proxy setup) and the network, you must forward it to both `127.0.0.1:3333` and `192.168.12.31:3333`.
+Remember to open port `3333/tcp` on your firewall to make it reachable from your network. To access the port from both your local system (e.g. for a reverse proxy setup) and the network, you must forward it to both `127.0.0.1:3333` and `192.168.12.31:3333`. If you intend on using the port-forwarder during live migrations, keep in mind that connections will break after moving to the new host; if you're interested in keeping the connections alive, see [How Can I Keep My Network Connections Alive While Live Migrating?](#how-can-i-keep-my-network-connections-alive-while-live-migrating).
 
 ### 5. Creating and Live Migrating VM Instances with `drafter-peer`
 
@@ -735,11 +739,11 @@ Once the instance has started, you should see output like this:
 2024/06/24 13:43:11 Serving on 127.0.0.1:1337
 ```
 
-Now that the VM instance is migratable, start a second peer and set its remote address to that of the first instance using the `--raddr` option. This can be done either on the local system (to migrate a VM instance between two processes) or over a network to a second host (to migrate a VM instance between two hosts).
+This instance is now the first peer in a migration chain. Now that the VM instance is migratable, start a second peer (the second peer in the migration chain) and set its remote address to that of the first instance using the `--raddr` option. This can be done either on the local system (to migrate a VM instance between two processes) or over a network to a second host (to migrate a VM instance between two hosts).
 
 If you use PVM and a CPU template (see [installation](#installation)), this process should work across cloud providers and different CPU models, as long as the CPUs are from the same manufacturer (AMD to AMD and Intel to Intel migrations are supported; AMD to Intel migrations and vice versa will fail). If you're not using PVM, live migration typically only works if the exact same CPU model is used on both the first and second host.
 
-In this example, we'll pass `--laddr ''` to the second instance, which will not make it migratable again. If you want to make the instance migratable after the migration, set `--laddr` to a listen address of your choice. To migrate the VM, run the following command, replacing `--raddr 'localhost:1337'` with the actual remote address if you're migrating over the network:
+In this example, we'll pass `--laddr ''` to the second instance, which will not make it migratable again, effectively terminating the migration chain. If you want to make the instance migratable again after the migration, effectively continuing the migration chain, set `--laddr` to a listen address of your choice. To migrate the VM, run the following command, replacing `--raddr 'localhost:1337'` with the actual remote address if you're migrating over the network:
 
 ```shell
 $ sudo drafter-peer --netns ark1 --raddr 'localhost:1337' --laddr '' --devices '[
@@ -1095,6 +1099,55 @@ $ go get github.com/loopholelabs/drafter/...@latest
 ```
 
 The [`pkg/roles`](https://pkg.go.dev/github.com/loopholelabs/drafter/pkg/roles) package includes all the necessary functionality for most usage scenarios. For practical implementation examples, refer to [examples](#examples).
+
+### How Can I Add Additional Disks to My VM Instance?
+
+Adding additional disks to a VM instance is as easy as adding them to the `--devices` flag for the snapshotter, runner or peer. For example, to add a disk at `/tmp/mydisk.ext4` to the peer, add the following to `--devices`:
+
+```json
+{
+  "name": "state",
+  "base": "/tmp/mydisk.ext4",
+  "overlay": "out/instance-0/overlay/mydisk.ext4",
+  "state": "out/instance-0/state/mydisk.ext4",
+  "blockSize": 65536,
+  "expiry": 1000000000,
+  "maxDirtyBlocks": 200,
+  "minCycles": 5,
+  "maxCycles": 20,
+  "cycleThrottle": 500000000
+}
+```
+
+Disks aren't mounted automatically; to find and mount them, use the `lsblk` and `mount` commands in the guest VM. If you want to mount the disks on boot time, you can modify `/etc/fstab` and add a line like so (assuming that the disk has the label `mydisk`):
+
+```shell
+LABEL=mydisk    /mymountmount    ext4    defaults    0    2
+```
+
+### How Can I Add Additional VSocks to My VM?
+
+Using additional VSocks requires getting access to the runner's `VMPath`, which is available at `${runner.VMPath}/${roles.VSockName}` and `${peer.VMPath}/${roles.VSockName}`. Other than that, refer to the [Firecracker docs](https://github.com/firecracker-microvm/firecracker/blob/main/docs/vsock.md) and [examples](#examples) for more information on how to use Firecracker's VSock-via-UNIX socket implementation.
+
+### Does Drafter Support IPv6?
+
+Currently, Drafter's NAT only supports IPv4. IPv6 support is planned. If you need IPv6 support now, use a reverse proxy like `socat`, Traefik, HAProxy or Envoy that binds to an IPv6 address on the host and forwards traffic to Drafter's forwarded port over IPv4.
+
+### Does Drafter Support GPUs?
+
+Drafter doesn't support GPUs at this time [Firecracker does not support GPU passthrough](https://github.com/firecracker-microvm/firecracker/issues/1179). Unless Firecracker implements GPU passthrough, there is no way to directly expose a GPU to the guest. Alternatives include porting Drafter to support [Cloud Hypervisor, which has GPU passthrough support](https://fly.io/blog/fly-io-has-gpus-now/), or if a GPU is required as a graphical device, to use [LLVMpipe](https://docs.mesa3d.org/drivers/llvmpipe.html) and a headless Wayland compositor like [Cage](https://github.com/cage-kiosk/cage) and [wayvnc](https://github.com/any1/wayvnc).
+
+### How Can I Authenticate Live Migrations or Migrate over Another Network Protocol like TLS or a UNIX socket?
+
+Drafter doesn't have a preferred authentication or transport mechanism, it instead relies on an external implementation of an `io.ReadWriter` to function. This `io.ReadWriter` can be implemented and authenticated by a TCP connection, UDP connection, TLS connection, WebSocket connection, UNIX socket or any other protocol of choice. See [examples](#examples) for more information on how to use specific transports for live migrations, e.g. TCP. If you need built-in authentication or a network solution that integrates with your existing environment, check out [Loophole Labs Architect](https://architect.run/).
+
+### How Can I Make a VM Migratable after Start It?
+
+The `drafter-peer` CLI only allows for a static configuration; if you supply a `--laddr`, the instance will automatically become migratable after resuming. If you wish to make a VM migratable at a specific point, or make it non-migratable, see [How Can I Embed Drafter in My Application?](#how-can-i-embed-drafter-in-my-application) to use the peer API directly, or check out [Loophole Labs Architect](https://architect.run/) for a solution with a built-in control plane.
+
+### How Can I Keep My Network Connections Alive While Live Migrating?
+
+Drafter doesn't concern itself with networking aside from its simple NAT and port forwarding implementations. If you're interested in a more full-fledged, production-ready networking solution with support for advanced networking rules and zero-downtime live migrations of network connections, check out [Loophole Labs Architect](https://architect.run/).
 
 ## Acknowledgements
 
