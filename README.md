@@ -129,6 +129,8 @@ out/
 # ...
 ```
 
+**Congratulations!** You've downloaded and extracted your first VM blueprint; be sure to check out the [packager reference](#packager) for more information. Next, let's create a snapshot from it!
+
 </details>
 
 #### Building a VM Blueprint Locally
@@ -136,7 +138,7 @@ out/
 <details>
   <summary>Expand section</summary>
 
-To build the blueprints locally instead, you can use the [included Makefile](./Makefile) with the following commands:
+To build the blueprints locally, you can use the [included Makefile](./Makefile) with the following commands:
 
 ```shell
 # Build the DrafterOS blueprint
@@ -179,6 +181,8 @@ $ drafter-packager --package-path out/oci-valkey.tar.zst --devices '[
 ```
 
 Drafter doesn't concern itself with the actual process of building the underlying VM images aside from this simple build tooling. If you're looking for a more advanced and streamlined process, like streaming conversion and startup of OCI images, a way to replicate/distribute packages or a build service, check out [Loophole Labs Architect](https://architect.run/).
+
+**Congratulations!** You've built and packaged your first VM blueprint; be sure to check out the [packager reference](#packager) for more information. Next, let's create a snapshot from it!
 
 </details>
 
@@ -275,6 +279,8 @@ $ drafter-packager --package-path out/valkey.tar.zst --devices '[
 
 Note that unless you're using PVM (see [installation](#installation) and [Live Migrating a VM Instance Across Processes and Hosts](#live-migrating-a-vm-instance-across-processes-and-hosts) for more information), these snapshots are not generally portable across different hosts, even if you use CPU templates. If you're looking for a way to automate snapshot compatibility checks, host-specific builds or a snapshot creation service, check out [Loophole Labs Architect](https://architect.run/).
 
+**Cheers!** You've created your first VM package; be sure to check out the [snapshotter reference](#snapshotter) for more information. Next, let's find out how we can start it!
+
 ### 3. Creating a VM Instance from a Package with `drafter-runner`
 
 Now that we have a VM package, you can start it locally with `drafter-runner` by running the following:
@@ -321,6 +327,8 @@ drafterhost login:
 
 By default, input is disabled. To enable it, pass the `--enable-input` flag to `drafter-runner`. To stop the VM, press `CTRL-C` or send the `SIGINT` signal to the `drafter-runner` process. Before stopping, `drafter-runner` takes a snapshot of the VM, which it uses to resume the VM the next time it is started.
 
+**Well done!** You've successfully started your VM package; be sure to check out the [runner reference](#runner) for more information. Next, let's find out how you can access it!
+
 ### 4. Forwarding a VM Instance Port with `drafter-forwarder`
 
 > See [Does Drafter Support IPv6?](#does-drafter-support-ipv6) for more information on the current state of IPv6 support
@@ -364,6 +372,8 @@ $ sudo drafter-forwarder --port-forwards '[
 ```
 
 Remember to open port `3333/tcp` on your firewall to make it reachable from your network. To access the port from both your local system (e.g. for a reverse proxy setup) and the network, you must forward it to both `127.0.0.1:3333` and `192.168.12.31:3333`. If you intend on using the port-forwarder during live migrations, keep in mind that connections will break after moving to the new host; if you're interested in keeping the connections alive, see [How Can I Keep My Network Connections Alive While Live Migrating?](#how-can-i-keep-my-network-connections-alive-while-live-migrating).
+
+**Enjoy your Valkey service!** Feel free to play around with it using your preferred tooling and to check out the [forwarder reference](#forwarder) for more information. Next, let's find out how we can live migrate it between hosts!
 
 ### 5. Creating and Live Migrating VM Instances with `drafter-peer`
 
@@ -452,6 +462,8 @@ $ sudo drafter-peer --netns ark0 --raddr '' --laddr '' --devices '[
   }
 ]'
 ```
+
+**🚀 That's it!** You've successfully created, snapshotted and started an instance of your first service with Drafter. We can't wait to see what you're going to build next! Be sure to take a look at the [reference](#reference), [examples](#examples) and [frequently asked questions](#faq) for more information.
 
 </details>
 
@@ -646,6 +658,8 @@ $ valkey-cli -u redis://127.0.0.1:3333/0
 $ valkey-cli -u redis://127.0.0.1:4444/0
 ```
 
+**🚀 That's it!** You've successfully created, snapshotted and started multiple independent instances of your first service with Drafter. We can't wait to see what you're going to build next! Be sure to take a look at the [reference](#reference), [examples](#examples) and [frequently asked questions](#faq) for more information.
+
 </details>
 
 #### Live Migrating a VM Instance Across Processes and Hosts
@@ -838,6 +852,8 @@ On the destination, after all devices have been migrated, you should see logs li
 # ...
 2024/06/24 13:55:16 Resumed VM in 60.026997ms on out/vms/firecracker/39zY39Y9Gs8N4wPMs5WoLe/root
 ```
+
+**🚀 That's it!** You've successfully created, snapshotted, started and live migrated your first service with Drafter. We can't wait to see what you're going to build next! Be sure to take a look at the [reference](#reference) (the [registry](#registry) and [terminator](#terminator) components can be quite helpful when working with live migration), [examples](#examples) and [frequently asked questions](#faq) for more information.
 
 </details>
 
