@@ -1149,6 +1149,12 @@ The `drafter-peer` CLI only allows for a static configuration; if you supply a `
 
 Drafter doesn't concern itself with networking aside from its simple NAT and port forwarding implementations. If you're interested in a more full-fledged, production-ready networking solution with support for advanced networking rules and zero-downtime live migrations of network connections, check out [Loophole Labs Architect](https://architect.run/).
 
+### How Can I Change the Environment Variables, Volume Mounts or Startup Command of the OCI Image to Start?
+
+Drafter doesn't work with OCI images, instead it works directly with [OCI runtime bundles](https://github.com/opencontainers/runtime-spec/blob/main/bundle.md) which can be created from an OCI image with commands such as `podman create` or `umoci unpack`. These OCI runtime bundles are then copied to an EXT4 file system and passed to an OCI runtime in the guest VM. Drafter includes a minimal implementation of the OCI image to OCI runtime bundle conversion process (see [Building a VM Blueprint Locally](#building-a-vm-blueprint-locally)) and utility targets such as `make unpack/oci` and `make pack/oci`, which allow you to unpack an OCI image to an OCI runtime bundle, adjust the OCI `config.json` file (at `out/oci-runtime-bundle/config.json`), and then pack the OCI image to an EXT4 file system.
+
+Drafter doesn't concern itself with the actual process of building the underlying VM images aside from this simple build tooling. This is because it also supports starting any other Linux distribution without any OCI integration, such as a Valkey instance running directly in the guest operating system, or running a full-fledged Docker daemon in the guest. If you're looking for a more advanced and streamlined process, like streaming conversion and startup of OCI images, a way to replicate/distribute packages or a build service, check out [Loophole Labs Architect](https://architect.run/).
+
 ## Acknowledgements
 
 - [Loophole Labs Silo](github.com/loopholelabs/silo) provides the storage and data migration framework.
