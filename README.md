@@ -142,6 +142,7 @@ To build the blueprints locally, you can use the [included Makefile](./Makefile)
 
 ```shell
 # Build the DrafterOS blueprint
+$ make depend/os
 $ make build/os OS_DEFCONFIG=drafteros-firecracker-x86_64_defconfig # Or `drafteros-firecracker-x86_64_defconfig` if you're on `aarch64`
 # Build the Valkey OCI image blueprint
 $ sudo make build/oci OCI_IMAGE_URI=docker://valkey/valkey:latest OCI_IMAGE_ARCHITECTURE=amd64 # Or `arm64` if you're on `aarch64`
