@@ -29,7 +29,7 @@ func main() {
 		panic(err)
 	}
 
-	rawPortForwards := flag.String("port-forwards", string(defaultPortForwards), "Port forwards configuration (wildcard IPs like 0.0.0.0 are not valid, be explict)")
+	rawPortForwards := flag.String("port-forwards", string(defaultPortForwards), "Port forwards configuration (wildcard IPs like 0.0.0.0 are not valid, be explicit)")
 
 	flag.Parse()
 

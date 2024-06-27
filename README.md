@@ -18,7 +18,7 @@ It enables you to ...
 
 - **Snapshot, package, and distribute stateful VMs**: With an opinionated packaging format and simple developer tools, managing, packaging, and distributing VMs becomes as straightforward as working with containers.
 - **Run OCI images as VMs**: In addition to running almost any Linux distribution (Alpine Linux, Fedora, Debian, Ubuntu etc.), Drafter can also run OCI images as VMs without the overhead of a nested Docker daemon or full CRI implementation. It uses a dynamic disk configuration system, an optional custom Buildroot-based OS to start the OCI image, and a familiar Docker-like networking configuration.
-- **Easily live migrate VMs between heterogeneous nodes with no downtime**: Drafter leverages a [custom optimized Firecracker fork](https://github.com/loopholelabs/firecracker) and [patches to PVM](https://github.com/loopholelabs/linux-pvm-ci) to enable live migration of VMs between heterogeneous nodes/between data centers and cloud providers without hardware virtualization support, even across continents. With a [customizable hybrid pre- and post-copy strategy](https://pojntfx.github.io/networked-linux-memsync/main.pdf), migrations typically take below 100ms within the same datacenter and around 500ms for Europe ↔ North America migrations over the public internet, depending on the application.
+- **Easily live migrate VMs between heterogeneous nodes with no downtime**: Drafter leverages a [custom optimized Firecracker fork](https://github.com/loopholelabs/firecracker) and [patches to PVM](https://github.com/loopholelabs/linux-pvm-ci) to enable live migration of VMs between heterogeneous nodes, data centers and cloud providers without hardware virtualization support, even across continents. With a [customizable hybrid pre- and post-copy strategy](https://pojntfx.github.io/networked-linux-memsync/main.pdf), migrations typically take below 100ms within the same data center and around 500ms for Europe ↔ North America migrations over the public internet, depending on the application.
 - **Hook into suspend and resume lifecycle with agents**: Drafter uses a VSock- and [panrpc](https://github.com/pojntfx/panrpc)-based agent system to signal to guest applications before a suspend/resume event, allowing them to react accordingly.
 - **Easily embed VMs inside your applications**: Drafter provides a powerful, context-aware [Go library](https://pkg.go.dev/github.com/loopholelabs/drafter) for all system components, including a NAT for guest-to-host networking, a forwarder for local port-forwarding/host-to-guest networking, an agent and liveness component for responding to snapshots and suspend/resume events inside the guest, a snapshotter for creating snapshots, a packager for packaging VM images, a runner for starting VM images locally, a registry for serving VM images over the network, a peer for starting and live migrating VMs over the network, and a terminator for backing up a VM.
 
@@ -43,7 +43,7 @@ for BINARY in drafter-nat drafter-forwarder drafter-snapshotter drafter-packager
 done
 ```
 
-Drafter depends on our [custom optimized Firecracker fork](https://github.com/loopholelabs/firecracker) for live migration support. Our optional [patches to PVM](https://github.com/loopholelabs/linux-pvm-ci) also allow live migrations of VMs between heterogeneous nodes/between data centers and cloud providers without hardware virtualization support.
+Drafter depends on our [custom optimized Firecracker fork](https://github.com/loopholelabs/firecracker) for live migration support. Our optional [patches to PVM](https://github.com/loopholelabs/linux-pvm-ci) also allow live migrations of VMs between heterogeneous nodes, data centers and cloud providers without hardware virtualization support.
 
 The Firecracker fork is available as static binaries on [GitHub releases](https://github.com/loopholelabs/firecracker/releases). On Linux, you can install them like so:
 
@@ -67,7 +67,7 @@ PVM installation instructions depend on your operating system; refer to [loophol
 $ file /dev/kvm # Should return "/dev/kvm: character special (10/232)"
 ```
 
-Using Drafter for live migration also requires the NBD kernel module to be loaded, preferably with more devices than the default (12). You can increase the amount of available NBD devices by running the following:
+Using Drafter for live migration also requires the NBD kernel module to be loaded, preferably with more devices than the default (12). You can increase the number of available NBD devices by running the following:
 
 ```shell
 $ sudo modprobe nbd nbds_max=4096
@@ -143,7 +143,7 @@ To build the blueprints locally, you can use the [included Makefile](./Makefile)
 ```shell
 # Build the DrafterOS blueprint
 $ make depend/os
-$ make build/os OS_DEFCONFIG=drafteros-firecracker-x86_64_defconfig # Or `drafteros-firecracker-x86_64_defconfig` if you're on `aarch64`
+$ make build/os OS_DEFCONFIG=drafteros-firecracker-x86_64_defconfig # Or `drafteros-firecracker-aarch64_defconfig` if you're on `aarch64`
 # Build the Valkey OCI image blueprint
 $ sudo make build/oci OCI_IMAGE_URI=docker://valkey/valkey:latest OCI_IMAGE_ARCHITECTURE=amd64 # Or `arm64` if you're on `aarch64`
 ```
@@ -374,7 +374,7 @@ $ sudo drafter-forwarder --port-forwards '[
 
 Remember to open port `3333/tcp` on your firewall to make it reachable from your network. To access the port from both your local system (e.g. for a reverse proxy setup) and the network, you must forward it to both `127.0.0.1:3333` and `192.168.12.31:3333`. If you intend on using the port-forwarder during live migrations, keep in mind that connections will break after moving to the new host; if you're interested in keeping the connections alive, see [How Can I Keep My Network Connections Alive While Live Migrating?](#how-can-i-keep-my-network-connections-alive-while-live-migrating).
 
-**Enjoy your Valkey service!** Feel free to play around with it using your preferred tooling and to check out the [forwarder reference](#forwarder) for more information. Next, let's find out how we can live migrate it between hosts!
+**Enjoy your Valkey service!** Feel free to play around with it using your preferred tooling and check out the [forwarder reference](#forwarder) for more information. Next, let's find out how we can live migrate it between hosts!
 
 ### 5. Creating and Live Migrating VM Instances with `drafter-peer`
 
@@ -385,7 +385,7 @@ While `drafter-runner` is useful for trying out VM packages locally, using `draf
 <details>
   <summary>Expand section</summary>
 
-To replicate `drafter-runner` with `drafter-peer`, that is to say to create a single VM instance from a VM package where all changes get written back to the VM package, run the following:
+To replicate `drafter-runner` with `drafter-peer`, that is to say, to create a single VM instance from a VM package where all changes get written back to the VM package, run the following:
 
 ```shell
 $ sudo drafter-peer --netns ark0 --raddr '' --laddr '' --devices '[
@@ -916,7 +916,7 @@ Usage of drafter-forwarder:
   -host-veth-cidr string
         CIDR for the veths outside the namespace (default "10.0.8.0/22")
   -port-forwards string
-        Port forwards configuration (wildcard IPs like 0.0.0.0 are not valid, be explict) (default "[{\"netns\":\"ark0\",\"internalPort\":\"6379\",\"protocol\":\"tcp\",\"externalAddr\":\"127.0.0.1:3333\"}]")
+        Port forwards configuration (wildcard IPs like 0.0.0.0 are not valid, be explicit) (default "[{\"netns\":\"ark0\",\"internalPort\":\"6379\",\"protocol\":\"tcp\",\"externalAddr\":\"127.0.0.1:3333\"}]")
 ```
 
 #### Agent
@@ -958,7 +958,7 @@ Usage of drafter-snapshotter:
         Boot/kernel arguments (default "console=ttyS0 panic=1 pci=off modules=ext4 rootfstype=ext4 root=/dev/vda i8042.noaux i8042.nomux i8042.nopnp i8042.dumbkbd rootflags=rw printk.devkmsg=on printk_ratelimit=0 printk_ratelimit_burst=0")
   -cgroup-version int
         Cgroup version to use for Jailer (default 2)
-  -chroot-base-dir chroot
+  -chroot-base-dir string
         chroot base directory (default "out/vms")
   -cpu-count int
         CPU count (default 1)
@@ -1014,7 +1014,7 @@ $ drafter-runner --help
 Usage of drafter-runner:
   -cgroup-version int
         Cgroup version to use for Jailer (default 2)
-  -chroot-base-dir chroot
+  -chroot-base-dir string
         chroot base directory (default "out/vms")
   -devices string
         Devices configuration (default "[{\"name\":\"state\",\"path\":\"out/package/state.bin\"},{\"name\":\"memory\",\"path\":\"out/package/memory.bin\"},{\"name\":\"kernel\",\"path\":\"out/package/vmlinux\"},{\"name\":\"disk\",\"path\":\"out/package/rootfs.ext4\"},{\"name\":\"config\",\"path\":\"out/package/config.json\"},{\"name\":\"oci\",\"path\":\"out/blueprint/oci.ext4\"}]")
@@ -1046,7 +1046,7 @@ Usage of drafter-runner:
 $ drafter-registry --help
 Usage of drafter-registry:
   -concurrency int
-        Amount of concurrent workers to use in migrations (default 4096)
+        Number of concurrent workers to use in migrations (default 4096)
   -devices string
         Devices configuration (default "[{\"name\":\"state\",\"input\":\"out/package/state.bin\",\"blockSize\":65536},{\"name\":\"memory\",\"input\":\"out/package/memory.bin\",\"blockSize\":65536},{\"name\":\"kernel\",\"input\":\"out/package/vmlinux\",\"blockSize\":65536},{\"name\":\"disk\",\"input\":\"out/package/rootfs.ext4\",\"blockSize\":65536},{\"name\":\"config\",\"input\":\"out/package/config.json\",\"blockSize\":65536},{\"name\":\"oci\",\"input\":\"out/blueprint/oci.ext4\",\"blockSize\":65536}]")
   -laddr string
@@ -1060,10 +1060,10 @@ $ drafter-peer --help
 Usage of drafter-peer:
   -cgroup-version int
         Cgroup version to use for Jailer (default 2)
-  -chroot-base-dir chroot
+  -chroot-base-dir string
         chroot base directory (default "out/vms")
   -concurrency int
-        Amount of concurrent workers to use in migrations (default 4096)
+        Number of concurrent workers to use in migrations (default 4096)
   -devices string
         Devices configuration (default "[{\"name\":\"state\",\"base\":\"out/package/state.bin\",\"overlay\":\"out/overlay/state.bin\",\"state\":\"out/state/state.bin\",\"blockSize\":65536,\"expiry\":1000000000,\"maxDirtyBlocks\":200,\"minCycles\":5,\"maxCycles\":20,\"cycleThrottle\":500000000},{\"name\":\"memory\",\"base\":\"out/package/memory.bin\",\"overlay\":\"out/overlay/memory.bin\",\"state\":\"out/state/memory.bin\",\"blockSize\":65536,\"expiry\":1000000000,\"maxDirtyBlocks\":200,\"minCycles\":5,\"maxCycles\":20,\"cycleThrottle\":500000000},{\"name\":\"kernel\",\"base\":\"out/package/vmlinux\",\"overlay\":\"out/overlay/vmlinux\",\"state\":\"out/state/vmlinux\",\"blockSize\":65536,\"expiry\":1000000000,\"maxDirtyBlocks\":200,\"minCycles\":5,\"maxCycles\":20,\"cycleThrottle\":500000000},{\"name\":\"disk\",\"base\":\"out/package/rootfs.ext4\",\"overlay\":\"out/overlay/rootfs.ext4\",\"state\":\"out/state/rootfs.ext4\",\"blockSize\":65536,\"expiry\":1000000000,\"maxDirtyBlocks\":200,\"minCycles\":5,\"maxCycles\":20,\"cycleThrottle\":500000000},{\"name\":\"config\",\"base\":\"out/package/config.json\",\"overlay\":\"out/overlay/config.json\",\"state\":\"out/state/config.json\",\"blockSize\":65536,\"expiry\":1000000000,\"maxDirtyBlocks\":200,\"minCycles\":5,\"maxCycles\":20,\"cycleThrottle\":500000000},{\"name\":\"oci\",\"base\":\"out/package/oci.ext4\",\"overlay\":\"out/overlay/oci.ext4\",\"state\":\"out/state/oci.ext4\",\"blockSize\":65536,\"expiry\":1000000000,\"maxDirtyBlocks\":200,\"minCycles\":5,\"maxCycles\":20,\"cycleThrottle\":500000000}]")
   -enable-input
@@ -1136,10 +1136,10 @@ Adding additional disks to a VM instance is as easy as adding them to the `--dev
 }
 ```
 
-Disks aren't mounted automatically; to find and mount them, use the `lsblk` and `mount` commands in the guest VM. If you want to mount the disks on boot time, you can modify `/etc/fstab` and add a line like so (assuming that the disk has the label `mydisk`):
+Disks aren't mounted automatically; to find and mount them, use the `lsblk` and `mount` commands in the guest VM. If you want to mount the disks at boot time, you can modify `/etc/fstab` and add a line like so (assuming that the disk has the label `mydisk`):
 
 ```shell
-LABEL=mydisk    /mymountmount    ext4    defaults    0    2
+LABEL=mydisk    /mymount    ext4    defaults    0    2
 ```
 
 ### How Can I Add Additional VSocks to My VM?
@@ -1156,9 +1156,9 @@ Drafter doesn't support GPUs at this time [Firecracker does not support GPU pass
 
 ### How Can I Authenticate Live Migrations or Migrate over Another Network Protocol like TLS or a UNIX socket?
 
-Drafter doesn't have a preferred authentication or transport mechanism, it instead relies on an external implementation of an `io.ReadWriter` to function. This `io.ReadWriter` can be implemented and authenticated by a TCP connection, UDP connection, TLS connection, WebSocket connection, UNIX socket or any other protocol of choice. See [examples](#examples) for more information on how to use specific transports for live migrations, e.g. TCP. If you need built-in authentication or a network solution that integrates with your existing environment, check out [Loophole Labs Architect](https://architect.run/).
+Drafter doesn't have a preferred authentication or transport mechanism; it instead relies on an external implementation of an `io.ReadWriter` to function. This `io.ReadWriter` can be implemented and authenticated by a TCP connection, UDP connection, TLS connection, WebSocket connection, UNIX socket or any other protocol of choice. See [examples](#examples) for more information on how to use specific transports for live migrations, e.g. TCP. If you need built-in authentication or a network solution that integrates with your existing environment, check out [Loophole Labs Architect](https://architect.run/).
 
-### How Can I Make a VM Migratable after Start It?
+### How Can I Make a VM Migratable after Starting It?
 
 The `drafter-peer` CLI only allows for a static configuration; if you supply a `--laddr`, the instance will automatically become migratable after resuming. If you wish to make a VM migratable at a specific point, or make it non-migratable, see [How Can I Embed Drafter in My Application?](#how-can-i-embed-drafter-in-my-application) to use the peer API directly, or check out [Loophole Labs Architect](https://architect.run/) for a solution with a built-in control plane.
 
@@ -1168,7 +1168,7 @@ Drafter doesn't concern itself with networking aside from its simple NAT and por
 
 ### How Can I Change the Environment Variables, Volume Mounts or Startup Command of the OCI Image to Start?
 
-Drafter doesn't work with OCI images, instead it works directly with [OCI runtime bundles](https://github.com/opencontainers/runtime-spec/blob/main/bundle.md) which can be created from an OCI image with commands such as `podman create` or `umoci unpack`. These OCI runtime bundles are then copied to an EXT4 file system and passed to an OCI runtime in the guest VM. Drafter includes a minimal implementation of the OCI image to OCI runtime bundle conversion process (see [Building a VM Blueprint Locally](#building-a-vm-blueprint-locally)) and utility targets such as `make unpack/oci` and `make pack/oci`, which allow you to unpack an OCI image to an OCI runtime bundle, adjust the OCI `config.json` file (at `out/oci-runtime-bundle/config.json`), and then pack the OCI image to an EXT4 file system.
+Drafter doesn't work with OCI images; instead, it works directly with [OCI runtime bundles](https://github.com/opencontainers/runtime-spec/blob/main/bundle.md), which can be created from an OCI image with commands such as `podman create` or `umoci unpack`. These OCI runtime bundles are then copied to an EXT4 file system and passed to an OCI runtime in the guest VM. Drafter includes a minimal implementation of the OCI image to OCI runtime bundle conversion process (see [Building a VM Blueprint Locally](#building-a-vm-blueprint-locally)) and utility targets such as `make unpack/oci` and `make pack/oci`, which allow you to unpack an OCI image to an OCI runtime bundle, adjust the OCI `config.json` file (at `out/oci-runtime-bundle/config.json`), and then pack the OCI image to an EXT4 file system.
 
 Drafter doesn't concern itself with the actual process of building the underlying VM images aside from this simple build tooling. This is because it also supports starting any other Linux distribution without any OCI integration, such as a Valkey instance running directly in the guest operating system, or running a full-fledged Docker daemon in the guest. If you're looking for a more advanced and streamlined process, like streaming conversion and startup of OCI images, a way to replicate/distribute packages or a build service, check out [Loophole Labs Architect](https://architect.run/).
 
