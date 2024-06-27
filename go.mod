@@ -5,6 +5,7 @@ go 1.21
 require (
 	github.com/coreos/go-iptables v0.7.0
 	github.com/freddierice/go-losetup/v2 v2.0.1
+	github.com/klauspost/compress v1.17.6
 	github.com/lithammer/shortuuid/v4 v4.0.0
 	github.com/loopholelabs/silo v0.0.7-0.20240620200522-d69fd1797f87
 	github.com/metal-stack/go-ipam v1.13.0
@@ -35,7 +36,6 @@ require (
 	github.com/jmoiron/sqlx v1.3.5 // indirect
 	github.com/josharian/native v1.1.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
-	github.com/klauspost/compress v1.17.6 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.6 // indirect
 	github.com/lib/pq v1.10.9 // indirect
 	github.com/mdlayher/genetlink v1.3.2 // indirect
