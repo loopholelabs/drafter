@@ -1,14 +1,19 @@
-<img alt="Project icon" style="vertical-align: middle;" src="./docs/icon.svg" width="128" height="128" align="left">
-
-# Drafter
-
-Minimal VM primitive with live migration support.
-
 <br/>
+<div align="center">
+  <a href="https://github.com/loopholelabs/drafter">
+    <img src="docs/icon.svg" alt="Logo" height="130">
+  </a>
+  <h3 align="center">Drafter</h3>
+  <h4 align="center">
+    A minimal VM primitive with live migration support.
+  </h4>
 
-[![hydrun CI](https://github.com/loopholelabs/drafter/actions/workflows/hydrun.yaml/badge.svg)](https://github.com/loopholelabs/drafter/actions/workflows/hydrun.yaml)
-![Go Version](https://img.shields.io/badge/go%20version-%3E=1.21-61CFDD.svg)
-[![Go Reference](https://pkg.go.dev/badge/github.com/loopholelabs/drafter.svg)](https://pkg.go.dev/github.com/loopholelabs/drafter)
+  [![License: AGPL 3.0](https://img.shields.io/github/license/loopholelabs/drafter)](https://www.gnu.org/licenses/agpl-3.0.en.html)
+  [![Discord](https://dcbadge.vercel.app/api/server/JYmFhtdPeu?style=flat)](https://loopholelabs.io/discord)
+  [![Tests](https://github.com/loopholelabs/drafter/actions/workflows/hydrun.yaml/badge.svg)](https://github.com/loopholelabs/drafter/actions/workflows/hydrun.yaml)
+  ![Go Version](https://img.shields.io/badge/go%20version-%3E=1.21-61CFDD.svg)
+  [![Go Reference](https://pkg.go.dev/badge/github.com/loopholelabs/drafter.svg)](https://pkg.go.dev/github.com/loopholelabs/drafter)
+</div>
 
 ## Overview
 
@@ -26,7 +31,7 @@ It enables you to ...
 
 <p align="center">
   <a href="https://youtu.be/HrtX0JrjekE?si=IOMP3pY-xyYSkKy1&t=1866" target="_blank">
-    <img alt="YouTube thumbnail of the KubeCon talk on Drafter" width="60%" src="https://img.youtube.com/vi/HrtX0JrjekE/0.jpg" />
+    <img alt="YouTube thumbnail of the KubeCon NA 2023 talk on Drafter" width="60%" src="https://img.youtube.com/vi/HrtX0JrjekE/0.jpg" />
   </a>
 </p>
 
