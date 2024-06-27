@@ -6,7 +6,7 @@ require (
 	github.com/coreos/go-iptables v0.7.0
 	github.com/freddierice/go-losetup/v2 v2.0.1
 	github.com/lithammer/shortuuid/v4 v4.0.0
-	github.com/loopholelabs/silo v0.0.6-0.20240610115936-363e1818bf70
+	github.com/loopholelabs/silo v0.0.7-0.20240620200522-d69fd1797f87
 	github.com/metal-stack/go-ipam v1.13.0
 	github.com/pojntfx/panrpc/go v0.0.0-20240530214555-23871be1d846
 	github.com/vishvananda/netlink v1.1.0
