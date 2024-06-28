@@ -43,6 +43,10 @@ build/os:
 config/os:
 	$(MAKE) -C $(OUTPUT_DIR)/buildroot BR2_EXTERNAL="$(OS_BR2_EXTERNAL)" menuconfig
 
+# Save OS defconfig changes
+save/os:
+	$(MAKE) -C $(OUTPUT_DIR)/buildroot BR2_EXTERNAL="$(OS_BR2_EXTERNAL)" savedefconfig
+
 # Unpack OCI runtime bundle
 unpack/oci:
 	rm -rf $(OUTPUT_DIR)/oci-image
