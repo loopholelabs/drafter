@@ -1,0 +1,14 @@
+[Unit]
+Description=Drafter agent daemon
+After=network.target @DRAFTER_AGENT_SYSTEMD_DEPENDENCY@
+Requires=@DRAFTER_AGENT_SYSTEMD_DEPENDENCY@
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/drafter-agent --vsock-port @DRAFTER_AGENT_VSOCK_PORT@
+StandardOutput=journal+console
+StandardError=journal+console
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

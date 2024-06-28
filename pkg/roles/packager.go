@@ -2,96 +2,82 @@ package roles
 
 import (
 	"archive/tar"
+	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 
-	"github.com/loopholelabs/drafter/pkg/config"
+	"github.com/klauspost/compress/zstd"
 )
 
 var (
-	ErrMissingInitramfs = errors.New("missing initramfs")
-	ErrMissingKernel    = errors.New("missing kernel")
-	ErrMissingDisk      = errors.New("missing disk")
-	ErrMissingState     = errors.New("missing state")
-	ErrMissingMemory    = errors.New("missing memory")
-	ErrMissingConfig    = errors.New("missing config")
+	ErrMissingDevice = errors.New("missing resource")
 )
 
-type resource struct {
-	name string
-	path string
-	err  error
+type PackagerDevice struct {
+	Name string `json:"name"`
+	Path string `json:"path"`
+}
+
+type PackagerHooks struct {
+	OnBeforeProcessFile func(name, path string)
 }
 
 func ArchivePackage(
-	stateInputPath string,
-	memoryInputPath string,
-	initramfsInputPath string,
-	kernelInputPath string,
-	diskInputPath string,
-	configInputPath string,
+	ctx context.Context,
 
+	devices []PackagerDevice,
 	packageOutputPath string,
 
-	knownNamesConfiguration config.KnownNamesConfiguration,
+	hooks PackagerHooks,
 ) error {
-	resources := []resource{
-		{
-			name: knownNamesConfiguration.InitramfsName,
-			path: initramfsInputPath,
-		},
-		{
-			name: knownNamesConfiguration.KernelName,
-			path: kernelInputPath,
-		},
-		{
-			name: knownNamesConfiguration.DiskName,
-			path: diskInputPath,
-		},
-
-		{
-			name: knownNamesConfiguration.StateName,
-			path: stateInputPath,
-		},
-		{
-			name: knownNamesConfiguration.MemoryName,
-			path: memoryInputPath,
-		},
-
-		{
-			name: knownNamesConfiguration.ConfigName,
-			path: configInputPath,
-		},
-	}
-
 	packageOutputFile, err := os.OpenFile(packageOutputPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, os.ModePerm)
 	if err != nil {
 		return err
 	}
 	defer packageOutputFile.Close()
 
-	packageOutputArchive := tar.NewWriter(packageOutputFile)
+	compressor, err := zstd.NewWriter(packageOutputFile)
+	if err != nil {
+		return err
+	}
+	defer compressor.Close()
+
+	packageOutputArchive := tar.NewWriter(compressor)
 	defer packageOutputArchive.Close()
 
-	for _, resource := range resources {
-		info, err := os.Stat(resource.path)
+	for _, device := range devices {
+	s:
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+
+		default:
+			break s
+		}
+
+		if hook := hooks.OnBeforeProcessFile; hook != nil {
+			hook(device.Name, device.Path)
+		}
+
+		info, err := os.Stat(device.Path)
 		if err != nil {
 			return err
 		}
 
-		header, err := tar.FileInfoHeader(info, resource.path)
+		header, err := tar.FileInfoHeader(info, device.Path)
 		if err != nil {
 			return err
 		}
-		header.Name = resource.name
+		header.Name = device.Name
 
 		if err := packageOutputArchive.WriteHeader(header); err != nil {
 			return err
 		}
 
-		f, err := os.Open(resource.path)
+		f, err := os.Open(device.Path)
 		if err != nil {
 			return err
 		}
@@ -106,63 +92,39 @@ func ArchivePackage(
 }
 
 func ExtractPackage(
+	ctx context.Context,
+
 	packageInputPath string,
+	devices []PackagerDevice,
 
-	stateOutputPath string,
-	memoryOutputPath string,
-	initramfsOutputPath string,
-	kernelOutputPath string,
-	diskOutputPath string,
-	configOutputPath string,
-
-	knownNamesConfiguration config.KnownNamesConfiguration,
+	hooks PackagerHooks,
 ) error {
-	resources := []resource{
-		{
-			name: knownNamesConfiguration.InitramfsName,
-			path: initramfsOutputPath,
-			err:  ErrMissingInitramfs,
-		},
-		{
-			name: knownNamesConfiguration.KernelName,
-			path: kernelOutputPath,
-			err:  ErrMissingKernel,
-		},
-		{
-			name: knownNamesConfiguration.DiskName,
-			path: diskOutputPath,
-			err:  ErrMissingDisk,
-		},
-
-		{
-			name: knownNamesConfiguration.StateName,
-			path: stateOutputPath,
-			err:  ErrMissingState,
-		},
-		{
-			name: knownNamesConfiguration.MemoryName,
-			path: memoryOutputPath,
-			err:  ErrMissingMemory,
-		},
-
-		{
-			name: knownNamesConfiguration.ConfigName,
-			path: configOutputPath,
-			err:  ErrMissingConfig,
-		},
-	}
-
 	packageFile, err := os.Open(packageInputPath)
 	if err != nil {
 		return err
 	}
 	defer packageFile.Close()
 
-	packageArchive := tar.NewReader(packageFile)
+	uncompressor, err := zstd.NewReader(packageFile)
+	if err != nil {
+		return err
+	}
+	defer uncompressor.Close()
 
-	for _, resource := range resources {
+	packageArchive := tar.NewReader(uncompressor)
+
+	for _, device := range devices {
 		extracted := false
 		for {
+		s:
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+
+			default:
+				break s
+			}
+
 			header, err := packageArchive.Next()
 			if err != nil {
 				if err == io.EOF {
@@ -172,15 +134,19 @@ func ExtractPackage(
 				return err
 			}
 
-			if header.Name != resource.name {
+			if header.Name != device.Name {
 				continue
 			}
 
-			if err := os.MkdirAll(filepath.Dir(resource.path), os.ModePerm); err != nil {
+			if hook := hooks.OnBeforeProcessFile; hook != nil {
+				hook(device.Name, device.Path)
+			}
+
+			if err := os.MkdirAll(filepath.Dir(device.Path), os.ModePerm); err != nil {
 				return err
 			}
 
-			outputFile, err := os.OpenFile(resource.path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, os.ModePerm)
+			outputFile, err := os.OpenFile(device.Path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, os.ModePerm)
 			if err != nil {
 				return err
 			}
@@ -196,7 +162,8 @@ func ExtractPackage(
 		}
 
 		if !extracted {
-			return resource.err
+			// We join the more specific error here first
+			return errors.Join(fmt.Errorf("missing device: %s", device.Name), ErrMissingDevice)
 		}
 	}
 

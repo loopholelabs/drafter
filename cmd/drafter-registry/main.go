@@ -1,145 +1,202 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
 	"flag"
+	"fmt"
+	"io"
 	"log"
 	"net"
 	"os"
+	"os/signal"
 	"path/filepath"
-	"sync"
 
-	v1 "github.com/loopholelabs/drafter/pkg/api/proto/migration/v1"
-	backend "github.com/loopholelabs/drafter/pkg/backends"
-	iservices "github.com/loopholelabs/drafter/pkg/services"
+	"github.com/loopholelabs/drafter/pkg/roles"
 	"github.com/loopholelabs/drafter/pkg/utils"
-	"github.com/pojntfx/r3map/pkg/services"
-	"google.golang.org/grpc"
 )
 
-type resources struct {
-	laddr  string
-	path   string
-	size   int64
-	lis    net.Listener
-	server *grpc.Server
-}
-
 func main() {
-	statePath := flag.String("state-path", filepath.Join("out", "package", "drafter.drftstate"), "State path")
-	memoryPath := flag.String("memory-path", filepath.Join("out", "package", "drafter.drftmemory"), "Memory path")
-	initramfsPath := flag.String("initramfs-path", filepath.Join("out", "package", "drafter.drftinitramfs"), "initramfs path")
-	kernelPath := flag.String("kernel-path", filepath.Join("out", "package", "drafter.drftkernel"), "Kernel path")
-	diskPath := flag.String("disk-path", filepath.Join("out", "package", "drafter.drftdisk"), "Disk path")
-	configPath := flag.String("config-path", filepath.Join("out", "package", "drafter.drftconfig"), "Config path")
+	defaultDevices, err := json.Marshal([]roles.RegistryDevice{
+		{
+			Name:      roles.StateName,
+			Input:     filepath.Join("out", "package", "state.bin"),
+			BlockSize: 1024 * 64,
+		},
+		{
+			Name:      roles.MemoryName,
+			Input:     filepath.Join("out", "package", "memory.bin"),
+			BlockSize: 1024 * 64,
+		},
 
-	stateLaddr := flag.String("state-laddr", ":1600", "Listen address for state")
-	memoryLaddr := flag.String("memory-laddr", ":1601", "Listen address for memory")
-	initramfsLaddr := flag.String("initramfs-laddr", ":1602", "Listen address for initramfs")
-	kernelLaddr := flag.String("kernel-laddr", ":1603", "Listen address for kernel")
-	diskLaddr := flag.String("disk-laddr", ":1604", "Listen address for disk")
-	configLaddr := flag.String("config-laddr", ":1605", "Listen address for config")
+		{
+			Name:      roles.KernelName,
+			Input:     filepath.Join("out", "package", "vmlinux"),
+			BlockSize: 1024 * 64,
+		},
+		{
+			Name:      roles.DiskName,
+			Input:     filepath.Join("out", "package", "rootfs.ext4"),
+			BlockSize: 1024 * 64,
+		},
 
-	verbose := flag.Bool("verbose", false, "Whether to enable verbose logging")
+		{
+			Name:      roles.ConfigName,
+			Input:     filepath.Join("out", "package", "config.json"),
+			BlockSize: 1024 * 64,
+		},
+
+		{
+			Name:      "oci",
+			Input:     filepath.Join("out", "blueprint", "oci.ext4"),
+			BlockSize: 1024 * 64,
+		},
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	rawDevices := flag.String("devices", string(defaultDevices), "Devices configuration")
+
+	laddr := flag.String("laddr", ":1600", "Address to listen on")
+
+	concurrency := flag.Int("concurrency", 4096, "Number of concurrent workers to use in migrations")
 
 	flag.Parse()
 
-	resources := []*resources{
-		{
-			laddr: *initramfsLaddr,
-			path:  *initramfsPath,
-		},
-		{
-			laddr: *kernelLaddr,
-			path:  *kernelPath,
-		},
-		{
-			laddr: *diskLaddr,
-			path:  *diskPath,
-		},
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-		{
-			laddr: *stateLaddr,
-			path:  *statePath,
-		},
-		{
-			laddr: *memoryLaddr,
-			path:  *memoryPath,
-		},
-
-		{
-			laddr: *configLaddr,
-			path:  *configPath,
-		},
-	}
-	for _, resource := range resources {
-		r := resource
-
-		f, err := os.Open(resource.path)
-		if err != nil {
-			panic(err)
-		}
-		defer f.Close()
-
-		stat, err := f.Stat()
-		if err != nil {
-			panic(err)
-		}
-
-		r.size = stat.Size()
-
-		b := backend.NewReadOnlyBackend(f, r.size)
-
-		svc := iservices.NewSeederWithMetaService(
-			services.NewSeederService(
-				b,
-				*verbose,
-				func() error {
-					return nil
-				},
-				func() ([]int64, error) {
-					return []int64{}, nil
-				},
-				func() error {
-					return nil
-				},
-				services.MaxChunkSize,
-			),
-			b,
-			*verbose,
-		)
-
-		server := grpc.NewServer()
-		r.server = server
-
-		v1.RegisterSeederWithMetaServer(server, iservices.NewSeederWithMetaServiceGrpc(svc))
-
-		lis, err := net.Listen("tcp", r.laddr)
-		if err != nil {
-			panic(err)
-		}
-		defer lis.Close()
-		r.lis = lis
+	var devices []roles.RegistryDevice
+	if err := json.Unmarshal([]byte(*rawDevices), &devices); err != nil {
+		panic(err)
 	}
 
-	var wg sync.WaitGroup
-	for _, rsc := range resources {
-		r := rsc
+	lis, err := net.Listen("tcp", *laddr)
+	if err != nil {
+		panic(err)
+	}
+	defer lis.Close()
 
-		log.Printf("Seeding %v (%v bytes) on %v", r.path, r.size, r.laddr)
+	log.Println("Serving on", lis.Addr())
 
-		wg.Add(1)
+	var errs error
+	defer func() {
+		if errs != nil {
+			panic(errs)
+		}
+	}()
+
+	ctx, handlePanics, _, cancel, wait, _ := utils.GetPanicHandler(
+		ctx,
+		&errs,
+		utils.GetPanicHandlerHooks{},
+	)
+	defer wait()
+	defer cancel()
+	defer handlePanics(false)()
+
+	go func() {
+		done := make(chan os.Signal, 1)
+		signal.Notify(done, os.Interrupt)
+
+		<-done
+
+		log.Println("Exiting gracefully")
+
+		cancel()
+
+		defer handlePanics(true)()
+
+		if lis != nil {
+			if err := lis.Close(); err != nil {
+				panic(err)
+			}
+		}
+	}()
+
+l:
+	for {
+		conn, err := lis.Accept()
+		if err != nil {
+			select {
+			case <-ctx.Done():
+				break l
+
+			default:
+				panic(err)
+			}
+		}
+
+		log.Println("Migrating to", conn.RemoteAddr())
+
 		go func() {
-			defer wg.Done()
+			defer conn.Close()
+			defer func() {
+				if err := recover(); err != nil {
+					var e error
+					if v, ok := err.(error); ok {
+						e = v
+					} else {
+						e = fmt.Errorf("%v", err)
+					}
 
-			if err := r.server.Serve(r.lis); err != nil {
-				if !utils.IsClosedErr(err) {
-					panic(err)
+					log.Printf("Registry client disconnected with error: %v", e)
 				}
+			}()
 
-				return
+			openedDevices, defers, err := roles.OpenDevices(
+				devices,
+
+				roles.OpenDevicesHooks{
+					OnDeviceOpened: func(deviceID uint32, name string) {
+						log.Println("Opened device", deviceID, "with name", name)
+					},
+				},
+			)
+			if err != nil {
+				panic(err)
+			}
+
+			for _, deferFunc := range defers {
+				defer deferFunc()
+			}
+
+			if err := roles.MigrateOpenedDevices(
+				ctx,
+
+				openedDevices,
+				*concurrency,
+
+				[]io.Reader{conn},
+				[]io.Writer{conn},
+
+				roles.MigrateDevicesHooks{
+					OnDeviceSent: func(deviceID uint32) {
+						log.Println("Sent device", deviceID)
+					},
+					OnDeviceAuthoritySent: func(deviceID uint32) {
+						log.Println("Sent authority for device", deviceID)
+					},
+					OnDeviceMigrationProgress: func(deviceID uint32, ready, total int) {
+						log.Println("Migrated", ready, "of", total, "blocks for device", deviceID)
+					},
+					OnDeviceMigrationCompleted: func(deviceID uint32) {
+						log.Println("Completed migration of device", deviceID)
+					},
+
+					OnAllDevicesSent: func() {
+						log.Println("Sent all devices")
+					},
+					OnAllMigrationsCompleted: func() {
+						log.Println("Completed all device migrations")
+					},
+				},
+			); err != nil {
+				panic(err)
 			}
 		}()
 	}
 
-	wg.Wait()
+	log.Println("Shutting down")
 }

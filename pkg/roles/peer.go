@@ -6,928 +6,1281 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"os"
 	"path/filepath"
-	"reflect"
+	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
 
-	v1 "github.com/loopholelabs/drafter/pkg/api/proto/migration/v1"
-	"github.com/loopholelabs/drafter/pkg/config"
-	"github.com/loopholelabs/drafter/pkg/remotes"
-	"github.com/loopholelabs/drafter/pkg/services"
+	iutils "github.com/loopholelabs/drafter/internal/utils"
 	"github.com/loopholelabs/drafter/pkg/utils"
-	"github.com/pojntfx/go-nbd/pkg/backend"
-	"github.com/pojntfx/go-nbd/pkg/client"
-	"github.com/pojntfx/r3map/pkg/migration"
-	iservices "github.com/pojntfx/r3map/pkg/services"
+	"github.com/loopholelabs/silo/pkg/storage"
+	"github.com/loopholelabs/silo/pkg/storage/blocks"
+	sconfig "github.com/loopholelabs/silo/pkg/storage/config"
+	sdevice "github.com/loopholelabs/silo/pkg/storage/device"
+	"github.com/loopholelabs/silo/pkg/storage/dirtytracker"
+	"github.com/loopholelabs/silo/pkg/storage/migrator"
+	"github.com/loopholelabs/silo/pkg/storage/modules"
+	"github.com/loopholelabs/silo/pkg/storage/protocol"
+	"github.com/loopholelabs/silo/pkg/storage/protocol/packets"
+	"github.com/loopholelabs/silo/pkg/storage/volatilitymonitor"
+	"github.com/loopholelabs/silo/pkg/storage/waitingcache"
 	"golang.org/x/sys/unix"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 )
-
-type PeerHooks struct {
-	OnBeforeSuspend func() error
-	OnAfterSuspend  func() error
-
-	OnBeforeStop func() error
-	OnAfterStop  func() error
-
-	OnStateLeechProgress     func(remainingDataSize int64) error
-	OnMemoryLeechProgress    func(remainingDataSize int64) error
-	OnInitramfsLeechProgress func(remainingDataSize int64) error
-	OnKernelLeechProgress    func(remainingDataSize int64) error
-	OnDiskLeechProgress      func(remainingDataSize int64) error
-	OnConfigLeechProgress    func(remainingDataSize int64) error
-}
 
 var (
-	ErrCouldNotGetDeviceStat         = errors.New("could not get device stat")
-	ErrNoRaddrOrPathGivenForResource = errors.New("no raddr or path given for resource")
+	ErrConfigFileNotFound       = errors.New("config file not found")
+	ErrCouldNotGetNBDDeviceStat = errors.New("could not get NBD device stat")
 )
 
-type stage1 struct {
-	name            string
-	raddr           string
-	path            string
-	laddr           string
-	resumeThreshold int64
-	onLeechProgress func(remainingDataSize int64) error
+type MigrateFromDevice struct {
+	Name string `json:"name"`
+
+	Base    string `json:"base"`
+	Overlay string `json:"overlay"`
+	State   string `json:"state"`
+
+	BlockSize uint32 `json:"blockSize"`
 }
 
-type stage2 struct {
-	prev stage1
+type MigrateFromHooks struct {
+	OnRemoteDeviceReceived           func(remoteDeviceID uint32, name string)
+	OnRemoteDeviceExposed            func(remoteDeviceID uint32, path string)
+	OnRemoteDeviceAuthorityReceived  func(remoteDeviceID uint32)
+	OnRemoteDeviceMigrationCompleted func(remoteDeviceID uint32)
 
-	remote *iservices.SeederRemote
-	size   int64
-	cache  *os.File
+	OnRemoteAllDevicesReceived     func()
+	OnRemoteAllMigrationsCompleted func()
+
+	OnLocalDeviceRequested func(localDeviceID uint32, name string)
+	OnLocalDeviceExposed   func(localDeviceID uint32, path string)
+
+	OnLocalAllDevicesRequested func()
 }
 
-type stage3 struct {
-	prev stage2
+type MigratedPeer struct {
+	Wait  func() error
+	Close func() error
 
-	local    backend.Backend
-	finished chan struct{}
-	finalize func() (seed func() (svc *iservices.SeederService, err error), err error)
-	delta    int
+	Resume func(
+		ctx context.Context,
+
+		resumeTimeout,
+		rescueTimeout time.Duration,
+	) (
+		resumedPeer *ResumedPeer,
+
+		errs error,
+	)
 }
 
-type stage4 struct {
-	prev stage3
+type MakeMigratableDevice struct {
+	Name string `json:"name"`
 
-	seed func() (svc *iservices.SeederService, err error)
+	Expiry time.Duration `json:"expiry"`
 }
 
-type stage5 struct {
-	prev stage4
+type ResumedPeer struct {
+	Wait  func() error
+	Close func() error
 
-	server *grpc.Server
-	lis    net.Listener
-	raddr  string
+	SuspendAndCloseAgentServer func(ctx context.Context, resumeTimeout time.Duration) error
+
+	MakeMigratable func(
+		ctx context.Context,
+
+		devices []MakeMigratableDevice,
+	) (migratablePeer *MigratablePeer, errs error)
 }
 
-type Sizes struct {
-	State     int64
-	Memory    int64
-	Initramfs int64
-	Kernel    int64
-	Disk      int64
-	Config    int64
+type MigrateToDevice struct {
+	Name string `json:"name"`
+
+	MaxDirtyBlocks int `json:"maxDirtyBlocks"`
+	MinCycles      int `json:"minCycles"`
+	MaxCycles      int `json:"maxCycles"`
+
+	CycleThrottle time.Duration `json:"cycleThrottle"`
 }
 
-type Deltas struct {
-	State     int
-	Memory    int
-	Initramfs int
-	Kernel    int
-	Disk      int
-	Config    int
+type MigrateToHooks struct {
+	OnBeforeSuspend func()
+	OnAfterSuspend  func()
+
+	OnDeviceSent                       func(deviceID uint32, remote bool)
+	OnDeviceAuthoritySent              func(deviceID uint32, remote bool)
+	OnDeviceInitialMigrationProgress   func(deviceID uint32, remote bool, ready int, total int)
+	OnDeviceContinousMigrationProgress func(deviceID uint32, remote bool, delta int)
+	OnDeviceFinalMigrationProgress     func(deviceID uint32, remote bool, delta int)
+	OnDeviceMigrationCompleted         func(deviceID uint32, remote bool)
+
+	OnAllDevicesSent         func()
+	OnAllMigrationsCompleted func()
+}
+
+type MigratablePeer struct {
+	Close func()
+
+	MigrateTo func(
+		ctx context.Context,
+
+		devices []MigrateToDevice,
+
+		suspendTimeout time.Duration,
+		concurrency int,
+
+		readers []io.Reader,
+		writers []io.Writer,
+
+		hooks MigrateToHooks,
+	) (errs error)
+}
+
+type peerStage2 struct {
+	name string
+
+	blockSize uint32
+
+	id     uint32
+	remote bool
+
+	storage storage.StorageProvider
+	device  storage.ExposedStorage
+}
+
+type peerStage3 struct {
+	prev peerStage2
+
+	makeMigratableDevice MakeMigratableDevice
+}
+
+type peerStage4 struct {
+	prev peerStage3
+
+	storage     *modules.Lockable
+	orderer     *blocks.PriorityBlockOrder
+	totalBlocks int
+	dirtyRemote *dirtytracker.DirtyTrackerRemote
+}
+
+type peerStage5 struct {
+	prev peerStage4
+
+	migrateToDevice MigrateToDevice
 }
 
 type Peer struct {
-	verbose bool
+	VMPath string
 
-	claimNamespace   func() (string, error)
-	releaseNamespace func(namespace string) error
+	Wait  func() error
+	Close func() error
 
-	hypervisorConfiguration config.HypervisorConfiguration
-	migratorOptions         *migration.MigratorOptions
+	MigrateFrom func(
+		ctx context.Context,
 
-	hooks PeerHooks
+		devices []MigrateFromDevice,
 
-	cacheBaseDir string
+		readers []io.Reader,
+		writers []io.Writer,
 
-	resumeTimeout time.Duration
+		hooks MigrateFromHooks,
+	) (
+		migratedPeer *MigratedPeer,
 
-	raddrs           config.ResourceAddresses
-	paths            config.ResourceAddresses
-	laddrs           config.ResourceAddresses
-	resumeThresholds config.ResourceResumeThresholds
-
-	stage2Inputs []stage2
-	stage3Inputs []stage3
-	runner       *Runner
-	vmPath       string
-	suspendVM    func() error
-	stage4Inputs []stage4
-	stage5Inputs []stage5
-
-	deferFuncs [][]func() error
-
-	wg sync.WaitGroup
-
-	closeLock sync.Mutex
-
-	errs chan error
+		errs error,
+	)
 }
 
-func NewPeer(
-	verbose bool,
+func StartPeer(
+	hypervisorCtx context.Context,
+	rescueCtx context.Context,
 
-	claimNamespace func() (string, error),
-	releaseNamespace func(namespace string) error,
+	hypervisorConfiguration HypervisorConfiguration,
 
-	hypervisorConfiguration config.HypervisorConfiguration,
-	migratorOptions *migration.MigratorOptions,
+	stateName string,
+	memoryName string,
+) (
+	peer *Peer,
 
-	hooks PeerHooks,
+	errs error,
+) {
+	peer = &Peer{}
 
-	cacheBaseDir string,
+	_, handlePanics, handleGoroutinePanics, cancel, wait, _ := utils.GetPanicHandler(
+		hypervisorCtx,
+		&errs,
+		utils.GetPanicHandlerHooks{},
+	)
+	defer wait()
+	defer cancel()
+	defer handlePanics(false)()
 
-	raddrs config.ResourceAddresses,
-	paths config.ResourceAddresses,
-	laddrs config.ResourceAddresses,
-	resumeThresholds config.ResourceResumeThresholds,
+	runner, err := StartRunner(
+		hypervisorCtx,
+		rescueCtx,
 
-	resumeTimeout time.Duration,
-) *Peer {
-	return &Peer{
-		verbose: verbose,
+		hypervisorConfiguration,
 
-		claimNamespace:   claimNamespace,
-		releaseNamespace: releaseNamespace,
+		stateName,
+		memoryName,
+	)
 
-		hypervisorConfiguration: hypervisorConfiguration,
-		migratorOptions:         migratorOptions,
-
-		hooks: hooks,
-
-		cacheBaseDir: cacheBaseDir,
-
-		resumeTimeout: resumeTimeout,
-
-		raddrs:           raddrs,
-		paths:            paths,
-		laddrs:           laddrs,
-		resumeThresholds: resumeThresholds,
-
-		deferFuncs: [][]func() error{},
-
-		wg:   sync.WaitGroup{},
-		errs: make(chan error),
-	}
-}
-
-func (p *Peer) Wait() error {
-	for err := range p.errs {
-		if err != nil {
-			return err
+	// We set both of these even if we return an error since we need to have a way to wait for rescue operations to complete
+	peer.Wait = runner.Wait
+	peer.Close = func() error {
+		if runner.Close != nil {
+			if err := runner.Close(); err != nil {
+				return err
+			}
 		}
-	}
 
-	p.wg.Wait()
-
-	return nil
-}
-
-func (p *Peer) Connect(ctx context.Context) (*Sizes, error) {
-	stage1Inputs := []stage1{
-		{
-			name:            config.InitramfsName,
-			raddr:           p.raddrs.Initramfs,
-			path:            p.paths.Initramfs,
-			laddr:           p.laddrs.Initramfs,
-			resumeThreshold: p.resumeThresholds.Initramfs,
-			onLeechProgress: p.hooks.OnInitramfsLeechProgress,
-		},
-		{
-			name:            config.KernelName,
-			raddr:           p.raddrs.Kernel,
-			path:            p.paths.Kernel,
-			laddr:           p.laddrs.Kernel,
-			resumeThreshold: p.resumeThresholds.Kernel,
-			onLeechProgress: p.hooks.OnKernelLeechProgress,
-		},
-		{
-			name:            config.DiskName,
-			raddr:           p.raddrs.Disk,
-			path:            p.paths.Disk,
-			laddr:           p.laddrs.Disk,
-			resumeThreshold: p.resumeThresholds.Disk,
-			onLeechProgress: p.hooks.OnDiskLeechProgress,
-		},
-
-		{
-			name:            config.StateName,
-			raddr:           p.raddrs.State,
-			path:            p.paths.State,
-			laddr:           p.laddrs.State,
-			resumeThreshold: p.resumeThresholds.State,
-			onLeechProgress: p.hooks.OnStateLeechProgress,
-		},
-		{
-			name:            config.MemoryName,
-			raddr:           p.raddrs.Memory,
-			path:            p.paths.Memory,
-			laddr:           p.laddrs.Memory,
-			resumeThreshold: p.resumeThresholds.Memory,
-			onLeechProgress: p.hooks.OnMemoryLeechProgress,
-		},
-
-		{
-			name:            config.ConfigName,
-			raddr:           p.raddrs.Config,
-			path:            p.paths.Config,
-			laddr:           p.laddrs.Config,
-			resumeThreshold: p.resumeThresholds.Config,
-			onLeechProgress: p.hooks.OnConfigLeechProgress,
-		},
-	}
-
-	for _, stage := range stage1Inputs {
-		if stage.raddr == "" && stage.path == "" {
-			return nil, ErrNoRaddrOrPathGivenForResource
+		if peer.Wait != nil {
+			if err := peer.Wait(); err != nil {
+				return err
+			}
 		}
+
+		return nil
 	}
 
-	stage2Inputs, stage1Defers, stage1Errs := utils.ConcurrentMap(
-		stage1Inputs,
-		func(index int, input stage1, output *stage2, addDefer func(deferFunc func() error)) error {
-			output.prev = input
+	if err != nil {
+		panic(err)
+	}
 
-			if input.raddr == "" {
-				resourceInfo, err := os.Stat(input.path)
-				if err != nil {
-					return err
-				}
+	peer.VMPath = runner.VMPath
 
-				addDefer(func() error {
-					if paddingLength := utils.GetBlockDevicePadding(resourceInfo.Size()); paddingLength > 0 {
-						resourceFile, err := os.OpenFile(input.path, os.O_WRONLY|os.O_APPEND, os.ModePerm)
-						if err != nil {
-							return err
-						}
-						defer resourceFile.Close()
+	// We don't track this because we return the wait function
+	handleGoroutinePanics(false, func() {
+		if err := runner.Wait(); err != nil {
+			panic(err)
+		}
+	})
 
-						if _, err := resourceFile.Write(make([]byte, paddingLength)); err != nil {
-							return err
-						}
-					}
+	peer.MigrateFrom = func(
+		ctx context.Context,
 
-					return nil
-				})
+		devices []MigrateFromDevice,
 
-				output.size = resourceInfo.Size()
+		readers []io.Reader,
+		writers []io.Writer,
 
-				if input.laddr != "" {
-					cache, err := os.OpenFile(input.path, os.O_RDWR, os.ModePerm)
-					if err != nil {
-						return err
-					}
+		hooks MigrateFromHooks,
+	) (
+		migratedPeer *MigratedPeer,
 
-					output.cache = cache
-					addDefer(cache.Close)
-				}
+		errs error,
+	) {
+		migratedPeer = &MigratedPeer{}
 
-				return nil
-			}
+		// We use the background context here instead of the internal context because we want to distinguish
+		// between a context cancellation from the outside and getting a response
+		allRemoteDevicesReceivedCtx, cancelAllRemoteDevicesReceivedCtx := context.WithCancel(context.Background())
+		defer cancelAllRemoteDevicesReceivedCtx()
 
-			conn, err := grpc.Dial(input.raddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
-			if err != nil {
-				return err
-			}
-			addDefer(conn.Close)
+		allRemoteDevicesReadyCtx, cancelAllRemoteDevicesReadyCtx := context.WithCancel(context.Background())
+		defer cancelAllRemoteDevicesReadyCtx()
 
-			rawRemote, rawRemoteWithMeta := services.NewSeederWithMetaRemoteGrpc(v1.NewSeederWithMetaClient(conn))
+		// We don't `defer cancelProtocolCtx()` this because we cancel in the wait function
+		protocolCtx, cancelProtocolCtx := context.WithCancel(ctx)
 
-			rawSize, err := rawRemoteWithMeta.Meta(ctx)
-			if err != nil {
-				return err
-			}
-
-			// Make sure that we always have at least two blocks in length
-			alignedSize := ((rawSize + (client.MaximumBlockSize * 2) - 1) / (client.MaximumBlockSize * 2)) * client.MaximumBlockSize * 2
-			output.size = alignedSize
-
-			output.remote = remotes.NewSeederWithAlignedReadsRemote(rawRemote, rawSize, alignedSize)
-
-			if err := os.MkdirAll(p.cacheBaseDir, os.ModePerm); err != nil {
-				return err
-			}
-
-			var cache *os.File
-			if input.path == "" {
-				cache, err = os.CreateTemp(p.cacheBaseDir, "*.drft")
-				if err != nil {
-					return err
-				}
-				addDefer(func() error {
-					return os.Remove(cache.Name())
-				})
-			} else {
-				// Wite changes to specified path instead of cache directory for persistence
-				cache, err = os.OpenFile(input.path, os.O_CREATE|os.O_RDWR, os.ModePerm)
-				if err != nil {
-					return err
-				}
-			}
-
-			output.cache = cache
-			addDefer(cache.Close)
-
-			if err := cache.Truncate(output.size); err != nil {
-				return err
-			}
+		// We overwrite this further down, but this is so that we don't leak the `protocolCtx` if we `panic()` before we set `WaitForMigrationsToComplete`
+		migratedPeer.Wait = func() error {
+			cancelProtocolCtx()
 
 			return nil
-		},
-	)
-	p.deferFuncs = append(p.deferFuncs, stage1Defers...)
-	p.stage2Inputs = stage2Inputs
-
-	for _, err := range stage1Errs {
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	sizes := &Sizes{}
-
-	for _, stage := range p.stage2Inputs {
-		switch stage.prev.name {
-		case config.InitramfsName:
-			sizes.Initramfs = stage.size
-		case config.KernelName:
-			sizes.Kernel = stage.size
-		case config.DiskName:
-			sizes.Disk = stage.size
-
-		case config.StateName:
-			sizes.State = stage.size
-		case config.MemoryName:
-
-			sizes.Memory = stage.size
-		case config.ConfigName:
-			sizes.Config = stage.size
-		}
-	}
-
-	return sizes, nil
-}
-
-func (p *Peer) Leech(ctx context.Context) (*Deltas, error) {
-	netns, err := p.claimNamespace()
-	if err != nil {
-		return nil, err
-	}
-	p.deferFuncs = append(p.deferFuncs, []func() error{func() error {
-		return p.releaseNamespace(netns)
-	}})
-
-	p.runner = NewRunner(
-		config.HypervisorConfiguration{
-			FirecrackerBin: p.hypervisorConfiguration.FirecrackerBin,
-			JailerBin:      p.hypervisorConfiguration.JailerBin,
-
-			ChrootBaseDir: p.hypervisorConfiguration.ChrootBaseDir,
-
-			UID: p.hypervisorConfiguration.UID,
-			GID: p.hypervisorConfiguration.GID,
-
-			NetNS:         netns,
-			NumaNode:      p.hypervisorConfiguration.NumaNode,
-			CgroupVersion: p.hypervisorConfiguration.CgroupVersion,
-
-			EnableOutput: p.hypervisorConfiguration.EnableOutput,
-			EnableInput:  p.hypervisorConfiguration.EnableInput,
-		},
-
-		config.StateName,
-		config.MemoryName,
-	)
-
-	p.wg.Add(1)
-	go func() {
-		defer p.wg.Done()
-
-		if err := p.runner.Wait(); err != nil {
-			p.errs <- err
-		}
-	}()
-
-	p.deferFuncs = append(p.deferFuncs, []func() error{p.runner.Close})
-	p.vmPath, err = p.runner.Open()
-	if err != nil {
-		return nil, err
-	}
-
-	p.suspendVM = sync.OnceValue(func() error {
-		if hook := p.hooks.OnBeforeSuspend; hook != nil {
-			if err := hook(); err != nil {
-				return err
-			}
 		}
 
-		if hook := p.hooks.OnAfterSuspend; hook != nil {
-			defer hook()
-		}
+		internalCtx, handlePanics, handleGoroutinePanics, cancel, wait, _ := utils.GetPanicHandler(
+			ctx,
+			&errs,
+			utils.GetPanicHandlerHooks{},
+		)
+		defer wait()
+		defer cancel()
+		defer handlePanics(false)()
 
-		return p.runner.Suspend(ctx, p.resumeTimeout)
-	})
+		// Use an atomic counter and `allDevicesReadyCtx` and instead of a WaitGroup so that we can `select {}` without leaking a goroutine
+		var (
+			receivedButNotReadyRemoteDevices atomic.Int32
 
-	stopVM := sync.OnceValue(func() error {
-		if hook := p.hooks.OnBeforeStop; hook != nil {
-			if err := hook(); err != nil {
-				return err
-			}
-		}
+			deviceCloseFuncsLock sync.Mutex
+			deviceCloseFuncs     []func() error
 
-		if hook := p.hooks.OnAfterStop; hook != nil {
-			defer hook()
-		}
+			stage2InputsLock sync.Mutex
+			stage2Inputs     = []peerStage2{}
 
-		return p.runner.Close()
-	})
-
-	var (
-		deviceLookupLock sync.Mutex
-		continueWg       sync.WaitGroup
-	)
-	stage3Inputs, stage2Defers, stage2Errs := utils.ConcurrentMap(
-		p.stage2Inputs,
-		func(index int, input stage2, output *stage3, addDefer func(deferFunc func() error)) error {
-			output.prev = input
-			output.finished = make(chan struct{})
-
-			var file string
-			if input.prev.raddr == "" {
-				if input.prev.laddr == "" {
-					mnt := utils.NewLoopMount(input.prev.path)
-
-					deviceLookupLock.Lock() // We need to make sure that we call `GetFree` synchronously
-					defer deviceLookupLock.Unlock()
-
-					addDefer(func() error {
-						close(output.finished)
-
-						return nil
-					})
-					addDefer(mnt.Close)
-					dev, err := mnt.Open()
-					if err != nil {
-						return err
-					}
-					file = dev
-
-					addDefer(stopVM)
-
-					if hook := input.prev.onLeechProgress; hook != nil {
-						if err := hook(0); err != nil {
-							return err
-						}
-					}
-				} else {
-					output.local = backend.NewFileBackend(input.cache)
-					sdr := migration.NewPathSeeder(
-						output.local,
-
-						&migration.SeederOptions{
-							Verbose: p.verbose,
-						},
-						&migration.SeederHooks{
-							OnBeforeSync: func() error {
-								return p.suspendVM()
-							},
-
-							OnBeforeClose: func() error {
-								return stopVM()
-							},
-						},
-
-						nil,
-						nil,
+			pro *protocol.ProtocolRW
+		)
+		if len(readers) > 0 && len(writers) > 0 { // Only open the protocol if we want passed in readers and writers
+			pro = protocol.NewProtocolRW(
+				protocolCtx, // We don't track this because we return the wait function
+				readers,
+				writers,
+				func(ctx context.Context, p protocol.Protocol, index uint32) {
+					var (
+						from  *protocol.FromProtocol
+						local *waitingcache.WaitingCacheLocal
 					)
+					from = protocol.NewFromProtocol(
+						ctx,
+						index,
+						func(di *packets.DevInfo) storage.StorageProvider {
+							// No need to `defer handlePanics` here - panics bubble upwards
 
-					p.wg.Add(1)
-					go func() {
-						defer p.wg.Done()
-						defer close(output.finished)
+							base := ""
+							for _, device := range devices {
+								if di.Name == device.Name {
+									base = device.Base
 
-						if err := sdr.Wait(); err != nil {
-							if !utils.IsClosedErr(err) {
-								p.errs <- err
-							}
-						}
-					}()
-
-					deviceLookupLock.Lock() // We need to make sure that we call `GetFree` synchronously
-					defer deviceLookupLock.Unlock()
-
-					addDefer(sdr.Close)
-					dev, _, svc, err := sdr.Open()
-					if err != nil {
-						return err
-					}
-					file = dev
-					output.finalize = func() (seed func() (*iservices.SeederService, error), err error) {
-						return func() (*iservices.SeederService, error) {
-							return svc, nil
-						}, nil
-					}
-
-					if hook := input.prev.onLeechProgress; hook != nil {
-						if err := hook(0); err != nil {
-							return err
-						}
-					}
-				}
-			} else {
-				continueWg.Add(1)
-				markStageAsReady := sync.OnceFunc(func() {
-					continueWg.Done()
-				})
-
-				remainingDataSize := atomic.Int64{}
-				// Nearest lower multiple of the block size minus one chunk that is never being pulled automatically
-				remainingDataSize.Add(((input.size / client.MaximumBlockSize) * client.MaximumBlockSize) - client.MaximumBlockSize)
-
-				output.local = backend.NewFileBackend(input.cache)
-				mgr := migration.NewPathMigrator(
-					ctx,
-
-					output.local,
-
-					&migration.MigratorOptions{
-						Verbose:     p.verbose,
-						PullWorkers: p.migratorOptions.PullWorkers,
-					},
-					&migration.MigratorHooks{
-						OnBeforeSync: func() error {
-							return p.suspendVM()
-						},
-						OnAfterSync: func(dirtyOffsets []int64) error {
-							output.delta = (len(dirtyOffsets) * client.MaximumBlockSize)
-
-							return nil
-						},
-
-						OnBeforeClose: func() error {
-							return stopVM()
-						},
-
-						OnChunkIsLocal: func(off int64) error {
-							s := remainingDataSize.Add(-client.MaximumBlockSize)
-
-							if hook := input.prev.onLeechProgress; hook != nil {
-								if err := hook(s); err != nil {
-									return err
+									break
 								}
 							}
 
-							if s <= input.prev.resumeThreshold {
-								markStageAsReady()
+							if strings.TrimSpace(base) == "" {
+								panic(ErrUnknownDeviceName)
 							}
 
-							return nil
+							receivedButNotReadyRemoteDevices.Add(1)
+
+							if hook := hooks.OnRemoteDeviceReceived; hook != nil {
+								hook(index, di.Name)
+							}
+
+							if err := os.MkdirAll(filepath.Dir(base), os.ModePerm); err != nil {
+								panic(err)
+							}
+
+							src, device, err := sdevice.NewDevice(&sconfig.DeviceSchema{
+								Name:      di.Name,
+								System:    "file",
+								Location:  base,
+								Size:      fmt.Sprintf("%v", di.Size),
+								BlockSize: fmt.Sprintf("%v", di.Block_size),
+								Expose:    true,
+							})
+							if err != nil {
+								panic(err)
+							}
+							deviceCloseFuncsLock.Lock()
+							deviceCloseFuncs = append(deviceCloseFuncs, device.Shutdown) // defer device.Shutdown()
+							// We have to close the runner before we close the devices
+							deviceCloseFuncs = append(deviceCloseFuncs, runner.Close) // defer runner.Close()
+							deviceCloseFuncsLock.Unlock()
+
+							var remote *waitingcache.WaitingCacheRemote
+							local, remote = waitingcache.NewWaitingCache(src, int(di.Block_size))
+							local.NeedAt = func(offset int64, length int32) {
+								// Only access the `from` protocol if it's not already closed
+								select {
+								case <-protocolCtx.Done():
+									return
+
+								default:
+								}
+
+								if err := from.NeedAt(offset, length); err != nil {
+									panic(err)
+								}
+							}
+							local.DontNeedAt = func(offset int64, length int32) {
+								// Only access the `from` protocol if it's not already closed
+								select {
+								case <-protocolCtx.Done():
+									return
+
+								default:
+								}
+
+								if err := from.DontNeedAt(offset, length); err != nil {
+									panic(err)
+								}
+							}
+
+							device.SetProvider(local)
+
+							stage2InputsLock.Lock()
+							stage2Inputs = append(stage2Inputs, peerStage2{
+								name: di.Name,
+
+								blockSize: di.Block_size,
+
+								id:     index,
+								remote: true,
+
+								storage: local,
+								device:  device,
+							})
+							stage2InputsLock.Unlock()
+
+							devicePath := filepath.Join("/dev", device.Device())
+
+							deviceInfo, err := os.Stat(devicePath)
+							if err != nil {
+								panic(err)
+							}
+
+							deviceStat, ok := deviceInfo.Sys().(*syscall.Stat_t)
+							if !ok {
+								panic(ErrCouldNotGetNBDDeviceStat)
+							}
+
+							deviceMajor := uint64(deviceStat.Rdev / 256)
+							deviceMinor := uint64(deviceStat.Rdev % 256)
+
+							deviceID := int((deviceMajor << 8) | deviceMinor)
+
+							select {
+							case <-internalCtx.Done():
+								if err := internalCtx.Err(); err != nil {
+									panic(internalCtx.Err())
+								}
+
+								return nil
+
+							default:
+								if err := unix.Mknod(filepath.Join(runner.VMPath, di.Name), unix.S_IFBLK|0666, deviceID); err != nil {
+									panic(err)
+								}
+							}
+
+							if hook := hooks.OnRemoteDeviceExposed; hook != nil {
+								hook(index, devicePath)
+							}
+
+							return remote
 						},
-					},
+						p,
+					)
 
-					nil,
-					nil,
-				)
-
-				p.wg.Add(1)
-				go func() {
-					defer p.wg.Done()
-					defer close(output.finished)
-					defer markStageAsReady()
-
-					if err := mgr.Wait(); err != nil {
-						if !utils.IsClosedErr(err) {
-							p.errs <- err
+					handleGoroutinePanics(true, func() {
+						if err := from.HandleReadAt(); err != nil {
+							panic(err)
 						}
-					}
-				}()
+					})
 
-				deviceLookupLock.Lock() // We need to make sure that we call `FindUnusedNBDDevice` synchronously
-				defer deviceLookupLock.Unlock()
+					handleGoroutinePanics(true, func() {
+						if err := from.HandleWriteAt(); err != nil {
+							panic(err)
+						}
+					})
 
-				addDefer(mgr.Close)
-				finalize, dev, _, err := mgr.Leech(output.prev.remote)
-				if err != nil {
+					handleGoroutinePanics(true, func() {
+						if err := from.HandleDevInfo(); err != nil {
+							panic(err)
+						}
+					})
+
+					handleGoroutinePanics(true, func() {
+						if err := from.HandleEvent(func(e *packets.Event) {
+							switch e.Type {
+							case packets.EventCustom:
+								switch e.CustomType {
+								case byte(EventCustomAllDevicesSent):
+									cancelAllRemoteDevicesReceivedCtx()
+
+									if hook := hooks.OnRemoteAllDevicesReceived; hook != nil {
+										hook()
+									}
+
+								case byte(EventCustomTransferAuthority):
+									if receivedButNotReadyRemoteDevices.Add(-1) <= 0 {
+										cancelAllRemoteDevicesReadyCtx()
+									}
+
+									if hook := hooks.OnRemoteDeviceAuthorityReceived; hook != nil {
+										hook(index)
+									}
+								}
+
+							case packets.EventCompleted:
+								if hook := hooks.OnRemoteDeviceMigrationCompleted; hook != nil {
+									hook(index)
+								}
+							}
+						}); err != nil {
+							panic(err)
+						}
+					})
+
+					handleGoroutinePanics(true, func() {
+						if err := from.HandleDirtyList(func(blocks []uint) {
+							if local != nil {
+								local.DirtyBlocks(blocks)
+							}
+						}); err != nil {
+							panic(err)
+						}
+					})
+				})
+		}
+
+		migratedPeer.Wait = sync.OnceValue(func() error {
+			defer cancelProtocolCtx()
+
+			// If we haven't opened the protocol, don't wait for it
+			if pro != nil {
+				if err := pro.Handle(); err != nil && !errors.Is(err, io.EOF) {
 					return err
 				}
-				file = dev
-				output.finalize = finalize
 			}
 
-			info, err := os.Stat(file)
-			if err != nil {
-				return err
+			// If it hasn't sent any devices, the remote Silo peer doesn't send `EventCustomAllDevicesSent`
+			// After the protocol has closed without errors, we can safely assume that we won't receive any
+			// additional devices, so we mark all devices as received and ready
+			select {
+			case <-allRemoteDevicesReceivedCtx.Done():
+			default:
+				cancelAllRemoteDevicesReceivedCtx()
+
+				// We need to call the hook manually too since we would otherwise only call if we received at least one device
+				if hook := hooks.OnRemoteAllDevicesReceived; hook != nil {
+					hook()
+				}
 			}
 
-			stat, ok := info.Sys().(*syscall.Stat_t)
-			if !ok {
-				return ErrCouldNotGetDeviceStat
-			}
+			cancelAllRemoteDevicesReadyCtx()
 
-			major := uint64(stat.Rdev / 256)
-			minor := uint64(stat.Rdev % 256)
-
-			dev := int((major << 8) | minor)
-
-			if err := unix.Mknod(filepath.Join(p.vmPath, input.prev.name), unix.S_IFBLK|0666, dev); err != nil {
-				return err
+			if hook := hooks.OnRemoteAllMigrationsCompleted; hook != nil {
+				hook()
 			}
 
 			return nil
-		},
-	)
-	p.deferFuncs = append(p.deferFuncs, stage2Defers...)
-	p.stage3Inputs = stage3Inputs
-
-	for _, err := range stage2Errs {
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	continueCh := make(chan struct{})
-	go func() {
-		continueWg.Wait() // This will always eventually return since markStageAsReady() is deferred in the `Wait()` goroutine
-
-		close(continueCh)
-	}()
-
-	cases := []reflect.SelectCase{
-		{
-			Dir:  reflect.SelectRecv,
-			Chan: reflect.ValueOf(continueCh),
-		},
-	}
-	for _, stage := range stage3Inputs {
-		cases = append(cases, reflect.SelectCase{
-			Dir:  reflect.SelectRecv,
-			Chan: reflect.ValueOf(stage.finished),
 		})
-	}
+		migratedPeer.Close = func() (errs error) {
+			// We have to close the runner before we close the devices
+			if err := runner.Close(); err != nil {
+				errs = errors.Join(errs, err)
+			}
 
-	chosen, _, _ := reflect.Select(cases)
-	if chosen != 0 {
-		// One of the finished channels was selected, return
-		return nil, io.EOF
-	}
+			defer func() {
+				if err := migratedPeer.Wait(); err != nil {
+					errs = errors.Join(errs, err)
+				}
+			}()
 
-	// continueCh was selected, continue
-	deltas := &Deltas{}
+			deviceCloseFuncsLock.Lock()
+			defer deviceCloseFuncsLock.Unlock()
 
-	for _, stage := range p.stage3Inputs {
-		switch stage.prev.prev.name {
-		case config.InitramfsName:
-			deltas.Initramfs = stage.delta
-		case config.KernelName:
-			deltas.Kernel = stage.delta
-		case config.DiskName:
-			deltas.Disk = stage.delta
+			for _, closeFunc := range deviceCloseFuncs {
+				defer func(closeFunc func() error) {
+					if err := closeFunc(); err != nil {
+						errs = errors.Join(errs, err)
+					}
+				}(closeFunc)
+			}
 
-		case config.StateName:
-			deltas.State = stage.delta
-		case config.MemoryName:
-			deltas.Memory = stage.delta
-
-		case config.ConfigName:
-			deltas.Config = stage.delta
+			return
 		}
-	}
 
-	return deltas, nil
-}
+		// We don't track this because we return the wait function
+		handleGoroutinePanics(false, func() {
+			if err := migratedPeer.Wait(); err != nil {
+				panic(err)
+			}
+		})
 
-func (p *Peer) Resume(ctx context.Context) (string, error) {
-	// Resume as soon as the underlying resources are unlocked
-	resumeErrs := make(chan error)
-	go func() {
-		var err error
-		defer func() {
-			resumeErrs <- err
-		}()
+		// We don't track this because we return the close function
+		handleGoroutinePanics(false, func() {
+			select {
+			// Failure case; we cancelled the internal context before all devices are ready
+			case <-internalCtx.Done():
+				if err := migratedPeer.Close(); err != nil {
+					panic(err)
+				}
 
-		configPath := ""
-		for _, stage := range p.stage3Inputs {
-			if stage.prev.prev.name == config.ConfigName {
-				configPath = filepath.Join(p.vmPath, stage.prev.prev.name)
-				if configPath == "" {
-					configPath = stage.prev.prev.path
+			// Happy case; all devices are ready and we want to wait with closing the devices until we stop the Firecracker process
+			case <-allRemoteDevicesReadyCtx.Done():
+				<-hypervisorCtx.Done()
+
+				if err := migratedPeer.Close(); err != nil {
+					panic(err)
 				}
 
 				break
 			}
-		}
-
-		configFile, e := os.Open(configPath)
-		if e != nil {
-			err = e
-
-			return
-		}
-		defer configFile.Close()
-
-		var packageConfig config.PackageConfiguration
-		if e := json.NewDecoder(configFile).Decode(&packageConfig); e != nil {
-			err = e
-
-			return
-		}
-
-		err = p.runner.Resume(ctx, p.resumeTimeout, packageConfig.AgentVSockPort)
-	}()
-
-	stage4Inputs, stage3Defers, stage3Errs := utils.ConcurrentMap(
-		p.stage3Inputs,
-		func(index int, input stage3, output *stage4, addDefer func(deferFunc func() error)) error {
-			output.prev = input
-
-			if input.prev.prev.raddr == "" && input.prev.prev.laddr == "" {
-				return nil
-			}
-
-			seed, err := input.finalize()
-			if err != nil {
-				return err
-			}
-			output.seed = seed
-
-			return nil
-		},
-	)
-	p.deferFuncs = append(p.deferFuncs, stage3Defers...)
-	p.stage4Inputs = stage4Inputs
-
-	for _, err := range stage3Errs {
-		if err != nil {
-			return "", err
-		}
-	}
-
-	if err := <-resumeErrs; err != nil {
-		return "", err
-	}
-
-	return p.vmPath, nil
-}
-
-func (p *Peer) Seed(ctx context.Context) (*config.ResourceAddresses, error) {
-	stage5Inputs, stage4Defers, stage4Errs := utils.ConcurrentMap(
-		p.stage4Inputs,
-		func(index int, input stage4, output *stage5, addDefer func(deferFunc func() error)) error {
-			output.prev = input
-
-			if input.prev.prev.prev.raddr == "" && input.prev.prev.prev.laddr == "" || input.prev.prev.prev.laddr == "" {
-				if input.prev.prev.prev.raddr != "" {
-					// We need to manually `Close()` the remote since we don't call `Seed()`, otherwise the remote VM is stuck in the resumed state
-					return input.prev.prev.remote.Close(ctx)
-				}
-
-				return nil
-			}
-
-			svc, err := input.seed()
-			if err != nil {
-				return err
-			}
-
-			output.server = grpc.NewServer()
-
-			v1.RegisterSeederWithMetaServer(output.server, services.NewSeederWithMetaServiceGrpc(services.NewSeederWithMetaService(svc, input.prev.local, p.verbose)))
-
-			output.lis, err = net.Listen("tcp", input.prev.prev.prev.laddr)
-			if err != nil {
-				return err
-			}
-			addDefer(output.lis.Close)
-			output.raddr = output.lis.Addr().String()
-
-			return nil
-		},
-	)
-	p.deferFuncs = append(p.deferFuncs, stage4Defers...)
-	p.stage5Inputs = stage5Inputs
-
-	for _, err := range stage4Errs {
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	laddrs := &config.ResourceAddresses{}
-
-	for _, stage := range p.stage5Inputs {
-		switch stage.prev.prev.prev.prev.name {
-		case config.InitramfsName:
-			laddrs.Initramfs = stage.raddr
-		case config.KernelName:
-			laddrs.Kernel = stage.raddr
-		case config.DiskName:
-			laddrs.Disk = stage.raddr
-
-		case config.StateName:
-			laddrs.State = stage.raddr
-		case config.MemoryName:
-			laddrs.Memory = stage.raddr
-
-		case config.ConfigName:
-			laddrs.Config = stage.raddr
-		}
-	}
-
-	return laddrs, nil
-}
-
-func (p *Peer) Serve() error {
-	errs := make(chan error)
-	for _, stage := range p.stage5Inputs {
-		go func(stage stage5) {
-			if stage.prev.prev.prev.prev.raddr == "" && stage.prev.prev.prev.prev.laddr == "" || stage.prev.prev.prev.prev.laddr == "" {
-				return
-			}
-
-			defer stage.lis.Close()
-
-			if err := stage.server.Serve(stage.lis); err != nil {
-				if !utils.IsClosedErr(err) {
-					errs <- err
-				}
-
-				return
-			}
-		}(stage)
-	}
-
-	cases := []reflect.SelectCase{
-		{
-			Dir:  reflect.SelectRecv,
-			Chan: reflect.ValueOf(errs),
-		},
-	}
-	for _, stage := range p.stage5Inputs {
-		cases = append(cases, reflect.SelectCase{
-			Dir:  reflect.SelectRecv,
-			Chan: reflect.ValueOf(stage.prev.prev.finished),
 		})
-	}
 
-	chosen, recv, _ := reflect.Select(cases)
-	if chosen == 0 {
-		// errs was selected
-		return fmt.Errorf("%v", recv)
-	} else {
-		// One of the finished channels was selected, return
-		return io.EOF
-	}
-}
+		select {
+		case <-internalCtx.Done():
+			if err := internalCtx.Err(); err != nil {
+				panic(internalCtx.Err())
+			}
 
-func (p *Peer) Close(suspend bool) error {
-	p.closeLock.Lock()
-	defer p.closeLock.Unlock()
-
-	if hook := p.suspendVM; suspend && hook != nil {
-		if err := hook(); err != nil {
-			return err
+			return
+		case <-allRemoteDevicesReceivedCtx.Done():
+			break
 		}
-	}
 
-	func() {
-		defer func() {
-			p.deferFuncs = [][]func() error{} // Make sure that we only run the defers once
-		}()
+		stage1Inputs := []MigrateFromDevice{}
+		for _, input := range devices {
+			if slices.ContainsFunc(
+				stage2Inputs,
+				func(r peerStage2) bool {
+					return input.Name == r.name
+				},
+			) {
+				continue
+			}
 
-		for _, deferFuncs := range p.deferFuncs {
+			stage1Inputs = append(stage1Inputs, input)
+		}
+
+		// Use an atomic counter instead of a WaitGroup so that we can wait without leaking a goroutine
+		var remainingRequestedLocalDevices atomic.Int32
+		remainingRequestedLocalDevices.Add(int32(len(stage1Inputs)))
+
+		_, deferFuncs, err := iutils.ConcurrentMap(
+			stage1Inputs,
+			func(index int, input MigrateFromDevice, _ *struct{}, addDefer func(deferFunc func() error)) error {
+				if hook := hooks.OnLocalDeviceRequested; hook != nil {
+					hook(uint32(index), input.Name)
+				}
+
+				if remainingRequestedLocalDevices.Add(-1) <= 0 {
+					if hook := hooks.OnLocalAllDevicesRequested; hook != nil {
+						hook()
+					}
+				}
+
+				stat, err := os.Stat(input.Base)
+				if err != nil {
+					return err
+				}
+
+				var (
+					local  storage.StorageProvider
+					device storage.ExposedStorage
+				)
+				if strings.TrimSpace(input.Overlay) == "" || strings.TrimSpace(input.State) == "" {
+					local, device, err = sdevice.NewDevice(&sconfig.DeviceSchema{
+						Name:      input.Name,
+						System:    "file",
+						Location:  input.Base,
+						Size:      fmt.Sprintf("%v", stat.Size()),
+						BlockSize: fmt.Sprintf("%v", input.BlockSize),
+						Expose:    true,
+					})
+				} else {
+					if err := os.MkdirAll(filepath.Dir(input.Overlay), os.ModePerm); err != nil {
+						return err
+					}
+
+					if err := os.MkdirAll(filepath.Dir(input.State), os.ModePerm); err != nil {
+						return err
+					}
+
+					local, device, err = sdevice.NewDevice(&sconfig.DeviceSchema{
+						Name:      input.Name,
+						System:    "sparsefile",
+						Location:  input.Overlay,
+						Size:      fmt.Sprintf("%v", stat.Size()),
+						BlockSize: fmt.Sprintf("%v", input.BlockSize),
+						Expose:    true,
+						ROSource: &sconfig.DeviceSchema{
+							Name:     input.State,
+							System:   "file",
+							Location: input.Base,
+							Size:     fmt.Sprintf("%v", stat.Size()),
+						},
+					})
+				}
+				if err != nil {
+					return err
+				}
+				addDefer(local.Close)
+				addDefer(device.Shutdown)
+
+				device.SetProvider(local)
+
+				stage2InputsLock.Lock()
+				stage2Inputs = append(stage2Inputs, peerStage2{
+					name: input.Name,
+
+					blockSize: input.BlockSize,
+
+					id:     uint32(index),
+					remote: false,
+
+					storage: local,
+					device:  device,
+				})
+				stage2InputsLock.Unlock()
+
+				devicePath := filepath.Join("/dev", device.Device())
+
+				deviceInfo, err := os.Stat(devicePath)
+				if err != nil {
+					return err
+				}
+
+				deviceStat, ok := deviceInfo.Sys().(*syscall.Stat_t)
+				if !ok {
+					return ErrCouldNotGetNBDDeviceStat
+				}
+
+				deviceMajor := uint64(deviceStat.Rdev / 256)
+				deviceMinor := uint64(deviceStat.Rdev % 256)
+
+				deviceID := int((deviceMajor << 8) | deviceMinor)
+
+				select {
+				case <-internalCtx.Done():
+					if err := internalCtx.Err(); err != nil {
+						return internalCtx.Err()
+					}
+
+					return nil
+
+				default:
+					if err := unix.Mknod(filepath.Join(runner.VMPath, input.Name), unix.S_IFBLK|0666, deviceID); err != nil {
+						return err
+					}
+				}
+
+				if hook := hooks.OnLocalDeviceExposed; hook != nil {
+					hook(uint32(index), devicePath)
+				}
+
+				return nil
+			},
+		)
+
+		// Make sure that we schedule the `deferFuncs` even if we get an error during device setup
+		for _, deferFuncs := range deferFuncs {
 			for _, deferFunc := range deferFuncs {
-				defer deferFunc()
+				deviceCloseFuncsLock.Lock()
+				deviceCloseFuncs = append(deviceCloseFuncs, deferFunc) // defer deferFunc()
+				deviceCloseFuncsLock.Unlock()
 			}
 		}
-	}()
 
-	p.wg.Wait()
+		if err != nil {
+			panic(err)
+		}
 
-	if p.errs != nil {
-		close(p.errs)
+		select {
+		case <-internalCtx.Done():
+			if err := internalCtx.Err(); err != nil {
+				panic(internalCtx.Err())
+			}
 
-		p.errs = nil
+			return
+		case <-allRemoteDevicesReadyCtx.Done():
+			break
+		}
+
+		migratedPeer.Resume = func(
+			ctx context.Context,
+
+			resumeTimeout,
+			rescueTimeout time.Duration,
+		) (resumedPeer *ResumedPeer, errs error) {
+			configBasePath := ""
+			for _, device := range devices {
+				if device.Name == ConfigName {
+					configBasePath = device.Base
+
+					break
+				}
+			}
+
+			if strings.TrimSpace(configBasePath) == "" {
+				return nil, ErrConfigFileNotFound
+			}
+
+			packageConfigFile, err := os.Open(configBasePath)
+			if err != nil {
+				return nil, err
+			}
+			defer packageConfigFile.Close()
+
+			var packageConfig PackageConfiguration
+			if err := json.NewDecoder(packageConfigFile).Decode(&packageConfig); err != nil {
+				return nil, err
+			}
+
+			resumedRunner, err := runner.Resume(ctx, resumeTimeout, rescueTimeout, packageConfig.AgentVSockPort)
+			if err != nil {
+				return nil, err
+			}
+
+			return &ResumedPeer{
+				Wait:  resumedRunner.Wait,
+				Close: resumedRunner.Close,
+
+				SuspendAndCloseAgentServer: resumedRunner.SuspendAndCloseAgentServer,
+
+				MakeMigratable: func(
+					ctx context.Context,
+
+					devices []MakeMigratableDevice,
+				) (migratablePeer *MigratablePeer, errs error) {
+					migratablePeer = &MigratablePeer{}
+
+					stage3Inputs := []peerStage3{}
+					for _, input := range stage2Inputs {
+						var makeMigratableDevice *MakeMigratableDevice
+						for _, device := range devices {
+							if device.Name == input.name {
+								makeMigratableDevice = &device
+
+								break
+							}
+						}
+
+						// We don't want to make this device migratable
+						if makeMigratableDevice == nil {
+							continue
+						}
+
+						stage3Inputs = append(stage3Inputs, peerStage3{
+							prev: input,
+
+							makeMigratableDevice: *makeMigratableDevice,
+						})
+					}
+
+					stage4Inputs, deferFuncs, err := iutils.ConcurrentMap(
+						stage3Inputs,
+						func(index int, input peerStage3, output *peerStage4, addDefer func(deferFunc func() error)) error {
+							output.prev = input
+
+							dirtyLocal, dirtyRemote := dirtytracker.NewDirtyTracker(input.prev.storage, int(input.prev.blockSize))
+							output.dirtyRemote = dirtyRemote
+							monitor := volatilitymonitor.NewVolatilityMonitor(dirtyLocal, int(input.prev.blockSize), input.makeMigratableDevice.Expiry)
+
+							local := modules.NewLockable(monitor)
+							output.storage = local
+							addDefer(func() error {
+								local.Unlock()
+
+								return nil
+							})
+
+							input.prev.device.SetProvider(local)
+
+							totalBlocks := (int(local.Size()) + int(input.prev.blockSize) - 1) / int(input.prev.blockSize)
+							output.totalBlocks = totalBlocks
+
+							orderer := blocks.NewPriorityBlockOrder(totalBlocks, monitor)
+							output.orderer = orderer
+							orderer.AddAll()
+
+							return nil
+						},
+					)
+
+					migratablePeer.Close = func() {
+						// Make sure that we schedule the `deferFuncs` even if we get an error
+						for _, deferFuncs := range deferFuncs {
+							for _, deferFunc := range deferFuncs {
+								defer deferFunc() // We can safely ignore errors here since we never call `addDefer` with a function that could return an error
+							}
+						}
+					}
+
+					if err != nil {
+						// Make sure that we schedule the `deferFuncs` even if we get an error
+						migratablePeer.Close()
+
+						panic(err)
+					}
+
+					migratablePeer.MigrateTo = func(
+						ctx context.Context,
+
+						devices []MigrateToDevice,
+
+						suspendTimeout time.Duration,
+						concurrency int,
+
+						readers []io.Reader,
+						writers []io.Writer,
+
+						hooks MigrateToHooks,
+					) (errs error) {
+						ctx, handlePanics, handleGoroutinePanics, cancel, wait, _ := utils.GetPanicHandler(
+							ctx,
+							&errs,
+							utils.GetPanicHandlerHooks{},
+						)
+						defer wait()
+						defer cancel()
+						defer handlePanics(false)()
+
+						pro := protocol.NewProtocolRW(
+							ctx,
+							readers,
+							writers,
+							nil,
+						)
+
+						handleGoroutinePanics(true, func() {
+							if err := pro.Handle(); err != nil && !errors.Is(err, io.EOF) {
+								panic(err)
+							}
+						})
+
+						var (
+							devicesLeftToSend                 atomic.Int32
+							devicesLeftToTransferAuthorityFor atomic.Int32
+
+							suspendedVMLock sync.Mutex
+							suspendedVM     bool
+						)
+
+						// We use the background context here instead of the internal context because we want to distinguish
+						// between a context cancellation from the outside and getting a response
+						suspendedVMCtx, cancelSuspendedVMCtx := context.WithCancel(context.Background())
+						defer cancelSuspendedVMCtx()
+
+						suspendAndMsyncVM := sync.OnceValue(func() error {
+							if hook := hooks.OnBeforeSuspend; hook != nil {
+								hook()
+							}
+
+							if err := resumedPeer.SuspendAndCloseAgentServer(ctx, suspendTimeout); err != nil {
+								return err
+							}
+
+							if err := resumedRunner.Msync(ctx); err != nil {
+								return err
+							}
+
+							if hook := hooks.OnAfterSuspend; hook != nil {
+								hook()
+							}
+
+							suspendedVMLock.Lock()
+							suspendedVM = true
+							suspendedVMLock.Unlock()
+
+							cancelSuspendedVMCtx()
+
+							return nil
+						})
+
+						stage5Inputs := []peerStage5{}
+						for _, input := range stage4Inputs {
+							var migrateToDevice *MigrateToDevice
+							for _, device := range devices {
+								if device.Name == input.prev.prev.name {
+									migrateToDevice = &device
+
+									break
+								}
+							}
+
+							// We don't want to serve this device
+							if migrateToDevice == nil {
+								continue
+							}
+
+							stage5Inputs = append(stage5Inputs, peerStage5{
+								prev: input,
+
+								migrateToDevice: *migrateToDevice,
+							})
+						}
+
+						_, deferFuncs, err := iutils.ConcurrentMap(
+							stage5Inputs,
+							func(index int, input peerStage5, _ *struct{}, _ func(deferFunc func() error)) error {
+								to := protocol.NewToProtocol(input.prev.storage.Size(), uint32(index), pro)
+
+								if err := to.SendDevInfo(input.prev.prev.prev.name, input.prev.prev.prev.blockSize, ""); err != nil {
+									return err
+								}
+
+								if hook := hooks.OnDeviceSent; hook != nil {
+									hook(uint32(index), input.prev.prev.prev.remote)
+								}
+
+								devicesLeftToSend.Add(1)
+								if devicesLeftToSend.Load() >= int32(len(stage5Inputs)) {
+									handleGoroutinePanics(true, func() {
+										if err := to.SendEvent(&packets.Event{
+											Type:       packets.EventCustom,
+											CustomType: byte(EventCustomAllDevicesSent),
+										}); err != nil {
+											panic(err)
+										}
+
+										if hook := hooks.OnAllDevicesSent; hook != nil {
+											hook()
+										}
+									})
+								}
+
+								handleGoroutinePanics(true, func() {
+									if err := to.HandleNeedAt(func(offset int64, length int32) {
+										// Prioritize blocks
+										endOffset := uint64(offset + int64(length))
+										if endOffset > uint64(input.prev.storage.Size()) {
+											endOffset = uint64(input.prev.storage.Size())
+										}
+
+										startBlock := int(offset / int64(input.prev.prev.prev.blockSize))
+										endBlock := int((endOffset-1)/uint64(input.prev.prev.prev.blockSize)) + 1
+										for b := startBlock; b < endBlock; b++ {
+											input.prev.orderer.PrioritiseBlock(b)
+										}
+									}); err != nil {
+										panic(err)
+									}
+								})
+
+								handleGoroutinePanics(true, func() {
+									if err := to.HandleDontNeedAt(func(offset int64, length int32) {
+										// Deprioritize blocks
+										endOffset := uint64(offset + int64(length))
+										if endOffset > uint64(input.prev.storage.Size()) {
+											endOffset = uint64(input.prev.storage.Size())
+										}
+
+										startBlock := int(offset / int64(input.prev.storage.Size()))
+										endBlock := int((endOffset-1)/uint64(input.prev.storage.Size())) + 1
+										for b := startBlock; b < endBlock; b++ {
+											input.prev.orderer.Remove(b)
+										}
+									}); err != nil {
+										panic(err)
+									}
+								})
+
+								cfg := migrator.NewMigratorConfig().WithBlockSize(int(input.prev.prev.prev.blockSize))
+								cfg.Concurrency = map[int]int{
+									storage.BlockTypeAny:      concurrency,
+									storage.BlockTypeStandard: concurrency,
+									storage.BlockTypeDirty:    concurrency,
+									storage.BlockTypePriority: concurrency,
+								}
+								cfg.Locker_handler = func() {
+									defer handlePanics(false)()
+
+									if err := to.SendEvent(&packets.Event{
+										Type: packets.EventPreLock,
+									}); err != nil {
+										panic(err)
+									}
+
+									input.prev.storage.Lock()
+
+									if err := to.SendEvent(&packets.Event{
+										Type: packets.EventPostLock,
+									}); err != nil {
+										panic(err)
+									}
+								}
+								cfg.Unlocker_handler = func() {
+									defer handlePanics(false)()
+
+									if err := to.SendEvent(&packets.Event{
+										Type: packets.EventPreUnlock,
+									}); err != nil {
+										panic(err)
+									}
+
+									input.prev.storage.Unlock()
+
+									if err := to.SendEvent(&packets.Event{
+										Type: packets.EventPostUnlock,
+									}); err != nil {
+										panic(err)
+									}
+								}
+								cfg.Error_handler = func(b *storage.BlockInfo, err error) {
+									defer handlePanics(false)()
+
+									if err != nil {
+										panic(errors.Join(ErrCouldNotContinueWithMigration, err))
+									}
+								}
+								cfg.Progress_handler = func(p *migrator.MigrationProgress) {
+									if hook := hooks.OnDeviceInitialMigrationProgress; hook != nil {
+										hook(uint32(index), input.prev.prev.prev.remote, p.Ready_blocks, p.Total_blocks)
+									}
+								}
+
+								mig, err := migrator.NewMigrator(input.prev.dirtyRemote, to, input.prev.orderer, cfg)
+								if err != nil {
+									return err
+								}
+
+								if err := mig.Migrate(input.prev.totalBlocks); err != nil {
+									return err
+								}
+
+								if err := mig.WaitForCompletion(); err != nil {
+									return err
+								}
+
+								markDeviceAsReadyForAuthorityTransfer := sync.OnceFunc(func() {
+									devicesLeftToTransferAuthorityFor.Add(1)
+								})
+
+								var (
+									cyclesBelowDirtyBlockTreshold = 0
+									totalCycles                   = 0
+									ongoingMigrationsWg           sync.WaitGroup
+								)
+								for {
+									suspendedVMLock.Lock()
+									// We only need to `msync` for the memory because `msync` only affects the memory
+									if !suspendedVM && input.prev.prev.prev.name == MemoryName {
+										if err := resumedRunner.Msync(ctx); err != nil {
+											suspendedVMLock.Unlock()
+
+											return err
+										}
+									}
+									suspendedVMLock.Unlock()
+
+									ongoingMigrationsWg.Wait()
+
+									blocks := mig.GetLatestDirty()
+									if blocks == nil {
+										mig.Unlock()
+
+										suspendedVMLock.Lock()
+										if suspendedVM {
+											suspendedVMLock.Unlock()
+
+											break
+										}
+										suspendedVMLock.Unlock()
+									}
+
+									if blocks != nil {
+										if err := to.DirtyList(int(input.prev.prev.prev.blockSize), blocks); err != nil {
+											return err
+										}
+
+										ongoingMigrationsWg.Add(1)
+										handleGoroutinePanics(true, func() {
+											defer ongoingMigrationsWg.Done()
+
+											if err := mig.MigrateDirty(blocks); err != nil {
+												panic(err)
+											}
+
+											suspendedVMLock.Lock()
+											defer suspendedVMLock.Unlock()
+
+											if suspendedVM {
+												if hook := hooks.OnDeviceFinalMigrationProgress; hook != nil {
+													hook(uint32(index), input.prev.prev.prev.remote, len(blocks))
+												}
+											} else {
+												if hook := hooks.OnDeviceContinousMigrationProgress; hook != nil {
+													hook(uint32(index), input.prev.prev.prev.remote, len(blocks))
+												}
+											}
+										})
+									}
+
+									suspendedVMLock.Lock()
+									if !suspendedVM && !(devicesLeftToTransferAuthorityFor.Load() >= int32(len(stage5Inputs))) {
+										suspendedVMLock.Unlock()
+
+										// We use the background context here instead of the internal context because we want to distinguish
+										// between a context cancellation from the outside and getting a response
+										cycleThrottleCtx, cancelCycleThrottleCtx := context.WithTimeout(context.Background(), input.migrateToDevice.CycleThrottle)
+										defer cancelCycleThrottleCtx()
+
+										select {
+										case <-cycleThrottleCtx.Done():
+											break
+
+										case <-suspendedVMCtx.Done():
+											break
+
+										case <-ctx.Done(): // ctx is the internalCtx here
+											if err := ctx.Err(); err != nil {
+												return ctx.Err()
+											}
+
+											return nil
+										}
+									} else {
+										suspendedVMLock.Unlock()
+									}
+
+									totalCycles++
+									if len(blocks) < input.migrateToDevice.MaxDirtyBlocks {
+										cyclesBelowDirtyBlockTreshold++
+										if cyclesBelowDirtyBlockTreshold > input.migrateToDevice.MinCycles {
+											markDeviceAsReadyForAuthorityTransfer()
+										}
+									} else if totalCycles > input.migrateToDevice.MaxCycles {
+										markDeviceAsReadyForAuthorityTransfer()
+									} else {
+										cyclesBelowDirtyBlockTreshold = 0
+									}
+
+									if devicesLeftToTransferAuthorityFor.Load() >= int32(len(stage5Inputs)) {
+										if err := suspendAndMsyncVM(); err != nil {
+											return err
+										}
+									}
+								}
+
+								if err := to.SendEvent(&packets.Event{
+									Type:       packets.EventCustom,
+									CustomType: byte(EventCustomTransferAuthority),
+								}); err != nil {
+									panic(err)
+								}
+
+								if hook := hooks.OnDeviceAuthoritySent; hook != nil {
+									hook(uint32(index), input.prev.prev.prev.remote)
+								}
+
+								if err := mig.WaitForCompletion(); err != nil {
+									return err
+								}
+
+								if err := to.SendEvent(&packets.Event{
+									Type: packets.EventCompleted,
+								}); err != nil {
+									return err
+								}
+
+								if hook := hooks.OnDeviceMigrationCompleted; hook != nil {
+									hook(uint32(index), input.prev.prev.prev.remote)
+								}
+
+								return nil
+							},
+						)
+
+						if err != nil {
+							panic(err)
+						}
+
+						for _, deferFuncs := range deferFuncs {
+							for _, deferFunc := range deferFuncs {
+								defer deferFunc() // We can safely ignore errors here since we never call `addDefer` with a function that could return an error
+							}
+						}
+
+						if hook := hooks.OnAllMigrationsCompleted; hook != nil {
+							hook()
+						}
+
+						return
+					}
+
+					return
+				},
+			}, nil
+		}
+
+		return
 	}
 
-	return nil
+	return
 }

@@ -10,205 +10,353 @@ import (
 	"sync"
 	"time"
 
-	"github.com/loopholelabs/drafter/pkg/config"
-	"github.com/loopholelabs/drafter/pkg/firecracker"
-	"github.com/loopholelabs/drafter/pkg/remotes"
-	"github.com/loopholelabs/drafter/pkg/vsock"
+	"github.com/loopholelabs/drafter/internal/firecracker"
+	"github.com/loopholelabs/drafter/pkg/ipc"
+	"github.com/loopholelabs/drafter/pkg/utils"
 )
 
 const (
-	VSockName = "drafter.drftsock"
+	VSockName = "vsock.sock"
 )
 
-var (
-	ErrVMNotRunning = errors.New("vm not running")
-)
+type HypervisorConfiguration struct {
+	FirecrackerBin string
+	JailerBin      string
 
-type Runner struct {
-	hypervisorConfiguration config.HypervisorConfiguration
+	ChrootBaseDir string
 
-	stateName  string
-	memoryName string
+	UID int
+	GID int
 
-	srv     *firecracker.Server
-	client  *http.Client
-	handler *vsock.Handler
-	remote  remotes.AgentRemote
+	NetNS         string
+	NumaNode      int
+	CgroupVersion int
 
-	vmPath string
-
-	wg sync.WaitGroup
-
-	closeLock sync.Mutex
-
-	errs chan error
+	EnableOutput bool
+	EnableInput  bool
 }
 
-func NewRunner(
-	hypervisorConfiguration config.HypervisorConfiguration,
+type NetworkConfiguration struct {
+	Interface string
+	MAC       string
+}
+
+type VMConfiguration struct {
+	CPUCount    int
+	MemorySize  int
+	CPUTemplate string
+
+	BootArgs string
+}
+
+type PackageConfiguration struct {
+	AgentVSockPort uint32 `json:"agentVSockPort"`
+}
+
+type Runner struct {
+	VMPath string
+
+	Wait  func() error
+	Close func() error
+
+	Resume func(
+		ctx context.Context,
+
+		resumeTimeout time.Duration,
+		rescueTimeout time.Duration,
+		agentVSockPort uint32,
+	) (
+		resumedRunner *ResumedRunner,
+
+		errs error,
+	)
+}
+
+type ResumedRunner struct {
+	Wait  func() error
+	Close func() error
+
+	Msync                      func(ctx context.Context) error
+	SuspendAndCloseAgentServer func(ctx context.Context, suspendTimeout time.Duration) error
+}
+
+func StartRunner(
+	hypervisorCtx context.Context,
+	rescueCtx context.Context,
+
+	hypervisorConfiguration HypervisorConfiguration,
 
 	stateName string,
 	memoryName string,
-) *Runner {
-	return &Runner{
-		hypervisorConfiguration: hypervisorConfiguration,
+) (
+	runner *Runner,
 
-		stateName:  stateName,
-		memoryName: memoryName,
+	errs error,
+) {
+	runner = &Runner{}
 
-		wg:   sync.WaitGroup{},
-		errs: make(chan error),
-	}
-}
-
-func (r *Runner) Wait() error {
-	for err := range r.errs {
-		if err != nil {
-			return err
-		}
-	}
-
-	r.wg.Wait()
-
-	return nil
-}
-
-func (r *Runner) Open() (string, error) {
-	if r.srv == nil {
-		if err := os.MkdirAll(r.hypervisorConfiguration.ChrootBaseDir, os.ModePerm); err != nil {
-			return "", err
-		}
-
-		r.srv = firecracker.NewServer(
-			r.hypervisorConfiguration.FirecrackerBin,
-			r.hypervisorConfiguration.JailerBin,
-
-			r.hypervisorConfiguration.ChrootBaseDir,
-
-			r.hypervisorConfiguration.UID,
-			r.hypervisorConfiguration.GID,
-
-			r.hypervisorConfiguration.NetNS,
-			r.hypervisorConfiguration.NumaNode,
-			r.hypervisorConfiguration.CgroupVersion,
-
-			r.hypervisorConfiguration.EnableOutput,
-			r.hypervisorConfiguration.EnableInput,
-		)
-
-		r.wg.Add(1)
-		go func() {
-			defer r.wg.Done()
-
-			if err := r.srv.Wait(); err != nil {
-				r.errs <- err
-			}
-		}()
-
-		var err error
-		r.vmPath, err = r.srv.Open()
-		if err != nil {
-			return "", err
-		}
-
-		r.client = &http.Client{
-			Transport: &http.Transport{
-				DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-					return net.Dial("unix", filepath.Join(r.vmPath, firecracker.FirecrackerSocketName))
-				},
-			},
-		}
-	}
-
-	return r.vmPath, nil
-}
-
-func (r *Runner) Resume(
-	ctx context.Context,
-	resumeTimeout time.Duration,
-	agentVSockPort uint32,
-) error {
-	if err := firecracker.ResumeSnapshot(
-		r.client,
-
-		r.stateName,
-		r.memoryName,
-	); err != nil {
-		return err
-	}
-
-	r.handler = vsock.NewHandler(
-		filepath.Join(r.vmPath, VSockName),
-		agentVSockPort,
+	_, handlePanics, handleGoroutinePanics, cancel, wait, _ := utils.GetPanicHandler(
+		hypervisorCtx,
+		&errs,
+		utils.GetPanicHandlerHooks{},
 	)
+	defer wait()
+	defer cancel()
+	defer handlePanics(false)()
 
-	r.wg.Add(1)
+	if err := os.MkdirAll(hypervisorConfiguration.ChrootBaseDir, os.ModePerm); err != nil {
+		panic(err)
+	}
+
+	var ongoingResumeWg sync.WaitGroup
+
+	firecrackerCtx, cancelFirecrackerCtx := context.WithCancel(rescueCtx) // We use `rescueContext` here since this simply intercepts `hypervisorCtx`
+	// and then waits for `rescueCtx` or the rescue operation to complete
 	go func() {
-		defer r.wg.Done()
+		<-hypervisorCtx.Done() // We use hypervisorCtx, not internalCtx here since this resource outlives the function call
 
-		if err := r.handler.Wait(); err != nil {
-			r.errs <- err
-		}
+		ongoingResumeWg.Wait()
+
+		cancelFirecrackerCtx()
 	}()
 
-	var err error
-	r.remote, err = r.handler.Open(ctx, time.Millisecond*100, resumeTimeout)
+	server, err := firecracker.StartFirecrackerServer(
+		firecrackerCtx, // We use firecrackerCtx (which depends on hypervisorCtx, not internalCtx) here since this resource outlives the function call
+
+		hypervisorConfiguration.FirecrackerBin,
+		hypervisorConfiguration.JailerBin,
+
+		hypervisorConfiguration.ChrootBaseDir,
+
+		hypervisorConfiguration.UID,
+		hypervisorConfiguration.GID,
+
+		hypervisorConfiguration.NetNS,
+		hypervisorConfiguration.NumaNode,
+		hypervisorConfiguration.CgroupVersion,
+
+		hypervisorConfiguration.EnableOutput,
+		hypervisorConfiguration.EnableInput,
+	)
 	if err != nil {
-		return err
+		panic(err)
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, resumeTimeout)
-	defer cancel()
+	runner.VMPath = server.VMPath
 
-	return r.remote.AfterResume(ctx)
-}
+	// We intentionally don't call `wg.Add` and `wg.Done` here since we return the process's wait method
+	// We still need to `defer handleGoroutinePanic()()` here however so that we catch any errors during this call
+	handleGoroutinePanics(false, func() {
+		if err := server.Wait(); err != nil {
+			panic(err)
+		}
+	})
 
-func (r *Runner) Suspend(ctx context.Context, resumeTimeout time.Duration) error {
-	if r.handler == nil {
-		return ErrVMNotRunning
-	}
-
-	{
-		ctx, cancel := context.WithTimeout(ctx, resumeTimeout)
-		defer cancel()
-
-		if err := r.remote.BeforeSuspend(ctx); err != nil {
+	runner.Wait = server.Wait
+	runner.Close = func() error {
+		if err := server.Close(); err != nil {
 			return err
 		}
+
+		if err := runner.Wait(); err != nil {
+			return err
+		}
+
+		_ = os.RemoveAll(filepath.Dir(runner.VMPath)) // Remove `firecracker/$id`, not just `firecracker/$id/root`
+
+		return nil
 	}
 
-	_ = r.handler.Close() // Connection needs to be closed before flushing the snapshot
-
-	if err := firecracker.FlushSnapshot(r.client, r.stateName); err != nil {
-		return err
+	firecrackerClient := &http.Client{
+		Transport: &http.Transport{
+			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+				return (&net.Dialer{}).DialContext(ctx, "unix", filepath.Join(runner.VMPath, firecracker.FirecrackerSocketName))
+			},
+		},
 	}
 
-	r.handler = nil
+	runner.Resume = func(
+		ctx context.Context,
 
-	return nil
-}
+		resumeTimeout,
+		rescueTimeout time.Duration,
+		agentVSockPort uint32,
+	) (
+		resumedRunner *ResumedRunner,
 
-func (r *Runner) Close() error {
-	r.closeLock.Lock()
-	defer r.closeLock.Unlock()
+		errs error,
+	) {
+		resumedRunner = &ResumedRunner{}
 
-	if r.handler != nil {
-		_ = r.handler.Close()
+		ongoingResumeWg.Add(1)
+		defer ongoingResumeWg.Done()
+
+		var (
+			agent                   *ipc.AgentServer
+			acceptingAgent          *ipc.AcceptingAgentServer
+			suspendOnPanicWithError = false
+		)
+
+		internalCtx, handlePanics, handleGoroutinePanics, cancel, wait, _ := utils.GetPanicHandler(
+			ctx,
+			&errs,
+			utils.GetPanicHandlerHooks{
+				OnAfterRecover: func() {
+					if suspendOnPanicWithError {
+						suspendCtx, cancelSuspendCtx := context.WithTimeout(rescueCtx, rescueTimeout)
+						defer cancelSuspendCtx()
+
+						// Connections need to be closed before creating the snapshot
+						if acceptingAgent != nil && acceptingAgent.Close != nil {
+							if e := acceptingAgent.Close(); e != nil {
+								errs = errors.Join(errs, e)
+							}
+						}
+						if agent != nil && agent.Close != nil {
+							agent.Close()
+						}
+
+						// If a resume failed, flush the snapshot so that we can re-try
+						if e := firecracker.CreateSnapshot(
+							suspendCtx, // We use a separate context here so that we can
+							// cancel the snapshot create action independently of the resume
+							// ctx, which is typically cancelled already
+
+							firecrackerClient,
+
+							stateName,
+							"",
+
+							firecracker.SnapshotTypeMsyncAndState,
+						); e != nil {
+							errs = errors.Join(errs, e)
+						}
+					}
+				},
+			},
+		)
+		defer wait()
+		defer cancel()
+		defer handlePanics(false)()
+
+		// We intentionally don't call `wg.Add` and `wg.Done` here since we return the process's wait method
+		// We still need to `defer handleGoroutinePanic()()` here however so that we catch any errors during this call
+		handleGoroutinePanics(false, func() {
+			if err := server.Wait(); err != nil {
+				panic(err)
+			}
+		})
+
+		agent, err = ipc.StartAgentServer(
+			filepath.Join(server.VMPath, VSockName),
+			uint32(agentVSockPort),
+		)
+		if err != nil {
+			panic(err)
+		}
+
+		resumedRunner.Close = func() error {
+			agent.Close()
+
+			return nil
+		}
+
+		if err := os.Chown(agent.VSockPath, hypervisorConfiguration.UID, hypervisorConfiguration.GID); err != nil {
+			panic(err)
+		}
+
+		{
+			resumeSnapshotAndAcceptCtx, cancelResumeSnapshotAndAcceptCtx := context.WithTimeout(internalCtx, resumeTimeout)
+			defer cancelResumeSnapshotAndAcceptCtx()
+
+			if err := firecracker.ResumeSnapshot(
+				resumeSnapshotAndAcceptCtx,
+
+				firecrackerClient,
+
+				stateName,
+				memoryName,
+			); err != nil {
+				panic(err)
+			}
+
+			suspendOnPanicWithError = true
+
+			acceptingAgent, err = agent.Accept(resumeSnapshotAndAcceptCtx, ctx)
+			if err != nil {
+				panic(err)
+			}
+		}
+
+		// We intentionally don't call `wg.Add` and `wg.Done` here since we return the process's wait method
+		// We still need to `defer handleGoroutinePanic()()` here however so that we catch any errors during this call
+		handleGoroutinePanics(false, func() {
+			if err := acceptingAgent.Wait(); err != nil {
+				panic(err)
+			}
+		})
+
+		resumedRunner.Wait = acceptingAgent.Wait
+		resumedRunner.Close = func() error {
+			if err := acceptingAgent.Close(); err != nil {
+				return err
+			}
+
+			agent.Close()
+
+			return resumedRunner.Wait()
+		}
+
+		{
+			afterResumeCtx, cancelAfterResumeCtx := context.WithTimeout(internalCtx, resumeTimeout)
+			defer cancelAfterResumeCtx()
+
+			if err := acceptingAgent.Remote.AfterResume(afterResumeCtx); err != nil {
+				panic(err)
+			}
+		}
+
+		resumedRunner.Msync = func(ctx context.Context) error {
+			return firecracker.CreateSnapshot(
+				ctx,
+
+				firecrackerClient,
+
+				stateName,
+				"",
+
+				firecracker.SnapshotTypeMsync,
+			)
+		}
+
+		resumedRunner.SuspendAndCloseAgentServer = func(ctx context.Context, suspendTimeout time.Duration) error {
+			suspendCtx, cancelSuspendCtx := context.WithTimeout(ctx, suspendTimeout)
+			defer cancelSuspendCtx()
+
+			if err := acceptingAgent.Remote.BeforeSuspend(suspendCtx); err != nil {
+				panic(err)
+			}
+
+			// Connections need to be closed before creating the snapshot
+			if err := acceptingAgent.Close(); err != nil {
+				return err
+			}
+			agent.Close()
+
+			return firecracker.CreateSnapshot(
+				suspendCtx,
+
+				firecrackerClient,
+
+				stateName,
+				"",
+
+				firecracker.SnapshotTypeMsyncAndState,
+			)
+		}
+
+		return
 	}
 
-	if r.srv != nil {
-		_ = r.srv.Close()
-	}
-
-	r.wg.Wait()
-
-	_ = os.RemoveAll(filepath.Dir(r.vmPath)) // Remove `firecracker/$id`, not just `firecracker/$id/root`
-
-	if r.errs != nil {
-		close(r.errs)
-
-		r.errs = nil
-	}
-
-	return nil
+	return
 }

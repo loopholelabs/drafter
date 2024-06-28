@@ -3,62 +3,70 @@ package roles
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
-	"sync"
+	"slices"
+	"strings"
 	"time"
 
-	"github.com/loopholelabs/drafter/pkg/config"
-	"github.com/loopholelabs/drafter/pkg/firecracker"
+	"github.com/loopholelabs/drafter/internal/firecracker"
+	iutils "github.com/loopholelabs/drafter/internal/utils"
+	"github.com/loopholelabs/drafter/pkg/ipc"
 	"github.com/loopholelabs/drafter/pkg/utils"
-	"github.com/loopholelabs/drafter/pkg/vsock"
 )
 
-type Snapshotter struct {
-	errs chan error
+var (
+	ErrCouldNotGetDeviceStat = errors.New("could not get NBD device stat")
+)
+
+type AgentConfiguration struct {
+	AgentVSockPort uint32
+	ResumeTimeout  time.Duration
 }
 
-func NewSnapshotter() *Snapshotter {
-	return &Snapshotter{}
+type LivenessConfiguration struct {
+	LivenessVSockPort uint32
+	ResumeTimeout     time.Duration
 }
 
-func (p *Snapshotter) CreateSnapshot(
+type SnapshotDevice struct {
+	Name   string `json:"name"`
+	Input  string `json:"input"`
+	Output string `json:"output"`
+}
+
+func CreateSnapshot(
 	ctx context.Context,
 
-	initramfsInputPath string,
-	kernelInputPath string,
-	diskInputPath string,
+	devices []SnapshotDevice,
 
-	stateOutputPath string,
-	memoryOutputPath string,
-	initramfsOutputPath string,
-	kernelOutputPath string,
-	diskOutputPath string,
-	configOutputPath string,
+	vmConfiguration VMConfiguration,
+	livenessConfiguration LivenessConfiguration,
 
-	vmConfiguration config.VMConfiguration,
-	livenessConfiguration config.LivenessConfiguration,
-
-	hypervisorConfiguration config.HypervisorConfiguration,
-	networkConfiguration config.NetworkConfiguration,
-	agentConfiguration config.AgentConfiguration,
-
-	knownNamesConfiguration config.KnownNamesConfiguration,
-) error {
-	p.errs = make(chan error)
-
-	defer func() {
-		close(p.errs)
-	}()
+	hypervisorConfiguration HypervisorConfiguration,
+	networkConfiguration NetworkConfiguration,
+	agentConfiguration AgentConfiguration,
+) (errs error) {
+	ctx, handlePanics, handleGoroutinePanics, cancel, wait, _ := utils.GetPanicHandler(
+		ctx,
+		&errs,
+		utils.GetPanicHandlerHooks{},
+	)
+	defer wait()
+	defer cancel()
+	defer handlePanics(false)()
 
 	if err := os.MkdirAll(hypervisorConfiguration.ChrootBaseDir, os.ModePerm); err != nil {
-		return err
+		panic(err)
 	}
 
-	srv := firecracker.NewServer(
+	server, err := firecracker.StartFirecrackerServer(
+		ctx,
+
 		hypervisorConfiguration.FirecrackerBin,
 		hypervisorConfiguration.JailerBin,
 
@@ -74,143 +82,114 @@ func (p *Snapshotter) CreateSnapshot(
 		hypervisorConfiguration.EnableOutput,
 		hypervisorConfiguration.EnableInput,
 	)
-
-	var wg sync.WaitGroup
-	defer wg.Wait()
-
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-
-		if err := srv.Wait(); err != nil {
-			p.errs <- err
-		}
-	}()
-
-	defer srv.Close()
-	vmPath, err := srv.Open()
 	if err != nil {
-		return err
+		panic(err)
 	}
-	defer os.RemoveAll(filepath.Dir(vmPath)) // Remove `firecracker/$id`, not just `firecracker/$id/root`
+	defer server.Close()
+	defer os.RemoveAll(filepath.Dir(server.VMPath)) // Remove `firecracker/$id`, not just `firecracker/$id/root`
 
-	ping := vsock.NewLivenessPingReceiver(
-		filepath.Join(vmPath, VSockName),
+	handleGoroutinePanics(true, func() {
+		if err := server.Wait(); err != nil {
+			panic(err)
+		}
+	})
+
+	liveness := ipc.NewLivenessServer(
+		filepath.Join(server.VMPath, VSockName),
 		uint32(livenessConfiguration.LivenessVSockPort),
 	)
 
-	livenessVSockPath, err := ping.Open()
+	livenessVSockPath, err := liveness.Open()
 	if err != nil {
-		return err
+		panic(err)
 	}
-	defer ping.Close()
+	defer liveness.Close()
 
 	if err := os.Chown(livenessVSockPath, hypervisorConfiguration.UID, hypervisorConfiguration.GID); err != nil {
-		return err
+		panic(err)
+	}
+
+	agent, err := ipc.StartAgentServer(
+		filepath.Join(server.VMPath, VSockName),
+		uint32(agentConfiguration.AgentVSockPort),
+	)
+	if err != nil {
+		panic(err)
+	}
+	defer agent.Close()
+
+	if err := os.Chown(agent.VSockPath, hypervisorConfiguration.UID, hypervisorConfiguration.GID); err != nil {
+		panic(err)
 	}
 
 	client := &http.Client{
 		Transport: &http.Transport{
 			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-				return net.Dial("unix", filepath.Join(vmPath, firecracker.FirecrackerSocketName))
+				return (&net.Dialer{}).DialContext(ctx, "unix", filepath.Join(server.VMPath, firecracker.FirecrackerSocketName))
 			},
 		},
 	}
 
 	defer func() {
-		for _, resource := range [][2]string{
-			{
-				knownNamesConfiguration.InitramfsName,
-				initramfsOutputPath,
-			},
-			{
-				knownNamesConfiguration.KernelName,
-				kernelOutputPath,
-			},
-			{
-				knownNamesConfiguration.DiskName,
-				diskOutputPath,
-			},
+		defer handlePanics(true)()
 
-			{
-				knownNamesConfiguration.StateName,
-				stateOutputPath,
-			},
-			{
-				knownNamesConfiguration.MemoryName,
-				memoryOutputPath,
-			},
+		if errs != nil {
+			return
+		}
 
-			{
-				knownNamesConfiguration.ConfigName,
-				configOutputPath,
-			},
-		} {
-			inputFile, err := os.Open(filepath.Join(vmPath, resource[0]))
+		for _, device := range devices {
+			inputFile, err := os.Open(filepath.Join(server.VMPath, device.Name))
 			if err != nil {
-				p.errs <- err
-
-				return
+				panic(err)
 			}
 			defer inputFile.Close()
 
-			if err := os.MkdirAll(filepath.Dir(resource[1]), os.ModePerm); err != nil {
-				p.errs <- err
-
-				return
+			if err := os.MkdirAll(filepath.Dir(device.Output), os.ModePerm); err != nil {
+				panic(err)
 			}
 
-			outputFile, err := os.OpenFile(resource[1], os.O_CREATE|os.O_TRUNC|os.O_WRONLY, os.ModePerm)
+			outputFile, err := os.OpenFile(device.Output, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, os.ModePerm)
 			if err != nil {
-				p.errs <- err
-
-				return
+				panic(err)
 			}
 			defer outputFile.Close()
 
-			resourceSize, err := io.Copy(outputFile, inputFile)
+			deviceSize, err := io.Copy(outputFile, inputFile)
 			if err != nil {
-				p.errs <- err
-
-				return
+				panic(err)
 			}
 
-			if paddingLength := utils.GetBlockDevicePadding(resourceSize); paddingLength > 0 {
+			if paddingLength := utils.GetBlockDevicePadding(deviceSize); paddingLength > 0 {
 				if _, err := outputFile.Write(make([]byte, paddingLength)); err != nil {
-					p.errs <- err
-
-					return
+					panic(err)
 				}
 			}
 		}
 	}()
+	// We need to stop the Firecracker process from using the mount before we can unmount it
+	defer server.Close()
 
-	defer srv.Close() // We need to stop the Firecracker process from using the mount before we can unmount it
+	disks := []string{}
+	for _, device := range devices {
+		if strings.TrimSpace(device.Input) != "" {
+			if _, err := iutils.CopyFile(device.Input, filepath.Join(server.VMPath, device.Name), hypervisorConfiguration.UID, hypervisorConfiguration.GID); err != nil {
+				panic(err)
+			}
+		}
 
-	var (
-		initramfsWorkingPath = filepath.Join(vmPath, knownNamesConfiguration.InitramfsName)
-		kernelWorkingPath    = filepath.Join(vmPath, knownNamesConfiguration.KernelName)
-		diskWorkingPath      = filepath.Join(vmPath, knownNamesConfiguration.DiskName)
-	)
-
-	if _, err := utils.CopyFile(initramfsInputPath, initramfsWorkingPath, hypervisorConfiguration.UID, hypervisorConfiguration.GID); err != nil {
-		return err
-	}
-
-	if _, err := utils.CopyFile(kernelInputPath, kernelWorkingPath, hypervisorConfiguration.UID, hypervisorConfiguration.GID); err != nil {
-		return err
-	}
-
-	if _, err := utils.CopyFile(diskInputPath, diskWorkingPath, hypervisorConfiguration.UID, hypervisorConfiguration.GID); err != nil {
-		return err
+		if !slices.Contains(KnownNames, device.Name) || device.Name == DiskName {
+			disks = append(disks, device.Name)
+		}
 	}
 
 	if err := firecracker.StartVM(
+		ctx,
+
 		client,
 
-		knownNamesConfiguration.InitramfsName,
-		knownNamesConfiguration.KernelName,
-		knownNamesConfiguration.DiskName,
+		KernelName,
+
+		disks,
 
 		vmConfiguration.CPUCount,
 		vmConfiguration.MemorySize,
@@ -221,78 +200,83 @@ func (p *Snapshotter) CreateSnapshot(
 		networkConfiguration.MAC,
 
 		VSockName,
-		vsock.CIDGuest,
+		ipc.VSockCIDGuest,
 	); err != nil {
-		return err
+		panic(err)
 	}
-	defer os.Remove(filepath.Join(vmPath, VSockName))
-
-	if err := ping.Receive(); err != nil {
-		return err
-	}
-
-	handler := vsock.NewHandler(
-		filepath.Join(vmPath, VSockName),
-		uint32(agentConfiguration.AgentVSockPort),
-	)
-
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-
-		if err := handler.Wait(); err != nil {
-			p.errs <- err
-		}
-	}()
-
-	defer handler.Close()
-	remote, err := handler.Open(ctx, time.Millisecond*100, agentConfiguration.ResumeTimeout)
-	if err != nil {
-		return err
-	}
+	defer os.Remove(filepath.Join(server.VMPath, VSockName))
 
 	{
-		ctx, cancel := context.WithTimeout(ctx, agentConfiguration.ResumeTimeout)
+		receiveCtx, cancel := context.WithTimeout(ctx, livenessConfiguration.ResumeTimeout)
 		defer cancel()
 
-		if err := remote.BeforeSuspend(ctx); err != nil {
-			return err
+		if err := liveness.ReceiveAndClose(receiveCtx); err != nil {
+			panic(err)
+		}
+	}
+
+	var acceptingAgent *ipc.AcceptingAgentServer
+	{
+		acceptCtx, cancel := context.WithTimeout(ctx, agentConfiguration.ResumeTimeout)
+		defer cancel()
+
+		acceptingAgent, err = agent.Accept(acceptCtx, ctx)
+		if err != nil {
+			panic(err)
+		}
+		defer acceptingAgent.Close()
+
+		handleGoroutinePanics(true, func() {
+			if err := acceptingAgent.Wait(); err != nil {
+				panic(err)
+			}
+		})
+
+		if err := acceptingAgent.Remote.BeforeSuspend(acceptCtx); err != nil {
+			panic(err)
 		}
 	}
 
 	// Connections need to be closed before creating the snapshot
-	ping.Close()
-	_ = handler.Close()
+	liveness.Close()
+	if err := acceptingAgent.Close(); err != nil {
+		panic(err)
+	}
+	agent.Close()
 
 	if err := firecracker.CreateSnapshot(
+		ctx,
+
 		client,
 
-		knownNamesConfiguration.StateName,
-		knownNamesConfiguration.MemoryName,
+		StateName,
+		MemoryName,
+
+		firecracker.SnapshotTypeFull,
 	); err != nil {
-		return err
+		panic(err)
 	}
 
-	packageConfig, err := json.Marshal(config.PackageConfiguration{
+	packageConfig, err := json.Marshal(PackageConfiguration{
 		AgentVSockPort: agentConfiguration.AgentVSockPort,
 	})
 	if err != nil {
-		return err
+		panic(err)
 	}
 
-	if _, err := utils.WriteFile(packageConfig, filepath.Join(vmPath, knownNamesConfiguration.ConfigName), hypervisorConfiguration.UID, hypervisorConfiguration.GID); err != nil {
-		return err
+	outputFile, err := os.OpenFile(filepath.Join(server.VMPath, ConfigName), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, os.ModePerm)
+	if err != nil {
+		panic(err)
+	}
+	defer outputFile.Close()
+
+	if _, err := outputFile.Write(packageConfig); err != nil {
+		panic(err)
 	}
 
-	return nil
-}
-
-func (r *Snapshotter) Wait() error {
-	for err := range r.errs {
-		if err != nil {
-			return err
-		}
+	if err := os.Chown(filepath.Join(server.VMPath, ConfigName), hypervisorConfiguration.UID, hypervisorConfiguration.GID); err != nil {
+		panic(err)
 	}
 
-	return nil
+	return
 }

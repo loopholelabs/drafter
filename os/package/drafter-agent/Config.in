@@ -1,0 +1,22 @@
+config BR2_PACKAGE_DRAFTER_AGENT
+    bool "drafter-agent"
+    depends on BR2_PACKAGE_HOST_GO_TARGET_ARCH_SUPPORTS
+    select BR2_PACKAGE_HOST_GO
+    help
+      Drafter agent daemon
+
+if BR2_PACKAGE_DRAFTER_AGENT
+
+config BR2_PACKAGE_DRAFTER_AGENT_VSOCK_PORT
+    string "vsock-port"
+    default "26"
+    help
+      The vsock port to connect to
+
+config BR2_PACKAGE_DRAFTER_AGENT_SYSTEMD_DEPENDENCY
+    string "systemd-dependency"
+    default "oci-runtime-bundle.service"
+    help
+      The systemd service to wait for before starting
+
+endif

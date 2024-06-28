@@ -1,0 +1,13 @@
+[Unit]
+Description=Drafter liveness daemon
+After=network.target @DRAFTER_LIVENESS_SYSTEMD_DEPENDENCY@
+Requires=@DRAFTER_LIVENESS_SYSTEMD_DEPENDENCY@
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/drafter-liveness --vsock-port @DRAFTER_LIVENESS_VSOCK_PORT@
+StandardOutput=journal+console
+StandardError=journal+console
+
+[Install]
+WantedBy=multi-user.target

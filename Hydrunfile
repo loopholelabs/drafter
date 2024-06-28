@@ -1,0 +1,111 @@
+#!/bin/bash
+
+set -e
+
+# Test
+if [ "$1" = "test" ]; then
+  # Configure Git
+  git config --global --add safe.directory '*'
+
+  # Generate dependencies
+  make depend
+
+  # Run tests
+  make test
+
+  exit 0
+fi
+
+# Go
+if [ "$1" = "go" ]; then
+  # Install native dependencies
+  apt update
+  apt install -y curl make
+
+  # Install bagop
+  curl -L -o /tmp/bagop "https://github.com/pojntfx/bagop/releases/latest/download/bagop.linux-$(uname -m)"
+  install /tmp/bagop /usr/local/bin
+
+  # Configure Git
+  git config --global --add safe.directory '*'
+
+  # Generate dependencies
+  make depend
+
+  # Build
+  CGO_ENABLED=0 bagop -j "$(nproc)" -b "$2" -x '(android/*|ios/*|plan9/*|aix/*|linux/loong64|freebsd/*|wasip1/*|js/*|openbsd/*|windows/*|darwin/*|solaris/*|dragonfly/*|netbsd/*|illumos/*)' -p "make build/$2 DST=\$DST" -d out
+
+  exit 0
+fi
+
+# OS
+if [ "$1" = "os" ]; then
+  # Install native dependencies
+  dnf group install -y "C Development Tools and Libraries" "Development Tools"
+  dnf install -y go curl make file cpio unzip rsync bc openssh-clients which wget perl
+
+  # Configure Git
+  git config --global --add safe.directory '*'
+
+  # Generate dependencies for packager
+  make depend
+
+  # Build packager
+  make build/drafter-packager
+
+  # Install packager
+  make install/drafter-packager
+
+  # Generate dependencies for OS
+  make depend/os OS_DEFCONFIG="$2"
+
+  # Build OS
+  FORCE_UNSAFE_CONFIGURE=1 make build/os
+
+  # Package OS
+  drafter-packager --package-path "out/$3" --devices '[
+      {
+        "name": "kernel",
+        "path": "out/blueprint/vmlinux"
+      },
+      {
+        "name": "disk",
+        "path": "out/blueprint/rootfs.ext4"
+      }
+    ]'
+
+  exit 0
+fi
+
+# OCI runtime bundle
+if [ "$1" = "oci" ]; then
+  # Install native dependencies
+  dnf install -y go curl make jq skopeo dnf-plugins-core openssh-clients git e2fsprogs
+  dnf copr enable -y ganto/umoci
+  dnf install -y golang-github-opencontainers-umoci
+
+  # Configure Git
+  git config --global --add safe.directory '*'
+
+  # Generate dependencies for packager
+  make depend
+
+  # Build packager
+  make build/drafter-packager
+
+  # Install packager
+  make install/drafter-packager
+
+  # Build OCI runtime bundle
+  make build/oci OCI_IMAGE_URI="$2" OCI_IMAGE_ARCHITECTURE="$3"
+
+  # Package OCI runtime bundle
+  drafter-packager --package-path "out/$4" --devices '[
+      {
+        "name": "oci",
+        "path": "out/blueprint/oci.ext4"
+      }
+    ]'
+
+  exit 0
+fi
