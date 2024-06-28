@@ -1,18 +1,16 @@
-<br/>
 <div align="center">
-  <a href="https://github.com/loopholelabs/drafter">
-    <img src="docs/icon.svg" alt="Logo" height="130">
-  </a>
-  <h3 align="center">Drafter</h3>
-  <h4 align="center">
-    A minimal VM primitive with live migration support.
-  </h4>
 
-  [![License: AGPL 3.0](https://img.shields.io/github/license/loopholelabs/drafter)](https://www.gnu.org/licenses/agpl-3.0.en.html)
-  [![Discord](https://dcbadge.vercel.app/api/server/JYmFhtdPeu?style=flat)](https://loopholelabs.io/discord)
-  [![Tests](https://github.com/loopholelabs/drafter/actions/workflows/hydrun.yaml/badge.svg)](https://github.com/loopholelabs/drafter/actions/workflows/hydrun.yaml)
-  ![Go Version](https://img.shields.io/badge/go%20version-%3E=1.21-61CFDD.svg)
-  [![Go Reference](https://pkg.go.dev/badge/github.com/loopholelabs/drafter.svg)](https://pkg.go.dev/github.com/loopholelabs/drafter)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./docs/logo-dark.svg">
+  <img alt="Logo" src="./docs/logo-light.svg">
+</picture>
+
+[![License: AGPL 3.0](https://img.shields.io/github/license/loopholelabs/drafter)](https://www.gnu.org/licenses/agpl-3.0.en.html)
+[![Discord](https://dcbadge.vercel.app/api/server/JYmFhtdPeu?style=flat)](https://loopholelabs.io/discord)
+[![Tests](https://github.com/loopholelabs/drafter/actions/workflows/hydrun.yaml/badge.svg)](https://github.com/loopholelabs/drafter/actions/workflows/hydrun.yaml)
+![Go Version](https://img.shields.io/badge/go%20version-%3E=1.21-61CFDD.svg)
+[![Go Reference](https://pkg.go.dev/badge/github.com/loopholelabs/drafter.svg)](https://pkg.go.dev/github.com/loopholelabs/drafter)
+
 </div>
 
 ## Overview

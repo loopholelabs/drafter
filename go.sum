@@ -117,6 +117,8 @@ github.com/lithammer/shortuuid/v4 v4.0.0 h1:QRbbVkfgNippHOS8PXDkti4NaWeyYfcBTHtw
 github.com/lithammer/shortuuid/v4 v4.0.0/go.mod h1:Zs8puNcrvf2rV9rTH51ZLLcj7ZXqQI3lv67aw4KiB1Y=
 github.com/loopholelabs/silo v0.0.7-0.20240620200522-d69fd1797f87 h1:mHzBxz4ghz29UonGHEUqG3W0YZOpraGQOm3aDCx6AS8=
 github.com/loopholelabs/silo v0.0.7-0.20240620200522-d69fd1797f87/go.mod h1:ZgWvDHr7cZJBfY5P4FVa2ptA7xh5gxoi4lh9rWnes3I=
+github.com/loopholelabs/silo v0.0.7-0.20240627222839-9464fd86b82f h1:EBABFRs/Yt31tXuMb5yGXq7Y38RAhM66RwLMAtx8hhQ=
+github.com/loopholelabs/silo v0.0.7-0.20240627222839-9464fd86b82f/go.mod h1:ZgWvDHr7cZJBfY5P4FVa2ptA7xh5gxoi4lh9rWnes3I=
 github.com/lufia/plan9stats v0.0.0-20231016141302-07b5767bb0ed h1:036IscGBfJsFIgJQzlui7nK1Ncm0tp2ktmPj8xO4N/0=
 github.com/lufia/plan9stats v0.0.0-20231016141302-07b5767bb0ed/go.mod h1:ilwx/Dta8jXAgpFYFvSWEMwxmbWXyiUHkd5FwyKhb5k=
 github.com/magiconair/properties v1.8.7 h1:IeQXZAiQcpL9mgcAe1Nu6cX9LLw6ExEHKjN0VQdvPDY=
