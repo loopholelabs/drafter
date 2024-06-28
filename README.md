@@ -7,7 +7,7 @@
 
 [![License: AGPL 3.0](https://img.shields.io/github/license/loopholelabs/drafter)](https://www.gnu.org/licenses/agpl-3.0.en.html)
 [![Discord](https://dcbadge.vercel.app/api/server/JYmFhtdPeu?style=flat)](https://loopholelabs.io/discord)
-[![Tests](https://github.com/loopholelabs/drafter/actions/workflows/hydrun.yaml/badge.svg)](https://github.com/loopholelabs/drafter/actions/workflows/hydrun.yaml)
+[![hydrun CI](https://github.com/loopholelabs/drafter/actions/workflows/hydrun.yaml/badge.svg)](https://github.com/loopholelabs/drafter/actions/workflows/hydrun.yaml)
 ![Go Version](https://img.shields.io/badge/go%20version-%3E=1.21-61CFDD.svg)
 [![Go Reference](https://pkg.go.dev/badge/github.com/loopholelabs/drafter.svg)](https://pkg.go.dev/github.com/loopholelabs/drafter)
 
@@ -37,11 +37,9 @@ It enables you to ...
 
 Drafter is available as static binaries on [GitHub releases](https://github.com/loopholelabs/drafter/releases). On Linux, you can install them like so:
 
-<!-- TODO: Use the latest release URL here before this branch is merged -->
-
 ```shell
 for BINARY in drafter-nat drafter-forwarder drafter-snapshotter drafter-packager drafter-runner drafter-registry drafter-peer drafter-terminator; do
-    curl -L -o "/tmp/${BINARY}" "https://github.com/loopholelabs/drafter/releases/download/release-replace-r3map-with-silo/${BINARY}.linux-$(uname -m)"
+    curl -L -o "/tmp/${BINARY}" "https://github.com/loopholelabs/drafter/releases/download/master/${BINARY}.linux-$(uname -m)"
     sudo install "/tmp/${BINARY}" /usr/local/bin
 done
 ```
@@ -91,12 +89,10 @@ In this tutorial, we'll use Drafter to run the key-value store [Valkey](https://
 
 To download the pre-built blueprints for your architecture, execute the following commands:
 
-<!-- TODO: Use the latest release URL here before this branch is merged -->
-
 ```shell
 $ mkdir -p out
-$ curl -Lo out/drafteros.tar.zst "https://github.com/loopholelabs/drafter/releases/download/release-replace-r3map-with-silo/drafteros-$(uname -m).tar.zst"
-$ curl -Lo out/oci-valkey.tar.zst "https://github.com/loopholelabs/drafter/releases/download/release-replace-r3map-with-silo/oci-valkey-$(uname -m).tar.zst"
+$ curl -Lo out/drafteros.tar.zst "https://github.com/loopholelabs/drafter/releases/download/master/drafteros-$(uname -m).tar.zst"
+$ curl -Lo out/oci-valkey.tar.zst "https://github.com/loopholelabs/drafter/releases/download/master/oci-valkey-$(uname -m).tar.zst"
 ```
 
 Next, use `drafter-packager` to extract the blueprints:

@@ -18,7 +18,7 @@ jobs:
           - id: test
             src: .
             os: golang:bookworm
-            flags: -e '-v /tmp/ssh-key:/tmp/ssh-key -v /tmp/ccache:/root/.cache/go-build'
+            flags: -e '-v /tmp/ccache:/root/.cache/go-build'
             cmd: GOFLAGS="-short" ./Hydrunfile test
             dst: out/nonexistent
             runner: depot-ubuntu-22.04-32
@@ -27,70 +27,70 @@ jobs:
           - id: go.drafter-nat
             src: .
             os: golang:bookworm
-            flags: -e '-v /tmp/ssh-key:/tmp/ssh-key -v /tmp/ccache:/root/.cache/go-build'
+            flags: -e '-v /tmp/ccache:/root/.cache/go-build'
             cmd: ./Hydrunfile go drafter-nat
             dst: out/*
             runner: depot-ubuntu-22.04-32
           - id: go.drafter-forwarder
             src: .
             os: golang:bookworm
-            flags: -e '-v /tmp/ssh-key:/tmp/ssh-key -v /tmp/ccache:/root/.cache/go-build'
+            flags: -e '-v /tmp/ccache:/root/.cache/go-build'
             cmd: ./Hydrunfile go drafter-forwarder
             dst: out/*
             runner: depot-ubuntu-22.04-32
           - id: go.drafter-agent
             src: .
             os: golang:bookworm
-            flags: -e '-v /tmp/ssh-key:/tmp/ssh-key -v /tmp/ccache:/root/.cache/go-build'
+            flags: -e '-v /tmp/ccache:/root/.cache/go-build'
             cmd: ./Hydrunfile go drafter-agent
             dst: out/*
             runner: depot-ubuntu-22.04-32
           - id: go.drafter-liveness
             src: .
             os: golang:bookworm
-            flags: -e '-v /tmp/ssh-key:/tmp/ssh-key -v /tmp/ccache:/root/.cache/go-build'
+            flags: -e '-v /tmp/ccache:/root/.cache/go-build'
             cmd: ./Hydrunfile go drafter-liveness
             dst: out/*
             runner: depot-ubuntu-22.04-32
           - id: go.drafter-snapshotter
             src: .
             os: golang:bookworm
-            flags: -e '-v /tmp/ssh-key:/tmp/ssh-key -v /tmp/ccache:/root/.cache/go-build'
+            flags: -e '-v /tmp/ccache:/root/.cache/go-build'
             cmd: ./Hydrunfile go drafter-snapshotter
             dst: out/*
             runner: depot-ubuntu-22.04-32
           - id: go.drafter-packager
             src: .
             os: golang:bookworm
-            flags: -e '-v /tmp/ssh-key:/tmp/ssh-key -v /tmp/ccache:/root/.cache/go-build'
+            flags: -e '-v /tmp/ccache:/root/.cache/go-build'
             cmd: ./Hydrunfile go drafter-packager
             dst: out/*
             runner: depot-ubuntu-22.04-32
           - id: go.drafter-runner
             src: .
             os: golang:bookworm
-            flags: -e '-v /tmp/ssh-key:/tmp/ssh-key -v /tmp/ccache:/root/.cache/go-build'
+            flags: -e '-v /tmp/ccache:/root/.cache/go-build'
             cmd: ./Hydrunfile go drafter-runner
             dst: out/*
             runner: depot-ubuntu-22.04-32
           - id: go.drafter-registry
             src: .
             os: golang:bookworm
-            flags: -e '-v /tmp/ssh-key:/tmp/ssh-key -v /tmp/ccache:/root/.cache/go-build'
+            flags: -e '-v /tmp/ccache:/root/.cache/go-build'
             cmd: ./Hydrunfile go drafter-registry
             dst: out/*
             runner: depot-ubuntu-22.04-32
           - id: go.drafter-peer
             src: .
             os: golang:bookworm
-            flags: -e '-v /tmp/ssh-key:/tmp/ssh-key -v /tmp/ccache:/root/.cache/go-build'
+            flags: -e '-v /tmp/ccache:/root/.cache/go-build'
             cmd: ./Hydrunfile go drafter-peer
             dst: out/*
             runner: depot-ubuntu-22.04-32
           - id: go.drafter-terminator
             src: .
             os: golang:bookworm
-            flags: -e '-v /tmp/ssh-key:/tmp/ssh-key -v /tmp/ccache:/root/.cache/go-build'
+            flags: -e '-v /tmp/ccache:/root/.cache/go-build'
             cmd: ./Hydrunfile go drafter-terminator
             dst: out/*
             runner: depot-ubuntu-22.04-32
@@ -99,14 +99,14 @@ jobs:
           - id: os.drafter-x86_64
             src: .
             os: fedora:40
-            flags: -e '-v /tmp/ssh-key:/tmp/ssh-key -v /tmp/ccache/go:/root/.cache/go-build -v /tmp/ccache/buildroot:/root/.buildroot-ccache'
+            flags: -e '-v /tmp/ccache/go:/root/.cache/go-build -v /tmp/ccache/buildroot:/root/.buildroot-ccache'
             cmd: ./Hydrunfile os drafteros-firecracker-x86_64_defconfig drafteros-x86_64.tar.zst
             dst: out/drafteros-x86_64.tar.zst
             runner: depot-ubuntu-22.04-32
           - id: os.drafter-aarch64
             src: .
             os: fedora:40
-            flags: -e '-v /tmp/ssh-key:/tmp/ssh-key -v /tmp/ccache/go:/root/.cache/go-build -v /tmp/ccache/buildroot:/root/.buildroot-ccache'
+            flags: -e '-v /tmp/ccache/go:/root/.cache/go-build -v /tmp/ccache/buildroot:/root/.buildroot-ccache'
             cmd: ./Hydrunfile os drafteros-firecracker-aarch64_defconfig drafteros-aarch64.tar.zst
             dst: out/drafteros-aarch64.tar.zst
             runner: depot-ubuntu-22.04-32
@@ -115,42 +115,42 @@ jobs:
           - id: oci.valkey-x86_64
             src: .
             os: fedora:40
-            flags: -e '-v /tmp/ssh-key:/tmp/ssh-key -v /tmp/ccache/go:/root/.cache/go-build'
+            flags: -e '-v /tmp/ccache/go:/root/.cache/go-build'
             cmd: ./Hydrunfile oci docker://valkey/valkey:latest amd64 oci-valkey-x86_64.tar.zst
             dst: out/oci-valkey-x86_64.tar.zst
             runner: depot-ubuntu-22.04-32
           - id: oci.valkey-aarch64
             src: .
             os: fedora:40
-            flags: -e '-v /tmp/ssh-key:/tmp/ssh-key -v /tmp/ccache/go:/root/.cache/go-build'
+            flags: -e '-v /tmp/ccache/go:/root/.cache/go-build'
             cmd: ./Hydrunfile oci docker://valkey/valkey:latest arm64 oci-valkey-aarch64.tar.zst
             dst: out/oci-valkey-aarch64.tar.zst
             runner: depot-ubuntu-22.04-32
           - id: oci.postgres-x86_64
             src: .
             os: fedora:40
-            flags: -e '-v /tmp/ssh-key:/tmp/ssh-key -v /tmp/ccache/go:/root/.cache/go-build'
+            flags: -e '-v /tmp/ccache/go:/root/.cache/go-build'
             cmd: ./Hydrunfile oci docker://postgres:latest amd64 oci-postgres-x86_64.tar.zst
             dst: out/oci-postgres-x86_64.tar.zst
             runner: depot-ubuntu-22.04-32
           - id: oci.postgres-aarch64
             src: .
             os: fedora:40
-            flags: -e '-v /tmp/ssh-key:/tmp/ssh-key -v /tmp/ccache/go:/root/.cache/go-build'
+            flags: -e '-v /tmp/ccache/go:/root/.cache/go-build'
             cmd: ./Hydrunfile oci docker://postgres:latest arm64 oci-postgres-aarch64.tar.zst
             dst: out/oci-postgres-aarch64.tar.zst
             runner: depot-ubuntu-22.04-32
           - id: oci.ollama-x86_64
             src: .
             os: fedora:40
-            flags: -e '-v /tmp/ssh-key:/tmp/ssh-key -v /tmp/ccache/go:/root/.cache/go-build'
+            flags: -e '-v /tmp/ccache/go:/root/.cache/go-build'
             cmd: ./Hydrunfile oci docker://ollama/ollama:latest amd64 oci-ollama-x86_64.tar.zst
             dst: out/oci-ollama-x86_64.tar.zst
             runner: depot-ubuntu-22.04-32
           - id: oci.ollama-aarch64
             src: .
             os: fedora:40
-            flags: -e '-v /tmp/ssh-key:/tmp/ssh-key -v /tmp/ccache/go:/root/.cache/go-build'
+            flags: -e '-v /tmp/ccache/go:/root/.cache/go-build'
             cmd: ./Hydrunfile oci docker://ollama/ollama:latest arm64 oci-ollama-aarch64.tar.zst
             dst: out/oci-ollama-aarch64.tar.zst
             runner: depot-ubuntu-22.04-32
@@ -172,11 +172,6 @@ jobs:
         run: |
           curl -L -o /tmp/hydrun "https://github.com/pojntfx/hydrun/releases/latest/download/hydrun.linux-$(uname -m)"
           sudo install /tmp/hydrun /usr/local/bin
-      - name: Setup SSH key
-        working-directory: .
-        env:
-          SSH_KEY: ${{ secrets.SSH_KEY }}
-        run: echo "${SSH_KEY}" | base64 -d >'/tmp/ssh-key'
       - name: Build with hydrun
         working-directory: ${{ matrix.target.src }}
         run: hydrun -o ${{ matrix.target.os }} ${{ matrix.target.flags }} "${{ matrix.target.cmd }}"
@@ -211,7 +206,7 @@ jobs:
         id: extract_branch
         run: echo "##[set-output name=branch;]$(echo ${GITHUB_REF#refs/heads/})"
       - name: Publish pre-release to GitHub releases
-        if: ${{ github.ref == 'refs/heads/replace-r3map-with-silo' }} # TODO: Set to `master` instead of `replace-r3map-with-silo` before this branch is merged
+        if: ${{ github.ref == 'refs/heads/master' }}
         uses: softprops/action-gh-release@v2
         with:
           tag_name: release-${{ steps.extract_branch.outputs.branch }}
