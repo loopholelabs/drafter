@@ -24,7 +24,7 @@
      inkscape:deskcolor="#d1d1d1"
      inkscape:document-units="mm"
      inkscape:zoom="2.9354654"
-     inkscape:cx="197.41333"
+     inkscape:cx="207.97384"
      inkscape:cy="149.0394"
      inkscape:window-width="2560"
      inkscape:window-height="1371"
@@ -235,14 +235,14 @@
          y="71.364731">Drafter</tspan></text><text
        xml:space="preserve"
        style="font-size:5.14898px;font-family:'-apple-system', BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji';fill:#ffffff;fill-opacity:1;stroke:none;stroke-width:5.41818;paint-order:stroke markers fill"
-       x="47.641338"
+       x="51.461884"
        y="80.502258"
        id="text2"><tspan
          sodipodi:role="line"
          id="tspan2"
          style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:'-apple-system', BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji';fill:#ffffff;fill-opacity:1;stroke:none;stroke-width:5.41818"
-         x="47.641338"
-         y="80.502258"> A minimal VM primitive with live migration support. </tspan></text><g
+         x="51.461884"
+         y="80.502258">A Compute Primitive Designed for Live Migration </tspan></text><g
        inkscape:label="Layer 1"
        id="layer1-2"
        transform="matrix(0.23948505,0,0,0.23948505,85.704232,9.6754708)"><circle
