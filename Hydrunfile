@@ -4,15 +4,8 @@ set -e
 
 # Test
 if [ "$1" = "test" ]; then
-  # Configure SSH access
-  eval "$(ssh-agent -s)"
-  ssh-add /tmp/ssh-key
-  mkdir -p ~/.ssh
-  ssh-keyscan github.com >>~/.ssh/known_hosts
-
   # Configure Git
   git config --global --add safe.directory '*'
-  git config --global url."ssh://git@github.com/".insteadOf "https://github.com/"
 
   # Generate dependencies
   make depend
@@ -25,12 +18,6 @@ fi
 
 # Go
 if [ "$1" = "go" ]; then
-  # Configure SSH access
-  eval "$(ssh-agent -s)"
-  ssh-add /tmp/ssh-key
-  mkdir -p ~/.ssh
-  ssh-keyscan github.com >>~/.ssh/known_hosts
-
   # Install native dependencies
   apt update
   apt install -y curl make
@@ -41,7 +28,6 @@ if [ "$1" = "go" ]; then
 
   # Configure Git
   git config --global --add safe.directory '*'
-  git config --global url."ssh://git@github.com/".insteadOf "https://github.com/"
 
   # Generate dependencies
   make depend
@@ -58,15 +44,8 @@ if [ "$1" = "os" ]; then
   dnf group install -y "C Development Tools and Libraries" "Development Tools"
   dnf install -y go curl make file cpio unzip rsync bc openssh-clients which wget perl
 
-  # Configure SSH access
-  eval "$(ssh-agent -s)"
-  ssh-add /tmp/ssh-key
-  mkdir -p ~/.ssh
-  ssh-keyscan github.com >>~/.ssh/known_hosts
-
   # Configure Git
   git config --global --add safe.directory '*'
-  git config --global url."ssh://git@github.com/".insteadOf "https://github.com/"
 
   # Generate dependencies for packager
   make depend
@@ -105,15 +84,8 @@ if [ "$1" = "oci" ]; then
   dnf copr enable -y ganto/umoci
   dnf install -y golang-github-opencontainers-umoci
 
-  # Configure SSH access
-  eval "$(ssh-agent -s)"
-  ssh-add /tmp/ssh-key
-  mkdir -p ~/.ssh
-  ssh-keyscan github.com >>~/.ssh/known_hosts
-
   # Configure Git
   git config --global --add safe.directory '*'
-  git config --global url."ssh://git@github.com/".insteadOf "https://github.com/"
 
   # Generate dependencies for packager
   make depend
