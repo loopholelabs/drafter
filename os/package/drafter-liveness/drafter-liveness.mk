@@ -4,7 +4,7 @@
 #
 ################################################################################
 
-DRAFTER_LIVENESS_VERSION = 7772538de7ccb39053ae6c9fac13aeae0f21606c
+DRAFTER_LIVENESS_VERSION = b9281502e455d96270aa166d80da6b5254a18657
 DRAFTER_LIVENESS_SITE = $(call github,loopholelabs,drafter,$(DRAFTER_LIVENESS_VERSION))
 
 DRAFTER_LIVENESS_LICENSE = AGPL-3.0-or-later

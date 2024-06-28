@@ -4,7 +4,7 @@
 #
 ################################################################################
 
-DRAFTER_AGENT_VERSION = 7772538de7ccb39053ae6c9fac13aeae0f21606c
+DRAFTER_AGENT_VERSION = b9281502e455d96270aa166d80da6b5254a18657
 DRAFTER_AGENT_SITE = $(call github,loopholelabs,drafter,$(DRAFTER_AGENT_VERSION))
 
 DRAFTER_AGENT_LICENSE = AGPL-3.0-or-later
