@@ -91,7 +91,7 @@ To download the pre-built blueprints for your architecture, execute the followin
 
 ```shell
 $ mkdir -p out
-$ curl -Lo out/drafteros.tar.zst "https://github.com/loopholelabs/drafter/releases/download/master/drafteros-$(uname -m).tar.zst"
+$ curl -Lo out/drafteros.tar.zst "https://github.com/loopholelabs/drafter/releases/download/master/drafteros-$(uname -m).tar.zst" # Use `drafteros-$(uname -m)_pvm.tar.zst` if you're using PVM
 $ curl -Lo out/oci-valkey.tar.zst "https://github.com/loopholelabs/drafter/releases/download/master/oci-valkey-$(uname -m).tar.zst"
 ```
 
@@ -142,7 +142,7 @@ To build the blueprints locally, you can use the [included Makefile](./Makefile)
 
 ```shell
 # Build the DrafterOS blueprint
-$ make depend/os OS_DEFCONFIG=drafteros-firecracker-x86_64_defconfig # Or `drafteros-firecracker-aarch64_defconfig` if you're on `aarch64`
+$ make depend/os OS_DEFCONFIG=drafteros-firecracker-x86_64_defconfig # Use `drafteros-firecracker-x86_64_pvm_defconfig` if you're using PVM and `drafteros-firecracker-aarch64_defconfig` if you're on `aarch64`
 $ make config/os # Optional: Configure DrafterOS
 $ make save/os # Optional: Write back the DrafterOS configuration to the defconfig
 $ make build/os

@@ -103,6 +103,13 @@ jobs:
             cmd: ./Hydrunfile os drafteros-firecracker-x86_64_defconfig drafteros-x86_64.tar.zst
             dst: out/drafteros-x86_64.tar.zst
             runner: depot-ubuntu-22.04-32
+          - id: os.drafter-x86_64_pvm
+            src: .
+            os: fedora:40
+            flags: -e '-v /tmp/ccache/go:/root/.cache/go-build -v /tmp/ccache/buildroot:/root/.buildroot-ccache'
+            cmd: ./Hydrunfile os drafteros-firecracker-x86_64_pvm_defconfig drafteros-x86_64_pvm.tar.zst
+            dst: out/drafteros-x86_64_pvm.tar.zst
+            runner: depot-ubuntu-22.04-32
           - id: os.drafter-aarch64
             src: .
             os: fedora:40
