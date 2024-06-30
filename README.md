@@ -1178,8 +1178,8 @@ Drafter doesn't concern itself with the actual process of building the underlyin
 
 ## Acknowledgements
 
-- [Loophole Labs Silo](github.com/loopholelabs/silo) provides the storage and data migration framework.
-- [coreos/go-iptables](github.com/coreos/go-iptables) provides the IPTables bindings for port-forwarding.
+- [Loophole Labs Silo](https://github.com/loopholelabs/silo) provides the storage and data migration framework.
+- [coreos/go-iptables](https://github.com/coreos/go-iptables) provides the IPTables bindings for port-forwarding.
 - [pojntfx/panrpc](https://github.com/pojntfx/panrpc) provides the RPC framework for local host ↔ guest communication.
 - [Font Awesome](https://fontawesome.com/) provides the assets used for the icon and logo.
 
