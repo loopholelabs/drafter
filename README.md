@@ -15,9 +15,9 @@
 
 ## Overview
 
-Drafter is a fast and minimal VM manager with live migration support.
+Drafter is a compute primitive designed to support live migration. 
 
-It enables you to ...
+It enables you to:
 
 - **Snapshot, package, and distribute stateful VMs**: With an opinionated packaging format and simple developer tools, managing, packaging, and distributing VMs becomes as straightforward as working with containers.
 - **Run OCI images as VMs**: In addition to running almost any Linux distribution (Alpine Linux, Fedora, Debian, Ubuntu etc.), Drafter can also run OCI images as VMs without the overhead of a nested Docker daemon or full CRI implementation. It uses a dynamic disk configuration system, an optional custom Buildroot-based OS to start the OCI image, and a familiar Docker-like networking configuration.
