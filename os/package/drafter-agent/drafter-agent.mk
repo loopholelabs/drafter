@@ -4,8 +4,10 @@
 #
 ################################################################################
 
-DRAFTER_AGENT_VERSION = b9281502e455d96270aa166d80da6b5254a18657
-DRAFTER_AGENT_SITE = $(call github,loopholelabs,drafter,$(DRAFTER_AGENT_VERSION))
+DRAFTER_AGENT_VERSION = 1.0
+DRAFTER_AGENT_SITE = "$(BR2_EXTERNAL_LOOPHOLE_LABS_DRAFTER_OS_PATH)/.."
+DRAFTER_AGENT_SITE_METHOD = local
+DRAFTER_AGENT_OVERRIDE_SRCDIR_RSYNC_EXCLUSIONS = --exclude out
 
 DRAFTER_AGENT_LICENSE = AGPL-3.0-or-later
 DRAFTER_AGENT_LICENSE_FILES = LICENSE
@@ -13,6 +15,10 @@ DRAFTER_AGENT_LICENSE_FILES = LICENSE
 DRAFTER_AGENT_GOMOD = github.com/loopholelabs/drafter
 
 DRAFTER_AGENT_BUILD_TARGETS = cmd/drafter-agent
+
+define DRAFTER_AGENT_CONFIGURE_CMDS
+	cd $(@D) && $(GO_BIN) mod vendor
+endef
 
 define DRAFTER_AGENT_INSTALL_INIT_SYSTEMD
 	mkdir -p $(TARGET_DIR)/usr/lib/systemd/system
