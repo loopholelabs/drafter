@@ -22,7 +22,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          path-to-signatures: 'signatures/v1/cla.json'
+          path-to-signatures: '.github/signatures/v1/cla.json'
           path-to-document: 'https://github.com/loopholelabs/drafter/blob/master/CLA.md'
           branch: 'master'
           allowlist: bot*
