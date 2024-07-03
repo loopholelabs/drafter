@@ -7,7 +7,7 @@ require (
 	github.com/freddierice/go-losetup/v2 v2.0.1
 	github.com/klauspost/compress v1.17.6
 	github.com/lithammer/shortuuid/v4 v4.0.0
-	github.com/loopholelabs/silo v0.0.7-0.20240628204916-af0d0fdbee3e
+	github.com/loopholelabs/silo v0.0.7
 	github.com/metal-stack/go-ipam v1.13.0
 	github.com/pojntfx/panrpc/go v0.0.0-20240530214555-23871be1d846
 	github.com/vishvananda/netlink v1.1.0
