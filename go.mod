@@ -5,7 +5,7 @@ go 1.21
 require (
 	github.com/coreos/go-iptables v0.7.0
 	github.com/freddierice/go-losetup/v2 v2.0.1
-	github.com/klauspost/compress v1.17.6
+	github.com/klauspost/compress v1.17.9
 	github.com/lithammer/shortuuid/v4 v4.0.0
 	github.com/loopholelabs/silo v0.0.7-0.20240628204916-af0d0fdbee3e
 	github.com/metal-stack/go-ipam v1.13.0
