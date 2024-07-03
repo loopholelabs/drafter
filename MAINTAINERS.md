@@ -1,1 +1,2 @@
 - Felicitas Pojtinger <felicitaspojtinger@loopholelabs.io> @pojntfx
+- Shivansh Vij <shivanshvij@loopholelabs.io> @shivanshvij
