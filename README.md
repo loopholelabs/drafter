@@ -15,7 +15,7 @@
 
 ## Overview
 
-Drafter is a compute primitive designed to support live migration. 
+Drafter is a compute primitive with live migration support.
 
 It enables you to:
 

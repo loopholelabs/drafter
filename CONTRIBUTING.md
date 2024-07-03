@@ -28,4 +28,4 @@ Drafter uses GitHub to manage reviews of pull requests.
   Practices for Production
   Environments](http://peter.bourgon.org/go-in-production/#formatting-and-style).
 
-- Be sure to sign off on the [DCO](https://github.com/probot/dco#how-it-works)
+- Be sure to sign off on the [CLA](./CLA.md). Once you submit your pull request, [CLA Assistant](https://github.com/contributor-assistant/github-action) will ask you sign off before your pull request can be merged.
