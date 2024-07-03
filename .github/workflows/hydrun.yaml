@@ -2,11 +2,11 @@ name: hydrun CI
 
 on:
   push:
-    paths:
-      - !.github/signatures/**
+    paths-ignore:
+      - '.github/signatures/**'
   pull_request:
-    paths:
-      - !.github/signatures/**
+    paths-ignore:
+      - '.github/signatures/**'
   schedule:
     - cron: "0 0 * * 0"
 
