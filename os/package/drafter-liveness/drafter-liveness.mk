@@ -17,7 +17,7 @@ DRAFTER_LIVENESS_GOMOD = github.com/loopholelabs/drafter
 DRAFTER_LIVENESS_BUILD_TARGETS = cmd/drafter-liveness
 
 define DRAFTER_LIVENESS_CONFIGURE_CMDS
-	cd $(@D) && $(GO_BIN) mod vendor
+	cd $(@D) && GOROOT="$(HOST_GO_ROOT)" GOPATH="$(HOST_GO_GOPATH)" GOPROXY="direct" $(GO_BIN) mod vendor
 endef
 
 define DRAFTER_LIVENESS_INSTALL_INIT_SYSTEMD

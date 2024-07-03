@@ -17,7 +17,7 @@ DRAFTER_AGENT_GOMOD = github.com/loopholelabs/drafter
 DRAFTER_AGENT_BUILD_TARGETS = cmd/drafter-agent
 
 define DRAFTER_AGENT_CONFIGURE_CMDS
-	cd $(@D) && $(GO_BIN) mod vendor
+	cd $(@D) && GOROOT="$(HOST_GO_ROOT)" GOPATH="$(HOST_GO_GOPATH)" GOPROXY="direct" $(GO_BIN) mod vendor
 endef
 
 define DRAFTER_AGENT_INSTALL_INIT_SYSTEMD
