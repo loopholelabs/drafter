@@ -20,7 +20,24 @@ import (
 )
 
 var (
-	ErrCouldNotGetDeviceStat = errors.New("could not get NBD device stat")
+	ErrCouldNotGetDeviceStat                 = errors.New("could not get NBD device stat")
+	ErrCouldNotWaitForFirecrackerServer      = errors.New("could not wait for Firecracker server")
+	ErrCouldNotOpenLivenessServer            = errors.New("could not open liveness server")
+	ErrCouldNotChownLivenessServerVSock      = errors.New("could not change ownership of liveness server VSock")
+	ErrCouldNotChownAgentServerVSock         = errors.New("could not change ownership of agent server VSock")
+	ErrCouldNotOpenInputFile                 = errors.New("could not open input file")
+	ErrCouldNotCreateOutputFile              = errors.New("could not create output file")
+	ErrCouldNotCopyFile                      = errors.New("error copying file")
+	ErrCouldNotWritePadding                  = errors.New("could not write padding")
+	ErrCouldNotCopyDeviceFile                = errors.New("could not copy device file")
+	ErrCouldNotStartVM                       = errors.New("could not start VM")
+	ErrCouldNotReceiveAndCloseLivenessServer = errors.New("could not receive and close liveness server")
+	ErrCouldNotAcceptAgentConnection         = errors.New("could not accept agent connection")
+	ErrCouldNotBeforeSuspend                 = errors.New("error before suspend")
+	ErrCouldNotMarshalPackageConfig          = errors.New("could not marshal package configuration")
+	ErrCouldNotOpenPackageConfigFile         = errors.New("could not open package configuration file")
+	ErrCouldNotWritePackageConfig            = errors.New("could not write package configuration")
+	ErrCouldNotChownPackageConfigFile        = errors.New("could not change ownership of package configuration file")
 )
 
 type AgentConfiguration struct {
@@ -61,7 +78,7 @@ func CreateSnapshot(
 	defer handlePanics(false)()
 
 	if err := os.MkdirAll(hypervisorConfiguration.ChrootBaseDir, os.ModePerm); err != nil {
-		panic(err)
+		panic(errors.Join(ErrCouldNotCreateChrootBaseDirectory, err))
 	}
 
 	server, err := firecracker.StartFirecrackerServer(
@@ -83,14 +100,14 @@ func CreateSnapshot(
 		hypervisorConfiguration.EnableInput,
 	)
 	if err != nil {
-		panic(err)
+		panic(errors.Join(ErrCouldNotStartFirecrackerServer, err))
 	}
 	defer server.Close()
 	defer os.RemoveAll(filepath.Dir(server.VMPath)) // Remove `firecracker/$id`, not just `firecracker/$id/root`
 
 	handleGoroutinePanics(true, func() {
 		if err := server.Wait(); err != nil {
-			panic(err)
+			panic(errors.Join(ErrCouldNotWaitForFirecrackerServer, err))
 		}
 	})
 
@@ -101,12 +118,12 @@ func CreateSnapshot(
 
 	livenessVSockPath, err := liveness.Open()
 	if err != nil {
-		panic(err)
+		panic(errors.Join(ErrCouldNotOpenLivenessServer, err))
 	}
 	defer liveness.Close()
 
 	if err := os.Chown(livenessVSockPath, hypervisorConfiguration.UID, hypervisorConfiguration.GID); err != nil {
-		panic(err)
+		panic(errors.Join(ErrCouldNotChownLivenessServerVSock, err))
 	}
 
 	agent, err := ipc.StartAgentServer(
@@ -114,12 +131,12 @@ func CreateSnapshot(
 		uint32(agentConfiguration.AgentVSockPort),
 	)
 	if err != nil {
-		panic(err)
+		panic(errors.Join(ErrCouldNotStartAgentServer, err))
 	}
 	defer agent.Close()
 
 	if err := os.Chown(agent.VSockPath, hypervisorConfiguration.UID, hypervisorConfiguration.GID); err != nil {
-		panic(err)
+		panic(errors.Join(ErrCouldNotChownAgentServerVSock, err))
 	}
 
 	client := &http.Client{
@@ -140,28 +157,28 @@ func CreateSnapshot(
 		for _, device := range devices {
 			inputFile, err := os.Open(filepath.Join(server.VMPath, device.Name))
 			if err != nil {
-				panic(err)
+				panic(errors.Join(ErrCouldNotOpenInputFile, err))
 			}
 			defer inputFile.Close()
 
 			if err := os.MkdirAll(filepath.Dir(device.Output), os.ModePerm); err != nil {
-				panic(err)
+				panic(errors.Join(ErrCouldNotCreateOutputDir, err))
 			}
 
 			outputFile, err := os.OpenFile(device.Output, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, os.ModePerm)
 			if err != nil {
-				panic(err)
+				panic(errors.Join(ErrCouldNotCreateOutputFile, err))
 			}
 			defer outputFile.Close()
 
 			deviceSize, err := io.Copy(outputFile, inputFile)
 			if err != nil {
-				panic(err)
+				panic(errors.Join(ErrCouldNotCopyFile, err))
 			}
 
 			if paddingLength := utils.GetBlockDevicePadding(deviceSize); paddingLength > 0 {
 				if _, err := outputFile.Write(make([]byte, paddingLength)); err != nil {
-					panic(err)
+					panic(errors.Join(ErrCouldNotWritePadding, err))
 				}
 			}
 		}
@@ -173,7 +190,7 @@ func CreateSnapshot(
 	for _, device := range devices {
 		if strings.TrimSpace(device.Input) != "" {
 			if _, err := iutils.CopyFile(device.Input, filepath.Join(server.VMPath, device.Name), hypervisorConfiguration.UID, hypervisorConfiguration.GID); err != nil {
-				panic(err)
+				panic(errors.Join(ErrCouldNotCopyDeviceFile, err))
 			}
 		}
 
@@ -202,7 +219,7 @@ func CreateSnapshot(
 		VSockName,
 		ipc.VSockCIDGuest,
 	); err != nil {
-		panic(err)
+		panic(errors.Join(ErrCouldNotStartVM, err))
 	}
 	defer os.Remove(filepath.Join(server.VMPath, VSockName))
 
@@ -211,7 +228,7 @@ func CreateSnapshot(
 		defer cancel()
 
 		if err := liveness.ReceiveAndClose(receiveCtx); err != nil {
-			panic(err)
+			panic(errors.Join(ErrCouldNotReceiveAndCloseLivenessServer, err))
 		}
 	}
 
@@ -222,25 +239,25 @@ func CreateSnapshot(
 
 		acceptingAgent, err = agent.Accept(acceptCtx, ctx)
 		if err != nil {
-			panic(err)
+			panic(errors.Join(ErrCouldNotAcceptAgentConnection, err))
 		}
 		defer acceptingAgent.Close()
 
 		handleGoroutinePanics(true, func() {
 			if err := acceptingAgent.Wait(); err != nil {
-				panic(err)
+				panic(errors.Join(ErrCouldNotWaitForAcceptingAgent, err))
 			}
 		})
 
 		if err := acceptingAgent.Remote.BeforeSuspend(acceptCtx); err != nil {
-			panic(err)
+			panic(errors.Join(ErrCouldNotBeforeSuspend, err))
 		}
 	}
 
 	// Connections need to be closed before creating the snapshot
 	liveness.Close()
 	if err := acceptingAgent.Close(); err != nil {
-		panic(err)
+		panic(errors.Join(ErrCouldNotCloseAcceptingAgent, err))
 	}
 	agent.Close()
 
@@ -254,28 +271,28 @@ func CreateSnapshot(
 
 		firecracker.SnapshotTypeFull,
 	); err != nil {
-		panic(err)
+		panic(errors.Join(ErrCouldNotCreateSnapshot, err))
 	}
 
 	packageConfig, err := json.Marshal(PackageConfiguration{
 		AgentVSockPort: agentConfiguration.AgentVSockPort,
 	})
 	if err != nil {
-		panic(err)
+		panic(errors.Join(ErrCouldNotMarshalPackageConfig, err))
 	}
 
 	outputFile, err := os.OpenFile(filepath.Join(server.VMPath, ConfigName), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, os.ModePerm)
 	if err != nil {
-		panic(err)
+		panic(errors.Join(ErrCouldNotOpenPackageConfigFile, err))
 	}
 	defer outputFile.Close()
 
 	if _, err := outputFile.Write(packageConfig); err != nil {
-		panic(err)
+		panic(errors.Join(ErrCouldNotWritePackageConfig, err))
 	}
 
 	if err := os.Chown(filepath.Join(server.VMPath, ConfigName), hypervisorConfiguration.UID, hypervisorConfiguration.GID); err != nil {
-		panic(err)
+		panic(errors.Join(ErrCouldNotChownPackageConfigFile, err))
 	}
 
 	return

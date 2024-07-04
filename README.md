@@ -39,7 +39,7 @@ Drafter is available as static binaries on [GitHub releases](https://github.com/
 
 ```shell
 for BINARY in drafter-nat drafter-forwarder drafter-snapshotter drafter-packager drafter-runner drafter-registry drafter-peer drafter-terminator; do
-    curl -L -o "/tmp/${BINARY}" "https://github.com/loopholelabs/drafter/releases/download/master/${BINARY}.linux-$(uname -m)"
+    curl -L -o "/tmp/${BINARY}" "https://github.com/loopholelabs/drafter/releases/latest/download/${BINARY}.linux-$(uname -m)"
     sudo install "/tmp/${BINARY}" /usr/local/bin
 done
 ```
@@ -91,8 +91,8 @@ To download the pre-built blueprints for your architecture, execute the followin
 
 ```shell
 $ mkdir -p out
-$ curl -Lo out/drafteros.tar.zst "https://github.com/loopholelabs/drafter/releases/download/master/drafteros-$(uname -m).tar.zst" # Use `drafteros-$(uname -m)_pvm.tar.zst` if you're using PVM
-$ curl -Lo out/oci-valkey.tar.zst "https://github.com/loopholelabs/drafter/releases/download/master/oci-valkey-$(uname -m).tar.zst"
+$ curl -Lo out/drafteros.tar.zst "https://github.com/loopholelabs/drafter/releases/latest/download/drafteros-$(uname -m).tar.zst" # Use `drafteros-$(uname -m)_pvm.tar.zst` if you're using PVM
+$ curl -Lo out/oci-valkey.tar.zst "https://github.com/loopholelabs/drafter/releases/latest/download/oci-valkey-$(uname -m).tar.zst"
 ```
 
 Next, use `drafter-packager` to extract the blueprints:
