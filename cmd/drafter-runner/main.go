@@ -76,6 +76,8 @@ func main() {
 	numaNode := flag.Int("numa-node", 0, "NUMA node to run Firecracker in")
 	cgroupVersion := flag.Int("cgroup-version", 2, "Cgroup version to use for Jailer")
 
+	mapShared := flag.Bool("map-shared", true, "Whether to use MAP_SHARED for memory and state devices")
+
 	rawDevices := flag.String("devices", string(defaultDevices), "Devices configuration")
 
 	flag.Parse()
@@ -280,6 +282,8 @@ func main() {
 		*resumeTimeout,
 		*rescueTimeout,
 		packageConfig.AgentVSockPort,
+
+		*mapShared,
 	)
 
 	if err != nil {

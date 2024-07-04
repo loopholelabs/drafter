@@ -112,6 +112,8 @@ type MigratedPeer struct {
 
 		resumeTimeout,
 		rescueTimeout time.Duration,
+
+		mapShared bool,
 	) (
 		resumedPeer *ResumedPeer,
 
@@ -819,6 +821,8 @@ func StartPeer(
 
 			resumeTimeout,
 			rescueTimeout time.Duration,
+
+			mapShared bool,
 		) (resumedPeer *ResumedPeer, errs error) {
 			configBasePath := ""
 			for _, device := range devices {
@@ -844,7 +848,7 @@ func StartPeer(
 				return nil, errors.Join(ErrCouldNotDecodeConfigFile, err)
 			}
 
-			resumedRunner, err := runner.Resume(ctx, resumeTimeout, rescueTimeout, packageConfig.AgentVSockPort)
+			resumedRunner, err := runner.Resume(ctx, resumeTimeout, rescueTimeout, packageConfig.AgentVSockPort, mapShared)
 			if err != nil {
 				return nil, errors.Join(ErrCouldNotResumeRunner, err)
 			}

@@ -3,6 +3,7 @@ package roles
 import (
 	"context"
 	"errors"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/lithammer/shortuuid/v4"
 	"github.com/loopholelabs/drafter/internal/firecracker"
 	"github.com/loopholelabs/drafter/pkg/ipc"
 	"github.com/loopholelabs/drafter/pkg/utils"
@@ -65,6 +67,8 @@ type Runner struct {
 		resumeTimeout time.Duration,
 		rescueTimeout time.Duration,
 		agentVSockPort uint32,
+
+		mapShared bool,
 	) (
 		resumedRunner *ResumedRunner,
 
@@ -201,6 +205,8 @@ func StartRunner(
 		resumeTimeout,
 		rescueTimeout time.Duration,
 		agentVSockPort uint32,
+
+		mapShared bool,
 	) (
 		resumedRunner *ResumedRunner,
 
@@ -237,19 +243,64 @@ func StartRunner(
 						}
 
 						// If a resume failed, flush the snapshot so that we can re-try
-						if e := firecracker.CreateSnapshot(
-							suspendCtx, // We use a separate context here so that we can
-							// cancel the snapshot create action independently of the resume
-							// ctx, which is typically cancelled already
+						if mapShared {
+							if e := firecracker.CreateSnapshot(
+								suspendCtx, // We use a separate context here so that we can
+								// cancel the snapshot create action independently of the resume
+								// ctx, which is typically cancelled already
+
+								firecrackerClient,
+
+								stateName,
+								memoryName,
+
+								firecracker.SnapshotTypeFull,
+							); e != nil {
+								errs = errors.Join(errs, ErrCouldNotCreateSnapshot, e)
+
+								return
+							}
+
+							return
+						}
+
+						memoryCopyName := shortuuid.New()
+
+						if err := firecracker.CreateSnapshot(
+							suspendCtx,
 
 							firecrackerClient,
 
 							stateName,
-							"",
+							memoryCopyName, // We need to write the memory to a separate file since we can't truncate an `mmap`ed file
 
-							firecracker.SnapshotTypeMsyncAndState,
-						); e != nil {
-							errs = errors.Join(errs, ErrCouldNotCreateSnapshot, e)
+							firecracker.SnapshotTypeFull,
+						); err != nil {
+							errs = errors.Join(errs, ErrCouldNotCreateSnapshot, err)
+
+							return
+						}
+
+						inputFile, err := os.Open(filepath.Join(server.VMPath, memoryCopyName))
+						if err != nil {
+							errs = errors.Join(errs, ErrCouldNotOpenInputFile, err)
+
+							return
+						}
+						defer inputFile.Close()
+
+						outputFile, err := os.OpenFile(filepath.Join(server.VMPath, memoryName), os.O_TRUNC|os.O_WRONLY, os.ModePerm)
+						if err != nil {
+							errs = errors.Join(errs, ErrCouldNotOpenOutputFile, err)
+
+							return
+						}
+						defer outputFile.Close()
+
+						if _, err := io.Copy(outputFile, inputFile); err != nil {
+							errs = errors.Join(errs, ErrCouldNotCopyFile, err)
+
+							return
 						}
 					}
 				},
@@ -341,17 +392,19 @@ func StartRunner(
 		}
 
 		resumedRunner.Msync = func(ctx context.Context) error {
-			if err := firecracker.CreateSnapshot(
-				ctx,
+			if mapShared {
+				if err := firecracker.CreateSnapshot(
+					ctx,
 
-				firecrackerClient,
+					firecrackerClient,
 
-				stateName,
-				"",
+					stateName,
+					"",
 
-				firecracker.SnapshotTypeMsync,
-			); err != nil {
-				return errors.Join(ErrCouldNotCreateSnapshot, err)
+					firecracker.SnapshotTypeMsync,
+				); err != nil {
+					return errors.Join(ErrCouldNotCreateSnapshot, err)
+				}
 			}
 
 			return nil
@@ -372,17 +425,52 @@ func StartRunner(
 
 			agent.Close()
 
+			if mapShared {
+				if err := firecracker.CreateSnapshot(
+					suspendCtx,
+
+					firecrackerClient,
+
+					stateName,
+					"",
+
+					firecracker.SnapshotTypeMsyncAndState,
+				); err != nil {
+					return errors.Join(ErrCouldNotCreateSnapshot, err)
+				}
+
+				return nil
+			}
+
+			memoryCopyName := shortuuid.New()
+
 			if err := firecracker.CreateSnapshot(
 				suspendCtx,
 
 				firecrackerClient,
 
 				stateName,
-				"",
+				memoryCopyName, // We need to write the memory to a separate file since we can't truncate an `mmap`ed file
 
-				firecracker.SnapshotTypeMsyncAndState,
+				firecracker.SnapshotTypeFull,
 			); err != nil {
 				return errors.Join(ErrCouldNotCreateSnapshot, err)
+			}
+
+			inputFile, err := os.Open(filepath.Join(server.VMPath, memoryCopyName))
+			if err != nil {
+				return errors.Join(ErrCouldNotOpenInputFile, err)
+			}
+			defer inputFile.Close()
+
+			outputFile, err := os.OpenFile(filepath.Join(server.VMPath, memoryName), os.O_TRUNC|os.O_WRONLY, os.ModePerm)
+			if err != nil {
+				return errors.Join(ErrCouldNotOpenOutputFile, err)
+			}
+			defer outputFile.Close()
+
+			if _, err := io.Copy(outputFile, inputFile); err != nil {
+				return errors.Join(ErrCouldNotCopyFile, err)
 			}
 
 			return nil
