@@ -68,7 +68,7 @@ type Runner struct {
 		rescueTimeout time.Duration,
 		agentVSockPort uint32,
 
-		mapShared bool,
+		shared bool,
 	) (
 		resumedRunner *ResumedRunner,
 
@@ -206,7 +206,7 @@ func StartRunner(
 		rescueTimeout time.Duration,
 		agentVSockPort uint32,
 
-		mapShared bool,
+		shared bool,
 	) (
 		resumedRunner *ResumedRunner,
 
@@ -243,7 +243,7 @@ func StartRunner(
 						}
 
 						// If a resume failed, flush the snapshot so that we can re-try
-						if mapShared {
+						if shared {
 							if e := firecracker.CreateSnapshot(
 								suspendCtx, // We use a separate context here so that we can
 								// cancel the snapshot create action independently of the resume
@@ -347,6 +347,8 @@ func StartRunner(
 
 				stateName,
 				memoryName,
+
+				shared,
 			); err != nil {
 				panic(errors.Join(ErrCouldNotResumeSnapshot, err))
 			}
@@ -392,7 +394,7 @@ func StartRunner(
 		}
 
 		resumedRunner.Msync = func(ctx context.Context) error {
-			if mapShared {
+			if shared {
 				if err := firecracker.CreateSnapshot(
 					ctx,
 
@@ -425,7 +427,7 @@ func StartRunner(
 
 			agent.Close()
 
-			if mapShared {
+			if shared {
 				if err := firecracker.CreateSnapshot(
 					suspendCtx,
 
