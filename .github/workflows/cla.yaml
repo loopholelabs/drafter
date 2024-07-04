@@ -24,8 +24,12 @@ jobs:
         uses: contributor-assistant/github-action@v2.4.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PERSONAL_ACCESS_TOKEN: ${{ secrets.CLA_TOKEN }}
         with:
-          path-to-signatures: .github/signatures/v1/cla.json
-          path-to-document: https://github.com/loopholelabs/drafter/blob/main/CLA.md
-          branch: main
+          path-to-document: https://github.com/loopholelabs/contributor-signatures/blob/main/CLA.md
           allowlist: bot*
+          branch: v1-signatures
+          path-to-signatures: v1-cla.json
+          remote-organization-name: loopholelabs
+          remote-repository-name: contributor-signatures
+          lock-pullrequest-aftermerge: true
