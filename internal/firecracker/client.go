@@ -25,6 +25,10 @@ var (
 	ErrCouldNotResumeSnapshot       = errors.New("could not resume snapshot")
 	ErrCouldNotFlushSnapshot        = errors.New("could not flush snapshot")
 	ErrUnknownSnapshotType          = errors.New("could not work with unknown snapshot type")
+	ErrCouldNotMarshalJSON          = errors.New("could not marshal JSON")
+	ErrCouldNotCreateHTTPRequest    = errors.New("could not create HTTP request")
+	ErrCouldNotReadHTTPResponse     = errors.New("could not read HTTP response")
+	ErrHTTPResponseFailed           = errors.New("response status of HTTP request code indicates failure")
 )
 
 type SnapshotType byte
@@ -38,12 +42,12 @@ const (
 func submitJSON(ctx context.Context, method string, client *http.Client, body any, resource string) error {
 	p, err := json.Marshal(body)
 	if err != nil {
-		return err
+		return errors.Join(ErrCouldNotMarshalJSON, err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, method, "http://localhost/"+resource, bytes.NewReader(p))
 	if err != nil {
-		return err
+		return errors.Join(ErrCouldNotCreateHTTPRequest, err)
 	}
 
 	res, err := client.Do(req)
@@ -54,10 +58,10 @@ func submitJSON(ctx context.Context, method string, client *http.Client, body an
 	if res.StatusCode >= 300 {
 		b, err := io.ReadAll(res.Body)
 		if err != nil {
-			return err
+			return errors.Join(ErrCouldNotReadHTTPResponse, err)
 		}
 
-		return errors.New(string(b))
+		return errors.Join(ErrHTTPResponseFailed, errors.New(string(b)))
 	}
 
 	return nil

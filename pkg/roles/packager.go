@@ -13,7 +13,20 @@ import (
 )
 
 var (
-	ErrMissingDevice = errors.New("missing resource")
+	ErrMissingDevice                 = errors.New("missing resource")
+	ErrCouldNotOpenPackageOutputFile = errors.New("could not open package output file")
+	ErrCouldNotCreateCompressor      = errors.New("could not create compressor")
+	ErrCouldNotStatDevice            = errors.New("could not stat device")
+	ErrCouldNotCreateTarHeader       = errors.New("could not create tar header")
+	ErrCouldNotWriteTarHeader        = errors.New("could not write tar header")
+	ErrCouldNotOpenDevice            = errors.New("could not open device file")
+	ErrCouldNotCopyToArchive         = errors.New("could not copy file to archive")
+	ErrCouldNotOpenPackageInputFile  = errors.New("could not open package input file")
+	ErrCouldNotCreateUncompressor    = errors.New("could not create uncompressor")
+	ErrCouldNotReadNextHeader        = errors.New("could not read next header from archive")
+	ErrCouldNotCreateOutputDir       = errors.New("could not create output directory")
+	ErrCouldNotOpenOutputFile        = errors.New("could not open output file")
+	ErrCouldNotCopyToOutput          = errors.New("could not copy file to output")
 )
 
 type PackagerDevice struct {
@@ -35,13 +48,13 @@ func ArchivePackage(
 ) error {
 	packageOutputFile, err := os.OpenFile(packageOutputPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, os.ModePerm)
 	if err != nil {
-		return err
+		return errors.Join(ErrCouldNotOpenPackageOutputFile, err)
 	}
 	defer packageOutputFile.Close()
 
 	compressor, err := zstd.NewWriter(packageOutputFile)
 	if err != nil {
-		return err
+		return errors.Join(ErrCouldNotCreateCompressor, err)
 	}
 	defer compressor.Close()
 
@@ -64,27 +77,27 @@ func ArchivePackage(
 
 		info, err := os.Stat(device.Path)
 		if err != nil {
-			return err
+			return errors.Join(ErrCouldNotStatDevice, err)
 		}
 
 		header, err := tar.FileInfoHeader(info, device.Path)
 		if err != nil {
-			return err
+			return errors.Join(ErrCouldNotCreateTarHeader, err)
 		}
 		header.Name = device.Name
 
 		if err := packageOutputArchive.WriteHeader(header); err != nil {
-			return err
+			return errors.Join(ErrCouldNotWriteTarHeader, err)
 		}
 
 		f, err := os.Open(device.Path)
 		if err != nil {
-			return err
+			return errors.Join(ErrCouldNotOpenDevice, err)
 		}
 		defer f.Close()
 
 		if _, err = io.Copy(packageOutputArchive, f); err != nil {
-			return err
+			return errors.Join(ErrCouldNotCopyToArchive, err)
 		}
 	}
 
@@ -101,13 +114,13 @@ func ExtractPackage(
 ) error {
 	packageFile, err := os.Open(packageInputPath)
 	if err != nil {
-		return err
+		return errors.Join(ErrCouldNotOpenPackageInputFile, err)
 	}
 	defer packageFile.Close()
 
 	uncompressor, err := zstd.NewReader(packageFile)
 	if err != nil {
-		return err
+		return errors.Join(ErrCouldNotCreateUncompressor, err)
 	}
 	defer uncompressor.Close()
 
@@ -131,7 +144,7 @@ func ExtractPackage(
 					break
 				}
 
-				return err
+				return errors.Join(ErrCouldNotReadNextHeader, err)
 			}
 
 			if header.Name != device.Name {
@@ -143,17 +156,17 @@ func ExtractPackage(
 			}
 
 			if err := os.MkdirAll(filepath.Dir(device.Path), os.ModePerm); err != nil {
-				return err
+				return errors.Join(ErrCouldNotCreateOutputDir, err)
 			}
 
 			outputFile, err := os.OpenFile(device.Path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, os.ModePerm)
 			if err != nil {
-				return err
+				return errors.Join(ErrCouldNotOpenOutputFile, err)
 			}
 			defer outputFile.Close()
 
 			if _, err = io.Copy(outputFile, packageArchive); err != nil {
-				return err
+				return errors.Join(ErrCouldNotCopyToOutput, err)
 			}
 
 			extracted = true

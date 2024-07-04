@@ -14,6 +14,10 @@ import (
 
 var (
 	ErrAgentServerDisconnected = errors.New("agent server disconnected")
+	ErrCouldNotDialVSock       = errors.New("could not dial VSock")
+	ErrCouldNotMarshalJSON     = errors.New("could not marshal JSON")
+	ErrCouldNotUnmarshalJSON   = errors.New("could not unmarshal JSON")
+	ErrAgentContextCancelled   = errors.New("agent context cancelled")
 )
 
 type AgentClient struct {
@@ -76,7 +80,7 @@ func StartAgentClient(
 		vsockPort,
 	)
 	if err != nil {
-		panic(err)
+		panic(errors.Join(ErrCouldNotDialVSock, err))
 	}
 
 	var closeLock sync.Mutex
@@ -138,13 +142,17 @@ func StartAgentClient(
 			func(v any) (json.RawMessage, error) {
 				b, err := json.Marshal(v)
 				if err != nil {
-					return nil, err
+					return nil, errors.Join(ErrCouldNotMarshalJSON, err)
 				}
 
 				return json.RawMessage(b), nil
 			},
 			func(data json.RawMessage, v any) error {
-				return json.Unmarshal([]byte(data), v)
+				if err := json.Unmarshal([]byte(data), v); err != nil {
+					return errors.Join(ErrCouldNotUnmarshalJSON, err)
+				}
+
+				return nil
 			},
 
 			nil,
@@ -169,14 +177,14 @@ func StartAgentClient(
 	// It's important that we start this _after_ calling `cmd.Start`, otherwise our process would be nil
 	handleGoroutinePanics(false, func() {
 		if err := connectedAgentClient.Wait(); err != nil {
-			panic(err)
+			panic(errors.Join(ErrAgentContextCancelled, err))
 		}
 	})
 
 	select {
 	case <-internalCtx.Done():
 		if err := internalCtx.Err(); err != nil {
-			panic(internalCtx.Err())
+			panic(errors.Join(ErrAgentContextCancelled, err))
 		}
 
 		return

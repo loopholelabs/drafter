@@ -16,7 +16,28 @@ import (
 )
 
 var (
-	ErrNoInternalHostVethFound = errors.New("no internal host veth found")
+	ErrCouldNotFindInternalHostVeth         = errors.New("could not find internal host veth")
+	ErrCouldNotCreatingIPTables             = errors.New("could not create iptables")
+	ErrCouldNotSplitHostPort                = errors.New("could not split host and port")
+	ErrCouldNotResolveIPAddr                = errors.New("could not resolve IP address")
+	ErrCouldNotWriteFileRouteLocalnetAll    = errors.New("could not write to /proc/sys/net/ipv4/conf/all/route_localnet")
+	ErrCouldNotWriteFileRouteLocalnetLo     = errors.New("could not write to /proc/sys/net/ipv4/conf/lo/route_localnet")
+	ErrCouldNotGetOriginalNSHandle          = errors.New("could not get original namespace handle")
+	ErrCouldNotSetOriginalNSHandle          = errors.New("could not set original namespace handle")
+	ErrCouldNotGetNSHandle                  = errors.New("could not get namespace handle")
+	ErrCouldNotSetNSHandle                  = errors.New("could not set namespace handle")
+	ErrCouldNotListInterfaces               = errors.New("could not list interfaces")
+	ErrCouldNotGetInterfaceAddresses        = errors.New("could not get interface addresses")
+	ErrCouldNotAppendIPTablesFilterForwardD = errors.New("could not append iptables filter FORWARD -d rule")
+	ErrCouldNotDeleteIPTablesFilterForwardD = errors.New("could not delete iptables filter FORWARD -d rule")
+	ErrCouldNotAppendIPTablesFilterForwardS = errors.New("could not append iptables filter FORWARD -s rule")
+	ErrCouldNotDeleteIPTablesFilterForwardS = errors.New("could not delete iptables filter FORWARD -s rule")
+	ErrCouldNotAppendIPTablesNatOutput      = errors.New("could not append iptables nat OUTPUT rule")
+	ErrCouldNotDeleteIPTablesNatOutput      = errors.New("could not delete iptables nat OUTPUT rule")
+	ErrCouldNotAppendIPTablesNatPrerouting  = errors.New("could not append iptables nat PREROUTING rule")
+	ErrCouldNotDeleteIPTablesNatPrerouting  = errors.New("could not delete iptables nat PREROUTING rule")
+	ErrCouldNotAppendIPTablesNatPostrouting = errors.New("could not append iptables nat POSTROUTING rule")
+	ErrCouldNotDeleteIPTablesNatPostrouting = errors.New("could not delete iptables nat POSTROUTING rule")
 )
 
 type PortForward struct {
@@ -74,7 +95,7 @@ func ForwardPorts(
 		iptables.Timeout(60),
 	)
 	if err != nil {
-		panic(err)
+		panic(errors.Join(ErrCouldNotCreatingIPTables, err))
 	}
 
 	_, deferFuncs, err := iutils.ConcurrentMap(
@@ -90,21 +111,21 @@ func ForwardPorts(
 
 			host, port, err := net.SplitHostPort(input.ExternalAddr)
 			if err != nil {
-				return err
+				return errors.Join(ErrCouldNotSplitHostPort, err)
 			}
 
 			hostIP, err := net.ResolveIPAddr("ip", host)
 			if err != nil {
-				return err
+				return errors.Join(ErrCouldNotResolveIPAddr, err)
 			}
 
 			if hostIP.IP.IsLoopback() {
 				if err := os.WriteFile(filepath.Join("/proc", "sys", "net", "ipv4", "conf", "all", "route_localnet"), []byte("1"), os.ModePerm); err != nil {
-					return err
+					return errors.Join(ErrCouldNotWriteFileRouteLocalnetAll, err)
 				}
 
 				if err := os.WriteFile(filepath.Join("/proc", "sys", "net", "ipv4", "conf", "lo", "route_localnet"), []byte("1"), os.ModePerm); err != nil {
-					return err
+					return errors.Join(ErrCouldNotWriteFileRouteLocalnetLo, err)
 				}
 			}
 
@@ -114,30 +135,30 @@ func ForwardPorts(
 
 				originalNSHandle, err := netns.Get()
 				if err != nil {
-					return "", err
+					return "", errors.Join(ErrCouldNotGetOriginalNSHandle, err)
 				}
 				defer originalNSHandle.Close()
 				defer netns.Set(originalNSHandle)
 
 				nsHandle, err := netns.GetFromName(input.Netns)
 				if err != nil {
-					return "", err
+					return "", errors.Join(ErrCouldNotGetNSHandle, err)
 				}
 				defer nsHandle.Close()
 
 				if err := netns.Set(nsHandle); err != nil {
-					return "", err
+					return "", errors.Join(ErrCouldNotSetNSHandle, err)
 				}
 
 				interfaces, err := net.Interfaces()
 				if err != nil {
-					return "", err
+					return "", errors.Join(ErrCouldNotListInterfaces, err)
 				}
 
 				for _, iface := range interfaces {
 					addrs, err := iface.Addrs()
 					if err != nil {
-						return "", err
+						return "", errors.Join(ErrCouldNotGetInterfaceAddresses, err)
 					}
 
 					for _, addr := range addrs {
@@ -162,7 +183,7 @@ func ForwardPorts(
 					}
 				}
 
-				return "", ErrNoInternalHostVethFound
+				return "", ErrCouldNotFindInternalHostVeth
 			}()
 			if err != nil {
 				return err
@@ -178,14 +199,14 @@ func ForwardPorts(
 
 			if !hostIP.IP.IsLoopback() {
 				if err := iptable.Append("filter", "FORWARD", "-d", hostVethInternalIP, "-j", "ACCEPT"); err != nil {
-					return err
+					return errors.Join(ErrCouldNotAppendIPTablesFilterForwardD, err)
 				}
 				addDefer(func() error {
 					return iptable.Delete("filter", "FORWARD", "-d", hostVethInternalIP, "-j", "ACCEPT")
 				})
 
 				if err := iptable.Append("filter", "FORWARD", "-s", hostVethInternalIP, "-j", "ACCEPT"); err != nil {
-					return err
+					return errors.Join(ErrCouldNotAppendIPTablesFilterForwardS, err)
 				}
 				addDefer(func() error {
 					return iptable.Delete("filter", "FORWARD", "-s", hostVethInternalIP, "-j", "ACCEPT")
@@ -201,21 +222,21 @@ func ForwardPorts(
 			}
 
 			if err := iptable.Append("nat", "OUTPUT", "-p", input.Protocol, "-d", host, "--dport", port, "-j", "DNAT", "--to-destination", net.JoinHostPort(hostVethInternalIP, fmt.Sprintf("%v", input.InternalPort))); err != nil {
-				return err
+				return errors.Join(ErrCouldNotAppendIPTablesNatOutput, err)
 			}
 			addDefer(func() error {
 				return iptable.Delete("nat", "OUTPUT", "-p", input.Protocol, "-d", host, "--dport", port, "-j", "DNAT", "--to-destination", net.JoinHostPort(hostVethInternalIP, fmt.Sprintf("%v", input.InternalPort)))
 			})
 
 			if err := iptable.Append("nat", "PREROUTING", "-p", input.Protocol, "--dport", port, "-d", host, "-j", "DNAT", "--to-destination", net.JoinHostPort(hostVethInternalIP, fmt.Sprintf("%v", input.InternalPort))); err != nil {
-				return err
+				return errors.Join(ErrCouldNotAppendIPTablesNatPrerouting, err)
 			}
 			addDefer(func() error {
 				return iptable.Delete("nat", "PREROUTING", "-p", input.Protocol, "--dport", port, "-d", host, "-j", "DNAT", "--to-destination", net.JoinHostPort(hostVethInternalIP, fmt.Sprintf("%v", input.InternalPort)))
 			})
 
 			if err := iptable.Append("nat", "POSTROUTING", "-p", input.Protocol, "-d", hostVethInternalIP, "--dport", fmt.Sprintf("%v", input.InternalPort), "-j", "MASQUERADE"); err != nil {
-				return err
+				return errors.Join(ErrCouldNotAppendIPTablesNatPostrouting, err)
 			}
 			addDefer(func() error {
 				return iptable.Delete("nat", "POSTROUTING", "-p", input.Protocol, "-d", hostVethInternalIP, "--dport", fmt.Sprintf("%v", input.InternalPort), "-j", "MASQUERADE")

@@ -15,6 +15,16 @@ var (
 	ErrNotEnoughAvailableIPsInHostCIDR      = errors.New("not enough available IPs in host CIDR")
 	ErrNotEnoughAvailableIPsInNamespaceCIDR = errors.New("not enough available IPs in namespace CIDR")
 	ErrAllNamespacesClaimed                 = errors.New("all namespaces claimed")
+	ErrCouldNotFindHostInterface            = errors.New("could not find host interface")
+	ErrCouldNotCreateNAT                    = errors.New("could not create NAT")
+	ErrCouldNotOpenHostVethIPs              = errors.New("could not open host Veth IPs")
+	ErrCouldNotOpenNamespaceVethIPs         = errors.New("could not open namespace Veth IPs")
+	ErrCouldNotReleaseHostVethIP            = errors.New("could not release host Veth IP")
+	ErrCouldNotReleaseNamespaceVethIP       = errors.New("could not release namespace Veth IP")
+	ErrCouldNotOpenNamespace                = errors.New("could not open namespace")
+	ErrCouldNotCloseNamespace               = errors.New("could not close namespace")
+	ErrCouldNotRemoveNAT                    = errors.New("could not remove NAT")
+	ErrNATContextCancelled                  = errors.New("context for NAT cancelled")
 )
 
 type claimableNamespace struct {
@@ -75,22 +85,21 @@ func CreateNAT(
 
 	// Check if the host interface exists
 	if _, err := net.InterfaceByName(hostInterface); err != nil {
-		panic(err)
+		panic(errors.Join(ErrCouldNotFindHostInterface, err))
 	}
 
 	if err := network.CreateNAT(hostInterface); err != nil {
-		panic(err)
+		panic(errors.Join(ErrCouldNotCreateNAT, err))
 	}
 
 	hostVethIPs := network.NewIPTable(hostVethCIDR, internalCtx)
 	if err := hostVethIPs.Open(internalCtx); err != nil {
-		panic(err)
+		panic(errors.Join(ErrCouldNotOpenHostVethIPs, err))
 	}
 
 	namespaceVethIPs := network.NewIPTable(namespaceVethCIDR, internalCtx)
-
 	if err := namespaceVethIPs.Open(internalCtx); err != nil {
-		panic(err)
+		panic(errors.Join(ErrCouldNotOpenNamespaceVethIPs, err))
 	}
 
 	if namespaceVethIPs.AvailableIPs() > hostVethIPs.AvailablePairs() {
@@ -125,7 +134,7 @@ func CreateNAT(
 
 		for _, hostVeth := range hostVeths {
 			if err := namespaceVethIPs.ReleasePair(closeCtx, hostVeth); err != nil {
-				errs = errors.Join(errs, err)
+				errs = errors.Join(errs, ErrCouldNotReleaseHostVethIP, err)
 			}
 		}
 
@@ -136,7 +145,7 @@ func CreateNAT(
 
 		for _, namespaceVeth := range namespaceVeths {
 			if err := namespaceVethIPs.ReleaseIP(closeCtx, namespaceVeth); err != nil {
-				errs = errors.Join(errs, err)
+				errs = errors.Join(errs, ErrCouldNotReleaseNamespaceVethIP, err)
 			}
 		}
 
@@ -151,7 +160,7 @@ func CreateNAT(
 			}
 
 			if err := claimableNamespace.namespace.Close(); err != nil {
-				errs = errors.Join(errs, err)
+				errs = errors.Join(errs, ErrCouldNotCloseNamespace, err)
 			}
 		}
 
@@ -164,7 +173,7 @@ func CreateNAT(
 			closed = true
 
 			if err := network.RemoveNAT(hostInterface); err != nil {
-				errs = errors.Join(errs, err)
+				errs = errors.Join(errs, ErrCouldNotRemoveNAT, err)
 			}
 		}
 
@@ -187,7 +196,7 @@ func CreateNAT(
 		// Failure case; we cancelled the internal context before we got a connection
 		case <-internalCtx.Done():
 			if err := namespaces.Close(); err != nil {
-				panic(err)
+				panic(errors.Join(ErrNATContextCancelled, err))
 			}
 
 		// Happy case; we've set up all of the namespaces and we want to wait with closing the agent's connections until the context, not the internal context is cancelled
@@ -195,7 +204,7 @@ func CreateNAT(
 			<-ctx.Done()
 
 			if err := namespaces.Close(); err != nil {
-				panic(err)
+				panic(errors.Join(ErrNATContextCancelled, err))
 			}
 
 			break
@@ -222,7 +231,7 @@ func CreateNAT(
 			hostVeth, err = hostVethIPs.GetPair(internalCtx)
 			if err != nil {
 				if e := namespaceVethIPs.ReleasePair(closeCtx, hostVeth); e != nil {
-					return errors.Join(err, e)
+					return errors.Join(ErrCouldNotReleaseHostVethIP, err, e)
 				}
 
 				return err
@@ -232,7 +241,7 @@ func CreateNAT(
 
 			return nil
 		}(); err != nil {
-			panic(err)
+			panic(errors.Join(ErrCouldNotOpenHostVethIPs, err))
 		}
 
 		var namespaceVeth *network.IP
@@ -252,7 +261,7 @@ func CreateNAT(
 			namespaceVeth, err = namespaceVethIPs.GetIP(internalCtx)
 			if err != nil {
 				if e := namespaceVethIPs.ReleaseIP(closeCtx, namespaceVeth); e != nil {
-					return errors.Join(err, e)
+					return errors.Join(ErrCouldNotReleaseNamespaceVethIP, err, e)
 				}
 
 				return err
@@ -262,7 +271,7 @@ func CreateNAT(
 
 			return nil
 		}(); err != nil {
-			panic(err)
+			panic(errors.Join(ErrCouldNotOpenNamespaceVethIPs, err))
 		}
 
 		if err := func() error {
@@ -304,7 +313,7 @@ func CreateNAT(
 			)
 			if err := namespace.Open(); err != nil {
 				if e := namespace.Close(); e != nil {
-					return errors.Join(err, e)
+					return errors.Join(ErrCouldNotOpenNamespace, err, e)
 				}
 
 				return err
@@ -316,7 +325,7 @@ func CreateNAT(
 
 			return nil
 		}(); err != nil {
-			panic(err)
+			panic(errors.Join(ErrCouldNotOpenNamespace, err))
 		}
 	}
 
