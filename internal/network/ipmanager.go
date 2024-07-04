@@ -14,7 +14,13 @@ const (
 )
 
 var (
-	ErrInvalidCIDRSize = errors.New("invalid cidr size")
+	ErrInvalidCIDRSize            = errors.New("invalid CIDR size")
+	ErrCouldNotParseCIDR          = errors.New("could not parse CIDR")
+	ErrCouldNotCreateNewPrefix    = errors.New("could not create new prefix")
+	ErrCouldNotAcquireIP          = errors.New("could not acquire IP")
+	ErrCouldNotReleaseIP          = errors.New("could not release IP")
+	ErrCouldNotAcquireChildPrefix = errors.New("could not acquire child prefix")
+	ErrCouldNotReleaseChildPrefix = errors.New("could not release child prefix")
 )
 
 type IPTable struct {
@@ -35,7 +41,7 @@ func NewIPTable(cidr string, ctx context.Context) *IPTable {
 func (t *IPTable) Open(ctx context.Context) error {
 	_, netCIDR, err := net.ParseCIDR(t.cidr)
 	if err != nil {
-		return err
+		return errors.Join(ErrCouldNotParseCIDR, err)
 	}
 
 	if size, _ := netCIDR.Mask.Size(); size > PairMask {
@@ -44,7 +50,7 @@ func (t *IPTable) Open(ctx context.Context) error {
 
 	t.prefix, err = t.ipam.NewPrefix(ctx, t.cidr)
 	if err != nil {
-		return err
+		return errors.Join(ErrCouldNotCreateNewPrefix, err)
 	}
 
 	return nil
@@ -61,7 +67,7 @@ func (t *IPTable) AvailableIPs() uint64 {
 func (t *IPTable) GetIP(ctx context.Context) (*IP, error) {
 	ip, err := t.ipam.AcquireIP(ctx, t.prefix.Cidr)
 	if err != nil {
-		return nil, err
+		return nil, errors.Join(ErrCouldNotAcquireIP, err)
 	}
 
 	return NewIP(ip), nil
@@ -69,7 +75,7 @@ func (t *IPTable) GetIP(ctx context.Context) (*IP, error) {
 
 func (t *IPTable) ReleaseIP(ctx context.Context, ip *IP) error {
 	if _, err := t.ipam.ReleaseIP(ctx, ip.IP); err != nil {
-		return err
+		return errors.Join(ErrCouldNotReleaseIP, err)
 	}
 
 	return nil
@@ -78,17 +84,17 @@ func (t *IPTable) ReleaseIP(ctx context.Context, ip *IP) error {
 func (t *IPTable) GetPair(ctx context.Context) (*IPPair, error) {
 	prefix, err := t.ipam.AcquireChildPrefix(ctx, t.prefix.Cidr, PairMask)
 	if err != nil {
-		return nil, err
+		return nil, errors.Join(ErrCouldNotAcquireChildPrefix, err)
 	}
 
 	firstIP, err := t.ipam.AcquireIP(ctx, prefix.Cidr)
 	if err != nil {
-		return nil, err
+		return nil, errors.Join(ErrCouldNotAcquireIP, err)
 	}
 
 	secondIP, err := t.ipam.AcquireIP(ctx, prefix.Cidr)
 	if err != nil {
-		return nil, err
+		return nil, errors.Join(ErrCouldNotAcquireIP, err)
 	}
 
 	return NewIPPair(
@@ -102,14 +108,14 @@ func (t *IPTable) GetPair(ctx context.Context) (*IPPair, error) {
 
 func (i *IPTable) ReleasePair(ctx context.Context, ipPair *IPPair) error {
 	if err := ipPair.ipTable.ReleaseIP(ctx, ipPair.GetFirstIP()); err != nil {
-		return err
+		return errors.Join(ErrCouldNotReleaseIP, err)
 	}
 
 	if err := ipPair.ipTable.ReleaseIP(ctx, ipPair.GetSecondIP()); err != nil {
-		return err
+		return errors.Join(ErrCouldNotReleaseIP, err)
 	}
 
-	return ipPair.ipTable.ipam.ReleaseChildPrefix(ctx, ipPair.prefix)
+	return errors.Join(ErrCouldNotReleaseChildPrefix, ipPair.ipTable.ipam.ReleaseChildPrefix(ctx, ipPair.prefix))
 }
 
 type IPPair struct {

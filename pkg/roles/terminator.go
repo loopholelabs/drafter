@@ -27,7 +27,11 @@ const (
 )
 
 var (
-	ErrUnknownDeviceName = errors.New("unknown device name")
+	ErrUnknownDeviceName                = errors.New("unknown device name")
+	ErrCouldNotCreateReceivingDirectory = errors.New("could not create receiving directory")
+	ErrCouldNotSendNeedAt               = errors.New("could not send NeedAt")
+	ErrCouldNotSendDontNeedAt           = errors.New("could not send DontNeedAt")
+	ErrCouldNotCloseDevice              = errors.New("could not close device")
 )
 
 type TerminatorDevice struct {
@@ -100,7 +104,7 @@ func Terminate(
 					}
 
 					if err := os.MkdirAll(filepath.Dir(path), os.ModePerm); err != nil {
-						panic(err)
+						panic(errors.Join(ErrCouldNotCreateReceivingDirectory, err))
 					}
 
 					src, device, err := device.NewDevice(&sconfig.DeviceSchema{
@@ -112,7 +116,7 @@ func Terminate(
 						Expose:    true,
 					})
 					if err != nil {
-						panic(err)
+						panic(errors.Join(ErrCouldNotCreateDevice, err))
 					}
 					deviceCloseFuncsLock.Lock()
 					deviceCloseFuncs = append(deviceCloseFuncs, device.Shutdown) // defer device.Shutdown()
@@ -130,7 +134,7 @@ func Terminate(
 						}
 
 						if err := from.NeedAt(offset, length); err != nil {
-							panic(err)
+							panic(errors.Join(ErrCouldNotSendNeedAt, err))
 						}
 					}
 					local.DontNeedAt = func(offset int64, length int32) {
@@ -143,7 +147,7 @@ func Terminate(
 						}
 
 						if err := from.DontNeedAt(offset, length); err != nil {
-							panic(err)
+							panic(errors.Join(ErrCouldNotSendDontNeedAt, err))
 						}
 					}
 
@@ -156,19 +160,19 @@ func Terminate(
 
 			handleGoroutinePanics(true, func() {
 				if err := from.HandleReadAt(); err != nil {
-					panic(err)
+					panic(errors.Join(ErrCouldNotHandleReadAt, err))
 				}
 			})
 
 			handleGoroutinePanics(true, func() {
 				if err := from.HandleWriteAt(); err != nil {
-					panic(err)
+					panic(errors.Join(ErrCouldNotHandleWriteAt, err))
 				}
 			})
 
 			handleGoroutinePanics(true, func() {
 				if err := from.HandleDevInfo(); err != nil {
-					panic(err)
+					panic(errors.Join(ErrCouldNotHandleDevInfo, err))
 				}
 			})
 
@@ -194,7 +198,7 @@ func Terminate(
 						}
 					}
 				}); err != nil {
-					panic(err)
+					panic(errors.Join(ErrCouldNotHandleEvent, err))
 				}
 			})
 
@@ -204,7 +208,7 @@ func Terminate(
 						local.DirtyBlocks(blocks)
 					}
 				}); err != nil {
-					panic(err)
+					panic(errors.Join(ErrCouldNotHandleDirtyList, err))
 				}
 			})
 		})
@@ -220,14 +224,14 @@ func Terminate(
 				defer handlePanics(true)()
 
 				if err := closeFunc(); err != nil {
-					panic(err)
+					panic(errors.Join(ErrCouldNotCloseDevice, err))
 				}
 			}(closeFunc)
 		}
 	}()
 
 	if err := pro.Handle(); err != nil && !errors.Is(err, io.EOF) {
-		panic(err)
+		panic(errors.Join(ErrCouldNotHandleProtocol, err))
 	}
 
 	if hook := hooks.OnAllMigrationsCompleted; hook != nil {

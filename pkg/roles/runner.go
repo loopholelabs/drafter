@@ -80,6 +80,24 @@ type ResumedRunner struct {
 	SuspendAndCloseAgentServer func(ctx context.Context, suspendTimeout time.Duration) error
 }
 
+var (
+	ErrCouldNotCreateChrootBaseDirectory = errors.New("could not create chroot base directory")
+	ErrCouldNotStartFirecrackerServer    = errors.New("could not start firecracker server")
+	ErrCouldNotWaitForFirecracker        = errors.New("could not wait for firecracker")
+	ErrCouldNotCloseServer               = errors.New("could not close server")
+	ErrCouldNotRemoveVMDir               = errors.New("could not remove VM directory")
+	ErrCouldNotStartAgentServer          = errors.New("could not start agent server")
+	ErrCouldNotCloseAgent                = errors.New("could not close agent")
+	ErrCouldNotChownVSockPath            = errors.New("could not change ownership of vsock path")
+	ErrCouldNotResumeSnapshot            = errors.New("could not resume snapshot")
+	ErrCouldNotAcceptAgent               = errors.New("could not accept agent")
+	ErrCouldNotWaitForAcceptingAgent     = errors.New("could not wait for accepting agent")
+	ErrCouldNotCloseAcceptingAgent       = errors.New("could not close accepting agent")
+	ErrCouldNotCallAfterResumeRPC        = errors.New("could not call AfterResume RPC")
+	ErrCouldNotCallBeforeSuspendRPC      = errors.New("could not call BeforeSuspend RPC")
+	ErrCouldNotCreateSnapshot            = errors.New("could not create snapshot")
+)
+
 func StartRunner(
 	hypervisorCtx context.Context,
 	rescueCtx context.Context,
@@ -105,7 +123,7 @@ func StartRunner(
 	defer handlePanics(false)()
 
 	if err := os.MkdirAll(hypervisorConfiguration.ChrootBaseDir, os.ModePerm); err != nil {
-		panic(err)
+		panic(errors.Join(ErrCouldNotCreateChrootBaseDirectory, err))
 	}
 
 	var ongoingResumeWg sync.WaitGroup
@@ -139,7 +157,7 @@ func StartRunner(
 		hypervisorConfiguration.EnableInput,
 	)
 	if err != nil {
-		panic(err)
+		panic(errors.Join(ErrCouldNotStartFirecrackerServer, err))
 	}
 
 	runner.VMPath = server.VMPath
@@ -148,21 +166,23 @@ func StartRunner(
 	// We still need to `defer handleGoroutinePanic()()` here however so that we catch any errors during this call
 	handleGoroutinePanics(false, func() {
 		if err := server.Wait(); err != nil {
-			panic(err)
+			panic(errors.Join(ErrCouldNotWaitForFirecracker, err))
 		}
 	})
 
 	runner.Wait = server.Wait
 	runner.Close = func() error {
 		if err := server.Close(); err != nil {
-			return err
+			return errors.Join(ErrCouldNotCloseServer, err)
 		}
 
 		if err := runner.Wait(); err != nil {
-			return err
+			return errors.Join(ErrCouldNotWaitForFirecracker, err)
 		}
 
-		_ = os.RemoveAll(filepath.Dir(runner.VMPath)) // Remove `firecracker/$id`, not just `firecracker/$id/root`
+		if err := os.RemoveAll(filepath.Dir(runner.VMPath)); err != nil {
+			return errors.Join(ErrCouldNotRemoveVMDir, err)
+		}
 
 		return nil
 	}
@@ -209,7 +229,7 @@ func StartRunner(
 						// Connections need to be closed before creating the snapshot
 						if acceptingAgent != nil && acceptingAgent.Close != nil {
 							if e := acceptingAgent.Close(); e != nil {
-								errs = errors.Join(errs, e)
+								errs = errors.Join(errs, ErrCouldNotCloseAcceptingAgent, e)
 							}
 						}
 						if agent != nil && agent.Close != nil {
@@ -229,7 +249,7 @@ func StartRunner(
 
 							firecracker.SnapshotTypeMsyncAndState,
 						); e != nil {
-							errs = errors.Join(errs, e)
+							errs = errors.Join(errs, ErrCouldNotCreateSnapshot, e)
 						}
 					}
 				},
@@ -243,7 +263,7 @@ func StartRunner(
 		// We still need to `defer handleGoroutinePanic()()` here however so that we catch any errors during this call
 		handleGoroutinePanics(false, func() {
 			if err := server.Wait(); err != nil {
-				panic(err)
+				panic(errors.Join(ErrCouldNotWaitForFirecracker, err))
 			}
 		})
 
@@ -252,7 +272,7 @@ func StartRunner(
 			uint32(agentVSockPort),
 		)
 		if err != nil {
-			panic(err)
+			panic(errors.Join(ErrCouldNotStartAgentServer, err))
 		}
 
 		resumedRunner.Close = func() error {
@@ -262,7 +282,7 @@ func StartRunner(
 		}
 
 		if err := os.Chown(agent.VSockPath, hypervisorConfiguration.UID, hypervisorConfiguration.GID); err != nil {
-			panic(err)
+			panic(errors.Join(ErrCouldNotChownVSockPath, err))
 		}
 
 		{
@@ -277,14 +297,14 @@ func StartRunner(
 				stateName,
 				memoryName,
 			); err != nil {
-				panic(err)
+				panic(errors.Join(ErrCouldNotResumeSnapshot, err))
 			}
 
 			suspendOnPanicWithError = true
 
 			acceptingAgent, err = agent.Accept(resumeSnapshotAndAcceptCtx, ctx)
 			if err != nil {
-				panic(err)
+				panic(errors.Join(ErrCouldNotAcceptAgent, err))
 			}
 		}
 
@@ -292,19 +312,23 @@ func StartRunner(
 		// We still need to `defer handleGoroutinePanic()()` here however so that we catch any errors during this call
 		handleGoroutinePanics(false, func() {
 			if err := acceptingAgent.Wait(); err != nil {
-				panic(err)
+				panic(errors.Join(ErrCouldNotWaitForAcceptingAgent, err))
 			}
 		})
 
 		resumedRunner.Wait = acceptingAgent.Wait
 		resumedRunner.Close = func() error {
 			if err := acceptingAgent.Close(); err != nil {
-				return err
+				return errors.Join(ErrCouldNotCloseAcceptingAgent, err)
 			}
 
 			agent.Close()
 
-			return resumedRunner.Wait()
+			if err := resumedRunner.Wait(); err != nil {
+				return errors.Join(ErrCouldNotWaitForAcceptingAgent, err)
+			}
+
+			return nil
 		}
 
 		{
@@ -312,12 +336,12 @@ func StartRunner(
 			defer cancelAfterResumeCtx()
 
 			if err := acceptingAgent.Remote.AfterResume(afterResumeCtx); err != nil {
-				panic(err)
+				panic(errors.Join(ErrCouldNotCallAfterResumeRPC, err))
 			}
 		}
 
 		resumedRunner.Msync = func(ctx context.Context) error {
-			return firecracker.CreateSnapshot(
+			if err := firecracker.CreateSnapshot(
 				ctx,
 
 				firecrackerClient,
@@ -326,7 +350,11 @@ func StartRunner(
 				"",
 
 				firecracker.SnapshotTypeMsync,
-			)
+			); err != nil {
+				return errors.Join(ErrCouldNotCreateSnapshot, err)
+			}
+
+			return nil
 		}
 
 		resumedRunner.SuspendAndCloseAgentServer = func(ctx context.Context, suspendTimeout time.Duration) error {
@@ -334,16 +362,17 @@ func StartRunner(
 			defer cancelSuspendCtx()
 
 			if err := acceptingAgent.Remote.BeforeSuspend(suspendCtx); err != nil {
-				panic(err)
+				return errors.Join(ErrCouldNotCallBeforeSuspendRPC, err)
 			}
 
 			// Connections need to be closed before creating the snapshot
 			if err := acceptingAgent.Close(); err != nil {
-				return err
+				return errors.Join(ErrCouldNotCloseAcceptingAgent, err)
 			}
+
 			agent.Close()
 
-			return firecracker.CreateSnapshot(
+			if err := firecracker.CreateSnapshot(
 				suspendCtx,
 
 				firecrackerClient,
@@ -352,7 +381,11 @@ func StartRunner(
 				"",
 
 				firecracker.SnapshotTypeMsyncAndState,
-			)
+			); err != nil {
+				return errors.Join(ErrCouldNotCreateSnapshot, err)
+			}
+
+			return nil
 		}
 
 		return

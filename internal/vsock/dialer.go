@@ -9,6 +9,12 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+var (
+	ErrVSockSocketCreationFailed = errors.New("could not create VSOCK socket")
+	ErrVSockDialContextCancelled = errors.New("VSock dial context cancelled")
+	ErrVSockConnectFailed        = errors.New("could not connect to VSOCK socket")
+)
+
 func DialContext(
 	ctx context.Context,
 
@@ -26,7 +32,7 @@ func DialContext(
 
 	fd, err := unix.Socket(unix.AF_VSOCK, unix.SOCK_STREAM, 0)
 	if err != nil {
-		panic(err)
+		panic(errors.Join(ErrVSockSocketCreationFailed, err))
 	}
 
 	handleGoroutinePanics(true, func() {
@@ -37,18 +43,20 @@ func DialContext(
 			if err := unix.Shutdown(fd, unix.SHUT_RDWR); err != nil {
 				// Always close the file descriptor even if shutdown fails
 				if e := unix.Close(fd); e != nil {
-					err = errors.Join(e, err)
+					err = errors.Join(ErrCouldNotShutdownVSockConnection, ErrCouldNotCloseVSockConn, e, err)
+				} else {
+					err = errors.Join(ErrCouldNotShutdownVSockConnection, err)
 				}
 
 				panic(err)
 			}
 
 			if err := unix.Close(fd); err != nil {
-				panic(err)
+				panic(errors.Join(ErrCouldNotCloseVSockConn, err))
 			}
 
 			if err := ctx.Err(); err != nil {
-				panic(ctx.Err())
+				panic(errors.Join(ErrVSockDialContextCancelled, err))
 			}
 
 			return
@@ -59,7 +67,7 @@ func DialContext(
 		CID:  cid,
 		Port: port,
 	}); err != nil {
-		panic(err)
+		panic(errors.Join(ErrVSockConnectFailed, err))
 	}
 
 	c = &conn{fd}

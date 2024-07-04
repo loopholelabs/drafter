@@ -12,7 +12,9 @@ import (
 )
 
 var (
-	ErrLivenessClientAcceptFailed = errors.New("liveness client accept failed")
+	ErrCouldNotAcceptLivenessClient   = errors.New("could not accept liveness client")
+	ErrCouldNotListenInLivenessServer = errors.New("could not listen in liveness server")
+	ErrLivenessServerContextCancelled = errors.New("liveness server context cancelled")
 )
 
 type LivenessServer struct {
@@ -37,7 +39,7 @@ func (l *LivenessServer) Open() (string, error) {
 	var err error
 	l.lis, err = net.Listen("unix", l.vsockPortPath)
 	if err != nil {
-		return "", err
+		return "", errors.Join(ErrCouldNotListenInLivenessServer, err)
 	}
 
 	return l.vsockPortPath, nil
@@ -62,20 +64,20 @@ func (l *LivenessServer) ReceiveAndClose(ctx context.Context) (errs error) {
 
 	defer l.Close()
 
-	// Don't close the connection here - we close close the listener
+	// Don't close the connection here - we close the listener
 	if _, err := l.lis.Accept(); err != nil {
 		l.closeLock.Lock()
 		defer l.closeLock.Unlock()
 
 		if l.closed && errors.Is(err, net.ErrClosed) { // Don't treat closed errors as errors if we closed the connection
 			if err := ctx.Err(); err != nil {
-				panic(ctx.Err())
+				panic(errors.Join(ErrLivenessServerContextCancelled, ctx.Err()))
 			}
 
 			return
 		}
 
-		panic(errors.Join(ErrLivenessClientAcceptFailed, err))
+		panic(errors.Join(ErrCouldNotAcceptLivenessClient, err))
 	}
 
 	return
