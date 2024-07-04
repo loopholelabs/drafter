@@ -16,11 +16,18 @@ import (
 )
 
 var (
-	ErrNoSocketCreated = errors.New("no socket created")
-
 	errSignalKilled = errors.New("signal: killed")
 
-	ErrFirecrackerExited = errors.New("firecracker exited")
+	ErrNoSocketCreated                = errors.New("no socket created")
+	ErrFirecrackerExited              = errors.New("firecracker exited")
+	ErrCouldNotCreateVMPathDirectory  = errors.New("could not create VM path directory")
+	ErrCouldNotCreateInotifyWatcher   = errors.New("could not create inotify watcher")
+	ErrCouldNotAddInotifyWatch        = errors.New("could not add inotify watch")
+	ErrCouldNotReadNUMACPUList        = errors.New("could not read NUMA CPU list")
+	ErrCouldNotStartFirecrackerServer = errors.New("could not start firecracker server")
+	ErrCouldNotCloseWatcher           = errors.New("could not close watcher")
+	ErrCouldNotCloseServer            = errors.New("could not close server")
+	ErrCouldNotWaitForFirecracker     = errors.New("could not wait for firecracker")
 )
 
 const (
@@ -66,22 +73,22 @@ func StartFirecrackerServer(
 
 	server.VMPath = filepath.Join(chrootBaseDir, "firecracker", id, "root")
 	if err := os.MkdirAll(server.VMPath, os.ModePerm); err != nil {
-		panic(err)
+		panic(errors.Join(ErrCouldNotCreateVMPathDirectory, err))
 	}
 
 	watcher, err := inotify.NewWatcher()
 	if err != nil {
-		panic(err)
+		panic(errors.Join(ErrCouldNotCreateInotifyWatcher, err))
 	}
 	defer watcher.Close()
 
 	if err := watcher.AddWatch(server.VMPath, inotify.InCreate); err != nil {
-		panic(err)
+		panic(errors.Join(ErrCouldNotAddInotifyWatch, err))
 	}
 
 	cpus, err := os.ReadFile(filepath.Join("/sys", "devices", "system", "node", fmt.Sprintf("node%v", numaNode), "cpulist"))
 	if err != nil {
-		panic(err)
+		panic(errors.Join(ErrCouldNotReadNUMACPUList, err))
 	}
 
 	cmd := exec.CommandContext(
@@ -127,7 +134,7 @@ func StartFirecrackerServer(
 	}
 
 	if err := cmd.Start(); err != nil {
-		panic(err)
+		panic(errors.Join(ErrCouldNotStartFirecrackerServer, err))
 	}
 
 	var closeLock sync.Mutex
@@ -156,7 +163,7 @@ func StartFirecrackerServer(
 	// It's important that we start this _after_ calling `cmd.Start`, otherwise our process would be nil
 	handleGoroutinePanics(false, func() {
 		if err := server.Wait(); err != nil {
-			panic(err)
+			panic(errors.Join(ErrCouldNotWaitForFirecracker, err))
 		}
 	})
 
@@ -165,7 +172,7 @@ func StartFirecrackerServer(
 		<-internalCtx.Done()
 
 		if err := watcher.Close(); err != nil {
-			panic(err)
+			panic(errors.Join(ErrCouldNotCloseWatcher, err))
 		}
 	})
 
@@ -179,7 +186,7 @@ func StartFirecrackerServer(
 		<-ctx.Done() // We use ctx, not internalCtx here since this resource outlives the function call
 
 		if err := server.Close(); err != nil {
-			panic(err)
+			panic(errors.Join(ErrCouldNotCloseServer, err))
 		}
 	})
 

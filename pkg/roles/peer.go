@@ -32,8 +32,50 @@ import (
 )
 
 var (
-	ErrConfigFileNotFound       = errors.New("config file not found")
-	ErrCouldNotGetNBDDeviceStat = errors.New("could not get NBD device stat")
+	ErrConfigFileNotFound                 = errors.New("config file not found")
+	ErrCouldNotGetNBDDeviceStat           = errors.New("could not get NBD device stat")
+	ErrCouldNotStartRunner                = errors.New("could not start runner")
+	ErrCouldNotCreateDeviceDirectory      = errors.New("could not create device directory")
+	ErrCouldNotCreateDevice               = errors.New("could not create device")
+	ErrCouldNotRequestBlock               = errors.New("could not request block")
+	ErrCouldNotReleaseBlock               = errors.New("could not release block")
+	ErrPeerContextCancelled               = errors.New("peer context cancelled")
+	ErrCouldNotCreateDeviceNode           = errors.New("could not create device node")
+	ErrCouldNotHandleReadAt               = errors.New("could not handle ReadAt")
+	ErrCouldNotHandleWriteAt              = errors.New("could not handle WriteAt")
+	ErrCouldNotHandleDevInfo              = errors.New("could not handle device info")
+	ErrCouldNotHandleEvent                = errors.New("could not handle event")
+	ErrCouldNotHandleDirtyList            = errors.New("could not handle dirty list")
+	ErrCouldNotWaitForMigrationCompletion = errors.New("could not wait for migration completion")
+	ErrCouldNotCloseMigratedPeer          = errors.New("could not close migrated peer")
+	ErrCouldNotGetBaseDeviceStat          = errors.New("could not get base device statistics")
+	ErrCouldNotCreateOverlayDirectory     = errors.New("could not create overlay directory")
+	ErrCouldNotCreateStateDirectory       = errors.New("could not create state directory")
+	ErrCouldNotCreateLocalDevice          = errors.New("could not create local device")
+	ErrCouldNotSetupDevices               = errors.New("could not setup devices")
+	ErrCouldNotOpenConfigFile             = errors.New("could not open config file")
+	ErrCouldNotDecodeConfigFile           = errors.New("could not decode config file")
+	ErrCouldNotResumeRunner               = errors.New("could not resume runner")
+	ErrCouldNotCreateMigratablePeer       = errors.New("could not create migratable peer")
+	ErrCouldNotHandleProtocol             = errors.New("could not handle protocol")
+	ErrCouldNotSuspendAndCloseAgentServer = errors.New("could not suspend and close agent server")
+	ErrCouldNotMsyncRunner                = errors.New("could not msync runner")
+	ErrCouldNotSendDevInfo                = errors.New("could not send device info")
+	ErrCouldNotSendAllDevicesSentEvent    = errors.New("could not send all devices sent event")
+	ErrCouldNotHandleNeedAt               = errors.New("could not handle NeedAt")
+	ErrCouldNotHandleDontNeedAt           = errors.New("could not handle DontNeedAt")
+	ErrCouldNotSendPreLockEvent           = errors.New("could not send pre-lock event")
+	ErrCouldNotSendPostLockEvent          = errors.New("could not send post-lock event")
+	ErrCouldNotSendPreUnlockEvent         = errors.New("could not send pre-unlock event")
+	ErrCouldNotSendPostUnlockEvent        = errors.New("could not send post-unlock event")
+	ErrCouldNotCreateMigrator             = errors.New("could not create migrator")
+	ErrCouldNotMigrateBlocks              = errors.New("could not migrate blocks")
+	ErrCouldNotSendDirtyList              = errors.New("could not send dirty list")
+	ErrCouldNotMigrateDirtyBlocks         = errors.New("could not migrate dirty blocks")
+	ErrCouldNotSuspendAndMsyncVM          = errors.New("could not suspend and msync VM")
+	ErrCouldNotSendTransferAuthorityEvent = errors.New("could not send transfer authority event")
+	ErrCouldNotSendCompletedEvent         = errors.New("could not send completed event")
+	ErrCouldNotMigrateToDevice            = errors.New("could not migrate to device")
 )
 
 type MigrateFromDevice struct {
@@ -247,7 +289,7 @@ func StartPeer(
 	}
 
 	if err != nil {
-		panic(err)
+		panic(errors.Join(ErrCouldNotStartRunner, err))
 	}
 
 	peer.VMPath = runner.VMPath
@@ -350,7 +392,7 @@ func StartPeer(
 							}
 
 							if err := os.MkdirAll(filepath.Dir(base), os.ModePerm); err != nil {
-								panic(err)
+								panic(errors.Join(ErrCouldNotCreateDeviceDirectory, err))
 							}
 
 							src, device, err := sdevice.NewDevice(&sconfig.DeviceSchema{
@@ -362,7 +404,7 @@ func StartPeer(
 								Expose:    true,
 							})
 							if err != nil {
-								panic(err)
+								panic(errors.Join(ErrCouldNotCreateDevice, err))
 							}
 							deviceCloseFuncsLock.Lock()
 							deviceCloseFuncs = append(deviceCloseFuncs, device.Shutdown) // defer device.Shutdown()
@@ -382,7 +424,7 @@ func StartPeer(
 								}
 
 								if err := from.NeedAt(offset, length); err != nil {
-									panic(err)
+									panic(errors.Join(ErrCouldNotRequestBlock, err))
 								}
 							}
 							local.DontNeedAt = func(offset int64, length int32) {
@@ -395,7 +437,7 @@ func StartPeer(
 								}
 
 								if err := from.DontNeedAt(offset, length); err != nil {
-									panic(err)
+									panic(errors.Join(ErrCouldNotReleaseBlock, err))
 								}
 							}
 
@@ -419,7 +461,7 @@ func StartPeer(
 
 							deviceInfo, err := os.Stat(devicePath)
 							if err != nil {
-								panic(err)
+								panic(errors.Join(ErrCouldNotGetDeviceStat, err))
 							}
 
 							deviceStat, ok := deviceInfo.Sys().(*syscall.Stat_t)
@@ -435,14 +477,14 @@ func StartPeer(
 							select {
 							case <-internalCtx.Done():
 								if err := internalCtx.Err(); err != nil {
-									panic(internalCtx.Err())
+									panic(errors.Join(ErrPeerContextCancelled, err))
 								}
 
 								return nil
 
 							default:
 								if err := unix.Mknod(filepath.Join(runner.VMPath, di.Name), unix.S_IFBLK|0666, deviceID); err != nil {
-									panic(err)
+									panic(errors.Join(ErrCouldNotCreateDeviceNode, err))
 								}
 							}
 
@@ -457,19 +499,19 @@ func StartPeer(
 
 					handleGoroutinePanics(true, func() {
 						if err := from.HandleReadAt(); err != nil {
-							panic(err)
+							panic(errors.Join(ErrCouldNotHandleReadAt, err))
 						}
 					})
 
 					handleGoroutinePanics(true, func() {
 						if err := from.HandleWriteAt(); err != nil {
-							panic(err)
+							panic(errors.Join(ErrCouldNotHandleWriteAt, err))
 						}
 					})
 
 					handleGoroutinePanics(true, func() {
 						if err := from.HandleDevInfo(); err != nil {
-							panic(err)
+							panic(errors.Join(ErrCouldNotHandleDevInfo, err))
 						}
 					})
 
@@ -501,7 +543,7 @@ func StartPeer(
 								}
 							}
 						}); err != nil {
-							panic(err)
+							panic(errors.Join(ErrCouldNotHandleEvent, err))
 						}
 					})
 
@@ -511,7 +553,7 @@ func StartPeer(
 								local.DirtyBlocks(blocks)
 							}
 						}); err != nil {
-							panic(err)
+							panic(errors.Join(ErrCouldNotHandleDirtyList, err))
 						}
 					})
 				})
@@ -578,7 +620,7 @@ func StartPeer(
 		// We don't track this because we return the wait function
 		handleGoroutinePanics(false, func() {
 			if err := migratedPeer.Wait(); err != nil {
-				panic(err)
+				panic(errors.Join(ErrCouldNotWaitForMigrationCompletion, err))
 			}
 		})
 
@@ -588,7 +630,7 @@ func StartPeer(
 			// Failure case; we cancelled the internal context before all devices are ready
 			case <-internalCtx.Done():
 				if err := migratedPeer.Close(); err != nil {
-					panic(err)
+					panic(errors.Join(ErrCouldNotCloseMigratedPeer, err))
 				}
 
 			// Happy case; all devices are ready and we want to wait with closing the devices until we stop the Firecracker process
@@ -596,7 +638,7 @@ func StartPeer(
 				<-hypervisorCtx.Done()
 
 				if err := migratedPeer.Close(); err != nil {
-					panic(err)
+					panic(errors.Join(ErrCouldNotCloseMigratedPeer, err))
 				}
 
 				break
@@ -606,7 +648,7 @@ func StartPeer(
 		select {
 		case <-internalCtx.Done():
 			if err := internalCtx.Err(); err != nil {
-				panic(internalCtx.Err())
+				panic(errors.Join(ErrPeerContextCancelled, err))
 			}
 
 			return
@@ -647,7 +689,7 @@ func StartPeer(
 
 				stat, err := os.Stat(input.Base)
 				if err != nil {
-					return err
+					return errors.Join(ErrCouldNotGetBaseDeviceStat, err)
 				}
 
 				var (
@@ -665,11 +707,11 @@ func StartPeer(
 					})
 				} else {
 					if err := os.MkdirAll(filepath.Dir(input.Overlay), os.ModePerm); err != nil {
-						return err
+						return errors.Join(ErrCouldNotCreateOverlayDirectory, err)
 					}
 
 					if err := os.MkdirAll(filepath.Dir(input.State), os.ModePerm); err != nil {
-						return err
+						return errors.Join(ErrCouldNotCreateStateDirectory, err)
 					}
 
 					local, device, err = sdevice.NewDevice(&sconfig.DeviceSchema{
@@ -688,7 +730,7 @@ func StartPeer(
 					})
 				}
 				if err != nil {
-					return err
+					return errors.Join(ErrCouldNotCreateLocalDevice, err)
 				}
 				addDefer(local.Close)
 				addDefer(device.Shutdown)
@@ -713,7 +755,7 @@ func StartPeer(
 
 				deviceInfo, err := os.Stat(devicePath)
 				if err != nil {
-					return err
+					return errors.Join(ErrCouldNotGetDeviceStat, err)
 				}
 
 				deviceStat, ok := deviceInfo.Sys().(*syscall.Stat_t)
@@ -729,14 +771,14 @@ func StartPeer(
 				select {
 				case <-internalCtx.Done():
 					if err := internalCtx.Err(); err != nil {
-						return internalCtx.Err()
+						return errors.Join(ErrPeerContextCancelled, err)
 					}
 
 					return nil
 
 				default:
 					if err := unix.Mknod(filepath.Join(runner.VMPath, input.Name), unix.S_IFBLK|0666, deviceID); err != nil {
-						return err
+						return errors.Join(ErrCouldNotCreateDeviceNode, err)
 					}
 				}
 
@@ -758,13 +800,13 @@ func StartPeer(
 		}
 
 		if err != nil {
-			panic(err)
+			panic(errors.Join(ErrCouldNotSetupDevices, err))
 		}
 
 		select {
 		case <-internalCtx.Done():
 			if err := internalCtx.Err(); err != nil {
-				panic(internalCtx.Err())
+				panic(errors.Join(ErrPeerContextCancelled, err))
 			}
 
 			return
@@ -793,18 +835,18 @@ func StartPeer(
 
 			packageConfigFile, err := os.Open(configBasePath)
 			if err != nil {
-				return nil, err
+				return nil, errors.Join(ErrCouldNotOpenConfigFile, err)
 			}
 			defer packageConfigFile.Close()
 
 			var packageConfig PackageConfiguration
 			if err := json.NewDecoder(packageConfigFile).Decode(&packageConfig); err != nil {
-				return nil, err
+				return nil, errors.Join(ErrCouldNotDecodeConfigFile, err)
 			}
 
 			resumedRunner, err := runner.Resume(ctx, resumeTimeout, rescueTimeout, packageConfig.AgentVSockPort)
 			if err != nil {
-				return nil, err
+				return nil, errors.Join(ErrCouldNotResumeRunner, err)
 			}
 
 			return &ResumedPeer{
@@ -886,7 +928,7 @@ func StartPeer(
 						// Make sure that we schedule the `deferFuncs` even if we get an error
 						migratablePeer.Close()
 
-						panic(err)
+						panic(errors.Join(ErrCouldNotCreateMigratablePeer, err))
 					}
 
 					migratablePeer.MigrateTo = func(
@@ -920,7 +962,7 @@ func StartPeer(
 
 						handleGoroutinePanics(true, func() {
 							if err := pro.Handle(); err != nil && !errors.Is(err, io.EOF) {
-								panic(err)
+								panic(errors.Join(ErrCouldNotHandleProtocol, err))
 							}
 						})
 
@@ -943,11 +985,11 @@ func StartPeer(
 							}
 
 							if err := resumedPeer.SuspendAndCloseAgentServer(ctx, suspendTimeout); err != nil {
-								return err
+								return errors.Join(ErrCouldNotSuspendAndCloseAgentServer, err)
 							}
 
 							if err := resumedRunner.Msync(ctx); err != nil {
-								return err
+								return errors.Join(ErrCouldNotMsyncRunner, err)
 							}
 
 							if hook := hooks.OnAfterSuspend; hook != nil {
@@ -992,7 +1034,7 @@ func StartPeer(
 								to := protocol.NewToProtocol(input.prev.storage.Size(), uint32(index), pro)
 
 								if err := to.SendDevInfo(input.prev.prev.prev.name, input.prev.prev.prev.blockSize, ""); err != nil {
-									return err
+									return errors.Join(ErrCouldNotSendDevInfo, err)
 								}
 
 								if hook := hooks.OnDeviceSent; hook != nil {
@@ -1006,7 +1048,7 @@ func StartPeer(
 											Type:       packets.EventCustom,
 											CustomType: byte(EventCustomAllDevicesSent),
 										}); err != nil {
-											panic(err)
+											panic(errors.Join(ErrCouldNotSendAllDevicesSentEvent, err))
 										}
 
 										if hook := hooks.OnAllDevicesSent; hook != nil {
@@ -1029,7 +1071,7 @@ func StartPeer(
 											input.prev.orderer.PrioritiseBlock(b)
 										}
 									}); err != nil {
-										panic(err)
+										panic(errors.Join(ErrCouldNotHandleNeedAt, err))
 									}
 								})
 
@@ -1047,7 +1089,7 @@ func StartPeer(
 											input.prev.orderer.Remove(b)
 										}
 									}); err != nil {
-										panic(err)
+										panic(errors.Join(ErrCouldNotHandleDontNeedAt, err))
 									}
 								})
 
@@ -1064,7 +1106,7 @@ func StartPeer(
 									if err := to.SendEvent(&packets.Event{
 										Type: packets.EventPreLock,
 									}); err != nil {
-										panic(err)
+										panic(errors.Join(ErrCouldNotSendPreLockEvent, err))
 									}
 
 									input.prev.storage.Lock()
@@ -1072,7 +1114,7 @@ func StartPeer(
 									if err := to.SendEvent(&packets.Event{
 										Type: packets.EventPostLock,
 									}); err != nil {
-										panic(err)
+										panic(errors.Join(ErrCouldNotSendPostLockEvent, err))
 									}
 								}
 								cfg.Unlocker_handler = func() {
@@ -1081,7 +1123,7 @@ func StartPeer(
 									if err := to.SendEvent(&packets.Event{
 										Type: packets.EventPreUnlock,
 									}); err != nil {
-										panic(err)
+										panic(errors.Join(ErrCouldNotSendPreUnlockEvent, err))
 									}
 
 									input.prev.storage.Unlock()
@@ -1089,7 +1131,7 @@ func StartPeer(
 									if err := to.SendEvent(&packets.Event{
 										Type: packets.EventPostUnlock,
 									}); err != nil {
-										panic(err)
+										panic(errors.Join(ErrCouldNotSendPostUnlockEvent, err))
 									}
 								}
 								cfg.Error_handler = func(b *storage.BlockInfo, err error) {
@@ -1107,15 +1149,15 @@ func StartPeer(
 
 								mig, err := migrator.NewMigrator(input.prev.dirtyRemote, to, input.prev.orderer, cfg)
 								if err != nil {
-									return err
+									return errors.Join(ErrCouldNotCreateMigrator, err)
 								}
 
 								if err := mig.Migrate(input.prev.totalBlocks); err != nil {
-									return err
+									return errors.Join(ErrCouldNotMigrateBlocks, err)
 								}
 
 								if err := mig.WaitForCompletion(); err != nil {
-									return err
+									return errors.Join(ErrCouldNotWaitForMigrationCompletion, err)
 								}
 
 								markDeviceAsReadyForAuthorityTransfer := sync.OnceFunc(func() {
@@ -1134,7 +1176,7 @@ func StartPeer(
 										if err := resumedRunner.Msync(ctx); err != nil {
 											suspendedVMLock.Unlock()
 
-											return err
+											return errors.Join(ErrCouldNotMsyncRunner, err)
 										}
 									}
 									suspendedVMLock.Unlock()
@@ -1156,7 +1198,7 @@ func StartPeer(
 
 									if blocks != nil {
 										if err := to.DirtyList(int(input.prev.prev.prev.blockSize), blocks); err != nil {
-											return err
+											return errors.Join(ErrCouldNotSendDirtyList, err)
 										}
 
 										ongoingMigrationsWg.Add(1)
@@ -1164,7 +1206,7 @@ func StartPeer(
 											defer ongoingMigrationsWg.Done()
 
 											if err := mig.MigrateDirty(blocks); err != nil {
-												panic(err)
+												panic(errors.Join(ErrCouldNotMigrateDirtyBlocks, err))
 											}
 
 											suspendedVMLock.Lock()
@@ -1200,7 +1242,7 @@ func StartPeer(
 
 										case <-ctx.Done(): // ctx is the internalCtx here
 											if err := ctx.Err(); err != nil {
-												return ctx.Err()
+												return errors.Join(ErrPeerContextCancelled, err)
 											}
 
 											return nil
@@ -1223,7 +1265,7 @@ func StartPeer(
 
 									if devicesLeftToTransferAuthorityFor.Load() >= int32(len(stage5Inputs)) {
 										if err := suspendAndMsyncVM(); err != nil {
-											return err
+											return errors.Join(ErrCouldNotSuspendAndMsyncVM, err)
 										}
 									}
 								}
@@ -1232,7 +1274,7 @@ func StartPeer(
 									Type:       packets.EventCustom,
 									CustomType: byte(EventCustomTransferAuthority),
 								}); err != nil {
-									panic(err)
+									panic(errors.Join(ErrCouldNotSendTransferAuthorityEvent, err))
 								}
 
 								if hook := hooks.OnDeviceAuthoritySent; hook != nil {
@@ -1240,13 +1282,13 @@ func StartPeer(
 								}
 
 								if err := mig.WaitForCompletion(); err != nil {
-									return err
+									return errors.Join(ErrCouldNotWaitForMigrationCompletion, err)
 								}
 
 								if err := to.SendEvent(&packets.Event{
 									Type: packets.EventCompleted,
 								}); err != nil {
-									return err
+									return errors.Join(ErrCouldNotSendCompletedEvent, err)
 								}
 
 								if hook := hooks.OnDeviceMigrationCompleted; hook != nil {
@@ -1258,7 +1300,7 @@ func StartPeer(
 						)
 
 						if err != nil {
-							panic(err)
+							panic(errors.Join(ErrCouldNotMigrateToDevice, err))
 						}
 
 						for _, deferFuncs := range deferFuncs {

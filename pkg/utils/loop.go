@@ -8,6 +8,8 @@ import (
 
 var (
 	ErrCouldNotGetDeviceStat = errors.New("could not get device stat")
+	ErrCouldNotAttachDevice  = errors.New("could not attach device")
+	ErrCouldNotDetachDevice  = errors.New("could not detach device")
 )
 
 type LoopMount struct {
@@ -22,7 +24,7 @@ func NewLoopMount(file string) *LoopMount {
 func (l *LoopMount) Open() (string, error) {
 	device, err := losetup.Attach(l.file, 0, false)
 	if err != nil {
-		return "", err
+		return "", errors.Join(ErrCouldNotAttachDevice, err)
 	}
 
 	l.device = &device
@@ -32,7 +34,9 @@ func (l *LoopMount) Open() (string, error) {
 
 func (l *LoopMount) Close() error {
 	if l.device != nil {
-		return l.device.Detach()
+		if err := l.device.Detach(); err != nil {
+			return errors.Join(ErrCouldNotDetachDevice, err)
+		}
 	}
 
 	return nil

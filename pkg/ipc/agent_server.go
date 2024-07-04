@@ -15,10 +15,12 @@ import (
 )
 
 var (
-	ErrNoRemoteFound = errors.New("no remote found")
-
-	ErrAgentClientDisconnected = errors.New("agent client disconnected")
-	ErrAgentClientAcceptFailed = errors.New("agent client accept failed")
+	ErrNoRemoteFound                     = errors.New("no remote found")
+	ErrAgentClientDisconnected           = errors.New("agent client disconnected")
+	ErrCouldNotAcceptAgentClient         = errors.New("could not accept agent client")
+	ErrCouldNotListenInAgentServer       = errors.New("could not listen in agent server")
+	ErrCouldNotCloseAcceptingAgentServer = errors.New("could not close accepting agent server")
+	ErrCouldNotLinkRegistry              = errors.New("could not link registry")
 )
 
 type AgentServer struct {
@@ -57,7 +59,7 @@ func StartAgentServer(
 
 	lis, err := net.Listen("unix", agentServer.VSockPath)
 	if err != nil {
-		return nil, err
+		return nil, errors.Join(ErrCouldNotListenInAgentServer, err)
 	}
 
 	var closeLock sync.Mutex
@@ -120,7 +122,7 @@ func StartAgentServer(
 				return
 			}
 
-			panic(errors.Join(ErrAgentClientAcceptFailed, err))
+			panic(errors.Join(ErrCouldNotAcceptAgentClient, err))
 		}
 
 		acceptingAgentServer.Close = func() error {
@@ -148,7 +150,7 @@ func StartAgentServer(
 			// Failure case; we cancelled the internal context before we got a connection
 			case <-internalCtx.Done():
 				if err := acceptingAgentServer.Close(); err != nil {
-					panic(err)
+					panic(errors.Join(ErrCouldNotCloseAcceptingAgentServer, err))
 				}
 				agentServer.Close() // We ignore errors here since we might interrupt a network connection
 
@@ -157,7 +159,7 @@ func StartAgentServer(
 				<-remoteCtx.Done()
 
 				if err := acceptingAgentServer.Close(); err != nil {
-					panic(err)
+					panic(errors.Join(ErrCouldNotCloseAcceptingAgentServer, err))
 				}
 				agentServer.Close() // We ignore errors here since we might interrupt a network connection
 
@@ -210,7 +212,7 @@ func StartAgentServer(
 					return remoteCtx.Err()
 				}
 
-				return errors.Join(ErrAgentClientDisconnected, err)
+				return errors.Join(ErrAgentClientDisconnected, ErrCouldNotLinkRegistry, err)
 			}
 
 			return nil

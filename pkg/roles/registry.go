@@ -24,7 +24,12 @@ import (
 )
 
 var (
-	ErrCouldNotContinueWithMigration = errors.New("could not continue with migration")
+	ErrCouldNotGetInputDeviceStatistics = errors.New("could not get input device statistics")
+	ErrCouldNotCreateNewDevice          = errors.New("could not create new device")
+	ErrCouldNotSendDeviceInfo           = errors.New("could not send device info")
+	ErrCouldNotSendEvent                = errors.New("could not send event")
+	ErrCouldNotMigrate                  = errors.New("could not migrate")
+	ErrCouldNotContinueWithMigration    = errors.New("could not continue with migration")
 )
 
 type RegistryDevice struct {
@@ -58,7 +63,7 @@ func OpenDevices(
 
 			stat, err := os.Stat(input.Input)
 			if err != nil {
-				return err
+				return errors.Join(ErrCouldNotGetInputDeviceStatistics, err)
 			}
 
 			src, _, err := device.NewDevice(&config.DeviceSchema{
@@ -70,7 +75,7 @@ func OpenDevices(
 				Expose:    false,
 			})
 			if err != nil {
-				return err
+				return errors.Join(ErrCouldNotCreateNewDevice, err)
 			}
 			addDefer(src.Close)
 
@@ -148,7 +153,7 @@ func MigrateOpenedDevices(
 
 	handleGoroutinePanics(true, func() {
 		if err := pro.Handle(); err != nil && !errors.Is(err, io.EOF) {
-			panic(err)
+			panic(errors.Join(ErrCouldNotHandleProtocol, err))
 		}
 	})
 
@@ -160,7 +165,7 @@ func MigrateOpenedDevices(
 			to := protocol.NewToProtocol(input.storage.Size(), uint32(index), pro)
 
 			if err := to.SendDevInfo(input.RegistryDevice.Name, input.RegistryDevice.BlockSize, ""); err != nil {
-				return err
+				return errors.Join(ErrCouldNotSendDeviceInfo, err)
 			}
 
 			if hook := hooks.OnDeviceSent; hook != nil {
@@ -174,7 +179,7 @@ func MigrateOpenedDevices(
 						Type:       packets.EventCustom,
 						CustomType: byte(EventCustomAllDevicesSent),
 					}); err != nil {
-						panic(err)
+						panic(errors.Join(ErrCouldNotSendEvent, err))
 					}
 
 					if hook := hooks.OnAllDevicesSent; hook != nil {
@@ -197,7 +202,7 @@ func MigrateOpenedDevices(
 						input.orderer.PrioritiseBlock(b)
 					}
 				}); err != nil {
-					panic(err)
+					panic(errors.Join(ErrCouldNotHandleNeedAt, err))
 				}
 			})
 
@@ -215,7 +220,7 @@ func MigrateOpenedDevices(
 						input.orderer.Remove(b)
 					}
 				}); err != nil {
-					panic(err)
+					panic(errors.Join(ErrCouldNotHandleDontNeedAt, err))
 				}
 			})
 
@@ -232,7 +237,7 @@ func MigrateOpenedDevices(
 				if err := to.SendEvent(&packets.Event{
 					Type: packets.EventPreLock,
 				}); err != nil {
-					panic(err)
+					panic(errors.Join(ErrCouldNotSendEvent, err))
 				}
 
 				input.storage.Lock()
@@ -240,7 +245,7 @@ func MigrateOpenedDevices(
 				if err := to.SendEvent(&packets.Event{
 					Type: packets.EventPostLock,
 				}); err != nil {
-					panic(err)
+					panic(errors.Join(ErrCouldNotSendEvent, err))
 				}
 			}
 			cfg.Unlocker_handler = func() {
@@ -249,7 +254,7 @@ func MigrateOpenedDevices(
 				if err := to.SendEvent(&packets.Event{
 					Type: packets.EventPreUnlock,
 				}); err != nil {
-					panic(err)
+					panic(errors.Join(ErrCouldNotSendEvent, err))
 				}
 
 				input.storage.Unlock()
@@ -257,7 +262,7 @@ func MigrateOpenedDevices(
 				if err := to.SendEvent(&packets.Event{
 					Type: packets.EventPostUnlock,
 				}); err != nil {
-					panic(err)
+					panic(errors.Join(ErrCouldNotSendEvent, err))
 				}
 			}
 			cfg.Error_handler = func(b *storage.BlockInfo, err error) {
@@ -275,7 +280,7 @@ func MigrateOpenedDevices(
 
 			mig, err := migrator.NewMigrator(input.dirtyRemote, to, input.orderer, cfg)
 			if err != nil {
-				return err
+				return errors.Join(ErrCouldNotCreateMigrator, err)
 			}
 
 			handleGoroutinePanics(true, func() {
@@ -283,7 +288,7 @@ func MigrateOpenedDevices(
 					Type:       packets.EventCustom,
 					CustomType: byte(EventCustomTransferAuthority),
 				}); err != nil {
-					panic(err)
+					panic(errors.Join(ErrCouldNotSendEvent, err))
 				}
 
 				if hook := hooks.OnDeviceAuthoritySent; hook != nil {
@@ -292,17 +297,17 @@ func MigrateOpenedDevices(
 			})
 
 			if err := mig.Migrate(input.totalBlocks); err != nil {
-				return err
+				return errors.Join(ErrCouldNotMigrate, err)
 			}
 
 			if err := mig.WaitForCompletion(); err != nil {
-				return err
+				return errors.Join(ErrCouldNotWaitForMigrationCompletion, err)
 			}
 
 			if err := to.SendEvent(&packets.Event{
 				Type: packets.EventCompleted,
 			}); err != nil {
-				return err
+				return errors.Join(ErrCouldNotSendEvent, err)
 			}
 
 			if hook := hooks.OnDeviceMigrationCompleted; hook != nil {
@@ -314,7 +319,7 @@ func MigrateOpenedDevices(
 	)
 
 	if err != nil {
-		panic(err)
+		panic(errors.Join(ErrCouldNotContinueWithMigration, err))
 	}
 
 	for _, deferFuncs := range deferFuncs {
