@@ -51,11 +51,6 @@ type SnapshotLoadRequestMemoryBackend struct {
 	BackendType string `json:"backend_type"`
 }
 
-type SnapshotNoMemoryCreateRequest struct {
-	SnapshotPath string `json:"snapshot_path"`
-	MsyncOnly    bool   `json:"msync_only"`
-}
-
 type VSock struct {
 	GuestCID int    `json:"guest_cid"`
 	UDSPath  string `json:"uds_path"`

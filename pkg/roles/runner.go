@@ -243,64 +243,73 @@ func StartRunner(
 						}
 
 						// If a resume failed, flush the snapshot so that we can re-try
+						memoryCopyName := shortuuid.New()
 						if shared {
-							if e := firecracker.CreateSnapshot(
-								suspendCtx, // We use a separate context here so that we can
-								// cancel the snapshot create action independently of the resume
-								// ctx, which is typically cancelled already
+							if err := firecracker.CreateSnapshot(
+								suspendCtx,
 
 								firecrackerClient,
 
 								stateName,
-								memoryName,
+								"",
+
+								firecracker.SnapshotTypeMsyncAndState,
+							); err != nil {
+								errs = errors.Join(errs, ErrCouldNotCreateSnapshot, err)
+
+								return
+							}
+						} else {
+							if err := firecracker.CreateSnapshot(
+								suspendCtx,
+
+								firecrackerClient,
+
+								stateName,
+								memoryCopyName, // We need to write the memory to a separate file since we can't truncate an `mmap`ed file
 
 								firecracker.SnapshotTypeFull,
-							); e != nil {
-								errs = errors.Join(errs, ErrCouldNotCreateSnapshot, e)
+							); err != nil {
+								errs = errors.Join(errs, ErrCouldNotCreateSnapshot, err)
+
+								return
+							}
+						}
+
+						if !shared {
+							if err := server.Close(); err != nil {
+								errs = errors.Join(errs, ErrCouldNotCloseServer, err)
 
 								return
 							}
 
-							return
-						}
+							if err := runner.Wait(); err != nil {
+								errs = errors.Join(errs, ErrCouldNotWaitForFirecracker, err)
 
-						memoryCopyName := shortuuid.New()
+								return
+							}
 
-						if err := firecracker.CreateSnapshot(
-							suspendCtx,
+							inputFile, err := os.Open(filepath.Join(server.VMPath, memoryCopyName))
+							if err != nil {
+								errs = errors.Join(errs, ErrCouldNotOpenInputFile, err)
 
-							firecrackerClient,
+								return
+							}
+							defer inputFile.Close()
 
-							stateName,
-							memoryCopyName, // We need to write the memory to a separate file since we can't truncate an `mmap`ed file
+							outputFile, err := os.OpenFile(filepath.Join(server.VMPath, memoryName), os.O_TRUNC|os.O_WRONLY, os.ModePerm)
+							if err != nil {
+								errs = errors.Join(errs, ErrCouldNotOpenOutputFile, err)
 
-							firecracker.SnapshotTypeFull,
-						); err != nil {
-							errs = errors.Join(errs, ErrCouldNotCreateSnapshot, err)
+								return
+							}
+							defer outputFile.Close()
 
-							return
-						}
+							if _, err := io.Copy(outputFile, inputFile); err != nil {
+								errs = errors.Join(errs, ErrCouldNotCopyFile, err)
 
-						inputFile, err := os.Open(filepath.Join(server.VMPath, memoryCopyName))
-						if err != nil {
-							errs = errors.Join(errs, ErrCouldNotOpenInputFile, err)
-
-							return
-						}
-						defer inputFile.Close()
-
-						outputFile, err := os.OpenFile(filepath.Join(server.VMPath, memoryName), os.O_TRUNC|os.O_WRONLY, os.ModePerm)
-						if err != nil {
-							errs = errors.Join(errs, ErrCouldNotOpenOutputFile, err)
-
-							return
-						}
-						defer outputFile.Close()
-
-						if _, err := io.Copy(outputFile, inputFile); err != nil {
-							errs = errors.Join(errs, ErrCouldNotCopyFile, err)
-
-							return
+								return
+							}
 						}
 					}
 				},
@@ -427,6 +436,7 @@ func StartRunner(
 
 			agent.Close()
 
+			memoryCopyName := shortuuid.New()
 			if shared {
 				if err := firecracker.CreateSnapshot(
 					suspendCtx,
@@ -440,39 +450,45 @@ func StartRunner(
 				); err != nil {
 					return errors.Join(ErrCouldNotCreateSnapshot, err)
 				}
+			} else {
+				if err := firecracker.CreateSnapshot(
+					suspendCtx,
 
-				return nil
+					firecrackerClient,
+
+					stateName,
+					memoryCopyName, // We need to write the memory to a separate file since we can't truncate an `mmap`ed file
+
+					firecracker.SnapshotTypeFull,
+				); err != nil {
+					return errors.Join(ErrCouldNotCreateSnapshot, err)
+				}
 			}
 
-			memoryCopyName := shortuuid.New()
+			if !shared {
+				if err := server.Close(); err != nil {
+					return errors.Join(ErrCouldNotCloseServer, err)
+				}
 
-			if err := firecracker.CreateSnapshot(
-				suspendCtx,
+				if err := runner.Wait(); err != nil {
+					return errors.Join(ErrCouldNotWaitForFirecracker, err)
+				}
 
-				firecrackerClient,
+				inputFile, err := os.Open(filepath.Join(server.VMPath, memoryCopyName))
+				if err != nil {
+					return errors.Join(ErrCouldNotOpenInputFile, err)
+				}
+				defer inputFile.Close()
 
-				stateName,
-				memoryCopyName, // We need to write the memory to a separate file since we can't truncate an `mmap`ed file
+				outputFile, err := os.OpenFile(filepath.Join(server.VMPath, memoryName), os.O_TRUNC|os.O_WRONLY, os.ModePerm)
+				if err != nil {
+					return errors.Join(ErrCouldNotOpenOutputFile, err)
+				}
+				defer outputFile.Close()
 
-				firecracker.SnapshotTypeFull,
-			); err != nil {
-				return errors.Join(ErrCouldNotCreateSnapshot, err)
-			}
-
-			inputFile, err := os.Open(filepath.Join(server.VMPath, memoryCopyName))
-			if err != nil {
-				return errors.Join(ErrCouldNotOpenInputFile, err)
-			}
-			defer inputFile.Close()
-
-			outputFile, err := os.OpenFile(filepath.Join(server.VMPath, memoryName), os.O_TRUNC|os.O_WRONLY, os.ModePerm)
-			if err != nil {
-				return errors.Join(ErrCouldNotOpenOutputFile, err)
-			}
-			defer outputFile.Close()
-
-			if _, err := io.Copy(outputFile, inputFile); err != nil {
-				return errors.Join(ErrCouldNotCopyFile, err)
+				if _, err := io.Copy(outputFile, inputFile); err != nil {
+					return errors.Join(ErrCouldNotCopyFile, err)
+				}
 			}
 
 			return nil
