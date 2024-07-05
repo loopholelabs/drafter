@@ -60,8 +60,8 @@ func main() {
 
 	mapShared := flag.Bool("map-shared", true, "Whether to use MAP_SHARED for memory and state devices")
 
-	stateOutput := flag.String("state-output", "", "Path to write the changed state to (leave empty to write back to device directly) (ignored if `--map-shared=true`)")
-	memoryOutput := flag.String("memory-output", "", "Path to write the changed memory to (leave empty to write back to device directly) (ignored if `--map-shared=true`)")
+	sharedStateOutput := flag.String("shared-state-output", "", "Path to write the local changes to the shared state to (leave empty to write back to device directly) (ignored if --map-shared=true)")
+	sharedMemoryOutput := flag.String("shared-memory-output", "", "Path to write the local changes to the shared memory to (leave empty to write back to device directly) (ignored if --map-shared=true)")
 
 	defaultDevices, err := json.Marshal([]CompositeDevices{
 		{
@@ -399,8 +399,8 @@ func main() {
 
 		*mapShared,
 
-		*stateOutput,
-		*memoryOutput,
+		*sharedStateOutput,
+		*sharedMemoryOutput,
 	)
 
 	if err != nil {

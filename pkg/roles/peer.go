@@ -115,8 +115,8 @@ type MigratedPeer struct {
 
 		mapShared bool,
 
-		stateOutput,
-		memoryOutput string,
+		sharedStateOutput,
+		sharedMemoryOutput string,
 	) (
 		resumedPeer *ResumedPeer,
 
@@ -827,8 +827,8 @@ func StartPeer(
 
 			mapShared bool,
 
-			stateOutput,
-			memoryOutput string,
+			sharedStateOutput,
+			sharedMemoryOutput string,
 		) (resumedPeer *ResumedPeer, errs error) {
 			configBasePath := ""
 			for _, device := range devices {
@@ -863,8 +863,8 @@ func StartPeer(
 
 				mapShared,
 
-				stateOutput,
-				memoryOutput,
+				sharedStateOutput,
+				sharedMemoryOutput,
 			)
 			if err != nil {
 				return nil, errors.Join(ErrCouldNotResumeRunner, err)

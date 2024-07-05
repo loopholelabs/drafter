@@ -19,45 +19,45 @@ import (
 )
 
 type SharableDevice struct {
-	Name      string `json:"name"`
-	Path      string `json:"path"`
-	MapShared bool   `json:"mapShared"`
+	Name   string `json:"name"`
+	Path   string `json:"path"`
+	Shared bool   `json:"shared"`
 }
 
 func main() {
 	defaultDevices, err := json.Marshal([]SharableDevice{
 		{
-			Name:      roles.StateName,
-			Path:      filepath.Join("out", "package", "state.bin"),
-			MapShared: false,
+			Name:   roles.StateName,
+			Path:   filepath.Join("out", "package", "state.bin"),
+			Shared: false,
 		},
 		{
-			Name:      roles.MemoryName,
-			Path:      filepath.Join("out", "package", "memory.bin"),
-			MapShared: false,
-		},
-
-		{
-			Name:      roles.KernelName,
-			Path:      filepath.Join("out", "package", "vmlinux"),
-			MapShared: false,
-		},
-		{
-			Name:      roles.DiskName,
-			Path:      filepath.Join("out", "package", "rootfs.ext4"),
-			MapShared: false,
+			Name:   roles.MemoryName,
+			Path:   filepath.Join("out", "package", "memory.bin"),
+			Shared: false,
 		},
 
 		{
-			Name:      roles.ConfigName,
-			Path:      filepath.Join("out", "package", "config.json"),
-			MapShared: false,
+			Name:   roles.KernelName,
+			Path:   filepath.Join("out", "package", "vmlinux"),
+			Shared: false,
+		},
+		{
+			Name:   roles.DiskName,
+			Path:   filepath.Join("out", "package", "rootfs.ext4"),
+			Shared: false,
 		},
 
 		{
-			Name:      "oci",
-			Path:      filepath.Join("out", "blueprint", "oci.ext4"),
-			MapShared: false,
+			Name:   roles.ConfigName,
+			Path:   filepath.Join("out", "package", "config.json"),
+			Shared: false,
+		},
+
+		{
+			Name:   "oci",
+			Path:   filepath.Join("out", "blueprint", "oci.ext4"),
+			Shared: false,
 		},
 	})
 	if err != nil {
@@ -85,8 +85,8 @@ func main() {
 
 	mapShared := flag.Bool("map-shared", true, "Whether to use MAP_SHARED for memory and state devices")
 
-	stateOutput := flag.String("state-output", "", "Path to write the changed state to (leave empty to write back to device directly) (ignored if --map-shared=true)")
-	memoryOutput := flag.String("memory-output", "", "Path to write the changed memory to (leave empty to write back to device directly) (ignored if --map-shared=true)")
+	sharedStateOutput := flag.String("shared-state-output", "", "Path to write the local changes to the shared state to (leave empty to write back to device directly) (ignored if --map-shared=true)")
+	sharedMemoryOutput := flag.String("shared-memory-output", "", "Path to write the local changes to the shared memory to (leave empty to write back to device directly) (ignored if --map-shared=true)")
 
 	rawDevices := flag.String("devices", string(defaultDevices), "Devices configuration")
 
@@ -249,7 +249,7 @@ func main() {
 		}()
 
 		file := ""
-		if device.MapShared {
+		if device.Shared {
 			file = device.Path
 		} else {
 			mnt := utils.NewLoopMount(device.Path)
@@ -304,8 +304,8 @@ func main() {
 
 		*mapShared,
 
-		*stateOutput,
-		*memoryOutput,
+		*sharedStateOutput,
+		*sharedMemoryOutput,
 	)
 
 	if err != nil {

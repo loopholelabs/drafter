@@ -70,8 +70,8 @@ type Runner struct {
 
 		mapShared bool,
 
-		stateOutput,
-		memoryOutput string,
+		sharedStateOutput,
+		sharedMemoryOutput string,
 	) (
 		resumedRunner *ResumedRunner,
 
@@ -212,8 +212,8 @@ func StartRunner(
 
 		mapShared bool,
 
-		stateOutput,
-		memoryOutput string,
+		sharedStateOutput,
+		sharedMemoryOutput string,
 	) (
 		resumedRunner *ResumedRunner,
 
@@ -274,8 +274,8 @@ func StartRunner(
 				}
 
 				for _, device := range [][3]string{
-					{stateName, stateCopyName, stateOutput},
-					{memoryName, memoryCopyName, memoryOutput},
+					{stateName, stateCopyName, sharedStateOutput},
+					{memoryName, memoryCopyName, sharedMemoryOutput},
 				} {
 					inputFile, err := os.Open(filepath.Join(server.VMPath, device[1]))
 					if err != nil {
