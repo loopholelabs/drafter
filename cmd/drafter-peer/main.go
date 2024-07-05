@@ -36,6 +36,9 @@ type CompositeDevices struct {
 	MaxCycles      int `json:"maxCycles"`
 
 	CycleThrottle time.Duration `json:"cycleThrottle"`
+
+	MakeMigratable bool `json:"makeMigratable"`
+	Shared         bool `json:"shared"`
 }
 
 func main() {
@@ -79,6 +82,9 @@ func main() {
 			MaxCycles:      20,
 
 			CycleThrottle: time.Millisecond * 500,
+
+			MakeMigratable: true,
+			Shared:         false,
 		},
 		{
 			Name: roles.MemoryName,
@@ -96,6 +102,9 @@ func main() {
 			MaxCycles:      20,
 
 			CycleThrottle: time.Millisecond * 500,
+
+			MakeMigratable: true,
+			Shared:         false,
 		},
 
 		{
@@ -114,6 +123,9 @@ func main() {
 			MaxCycles:      20,
 
 			CycleThrottle: time.Millisecond * 500,
+
+			MakeMigratable: true,
+			Shared:         false,
 		},
 		{
 			Name: roles.DiskName,
@@ -131,6 +143,9 @@ func main() {
 			MaxCycles:      20,
 
 			CycleThrottle: time.Millisecond * 500,
+
+			MakeMigratable: true,
+			Shared:         false,
 		},
 
 		{
@@ -149,6 +164,9 @@ func main() {
 			MaxCycles:      20,
 
 			CycleThrottle: time.Millisecond * 500,
+
+			MakeMigratable: true,
+			Shared:         false,
 		},
 
 		{
@@ -167,6 +185,9 @@ func main() {
 			MaxCycles:      20,
 
 			CycleThrottle: time.Millisecond * 500,
+
+			MakeMigratable: true,
+			Shared:         false,
 		},
 	})
 	if err != nil {
@@ -315,6 +336,8 @@ func main() {
 			State:   device.State,
 
 			BlockSize: device.BlockSize,
+
+			Shared: device.Shared,
 		})
 	}
 
@@ -523,6 +546,10 @@ func main() {
 
 	makeMigratableDevices := []roles.MakeMigratableDevice{}
 	for _, device := range devices {
+		if !device.MakeMigratable || device.Shared {
+			continue
+		}
+
 		makeMigratableDevices = append(makeMigratableDevices, roles.MakeMigratableDevice{
 			Name: device.Name,
 
@@ -544,6 +571,10 @@ func main() {
 
 	migrateToDevices := []roles.MigrateToDevice{}
 	for _, device := range devices {
+		if !device.MakeMigratable || device.Shared {
+			continue
+		}
+
 		migrateToDevices = append(migrateToDevices, roles.MigrateToDevice{
 			Name: device.Name,
 

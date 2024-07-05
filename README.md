@@ -403,7 +403,9 @@ $ sudo drafter-peer --netns ark0 --raddr '' --laddr '' --devices '[
     "maxDirtyBlocks": 200,
     "minCycles": 5,
     "maxCycles": 20,
-    "cycleThrottle": 500000000
+    "cycleThrottle": 500000000,
+    "makeMigratable": true,
+    "shared": false
   },
   {
     "name": "memory",
@@ -415,7 +417,9 @@ $ sudo drafter-peer --netns ark0 --raddr '' --laddr '' --devices '[
     "maxDirtyBlocks": 200,
     "minCycles": 5,
     "maxCycles": 20,
-    "cycleThrottle": 500000000
+    "cycleThrottle": 500000000,
+    "makeMigratable": true,
+    "shared": false
   },
   {
     "name": "kernel",
@@ -427,7 +431,9 @@ $ sudo drafter-peer --netns ark0 --raddr '' --laddr '' --devices '[
     "maxDirtyBlocks": 200,
     "minCycles": 5,
     "maxCycles": 20,
-    "cycleThrottle": 500000000
+    "cycleThrottle": 500000000,
+    "makeMigratable": true,
+    "shared": false
   },
   {
     "name": "disk",
@@ -439,7 +445,9 @@ $ sudo drafter-peer --netns ark0 --raddr '' --laddr '' --devices '[
     "maxDirtyBlocks": 200,
     "minCycles": 5,
     "maxCycles": 20,
-    "cycleThrottle": 500000000
+    "cycleThrottle": 500000000,
+    "makeMigratable": true,
+    "shared": false
   },
   {
     "name": "config",
@@ -451,7 +459,9 @@ $ sudo drafter-peer --netns ark0 --raddr '' --laddr '' --devices '[
     "maxDirtyBlocks": 200,
     "minCycles": 5,
     "maxCycles": 20,
-    "cycleThrottle": 500000000
+    "cycleThrottle": 500000000,
+    "makeMigratable": true,
+    "shared": false
   },
   {
     "name": "oci",
@@ -463,7 +473,9 @@ $ sudo drafter-peer --netns ark0 --raddr '' --laddr '' --devices '[
     "maxDirtyBlocks": 200,
     "minCycles": 5,
     "maxCycles": 20,
-    "cycleThrottle": 500000000
+    "cycleThrottle": 500000000,
+    "makeMigratable": true,
+    "shared": false
   }
 ]'
 ```
@@ -491,7 +503,9 @@ $ sudo drafter-peer --netns ark0 --raddr '' --laddr '' --devices '[
     "maxDirtyBlocks": 200,
     "minCycles": 5,
     "maxCycles": 20,
-    "cycleThrottle": 500000000
+    "cycleThrottle": 500000000,
+    "makeMigratable": true,
+    "shared": false
   },
   {
     "name": "memory",
@@ -503,7 +517,9 @@ $ sudo drafter-peer --netns ark0 --raddr '' --laddr '' --devices '[
     "maxDirtyBlocks": 200,
     "minCycles": 5,
     "maxCycles": 20,
-    "cycleThrottle": 500000000
+    "cycleThrottle": 500000000,
+    "makeMigratable": true,
+    "shared": false
   },
   {
     "name": "kernel",
@@ -515,7 +531,9 @@ $ sudo drafter-peer --netns ark0 --raddr '' --laddr '' --devices '[
     "maxDirtyBlocks": 200,
     "minCycles": 5,
     "maxCycles": 20,
-    "cycleThrottle": 500000000
+    "cycleThrottle": 500000000,
+    "makeMigratable": true,
+    "shared": false
   },
   {
     "name": "disk",
@@ -527,7 +545,9 @@ $ sudo drafter-peer --netns ark0 --raddr '' --laddr '' --devices '[
     "maxDirtyBlocks": 200,
     "minCycles": 5,
     "maxCycles": 20,
-    "cycleThrottle": 500000000
+    "cycleThrottle": 500000000,
+    "makeMigratable": true,
+    "shared": false
   },
   {
     "name": "config",
@@ -539,7 +559,9 @@ $ sudo drafter-peer --netns ark0 --raddr '' --laddr '' --devices '[
     "maxDirtyBlocks": 200,
     "minCycles": 5,
     "maxCycles": 20,
-    "cycleThrottle": 500000000
+    "cycleThrottle": 500000000,
+    "makeMigratable": true,
+    "shared": false
   },
   {
     "name": "oci",
@@ -551,7 +573,9 @@ $ sudo drafter-peer --netns ark0 --raddr '' --laddr '' --devices '[
     "maxDirtyBlocks": 200,
     "minCycles": 5,
     "maxCycles": 20,
-    "cycleThrottle": 500000000
+    "cycleThrottle": 500000000,
+    "makeMigratable": true,
+    "shared": false
   }
 ]'
 ```
@@ -570,7 +594,9 @@ $ sudo drafter-peer --netns ark1 --raddr '' --laddr '' --devices '[
     "maxDirtyBlocks": 200,
     "minCycles": 5,
     "maxCycles": 20,
-    "cycleThrottle": 500000000
+    "cycleThrottle": 500000000,
+    "makeMigratable": true,
+    "shared": false
   },
   {
     "name": "memory",
@@ -582,7 +608,9 @@ $ sudo drafter-peer --netns ark1 --raddr '' --laddr '' --devices '[
     "maxDirtyBlocks": 200,
     "minCycles": 5,
     "maxCycles": 20,
-    "cycleThrottle": 500000000
+    "cycleThrottle": 500000000,
+    "makeMigratable": true,
+    "shared": false
   },
   {
     "name": "kernel",
@@ -594,7 +622,9 @@ $ sudo drafter-peer --netns ark1 --raddr '' --laddr '' --devices '[
     "maxDirtyBlocks": 200,
     "minCycles": 5,
     "maxCycles": 20,
-    "cycleThrottle": 500000000
+    "cycleThrottle": 500000000,
+    "makeMigratable": true,
+    "shared": false
   },
   {
     "name": "disk",
@@ -606,7 +636,9 @@ $ sudo drafter-peer --netns ark1 --raddr '' --laddr '' --devices '[
     "maxDirtyBlocks": 200,
     "minCycles": 5,
     "maxCycles": 20,
-    "cycleThrottle": 500000000
+    "cycleThrottle": 500000000,
+    "makeMigratable": true,
+    "shared": false
   },
   {
     "name": "config",
@@ -618,7 +650,9 @@ $ sudo drafter-peer --netns ark1 --raddr '' --laddr '' --devices '[
     "maxDirtyBlocks": 200,
     "minCycles": 5,
     "maxCycles": 20,
-    "cycleThrottle": 500000000
+    "cycleThrottle": 500000000,
+    "makeMigratable": true,
+    "shared": false
   },
   {
     "name": "oci",
@@ -630,7 +664,9 @@ $ sudo drafter-peer --netns ark1 --raddr '' --laddr '' --devices '[
     "maxDirtyBlocks": 200,
     "minCycles": 5,
     "maxCycles": 20,
-    "cycleThrottle": 500000000
+    "cycleThrottle": 500000000,
+    "makeMigratable": true,
+    "shared": false
   }
 ]'
 ```
@@ -686,7 +722,9 @@ $ sudo drafter-peer --netns ark0 --raddr '' --laddr 'localhost:1337' --devices '
     "maxDirtyBlocks": 200,
     "minCycles": 5,
     "maxCycles": 20,
-    "cycleThrottle": 500000000
+    "cycleThrottle": 500000000,
+    "makeMigratable": true,
+    "shared": false
   },
   {
     "name": "memory",
@@ -698,7 +736,9 @@ $ sudo drafter-peer --netns ark0 --raddr '' --laddr 'localhost:1337' --devices '
     "maxDirtyBlocks": 200,
     "minCycles": 5,
     "maxCycles": 20,
-    "cycleThrottle": 500000000
+    "cycleThrottle": 500000000,
+    "makeMigratable": true,
+    "shared": false
   },
   {
     "name": "kernel",
@@ -710,7 +750,9 @@ $ sudo drafter-peer --netns ark0 --raddr '' --laddr 'localhost:1337' --devices '
     "maxDirtyBlocks": 200,
     "minCycles": 5,
     "maxCycles": 20,
-    "cycleThrottle": 500000000
+    "cycleThrottle": 500000000,
+    "makeMigratable": true,
+    "shared": false
   },
   {
     "name": "disk",
@@ -722,7 +764,9 @@ $ sudo drafter-peer --netns ark0 --raddr '' --laddr 'localhost:1337' --devices '
     "maxDirtyBlocks": 200,
     "minCycles": 5,
     "maxCycles": 20,
-    "cycleThrottle": 500000000
+    "cycleThrottle": 500000000,
+    "makeMigratable": true,
+    "shared": false
   },
   {
     "name": "config",
@@ -734,7 +778,9 @@ $ sudo drafter-peer --netns ark0 --raddr '' --laddr 'localhost:1337' --devices '
     "maxDirtyBlocks": 200,
     "minCycles": 5,
     "maxCycles": 20,
-    "cycleThrottle": 500000000
+    "cycleThrottle": 500000000,
+    "makeMigratable": true,
+    "shared": false
   },
   {
     "name": "oci",
@@ -746,7 +792,9 @@ $ sudo drafter-peer --netns ark0 --raddr '' --laddr 'localhost:1337' --devices '
     "maxDirtyBlocks": 200,
     "minCycles": 5,
     "maxCycles": 20,
-    "cycleThrottle": 500000000
+    "cycleThrottle": 500000000,
+    "makeMigratable": true,
+    "shared": false
   }
 ]'
 ```
@@ -776,7 +824,9 @@ $ sudo drafter-peer --netns ark1 --raddr 'localhost:1337' --laddr '' --devices '
     "maxDirtyBlocks": 200,
     "minCycles": 5,
     "maxCycles": 20,
-    "cycleThrottle": 500000000
+    "cycleThrottle": 500000000,
+    "makeMigratable": true,
+    "shared": false
   },
   {
     "name": "memory",
@@ -788,7 +838,9 @@ $ sudo drafter-peer --netns ark1 --raddr 'localhost:1337' --laddr '' --devices '
     "maxDirtyBlocks": 200,
     "minCycles": 5,
     "maxCycles": 20,
-    "cycleThrottle": 500000000
+    "cycleThrottle": 500000000,
+    "makeMigratable": true,
+    "shared": false
   },
   {
     "name": "kernel",
@@ -800,7 +852,9 @@ $ sudo drafter-peer --netns ark1 --raddr 'localhost:1337' --laddr '' --devices '
     "maxDirtyBlocks": 200,
     "minCycles": 5,
     "maxCycles": 20,
-    "cycleThrottle": 500000000
+    "cycleThrottle": 500000000,
+    "makeMigratable": true,
+    "shared": false
   },
   {
     "name": "disk",
@@ -812,7 +866,9 @@ $ sudo drafter-peer --netns ark1 --raddr 'localhost:1337' --laddr '' --devices '
     "maxDirtyBlocks": 200,
     "minCycles": 5,
     "maxCycles": 20,
-    "cycleThrottle": 500000000
+    "cycleThrottle": 500000000,
+    "makeMigratable": true,
+    "shared": false
   },
   {
     "name": "config",
@@ -824,7 +880,9 @@ $ sudo drafter-peer --netns ark1 --raddr 'localhost:1337' --laddr '' --devices '
     "maxDirtyBlocks": 200,
     "minCycles": 5,
     "maxCycles": 20,
-    "cycleThrottle": 500000000
+    "cycleThrottle": 500000000,
+    "makeMigratable": true,
+    "shared": false
   },
   {
     "name": "oci",
@@ -836,7 +894,9 @@ $ sudo drafter-peer --netns ark1 --raddr 'localhost:1337' --laddr '' --devices '
     "maxDirtyBlocks": 200,
     "minCycles": 5,
     "maxCycles": 20,
-    "cycleThrottle": 500000000
+    "cycleThrottle": 500000000,
+    "makeMigratable": true,
+    "shared": false
   }
 ]'
 ```
@@ -1018,14 +1078,20 @@ $ drafter-runner --help
 Usage of drafter-runner:
   -cgroup-version int
     	Cgroup version to use for Jailer (default 2)
-  -chroot-base-dir chroot
+  -chroot-base-dir string
     	chroot base directory (default "out/vms")
   -devices string
-    	Devices configuration (default "[{\"name\":\"state\",\"path\":\"out/package/state.bin\"},{\"name\":\"memory\",\"path\":\"out/package/memory.bin\"},{\"name\":\"kernel\",\"path\":\"out/package/vmlinux\"},{\"name\":\"disk\",\"path\":\"out/package/rootfs.ext4\"},{\"name\":\"config\",\"path\":\"out/package/config.json\"},{\"name\":\"oci\",\"path\":\"out/blueprint/oci.ext4\"}]")
+    	Devices configuration (default "[{\"name\":\"state\",\"path\":\"out/package/state.bin\",\"shared\":false},{\"name\":\"memory\",\"path\":\"out/package/memory.bin\",\"shared\":false},{\"name\":\"kernel\",\"path\":\"out/package/vmlinux\",\"shared\":false},{\"name\":\"disk\",\"path\":\"out/package/rootfs.ext4\",\"shared\":false},{\"name\":\"config\",\"path\":\"out/package/config.json\",\"shared\":false},{\"name\":\"oci\",\"path\":\"out/blueprint/oci.ext4\",\"shared\":false}]")
   -enable-input
     	Whether to enable VM stdin
   -enable-output
     	Whether to enable VM stdout and stderr (default true)
+  -experimental-map-private
+    	(Experimental) Whether to use MAP_PRIVATE for memory and state devices
+  -experimental-map-private-memory-output string
+    	(Experimental) Path to write the local changes to the shared memory to (leave empty to write back to device directly) (ignored unless --experimental-map-private)
+  -experimental-map-private-state-output string
+    	(Experimental) Path to write the local changes to the shared state to (leave empty to write back to device directly) (ignored unless --experimental-map-private)
   -firecracker-bin string
     	Firecracker binary (default "firecracker")
   -gid int
@@ -1040,8 +1106,6 @@ Usage of drafter-runner:
     	Maximum amount of time to wait for rescue operations (default 5s)
   -resume-timeout duration
     	Maximum amount of time to wait for agent and liveness to resume (default 1m0s)
-  -shared
-    	Whether to use MAP_SHARED for memory and state devices (default true)
   -uid int
     	User ID for the Firecracker process
 ```
@@ -1062,20 +1126,25 @@ Usage of drafter-registry:
 #### Peer
 
 ```shell
-$ drafter-peer --help
-Usage of drafter-peer:
+$ Usage of drafter-peer:
   -cgroup-version int
     	Cgroup version to use for Jailer (default 2)
-  -chroot-base-dir chroot
+  -chroot-base-dir string
     	chroot base directory (default "out/vms")
   -concurrency int
     	Number of concurrent workers to use in migrations (default 4096)
   -devices string
-    	Devices configuration (default "[{\"name\":\"state\",\"base\":\"out/package/state.bin\",\"overlay\":\"out/overlay/state.bin\",\"state\":\"out/state/state.bin\",\"blockSize\":65536,\"expiry\":1000000000,\"maxDirtyBlocks\":200,\"minCycles\":5,\"maxCycles\":20,\"cycleThrottle\":500000000},{\"name\":\"memory\",\"base\":\"out/package/memory.bin\",\"overlay\":\"out/overlay/memory.bin\",\"state\":\"out/state/memory.bin\",\"blockSize\":65536,\"expiry\":1000000000,\"maxDirtyBlocks\":200,\"minCycles\":5,\"maxCycles\":20,\"cycleThrottle\":500000000},{\"name\":\"kernel\",\"base\":\"out/package/vmlinux\",\"overlay\":\"out/overlay/vmlinux\",\"state\":\"out/state/vmlinux\",\"blockSize\":65536,\"expiry\":1000000000,\"maxDirtyBlocks\":200,\"minCycles\":5,\"maxCycles\":20,\"cycleThrottle\":500000000},{\"name\":\"disk\",\"base\":\"out/package/rootfs.ext4\",\"overlay\":\"out/overlay/rootfs.ext4\",\"state\":\"out/state/rootfs.ext4\",\"blockSize\":65536,\"expiry\":1000000000,\"maxDirtyBlocks\":200,\"minCycles\":5,\"maxCycles\":20,\"cycleThrottle\":500000000},{\"name\":\"config\",\"base\":\"out/package/config.json\",\"overlay\":\"out/overlay/config.json\",\"state\":\"out/state/config.json\",\"blockSize\":65536,\"expiry\":1000000000,\"maxDirtyBlocks\":200,\"minCycles\":5,\"maxCycles\":20,\"cycleThrottle\":500000000},{\"name\":\"oci\",\"base\":\"out/package/oci.ext4\",\"overlay\":\"out/overlay/oci.ext4\",\"state\":\"out/state/oci.ext4\",\"blockSize\":65536,\"expiry\":1000000000,\"maxDirtyBlocks\":200,\"minCycles\":5,\"maxCycles\":20,\"cycleThrottle\":500000000}]")
+    	Devices configuration (default "[{\"name\":\"state\",\"base\":\"out/package/state.bin\",\"overlay\":\"out/overlay/state.bin\",\"state\":\"out/state/state.bin\",\"blockSize\":65536,\"expiry\":1000000000,\"maxDirtyBlocks\":200,\"minCycles\":5,\"maxCycles\":20,\"cycleThrottle\":500000000,\"makeMigratable\":true,\"shared\":false},{\"name\":\"memory\",\"base\":\"out/package/memory.bin\",\"overlay\":\"out/overlay/memory.bin\",\"state\":\"out/state/memory.bin\",\"blockSize\":65536,\"expiry\":1000000000,\"maxDirtyBlocks\":200,\"minCycles\":5,\"maxCycles\":20,\"cycleThrottle\":500000000,\"makeMigratable\":true,\"shared\":false},{\"name\":\"kernel\",\"base\":\"out/package/vmlinux\",\"overlay\":\"out/overlay/vmlinux\",\"state\":\"out/state/vmlinux\",\"blockSize\":65536,\"expiry\":1000000000,\"maxDirtyBlocks\":200,\"minCycles\":5,\"maxCycles\":20,\"cycleThrottle\":500000000,\"makeMigratable\":true,\"shared\":false},{\"name\":\"disk\",\"base\":\"out/package/rootfs.ext4\",\"overlay\":\"out/overlay/rootfs.ext4\",\"state\":\"out/state/rootfs.ext4\",\"blockSize\":65536,\"expiry\":1000000000,\"maxDirtyBlocks\":200,\"minCycles\":5,\"maxCycles\":20,\"cycleThrottle\":500000000,\"makeMigratable\":true,\"shared\":false},{\"name\":\"config\",\"base\":\"out/package/config.json\",\"overlay\":\"out/overlay/config.json\",\"state\":\"out/state/config.json\",\"blockSize\":65536,\"expiry\":1000000000,\"maxDirtyBlocks\":200,\"minCycles\":5,\"maxCycles\":20,\"cycleThrottle\":500000000,\"makeMigratable\":true,\"shared\":false},{\"name\":\"oci\",\"base\":\"out/package/oci.ext4\",\"overlay\":\"out/overlay/oci.ext4\",\"state\":\"out/state/oci.ext4\",\"blockSize\":65536,\"expiry\":1000000000,\"maxDirtyBlocks\":200,\"minCycles\":5,\"maxCycles\":20,\"cycleThrottle\":500000000,\"makeMigratable\":true,\"shared\":false}]")
   -enable-input
     	Whether to enable VM stdin
   -enable-output
     	Whether to enable VM stdout and stderr (default true)
+  -experimental-map-private
+    	(Experimental) Whether to use MAP_PRIVATE for memory and state devices
+  -experimental-map-private-memory-output string
+    	(Experimental) Path to write the local changes to the shared memory to (leave empty to write back to device directly) (ignored unless --experimental-map-private)
+  -experimental-map-private-state-output string
+    	(Experimental) Path to write the local changes to the shared state to (leave empty to write back to device directly) (ignored unless --experimental-map-private)
   -firecracker-bin string
     	Firecracker binary (default "firecracker")
   -gid int
@@ -1094,8 +1163,6 @@ Usage of drafter-peer:
     	Maximum amount of time to wait for rescue operations (default 1m0s)
   -resume-timeout duration
     	Maximum amount of time to wait for agent and liveness to resume (default 1m0s)
-  -shared
-    	Whether to use MAP_SHARED for memory and state devices (default true)
   -uid int
     	User ID for the Firecracker process
 ```

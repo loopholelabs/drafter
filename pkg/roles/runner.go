@@ -265,7 +265,7 @@ func StartRunner(
 				}
 			}
 
-			if !snapshotLoadConfiguration.ExperimentalMapPrivate {
+			if snapshotLoadConfiguration.ExperimentalMapPrivate {
 				if err := server.Close(); err != nil {
 					return errors.Join(ErrCouldNotCloseServer, err)
 				}

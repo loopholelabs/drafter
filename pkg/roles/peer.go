@@ -86,6 +86,8 @@ type MigrateFromDevice struct {
 	State   string `json:"state"`
 
 	BlockSize uint32 `json:"blockSize"`
+
+	Shared bool `json:"shared"`
 }
 
 type MigrateFromHooks struct {

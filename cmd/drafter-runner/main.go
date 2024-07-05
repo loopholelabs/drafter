@@ -247,35 +247,35 @@ func main() {
 			}
 		}()
 
-		file := ""
+		devicePath := ""
 		if device.Shared {
-			file = device.Path
+			devicePath = device.Path
 		} else {
 			mnt := utils.NewLoopMount(device.Path)
 
 			defer mnt.Close()
-			file, err = mnt.Open()
+			devicePath, err = mnt.Open()
 			if err != nil {
 				panic(err)
 			}
 		}
 
-		log.Println("Exposed local device", index, "at", file)
+		log.Println("Exposed local device", index, "at", devicePath)
 
-		info, err := os.Stat(file)
+		deviceInfo, err := os.Stat(devicePath)
 		if err != nil {
 			panic(err)
 		}
 
-		stat, ok := info.Sys().(*syscall.Stat_t)
+		deviceStat, ok := deviceInfo.Sys().(*syscall.Stat_t)
 		if !ok {
 			panic(roles.ErrCouldNotGetDeviceStat)
 		}
 
-		major := uint64(stat.Rdev / 256)
-		minor := uint64(stat.Rdev % 256)
+		deviceMajor := uint64(deviceStat.Rdev / 256)
+		deviceMinor := uint64(deviceStat.Rdev % 256)
 
-		dev := int((major << 8) | minor)
+		deviceID := int((deviceMajor << 8) | deviceMinor)
 
 		select {
 		case <-ctx.Done():
@@ -286,7 +286,7 @@ func main() {
 			return
 
 		default:
-			if err := unix.Mknod(filepath.Join(runner.VMPath, device.Name), unix.S_IFBLK|0666, dev); err != nil {
+			if err := unix.Mknod(filepath.Join(runner.VMPath, device.Name), unix.S_IFBLK|0666, deviceID); err != nil {
 				panic(err)
 			}
 		}
