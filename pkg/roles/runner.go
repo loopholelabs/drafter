@@ -55,6 +55,13 @@ type PackageConfiguration struct {
 	AgentVSockPort uint32 `json:"agentVSockPort"`
 }
 
+type SnapshotLoadConfiguration struct {
+	ExperimentalMapPrivate bool
+
+	ExperimentalMapPrivateStateOutput  string
+	ExperimentalMapPrivateMemoryOutput string
+}
+
 type Runner struct {
 	VMPath string
 
@@ -68,10 +75,7 @@ type Runner struct {
 		rescueTimeout time.Duration,
 		agentVSockPort uint32,
 
-		mapShared bool,
-
-		sharedStateOutput,
-		sharedMemoryOutput string,
+		snapshotLoadConfiguration SnapshotLoadConfiguration,
 	) (
 		resumedRunner *ResumedRunner,
 
@@ -210,10 +214,7 @@ func StartRunner(
 		rescueTimeout time.Duration,
 		agentVSockPort uint32,
 
-		mapShared bool,
-
-		sharedStateOutput,
-		sharedMemoryOutput string,
+		snapshotLoadConfiguration SnapshotLoadConfiguration,
 	) (
 		resumedRunner *ResumedRunner,
 
@@ -235,20 +236,7 @@ func StartRunner(
 				stateCopyName  = shortuuid.New()
 				memoryCopyName = shortuuid.New()
 			)
-			if mapShared {
-				if err := firecracker.CreateSnapshot(
-					ctx,
-
-					firecrackerClient,
-
-					stateName,
-					"",
-
-					firecracker.SnapshotTypeMsyncAndState,
-				); err != nil {
-					return errors.Join(ErrCouldNotCreateSnapshot, err)
-				}
-			} else {
+			if snapshotLoadConfiguration.ExperimentalMapPrivate {
 				if err := firecracker.CreateSnapshot(
 					ctx,
 
@@ -262,9 +250,22 @@ func StartRunner(
 				); err != nil {
 					return errors.Join(ErrCouldNotCreateSnapshot, err)
 				}
+			} else {
+				if err := firecracker.CreateSnapshot(
+					ctx,
+
+					firecrackerClient,
+
+					stateName,
+					"",
+
+					firecracker.SnapshotTypeMsyncAndState,
+				); err != nil {
+					return errors.Join(ErrCouldNotCreateSnapshot, err)
+				}
 			}
 
-			if !mapShared {
+			if !snapshotLoadConfiguration.ExperimentalMapPrivate {
 				if err := server.Close(); err != nil {
 					return errors.Join(ErrCouldNotCloseServer, err)
 				}
@@ -274,8 +275,8 @@ func StartRunner(
 				}
 
 				for _, device := range [][3]string{
-					{stateName, stateCopyName, sharedStateOutput},
-					{memoryName, memoryCopyName, sharedMemoryOutput},
+					{stateName, stateCopyName, snapshotLoadConfiguration.ExperimentalMapPrivateStateOutput},
+					{memoryName, memoryCopyName, snapshotLoadConfiguration.ExperimentalMapPrivateMemoryOutput},
 				} {
 					inputFile, err := os.Open(filepath.Join(server.VMPath, device[1]))
 					if err != nil {
@@ -390,7 +391,7 @@ func StartRunner(
 				stateName,
 				memoryName,
 
-				mapShared,
+				!snapshotLoadConfiguration.ExperimentalMapPrivate,
 			); err != nil {
 				panic(errors.Join(ErrCouldNotResumeSnapshot, err))
 			}
@@ -436,7 +437,7 @@ func StartRunner(
 		}
 
 		resumedRunner.Msync = func(ctx context.Context) error {
-			if mapShared {
+			if !snapshotLoadConfiguration.ExperimentalMapPrivate {
 				if err := firecracker.CreateSnapshot(
 					ctx,
 

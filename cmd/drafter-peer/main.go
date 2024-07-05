@@ -58,10 +58,9 @@ func main() {
 	numaNode := flag.Int("numa-node", 0, "NUMA node to run Firecracker in")
 	cgroupVersion := flag.Int("cgroup-version", 2, "Cgroup version to use for Jailer")
 
-	mapShared := flag.Bool("map-shared", true, "Whether to use MAP_SHARED for memory and state devices")
-
-	sharedStateOutput := flag.String("shared-state-output", "", "Path to write the local changes to the shared state to (leave empty to write back to device directly) (ignored if --map-shared=true)")
-	sharedMemoryOutput := flag.String("shared-memory-output", "", "Path to write the local changes to the shared memory to (leave empty to write back to device directly) (ignored if --map-shared=true)")
+	experimentalMapPrivate := flag.Bool("experimental-map-private", false, "(Experimental) Whether to use MAP_PRIVATE for memory and state devices")
+	experimentalMapPrivateStateOutput := flag.String("experimental-map-private-state-output", "", "(Experimental) Path to write the local changes to the shared state to (leave empty to write back to device directly) (ignored unless --experimental-map-private)")
+	experimentalMapPrivateMemoryOutput := flag.String("experimental-map-private-memory-output", "", "(Experimental) Path to write the local changes to the shared memory to (leave empty to write back to device directly) (ignored unless --experimental-map-private)")
 
 	defaultDevices, err := json.Marshal([]CompositeDevices{
 		{
@@ -397,10 +396,12 @@ func main() {
 		*resumeTimeout,
 		*rescueTimeout,
 
-		*mapShared,
+		roles.SnapshotLoadConfiguration{
+			ExperimentalMapPrivate: *experimentalMapPrivate,
 
-		*sharedStateOutput,
-		*sharedMemoryOutput,
+			ExperimentalMapPrivateStateOutput:  *experimentalMapPrivateStateOutput,
+			ExperimentalMapPrivateMemoryOutput: *experimentalMapPrivateMemoryOutput,
+		},
 	)
 
 	if err != nil {

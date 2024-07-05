@@ -1180,12 +1180,6 @@ Drafter doesn't work with OCI images; instead, it works directly with [OCI runti
 
 Drafter doesn't concern itself with the actual process of building the underlying VM images aside from this simple build tooling. This is because it also supports starting any other Linux distribution without any OCI integration, such as a Valkey instance running directly in the guest operating system, or running a full-fledged Docker daemon in the guest. If you're looking for a more advanced and streamlined process, like streaming conversion and startup of OCI images, a way to replicate/distribute packages or a build service, check out [Loophole Labs Architect](https://architect.run/).
 
-### Can I Share Memory Between Instances?
-
-`drafter-runner` and `drafter-peer` support the `--map-shared` flag. By default, it is set to `true`, which means that snapshots are `mmap`ed with `MAP_SHARED`. This allows for fast live-migration support with our [custom optimized Firecracker fork](https://github.com/loopholelabs/firecracker), since changes to the memory region can be automatically detected and sent to the destination peer of a live migration without having to flush the entire snapshot to the Silo storage device. The drawback of this is that each VM instance needs to have its own Silo storage device, which means that [sharing of unchanged memory pages between multiple VM instances](https://github.com/firecracker-microvm/firecracker/blob/main/docs/snapshotting/snapshot-support.md#overview) is no longer possible.
-
-To mitigate this for advanced use cases where running multiple virtual machines locally is more important than having fast live migration support, if you pass the `--map-shared` flag, snapshots are `mmap`ed with `MAP_PRIVATE`. This allows memory page sharing between multiple VM instances, but prevents tracking changes to the memory region and continuously syncing them to the destination peer of a live migration. Instead, they have to be flushed to the Silo storage device all at once, which can take multiple seconds compared to a few milliseconds for `--map-shared=true` depending on how much memory is allocated to the VM instance.
-
 ## Acknowledgements
 
 - [Loophole Labs Silo](https://github.com/loopholelabs/silo) provides the storage and data migration framework.
