@@ -691,71 +691,76 @@ func StartPeer(
 					}
 				}
 
-				stat, err := os.Stat(input.Base)
-				if err != nil {
-					return errors.Join(ErrCouldNotGetBaseDeviceStat, err)
-				}
-
-				var (
-					local  storage.StorageProvider
-					device storage.ExposedStorage
-				)
-				if strings.TrimSpace(input.Overlay) == "" || strings.TrimSpace(input.State) == "" {
-					local, device, err = sdevice.NewDevice(&sconfig.DeviceSchema{
-						Name:      input.Name,
-						System:    "file",
-						Location:  input.Base,
-						Size:      fmt.Sprintf("%v", stat.Size()),
-						BlockSize: fmt.Sprintf("%v", input.BlockSize),
-						Expose:    true,
-					})
+				devicePath := ""
+				if input.Shared {
+					devicePath = input.Base
 				} else {
-					if err := os.MkdirAll(filepath.Dir(input.Overlay), os.ModePerm); err != nil {
-						return errors.Join(ErrCouldNotCreateOverlayDirectory, err)
+					stat, err := os.Stat(input.Base)
+					if err != nil {
+						return errors.Join(ErrCouldNotGetBaseDeviceStat, err)
 					}
 
-					if err := os.MkdirAll(filepath.Dir(input.State), os.ModePerm); err != nil {
-						return errors.Join(ErrCouldNotCreateStateDirectory, err)
-					}
+					var (
+						local  storage.StorageProvider
+						device storage.ExposedStorage
+					)
+					if strings.TrimSpace(input.Overlay) == "" || strings.TrimSpace(input.State) == "" {
+						local, device, err = sdevice.NewDevice(&sconfig.DeviceSchema{
+							Name:      input.Name,
+							System:    "file",
+							Location:  input.Base,
+							Size:      fmt.Sprintf("%v", stat.Size()),
+							BlockSize: fmt.Sprintf("%v", input.BlockSize),
+							Expose:    true,
+						})
+					} else {
+						if err := os.MkdirAll(filepath.Dir(input.Overlay), os.ModePerm); err != nil {
+							return errors.Join(ErrCouldNotCreateOverlayDirectory, err)
+						}
 
-					local, device, err = sdevice.NewDevice(&sconfig.DeviceSchema{
-						Name:      input.Name,
-						System:    "sparsefile",
-						Location:  input.Overlay,
-						Size:      fmt.Sprintf("%v", stat.Size()),
-						BlockSize: fmt.Sprintf("%v", input.BlockSize),
-						Expose:    true,
-						ROSource: &sconfig.DeviceSchema{
-							Name:     input.State,
-							System:   "file",
-							Location: input.Base,
-							Size:     fmt.Sprintf("%v", stat.Size()),
-						},
+						if err := os.MkdirAll(filepath.Dir(input.State), os.ModePerm); err != nil {
+							return errors.Join(ErrCouldNotCreateStateDirectory, err)
+						}
+
+						local, device, err = sdevice.NewDevice(&sconfig.DeviceSchema{
+							Name:      input.Name,
+							System:    "sparsefile",
+							Location:  input.Overlay,
+							Size:      fmt.Sprintf("%v", stat.Size()),
+							BlockSize: fmt.Sprintf("%v", input.BlockSize),
+							Expose:    true,
+							ROSource: &sconfig.DeviceSchema{
+								Name:     input.State,
+								System:   "file",
+								Location: input.Base,
+								Size:     fmt.Sprintf("%v", stat.Size()),
+							},
+						})
+					}
+					if err != nil {
+						return errors.Join(ErrCouldNotCreateLocalDevice, err)
+					}
+					addDefer(local.Close)
+					addDefer(device.Shutdown)
+
+					device.SetProvider(local)
+
+					stage2InputsLock.Lock()
+					stage2Inputs = append(stage2Inputs, peerStage2{
+						name: input.Name,
+
+						blockSize: input.BlockSize,
+
+						id:     uint32(index),
+						remote: false,
+
+						storage: local,
+						device:  device,
 					})
+					stage2InputsLock.Unlock()
+
+					devicePath = filepath.Join("/dev", device.Device())
 				}
-				if err != nil {
-					return errors.Join(ErrCouldNotCreateLocalDevice, err)
-				}
-				addDefer(local.Close)
-				addDefer(device.Shutdown)
-
-				device.SetProvider(local)
-
-				stage2InputsLock.Lock()
-				stage2Inputs = append(stage2Inputs, peerStage2{
-					name: input.Name,
-
-					blockSize: input.BlockSize,
-
-					id:     uint32(index),
-					remote: false,
-
-					storage: local,
-					device:  device,
-				})
-				stage2InputsLock.Unlock()
-
-				devicePath := filepath.Join("/dev", device.Device())
 
 				deviceInfo, err := os.Stat(devicePath)
 				if err != nil {
