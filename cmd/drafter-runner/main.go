@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"flag"
 	"log"
 	"os"
@@ -19,38 +18,46 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-var (
-	errConfigFileNotFound = errors.New("config file not found")
-)
+type SharableDevice struct {
+	Name   string `json:"name"`
+	Path   string `json:"path"`
+	Shared bool   `json:"shared"`
+}
 
 func main() {
-	defaultDevices, err := json.Marshal([]roles.PackagerDevice{
+	defaultDevices, err := json.Marshal([]SharableDevice{
 		{
-			Name: roles.StateName,
-			Path: filepath.Join("out", "package", "state.bin"),
+			Name:   roles.StateName,
+			Path:   filepath.Join("out", "package", "state.bin"),
+			Shared: false,
 		},
 		{
-			Name: roles.MemoryName,
-			Path: filepath.Join("out", "package", "memory.bin"),
-		},
-
-		{
-			Name: roles.KernelName,
-			Path: filepath.Join("out", "package", "vmlinux"),
-		},
-		{
-			Name: roles.DiskName,
-			Path: filepath.Join("out", "package", "rootfs.ext4"),
+			Name:   roles.MemoryName,
+			Path:   filepath.Join("out", "package", "memory.bin"),
+			Shared: false,
 		},
 
 		{
-			Name: roles.ConfigName,
-			Path: filepath.Join("out", "package", "config.json"),
+			Name:   roles.KernelName,
+			Path:   filepath.Join("out", "package", "vmlinux"),
+			Shared: false,
+		},
+		{
+			Name:   roles.DiskName,
+			Path:   filepath.Join("out", "package", "rootfs.ext4"),
+			Shared: false,
 		},
 
 		{
-			Name: "oci",
-			Path: filepath.Join("out", "blueprint", "oci.ext4"),
+			Name:   roles.ConfigName,
+			Path:   filepath.Join("out", "package", "config.json"),
+			Shared: false,
+		},
+
+		{
+			Name:   "oci",
+			Path:   filepath.Join("out", "blueprint", "oci.ext4"),
+			Shared: false,
 		},
 	})
 	if err != nil {
@@ -85,7 +92,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	var devices []roles.PackagerDevice
+	var devices []SharableDevice
 	if err := json.Unmarshal([]byte(*rawDevices), &devices); err != nil {
 		panic(err)
 	}
@@ -214,7 +221,9 @@ func main() {
 		}
 	})
 
-	for _, device := range devices {
+	for index, device := range devices {
+		log.Println("Requested local device", index, "with name", device.Name)
+
 		defer func() {
 			defer handlePanics(true)()
 
@@ -236,13 +245,20 @@ func main() {
 			}
 		}()
 
-		mnt := utils.NewLoopMount(device.Path)
+		var file string
+		if device.Shared {
+			file = device.Path
+		} else {
+			mnt := utils.NewLoopMount(device.Path)
 
-		defer mnt.Close()
-		file, err := mnt.Open()
-		if err != nil {
-			panic(err)
+			defer mnt.Close()
+			file, err = mnt.Open()
+			if err != nil {
+				panic(err)
+			}
 		}
+
+		log.Println("Exposed local device", index, "at", file)
 
 		info, err := os.Stat(file)
 		if err != nil {
