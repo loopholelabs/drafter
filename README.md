@@ -1017,31 +1017,33 @@ Usage of drafter-packager:
 $ drafter-runner --help
 Usage of drafter-runner:
   -cgroup-version int
-        Cgroup version to use for Jailer (default 2)
-  -chroot-base-dir string
-        chroot base directory (default "out/vms")
+    	Cgroup version to use for Jailer (default 2)
+  -chroot-base-dir chroot
+    	chroot base directory (default "out/vms")
   -devices string
-        Devices configuration (default "[{\"name\":\"state\",\"path\":\"out/package/state.bin\"},{\"name\":\"memory\",\"path\":\"out/package/memory.bin\"},{\"name\":\"kernel\",\"path\":\"out/package/vmlinux\"},{\"name\":\"disk\",\"path\":\"out/package/rootfs.ext4\"},{\"name\":\"config\",\"path\":\"out/package/config.json\"},{\"name\":\"oci\",\"path\":\"out/blueprint/oci.ext4\"}]")
+    	Devices configuration (default "[{\"name\":\"state\",\"path\":\"out/package/state.bin\"},{\"name\":\"memory\",\"path\":\"out/package/memory.bin\"},{\"name\":\"kernel\",\"path\":\"out/package/vmlinux\"},{\"name\":\"disk\",\"path\":\"out/package/rootfs.ext4\"},{\"name\":\"config\",\"path\":\"out/package/config.json\"},{\"name\":\"oci\",\"path\":\"out/blueprint/oci.ext4\"}]")
   -enable-input
-        Whether to enable VM stdin
+    	Whether to enable VM stdin
   -enable-output
-        Whether to enable VM stdout and stderr (default true)
+    	Whether to enable VM stdout and stderr (default true)
   -firecracker-bin string
-        Firecracker binary (default "firecracker")
+    	Firecracker binary (default "firecracker")
   -gid int
-        Group ID for the Firecracker process
+    	Group ID for the Firecracker process
   -jailer-bin string
-        Jailer binary (from Firecracker) (default "jailer")
+    	Jailer binary (from Firecracker) (default "jailer")
   -netns string
-        Network namespace to run Firecracker in (default "ark0")
+    	Network namespace to run Firecracker in (default "ark0")
   -numa-node int
-        NUMA node to run Firecracker in
+    	NUMA node to run Firecracker in
   -rescue-timeout duration
-        Maximum amount of time to wait for rescue operations (default 5s)
+    	Maximum amount of time to wait for rescue operations (default 5s)
   -resume-timeout duration
-        Maximum amount of time to wait for agent and liveness to resume (default 1m0s)
+    	Maximum amount of time to wait for agent and liveness to resume (default 1m0s)
+  -shared
+    	Whether to use MAP_SHARED for memory and state devices (default true)
   -uid int
-        User ID for the Firecracker process
+    	User ID for the Firecracker process
 ```
 
 #### Registry
@@ -1063,37 +1065,39 @@ Usage of drafter-registry:
 $ drafter-peer --help
 Usage of drafter-peer:
   -cgroup-version int
-        Cgroup version to use for Jailer (default 2)
-  -chroot-base-dir string
-        chroot base directory (default "out/vms")
+    	Cgroup version to use for Jailer (default 2)
+  -chroot-base-dir chroot
+    	chroot base directory (default "out/vms")
   -concurrency int
-        Number of concurrent workers to use in migrations (default 4096)
+    	Number of concurrent workers to use in migrations (default 4096)
   -devices string
-        Devices configuration (default "[{\"name\":\"state\",\"base\":\"out/package/state.bin\",\"overlay\":\"out/overlay/state.bin\",\"state\":\"out/state/state.bin\",\"blockSize\":65536,\"expiry\":1000000000,\"maxDirtyBlocks\":200,\"minCycles\":5,\"maxCycles\":20,\"cycleThrottle\":500000000},{\"name\":\"memory\",\"base\":\"out/package/memory.bin\",\"overlay\":\"out/overlay/memory.bin\",\"state\":\"out/state/memory.bin\",\"blockSize\":65536,\"expiry\":1000000000,\"maxDirtyBlocks\":200,\"minCycles\":5,\"maxCycles\":20,\"cycleThrottle\":500000000},{\"name\":\"kernel\",\"base\":\"out/package/vmlinux\",\"overlay\":\"out/overlay/vmlinux\",\"state\":\"out/state/vmlinux\",\"blockSize\":65536,\"expiry\":1000000000,\"maxDirtyBlocks\":200,\"minCycles\":5,\"maxCycles\":20,\"cycleThrottle\":500000000},{\"name\":\"disk\",\"base\":\"out/package/rootfs.ext4\",\"overlay\":\"out/overlay/rootfs.ext4\",\"state\":\"out/state/rootfs.ext4\",\"blockSize\":65536,\"expiry\":1000000000,\"maxDirtyBlocks\":200,\"minCycles\":5,\"maxCycles\":20,\"cycleThrottle\":500000000},{\"name\":\"config\",\"base\":\"out/package/config.json\",\"overlay\":\"out/overlay/config.json\",\"state\":\"out/state/config.json\",\"blockSize\":65536,\"expiry\":1000000000,\"maxDirtyBlocks\":200,\"minCycles\":5,\"maxCycles\":20,\"cycleThrottle\":500000000},{\"name\":\"oci\",\"base\":\"out/package/oci.ext4\",\"overlay\":\"out/overlay/oci.ext4\",\"state\":\"out/state/oci.ext4\",\"blockSize\":65536,\"expiry\":1000000000,\"maxDirtyBlocks\":200,\"minCycles\":5,\"maxCycles\":20,\"cycleThrottle\":500000000}]")
+    	Devices configuration (default "[{\"name\":\"state\",\"base\":\"out/package/state.bin\",\"overlay\":\"out/overlay/state.bin\",\"state\":\"out/state/state.bin\",\"blockSize\":65536,\"expiry\":1000000000,\"maxDirtyBlocks\":200,\"minCycles\":5,\"maxCycles\":20,\"cycleThrottle\":500000000},{\"name\":\"memory\",\"base\":\"out/package/memory.bin\",\"overlay\":\"out/overlay/memory.bin\",\"state\":\"out/state/memory.bin\",\"blockSize\":65536,\"expiry\":1000000000,\"maxDirtyBlocks\":200,\"minCycles\":5,\"maxCycles\":20,\"cycleThrottle\":500000000},{\"name\":\"kernel\",\"base\":\"out/package/vmlinux\",\"overlay\":\"out/overlay/vmlinux\",\"state\":\"out/state/vmlinux\",\"blockSize\":65536,\"expiry\":1000000000,\"maxDirtyBlocks\":200,\"minCycles\":5,\"maxCycles\":20,\"cycleThrottle\":500000000},{\"name\":\"disk\",\"base\":\"out/package/rootfs.ext4\",\"overlay\":\"out/overlay/rootfs.ext4\",\"state\":\"out/state/rootfs.ext4\",\"blockSize\":65536,\"expiry\":1000000000,\"maxDirtyBlocks\":200,\"minCycles\":5,\"maxCycles\":20,\"cycleThrottle\":500000000},{\"name\":\"config\",\"base\":\"out/package/config.json\",\"overlay\":\"out/overlay/config.json\",\"state\":\"out/state/config.json\",\"blockSize\":65536,\"expiry\":1000000000,\"maxDirtyBlocks\":200,\"minCycles\":5,\"maxCycles\":20,\"cycleThrottle\":500000000},{\"name\":\"oci\",\"base\":\"out/package/oci.ext4\",\"overlay\":\"out/overlay/oci.ext4\",\"state\":\"out/state/oci.ext4\",\"blockSize\":65536,\"expiry\":1000000000,\"maxDirtyBlocks\":200,\"minCycles\":5,\"maxCycles\":20,\"cycleThrottle\":500000000}]")
   -enable-input
-        Whether to enable VM stdin
+    	Whether to enable VM stdin
   -enable-output
-        Whether to enable VM stdout and stderr (default true)
+    	Whether to enable VM stdout and stderr (default true)
   -firecracker-bin string
-        Firecracker binary (default "firecracker")
+    	Firecracker binary (default "firecracker")
   -gid int
-        Group ID for the Firecracker process
+    	Group ID for the Firecracker process
   -jailer-bin string
-        Jailer binary (from Firecracker) (default "jailer")
+    	Jailer binary (from Firecracker) (default "jailer")
   -laddr string
-        Local address to listen on (leave empty to disable) (default "localhost:1337")
+    	Local address to listen on (leave empty to disable) (default "localhost:1337")
   -netns string
-        Network namespace to run Firecracker in (default "ark0")
+    	Network namespace to run Firecracker in (default "ark0")
   -numa-node int
-        NUMA node to run Firecracker in
+    	NUMA node to run Firecracker in
   -raddr string
-        Remote address to connect to (leave empty to disable) (default "localhost:1337")
+    	Remote address to connect to (leave empty to disable) (default "localhost:1337")
   -rescue-timeout duration
-        Maximum amount of time to wait for rescue operations (default 1m0s)
+    	Maximum amount of time to wait for rescue operations (default 1m0s)
   -resume-timeout duration
-        Maximum amount of time to wait for agent and liveness to resume (default 1m0s)
+    	Maximum amount of time to wait for agent and liveness to resume (default 1m0s)
+  -shared
+    	Whether to use MAP_SHARED for memory and state devices (default true)
   -uid int
-        User ID for the Firecracker process
+    	User ID for the Firecracker process
 ```
 
 #### Terminator
@@ -1175,6 +1179,12 @@ Drafter doesn't concern itself with networking aside from its simple NAT and por
 Drafter doesn't work with OCI images; instead, it works directly with [OCI runtime bundles](https://github.com/opencontainers/runtime-spec/blob/main/bundle.md), which can be created from an OCI image with commands such as `podman create` or `umoci unpack`. These OCI runtime bundles are then copied to an EXT4 file system and passed to an OCI runtime in the guest VM. Drafter includes a minimal implementation of the OCI image to OCI runtime bundle conversion process (see [Building a VM Blueprint Locally](#building-a-vm-blueprint-locally)) and utility targets such as `make unpack/oci` and `make pack/oci`, which allow you to unpack an OCI image to an OCI runtime bundle, adjust the OCI `config.json` file (at `out/oci-runtime-bundle/config.json`), and then pack the OCI image to an EXT4 file system.
 
 Drafter doesn't concern itself with the actual process of building the underlying VM images aside from this simple build tooling. This is because it also supports starting any other Linux distribution without any OCI integration, such as a Valkey instance running directly in the guest operating system, or running a full-fledged Docker daemon in the guest. If you're looking for a more advanced and streamlined process, like streaming conversion and startup of OCI images, a way to replicate/distribute packages or a build service, check out [Loophole Labs Architect](https://architect.run/).
+
+### Can I Share Memory Between Instances?
+
+`drafter-runner` and `drafter-peer` support the `--shared` flag. By default, it is set to `true`, which means that snapshots are `mmap`ed with `MAP_SHARED`. This allows for fast live-migration support with our [custom optimized Firecracker fork](https://github.com/loopholelabs/firecracker), since changes to the memory region can be automatically detected and sent to the destination peer of a live migration without having to flush the entire snapshot to the Silo storage device. The drawback of this is that each VM instance needs to have its own Silo storage device, which means that [sharing of unchanged memory pages between multiple VM instances](https://github.com/firecracker-microvm/firecracker/blob/main/docs/snapshotting/snapshot-support.md#overview) is no longer possible.
+
+To mitigate this for advanced use cases where running multiple virtual machines locally is more important than having fast live migration support, if you pass the `--shared` flag, snapshots are `mmap`ed with `MAP_PRIVATE`. This allows memory page sharing between multiple VM instances, but prevents tracking changes to the memory region and continuously syncing them to the destination peer of a live migration. Instead, they have to be flushed to the Silo storage device all at once, which can take multiple seconds compared to a few milliseconds for `--shared=true` depending on how much memory is allocated to the VM instance.
 
 ## Acknowledgements
 
