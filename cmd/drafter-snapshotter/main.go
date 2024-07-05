@@ -19,7 +19,7 @@ func main() {
 	rawFirecrackerBin := flag.String("firecracker-bin", "firecracker", "Firecracker binary")
 	rawJailerBin := flag.String("jailer-bin", "jailer", "Jailer binary (from Firecracker)")
 
-	chrootBaseDir := flag.String("chroot-base-dir", filepath.Join("out", "vms"), "`chroot` base directory")
+	chrootBaseDir := flag.String("chroot-base-dir", filepath.Join("out", "vms"), "chroot base directory")
 
 	uid := flag.Int("uid", 0, "User ID for the Firecracker process")
 	gid := flag.Int("gid", 0, "Group ID for the Firecracker process")

@@ -42,7 +42,7 @@ func main() {
 	rawFirecrackerBin := flag.String("firecracker-bin", "firecracker", "Firecracker binary")
 	rawJailerBin := flag.String("jailer-bin", "jailer", "Jailer binary (from Firecracker)")
 
-	chrootBaseDir := flag.String("chroot-base-dir", filepath.Join("out", "vms"), "`chroot` base directory")
+	chrootBaseDir := flag.String("chroot-base-dir", filepath.Join("out", "vms"), "chroot base directory")
 
 	uid := flag.Int("uid", 0, "User ID for the Firecracker process")
 	gid := flag.Int("gid", 0, "Group ID for the Firecracker process")
@@ -58,7 +58,10 @@ func main() {
 	numaNode := flag.Int("numa-node", 0, "NUMA node to run Firecracker in")
 	cgroupVersion := flag.Int("cgroup-version", 2, "Cgroup version to use for Jailer")
 
-	shared := flag.Bool("shared", true, "Whether to use MAP_SHARED for memory and state devices")
+	mapShared := flag.Bool("map-shared", true, "Whether to use MAP_SHARED for memory and state devices")
+
+	stateOutput := flag.String("state-output", "", "Path to write the changed state to (leave empty to write back to device directly) (ignored if `--map-shared=true`)")
+	memoryOutput := flag.String("memory-output", "", "Path to write the changed memory to (leave empty to write back to device directly) (ignored if `--map-shared=true`)")
 
 	defaultDevices, err := json.Marshal([]CompositeDevices{
 		{
@@ -394,7 +397,10 @@ func main() {
 		*resumeTimeout,
 		*rescueTimeout,
 
-		*shared,
+		*mapShared,
+
+		*stateOutput,
+		*memoryOutput,
 	)
 
 	if err != nil {

@@ -19,45 +19,45 @@ import (
 )
 
 type SharableDevice struct {
-	Name   string `json:"name"`
-	Path   string `json:"path"`
-	Shared bool   `json:"shared"`
+	Name      string `json:"name"`
+	Path      string `json:"path"`
+	MapShared bool   `json:"mapShared"`
 }
 
 func main() {
 	defaultDevices, err := json.Marshal([]SharableDevice{
 		{
-			Name:   roles.StateName,
-			Path:   filepath.Join("out", "package", "state.bin"),
-			Shared: false,
+			Name:      roles.StateName,
+			Path:      filepath.Join("out", "package", "state.bin"),
+			MapShared: false,
 		},
 		{
-			Name:   roles.MemoryName,
-			Path:   filepath.Join("out", "package", "memory.bin"),
-			Shared: false,
-		},
-
-		{
-			Name:   roles.KernelName,
-			Path:   filepath.Join("out", "package", "vmlinux"),
-			Shared: false,
-		},
-		{
-			Name:   roles.DiskName,
-			Path:   filepath.Join("out", "package", "rootfs.ext4"),
-			Shared: false,
+			Name:      roles.MemoryName,
+			Path:      filepath.Join("out", "package", "memory.bin"),
+			MapShared: false,
 		},
 
 		{
-			Name:   roles.ConfigName,
-			Path:   filepath.Join("out", "package", "config.json"),
-			Shared: false,
+			Name:      roles.KernelName,
+			Path:      filepath.Join("out", "package", "vmlinux"),
+			MapShared: false,
+		},
+		{
+			Name:      roles.DiskName,
+			Path:      filepath.Join("out", "package", "rootfs.ext4"),
+			MapShared: false,
 		},
 
 		{
-			Name:   "oci",
-			Path:   filepath.Join("out", "blueprint", "oci.ext4"),
-			Shared: false,
+			Name:      roles.ConfigName,
+			Path:      filepath.Join("out", "package", "config.json"),
+			MapShared: false,
+		},
+
+		{
+			Name:      "oci",
+			Path:      filepath.Join("out", "blueprint", "oci.ext4"),
+			MapShared: false,
 		},
 	})
 	if err != nil {
@@ -67,7 +67,7 @@ func main() {
 	rawFirecrackerBin := flag.String("firecracker-bin", "firecracker", "Firecracker binary")
 	rawJailerBin := flag.String("jailer-bin", "jailer", "Jailer binary (from Firecracker)")
 
-	chrootBaseDir := flag.String("chroot-base-dir", filepath.Join("out", "vms"), "`chroot` base directory")
+	chrootBaseDir := flag.String("chroot-base-dir", filepath.Join("out", "vms"), "chroot base directory")
 
 	uid := flag.Int("uid", 0, "User ID for the Firecracker process")
 	gid := flag.Int("gid", 0, "Group ID for the Firecracker process")
@@ -83,7 +83,10 @@ func main() {
 	numaNode := flag.Int("numa-node", 0, "NUMA node to run Firecracker in")
 	cgroupVersion := flag.Int("cgroup-version", 2, "Cgroup version to use for Jailer")
 
-	shared := flag.Bool("shared", true, "Whether to use MAP_SHARED for memory and state devices")
+	mapShared := flag.Bool("map-shared", true, "Whether to use MAP_SHARED for memory and state devices")
+
+	stateOutput := flag.String("state-output", "", "Path to write the changed state to (leave empty to write back to device directly) (ignored if --map-shared=true)")
+	memoryOutput := flag.String("memory-output", "", "Path to write the changed memory to (leave empty to write back to device directly) (ignored if --map-shared=true)")
 
 	rawDevices := flag.String("devices", string(defaultDevices), "Devices configuration")
 
@@ -245,8 +248,8 @@ func main() {
 			}
 		}()
 
-		var file string
-		if device.Shared {
+		file := ""
+		if device.MapShared {
 			file = device.Path
 		} else {
 			mnt := utils.NewLoopMount(device.Path)
@@ -299,7 +302,10 @@ func main() {
 		*rescueTimeout,
 		packageConfig.AgentVSockPort,
 
-		*shared,
+		*mapShared,
+
+		*stateOutput,
+		*memoryOutput,
 	)
 
 	if err != nil {
