@@ -3,6 +3,7 @@ package roles
 import (
 	"context"
 	"errors"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/lithammer/shortuuid/v4"
 	"github.com/loopholelabs/drafter/internal/firecracker"
 	"github.com/loopholelabs/drafter/pkg/ipc"
 	"github.com/loopholelabs/drafter/pkg/utils"
@@ -53,6 +55,13 @@ type PackageConfiguration struct {
 	AgentVSockPort uint32 `json:"agentVSockPort"`
 }
 
+type SnapshotLoadConfiguration struct {
+	ExperimentalMapPrivate bool
+
+	ExperimentalMapPrivateStateOutput  string
+	ExperimentalMapPrivateMemoryOutput string
+}
+
 type Runner struct {
 	VMPath string
 
@@ -65,6 +74,8 @@ type Runner struct {
 		resumeTimeout time.Duration,
 		rescueTimeout time.Duration,
 		agentVSockPort uint32,
+
+		snapshotLoadConfiguration SnapshotLoadConfiguration,
 	) (
 		resumedRunner *ResumedRunner,
 
@@ -96,6 +107,7 @@ var (
 	ErrCouldNotCallAfterResumeRPC        = errors.New("could not call AfterResume RPC")
 	ErrCouldNotCallBeforeSuspendRPC      = errors.New("could not call BeforeSuspend RPC")
 	ErrCouldNotCreateSnapshot            = errors.New("could not create snapshot")
+	ErrCouldNotCreateRecoverySnapshot    = errors.New("could not create recovery snapshot")
 )
 
 func StartRunner(
@@ -201,6 +213,8 @@ func StartRunner(
 		resumeTimeout,
 		rescueTimeout time.Duration,
 		agentVSockPort uint32,
+
+		snapshotLoadConfiguration SnapshotLoadConfiguration,
 	) (
 		resumedRunner *ResumedRunner,
 
@@ -216,6 +230,97 @@ func StartRunner(
 			acceptingAgent          *ipc.AcceptingAgentServer
 			suspendOnPanicWithError = false
 		)
+
+		createSnapshot := func(ctx context.Context) error {
+			var (
+				stateCopyName  = shortuuid.New()
+				memoryCopyName = shortuuid.New()
+			)
+			if snapshotLoadConfiguration.ExperimentalMapPrivate {
+				if err := firecracker.CreateSnapshot(
+					ctx,
+
+					firecrackerClient,
+
+					// We need to write the state and memory to a separate file since we can't truncate an `mmap`ed file
+					stateCopyName,
+					memoryCopyName,
+
+					firecracker.SnapshotTypeFull,
+				); err != nil {
+					return errors.Join(ErrCouldNotCreateSnapshot, err)
+				}
+			} else {
+				if err := firecracker.CreateSnapshot(
+					ctx,
+
+					firecrackerClient,
+
+					stateName,
+					"",
+
+					firecracker.SnapshotTypeMsyncAndState,
+				); err != nil {
+					return errors.Join(ErrCouldNotCreateSnapshot, err)
+				}
+			}
+
+			if snapshotLoadConfiguration.ExperimentalMapPrivate {
+				if err := server.Close(); err != nil {
+					return errors.Join(ErrCouldNotCloseServer, err)
+				}
+
+				if err := runner.Wait(); err != nil {
+					return errors.Join(ErrCouldNotWaitForFirecracker, err)
+				}
+
+				for _, device := range [][3]string{
+					{stateName, stateCopyName, snapshotLoadConfiguration.ExperimentalMapPrivateStateOutput},
+					{memoryName, memoryCopyName, snapshotLoadConfiguration.ExperimentalMapPrivateMemoryOutput},
+				} {
+					inputFile, err := os.Open(filepath.Join(server.VMPath, device[1]))
+					if err != nil {
+						return errors.Join(ErrCouldNotOpenInputFile, err)
+					}
+					defer inputFile.Close()
+
+					var (
+						outputPath = device[2]
+						addPadding = true
+					)
+					if outputPath == "" {
+						outputPath = filepath.Join(server.VMPath, device[0])
+						addPadding = false
+					}
+
+					if err := os.MkdirAll(filepath.Dir(outputPath), os.ModePerm); err != nil {
+						panic(errors.Join(ErrCouldNotCreateOutputDir, err))
+					}
+
+					outputFile, err := os.OpenFile(outputPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, os.ModePerm)
+					if err != nil {
+						return errors.Join(ErrCouldNotOpenOutputFile, err)
+					}
+					defer outputFile.Close()
+
+					deviceSize, err := io.Copy(outputFile, inputFile)
+					if err != nil {
+						return errors.Join(ErrCouldNotCopyFile, err)
+					}
+
+					// We need to add a padding like the snapshotter if we're writing to a file instead of a block device
+					if addPadding {
+						if paddingLength := utils.GetBlockDevicePadding(deviceSize); paddingLength > 0 {
+							if _, err := outputFile.Write(make([]byte, paddingLength)); err != nil {
+								return errors.Join(ErrCouldNotWritePadding, err)
+							}
+						}
+					}
+				}
+			}
+
+			return nil
+		}
 
 		internalCtx, handlePanics, handleGoroutinePanics, cancel, wait, _ := utils.GetPanicHandler(
 			ctx,
@@ -237,19 +342,8 @@ func StartRunner(
 						}
 
 						// If a resume failed, flush the snapshot so that we can re-try
-						if e := firecracker.CreateSnapshot(
-							suspendCtx, // We use a separate context here so that we can
-							// cancel the snapshot create action independently of the resume
-							// ctx, which is typically cancelled already
-
-							firecrackerClient,
-
-							stateName,
-							"",
-
-							firecracker.SnapshotTypeMsyncAndState,
-						); e != nil {
-							errs = errors.Join(errs, ErrCouldNotCreateSnapshot, e)
+						if err := createSnapshot(suspendCtx); err != nil {
+							errs = errors.Join(errs, ErrCouldNotCreateRecoverySnapshot, err)
 						}
 					}
 				},
@@ -296,6 +390,8 @@ func StartRunner(
 
 				stateName,
 				memoryName,
+
+				!snapshotLoadConfiguration.ExperimentalMapPrivate,
 			); err != nil {
 				panic(errors.Join(ErrCouldNotResumeSnapshot, err))
 			}
@@ -341,17 +437,19 @@ func StartRunner(
 		}
 
 		resumedRunner.Msync = func(ctx context.Context) error {
-			if err := firecracker.CreateSnapshot(
-				ctx,
+			if !snapshotLoadConfiguration.ExperimentalMapPrivate {
+				if err := firecracker.CreateSnapshot(
+					ctx,
 
-				firecrackerClient,
+					firecrackerClient,
 
-				stateName,
-				"",
+					stateName,
+					"",
 
-				firecracker.SnapshotTypeMsync,
-			); err != nil {
-				return errors.Join(ErrCouldNotCreateSnapshot, err)
+					firecracker.SnapshotTypeMsync,
+				); err != nil {
+					return errors.Join(ErrCouldNotCreateSnapshot, err)
+				}
 			}
 
 			return nil
@@ -372,16 +470,7 @@ func StartRunner(
 
 			agent.Close()
 
-			if err := firecracker.CreateSnapshot(
-				suspendCtx,
-
-				firecrackerClient,
-
-				stateName,
-				"",
-
-				firecracker.SnapshotTypeMsyncAndState,
-			); err != nil {
+			if err := createSnapshot(suspendCtx); err != nil {
 				return errors.Join(ErrCouldNotCreateSnapshot, err)
 			}
 

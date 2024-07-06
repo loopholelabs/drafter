@@ -43,17 +43,12 @@ type SnapshotLoadRequest struct {
 	MemoryBackend        SnapshotLoadRequestMemoryBackend `json:"mem_backend"`
 	EnableDiffSnapshots  bool                             `json:"enable_diff_snapshots"`
 	ResumeVirtualMachine bool                             `json:"resume_vm"`
-	Shared               bool                             `json:"shared"`
+	Shared               bool                             `json:"shared,omitempty"` // `omitempty` here since `shared` is only available in the Firecracker fork with live migration support
 }
 
 type SnapshotLoadRequestMemoryBackend struct {
 	BackendPath string `json:"backend_path"`
 	BackendType string `json:"backend_type"`
-}
-
-type SnapshotNoMemoryCreateRequest struct {
-	SnapshotPath string `json:"snapshot_path"`
-	MsyncOnly    bool   `json:"msync_only"`
 }
 
 type VSock struct {

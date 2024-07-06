@@ -86,6 +86,8 @@ type MigrateFromDevice struct {
 	State   string `json:"state"`
 
 	BlockSize uint32 `json:"blockSize"`
+
+	Shared bool `json:"shared"`
 }
 
 type MigrateFromHooks struct {
@@ -112,6 +114,8 @@ type MigratedPeer struct {
 
 		resumeTimeout,
 		rescueTimeout time.Duration,
+
+		snapshotLoadConfiguration SnapshotLoadConfiguration,
 	) (
 		resumedPeer *ResumedPeer,
 
@@ -149,6 +153,8 @@ type MigrateToDevice struct {
 }
 
 type MigrateToHooks struct {
+	OnBeforeGetDirtyBlocks func(deviceID uint32, remote bool)
+
 	OnBeforeSuspend func()
 	OnAfterSuspend  func()
 
@@ -687,71 +693,76 @@ func StartPeer(
 					}
 				}
 
-				stat, err := os.Stat(input.Base)
-				if err != nil {
-					return errors.Join(ErrCouldNotGetBaseDeviceStat, err)
-				}
-
-				var (
-					local  storage.StorageProvider
-					device storage.ExposedStorage
-				)
-				if strings.TrimSpace(input.Overlay) == "" || strings.TrimSpace(input.State) == "" {
-					local, device, err = sdevice.NewDevice(&sconfig.DeviceSchema{
-						Name:      input.Name,
-						System:    "file",
-						Location:  input.Base,
-						Size:      fmt.Sprintf("%v", stat.Size()),
-						BlockSize: fmt.Sprintf("%v", input.BlockSize),
-						Expose:    true,
-					})
+				devicePath := ""
+				if input.Shared {
+					devicePath = input.Base
 				} else {
-					if err := os.MkdirAll(filepath.Dir(input.Overlay), os.ModePerm); err != nil {
-						return errors.Join(ErrCouldNotCreateOverlayDirectory, err)
+					stat, err := os.Stat(input.Base)
+					if err != nil {
+						return errors.Join(ErrCouldNotGetBaseDeviceStat, err)
 					}
 
-					if err := os.MkdirAll(filepath.Dir(input.State), os.ModePerm); err != nil {
-						return errors.Join(ErrCouldNotCreateStateDirectory, err)
-					}
+					var (
+						local  storage.StorageProvider
+						device storage.ExposedStorage
+					)
+					if strings.TrimSpace(input.Overlay) == "" || strings.TrimSpace(input.State) == "" {
+						local, device, err = sdevice.NewDevice(&sconfig.DeviceSchema{
+							Name:      input.Name,
+							System:    "file",
+							Location:  input.Base,
+							Size:      fmt.Sprintf("%v", stat.Size()),
+							BlockSize: fmt.Sprintf("%v", input.BlockSize),
+							Expose:    true,
+						})
+					} else {
+						if err := os.MkdirAll(filepath.Dir(input.Overlay), os.ModePerm); err != nil {
+							return errors.Join(ErrCouldNotCreateOverlayDirectory, err)
+						}
 
-					local, device, err = sdevice.NewDevice(&sconfig.DeviceSchema{
-						Name:      input.Name,
-						System:    "sparsefile",
-						Location:  input.Overlay,
-						Size:      fmt.Sprintf("%v", stat.Size()),
-						BlockSize: fmt.Sprintf("%v", input.BlockSize),
-						Expose:    true,
-						ROSource: &sconfig.DeviceSchema{
-							Name:     input.State,
-							System:   "file",
-							Location: input.Base,
-							Size:     fmt.Sprintf("%v", stat.Size()),
-						},
+						if err := os.MkdirAll(filepath.Dir(input.State), os.ModePerm); err != nil {
+							return errors.Join(ErrCouldNotCreateStateDirectory, err)
+						}
+
+						local, device, err = sdevice.NewDevice(&sconfig.DeviceSchema{
+							Name:      input.Name,
+							System:    "sparsefile",
+							Location:  input.Overlay,
+							Size:      fmt.Sprintf("%v", stat.Size()),
+							BlockSize: fmt.Sprintf("%v", input.BlockSize),
+							Expose:    true,
+							ROSource: &sconfig.DeviceSchema{
+								Name:     input.State,
+								System:   "file",
+								Location: input.Base,
+								Size:     fmt.Sprintf("%v", stat.Size()),
+							},
+						})
+					}
+					if err != nil {
+						return errors.Join(ErrCouldNotCreateLocalDevice, err)
+					}
+					addDefer(local.Close)
+					addDefer(device.Shutdown)
+
+					device.SetProvider(local)
+
+					stage2InputsLock.Lock()
+					stage2Inputs = append(stage2Inputs, peerStage2{
+						name: input.Name,
+
+						blockSize: input.BlockSize,
+
+						id:     uint32(index),
+						remote: false,
+
+						storage: local,
+						device:  device,
 					})
+					stage2InputsLock.Unlock()
+
+					devicePath = filepath.Join("/dev", device.Device())
 				}
-				if err != nil {
-					return errors.Join(ErrCouldNotCreateLocalDevice, err)
-				}
-				addDefer(local.Close)
-				addDefer(device.Shutdown)
-
-				device.SetProvider(local)
-
-				stage2InputsLock.Lock()
-				stage2Inputs = append(stage2Inputs, peerStage2{
-					name: input.Name,
-
-					blockSize: input.BlockSize,
-
-					id:     uint32(index),
-					remote: false,
-
-					storage: local,
-					device:  device,
-				})
-				stage2InputsLock.Unlock()
-
-				devicePath := filepath.Join("/dev", device.Device())
 
 				deviceInfo, err := os.Stat(devicePath)
 				if err != nil {
@@ -819,6 +830,8 @@ func StartPeer(
 
 			resumeTimeout,
 			rescueTimeout time.Duration,
+
+			snapshotLoadConfiguration SnapshotLoadConfiguration,
 		) (resumedPeer *ResumedPeer, errs error) {
 			configBasePath := ""
 			for _, device := range devices {
@@ -844,7 +857,15 @@ func StartPeer(
 				return nil, errors.Join(ErrCouldNotDecodeConfigFile, err)
 			}
 
-			resumedRunner, err := runner.Resume(ctx, resumeTimeout, rescueTimeout, packageConfig.AgentVSockPort)
+			resumedRunner, err := runner.Resume(
+				ctx,
+
+				resumeTimeout,
+				rescueTimeout,
+				packageConfig.AgentVSockPort,
+
+				snapshotLoadConfiguration,
+			)
 			if err != nil {
 				return nil, errors.Join(ErrCouldNotResumeRunner, err)
 			}
@@ -1182,6 +1203,10 @@ func StartPeer(
 									suspendedVMLock.Unlock()
 
 									ongoingMigrationsWg.Wait()
+
+									if hook := hooks.OnBeforeGetDirtyBlocks; hook != nil {
+										hook(uint32(index), input.prev.prev.prev.remote)
+									}
 
 									blocks := mig.GetLatestDirty()
 									if blocks == nil {

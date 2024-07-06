@@ -232,6 +232,8 @@ func ResumeSnapshot(
 
 	statePath,
 	memoryPath string,
+
+	shared bool,
 ) error {
 	if err := submitJSON(
 		ctx,
@@ -245,7 +247,7 @@ func ResumeSnapshot(
 			},
 			EnableDiffSnapshots:  false,
 			ResumeVirtualMachine: true,
-			Shared:               true,
+			Shared:               shared,
 		},
 		"snapshot/load",
 	); err != nil {

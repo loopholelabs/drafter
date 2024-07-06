@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"flag"
 	"log"
 	"os"
@@ -19,38 +18,46 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-var (
-	errConfigFileNotFound = errors.New("config file not found")
-)
+type SharableDevice struct {
+	Name   string `json:"name"`
+	Path   string `json:"path"`
+	Shared bool   `json:"shared"`
+}
 
 func main() {
-	defaultDevices, err := json.Marshal([]roles.PackagerDevice{
+	defaultDevices, err := json.Marshal([]SharableDevice{
 		{
-			Name: roles.StateName,
-			Path: filepath.Join("out", "package", "state.bin"),
+			Name:   roles.StateName,
+			Path:   filepath.Join("out", "package", "state.bin"),
+			Shared: false,
 		},
 		{
-			Name: roles.MemoryName,
-			Path: filepath.Join("out", "package", "memory.bin"),
-		},
-
-		{
-			Name: roles.KernelName,
-			Path: filepath.Join("out", "package", "vmlinux"),
-		},
-		{
-			Name: roles.DiskName,
-			Path: filepath.Join("out", "package", "rootfs.ext4"),
+			Name:   roles.MemoryName,
+			Path:   filepath.Join("out", "package", "memory.bin"),
+			Shared: false,
 		},
 
 		{
-			Name: roles.ConfigName,
-			Path: filepath.Join("out", "package", "config.json"),
+			Name:   roles.KernelName,
+			Path:   filepath.Join("out", "package", "vmlinux"),
+			Shared: false,
+		},
+		{
+			Name:   roles.DiskName,
+			Path:   filepath.Join("out", "package", "rootfs.ext4"),
+			Shared: false,
 		},
 
 		{
-			Name: "oci",
-			Path: filepath.Join("out", "blueprint", "oci.ext4"),
+			Name:   roles.ConfigName,
+			Path:   filepath.Join("out", "package", "config.json"),
+			Shared: false,
+		},
+
+		{
+			Name:   "oci",
+			Path:   filepath.Join("out", "blueprint", "oci.ext4"),
+			Shared: false,
 		},
 	})
 	if err != nil {
@@ -60,7 +67,7 @@ func main() {
 	rawFirecrackerBin := flag.String("firecracker-bin", "firecracker", "Firecracker binary")
 	rawJailerBin := flag.String("jailer-bin", "jailer", "Jailer binary (from Firecracker)")
 
-	chrootBaseDir := flag.String("chroot-base-dir", filepath.Join("out", "vms"), "`chroot` base directory")
+	chrootBaseDir := flag.String("chroot-base-dir", filepath.Join("out", "vms"), "chroot base directory")
 
 	uid := flag.Int("uid", 0, "User ID for the Firecracker process")
 	gid := flag.Int("gid", 0, "Group ID for the Firecracker process")
@@ -76,6 +83,10 @@ func main() {
 	numaNode := flag.Int("numa-node", 0, "NUMA node to run Firecracker in")
 	cgroupVersion := flag.Int("cgroup-version", 2, "Cgroup version to use for Jailer")
 
+	experimentalMapPrivate := flag.Bool("experimental-map-private", false, "(Experimental) Whether to use MAP_PRIVATE for memory and state devices")
+	experimentalMapPrivateStateOutput := flag.String("experimental-map-private-state-output", "", "(Experimental) Path to write the local changes to the shared state to (leave empty to write back to device directly) (ignored unless --experimental-map-private)")
+	experimentalMapPrivateMemoryOutput := flag.String("experimental-map-private-memory-output", "", "(Experimental) Path to write the local changes to the shared memory to (leave empty to write back to device directly) (ignored unless --experimental-map-private)")
+
 	rawDevices := flag.String("devices", string(defaultDevices), "Devices configuration")
 
 	flag.Parse()
@@ -83,7 +94,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	var devices []roles.PackagerDevice
+	var devices []SharableDevice
 	if err := json.Unmarshal([]byte(*rawDevices), &devices); err != nil {
 		panic(err)
 	}
@@ -212,7 +223,9 @@ func main() {
 		}
 	})
 
-	for _, device := range devices {
+	for index, device := range devices {
+		log.Println("Requested local device", index, "with name", device.Name)
+
 		defer func() {
 			defer handlePanics(true)()
 
@@ -234,28 +247,35 @@ func main() {
 			}
 		}()
 
-		mnt := utils.NewLoopMount(device.Path)
+		devicePath := ""
+		if device.Shared {
+			devicePath = device.Path
+		} else {
+			mnt := utils.NewLoopMount(device.Path)
 
-		defer mnt.Close()
-		file, err := mnt.Open()
+			defer mnt.Close()
+			devicePath, err = mnt.Open()
+			if err != nil {
+				panic(err)
+			}
+		}
+
+		log.Println("Exposed local device", index, "at", devicePath)
+
+		deviceInfo, err := os.Stat(devicePath)
 		if err != nil {
 			panic(err)
 		}
 
-		info, err := os.Stat(file)
-		if err != nil {
-			panic(err)
-		}
-
-		stat, ok := info.Sys().(*syscall.Stat_t)
+		deviceStat, ok := deviceInfo.Sys().(*syscall.Stat_t)
 		if !ok {
 			panic(roles.ErrCouldNotGetDeviceStat)
 		}
 
-		major := uint64(stat.Rdev / 256)
-		minor := uint64(stat.Rdev % 256)
+		deviceMajor := uint64(deviceStat.Rdev / 256)
+		deviceMinor := uint64(deviceStat.Rdev % 256)
 
-		dev := int((major << 8) | minor)
+		deviceID := int((deviceMajor << 8) | deviceMinor)
 
 		select {
 		case <-ctx.Done():
@@ -266,7 +286,7 @@ func main() {
 			return
 
 		default:
-			if err := unix.Mknod(filepath.Join(runner.VMPath, device.Name), unix.S_IFBLK|0666, dev); err != nil {
+			if err := unix.Mknod(filepath.Join(runner.VMPath, device.Name), unix.S_IFBLK|0666, deviceID); err != nil {
 				panic(err)
 			}
 		}
@@ -280,6 +300,13 @@ func main() {
 		*resumeTimeout,
 		*rescueTimeout,
 		packageConfig.AgentVSockPort,
+
+		roles.SnapshotLoadConfiguration{
+			ExperimentalMapPrivate: *experimentalMapPrivate,
+
+			ExperimentalMapPrivateStateOutput:  *experimentalMapPrivateStateOutput,
+			ExperimentalMapPrivateMemoryOutput: *experimentalMapPrivateMemoryOutput,
+		},
 	)
 
 	if err != nil {

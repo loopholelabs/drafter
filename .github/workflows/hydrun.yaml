@@ -3,10 +3,10 @@ name: hydrun CI
 on:
   push:
     paths-ignore:
-      - '.github/signatures/**'
+      - ".github/signatures/**"
   pull_request:
     paths-ignore:
-      - '.github/signatures/**'
+      - ".github/signatures/**"
   schedule:
     - cron: "0 0 * * 0"
 
@@ -82,6 +82,13 @@ jobs:
             os: golang:bookworm
             flags: -e '-v /tmp/ccache:/root/.cache/go-build'
             cmd: ./Hydrunfile go drafter-registry
+            dst: out/*
+            runner: depot-ubuntu-22.04-32
+          - id: go.drafter-mounter
+            src: .
+            os: golang:bookworm
+            flags: -e '-v /tmp/ccache:/root/.cache/go-build'
+            cmd: ./Hydrunfile go drafter-mounter
             dst: out/*
             runner: depot-ubuntu-22.04-32
           - id: go.drafter-peer

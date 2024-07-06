@@ -36,13 +36,16 @@ type CompositeDevices struct {
 	MaxCycles      int `json:"maxCycles"`
 
 	CycleThrottle time.Duration `json:"cycleThrottle"`
+
+	MakeMigratable bool `json:"makeMigratable"`
+	Shared         bool `json:"shared"`
 }
 
 func main() {
 	rawFirecrackerBin := flag.String("firecracker-bin", "firecracker", "Firecracker binary")
 	rawJailerBin := flag.String("jailer-bin", "jailer", "Jailer binary (from Firecracker)")
 
-	chrootBaseDir := flag.String("chroot-base-dir", filepath.Join("out", "vms"), "`chroot` base directory")
+	chrootBaseDir := flag.String("chroot-base-dir", filepath.Join("out", "vms"), "chroot base directory")
 
 	uid := flag.Int("uid", 0, "User ID for the Firecracker process")
 	gid := flag.Int("gid", 0, "Group ID for the Firecracker process")
@@ -57,6 +60,10 @@ func main() {
 
 	numaNode := flag.Int("numa-node", 0, "NUMA node to run Firecracker in")
 	cgroupVersion := flag.Int("cgroup-version", 2, "Cgroup version to use for Jailer")
+
+	experimentalMapPrivate := flag.Bool("experimental-map-private", false, "(Experimental) Whether to use MAP_PRIVATE for memory and state devices")
+	experimentalMapPrivateStateOutput := flag.String("experimental-map-private-state-output", "", "(Experimental) Path to write the local changes to the shared state to (leave empty to write back to device directly) (ignored unless --experimental-map-private)")
+	experimentalMapPrivateMemoryOutput := flag.String("experimental-map-private-memory-output", "", "(Experimental) Path to write the local changes to the shared memory to (leave empty to write back to device directly) (ignored unless --experimental-map-private)")
 
 	defaultDevices, err := json.Marshal([]CompositeDevices{
 		{
@@ -75,6 +82,9 @@ func main() {
 			MaxCycles:      20,
 
 			CycleThrottle: time.Millisecond * 500,
+
+			MakeMigratable: true,
+			Shared:         false,
 		},
 		{
 			Name: roles.MemoryName,
@@ -92,6 +102,9 @@ func main() {
 			MaxCycles:      20,
 
 			CycleThrottle: time.Millisecond * 500,
+
+			MakeMigratable: true,
+			Shared:         false,
 		},
 
 		{
@@ -110,6 +123,9 @@ func main() {
 			MaxCycles:      20,
 
 			CycleThrottle: time.Millisecond * 500,
+
+			MakeMigratable: true,
+			Shared:         false,
 		},
 		{
 			Name: roles.DiskName,
@@ -127,6 +143,9 @@ func main() {
 			MaxCycles:      20,
 
 			CycleThrottle: time.Millisecond * 500,
+
+			MakeMigratable: true,
+			Shared:         false,
 		},
 
 		{
@@ -145,6 +164,9 @@ func main() {
 			MaxCycles:      20,
 
 			CycleThrottle: time.Millisecond * 500,
+
+			MakeMigratable: true,
+			Shared:         false,
 		},
 
 		{
@@ -163,6 +185,9 @@ func main() {
 			MaxCycles:      20,
 
 			CycleThrottle: time.Millisecond * 500,
+
+			MakeMigratable: true,
+			Shared:         false,
 		},
 	})
 	if err != nil {
@@ -311,6 +336,8 @@ func main() {
 			State:   device.State,
 
 			BlockSize: device.BlockSize,
+
+			Shared: device.Shared,
 		})
 	}
 
@@ -391,6 +418,13 @@ func main() {
 
 		*resumeTimeout,
 		*rescueTimeout,
+
+		roles.SnapshotLoadConfiguration{
+			ExperimentalMapPrivate: *experimentalMapPrivate,
+
+			ExperimentalMapPrivateStateOutput:  *experimentalMapPrivateStateOutput,
+			ExperimentalMapPrivateMemoryOutput: *experimentalMapPrivateMemoryOutput,
+		},
 	)
 
 	if err != nil {
@@ -512,6 +546,10 @@ func main() {
 
 	makeMigratableDevices := []roles.MakeMigratableDevice{}
 	for _, device := range devices {
+		if !device.MakeMigratable || device.Shared {
+			continue
+		}
+
 		makeMigratableDevices = append(makeMigratableDevices, roles.MakeMigratableDevice{
 			Name: device.Name,
 
@@ -533,6 +571,10 @@ func main() {
 
 	migrateToDevices := []roles.MigrateToDevice{}
 	for _, device := range devices {
+		if !device.MakeMigratable || device.Shared {
+			continue
+		}
+
 		migrateToDevices = append(migrateToDevices, roles.MigrateToDevice{
 			Name: device.Name,
 
@@ -557,6 +599,14 @@ func main() {
 		[]io.Writer{conn},
 
 		roles.MigrateToHooks{
+			OnBeforeGetDirtyBlocks: func(deviceID uint32, remote bool) {
+				if remote {
+					log.Println("Getting dirty blocks for remote device", deviceID)
+				} else {
+					log.Println("Getting dirty blocks for local device", deviceID)
+				}
+			},
+
 			OnBeforeSuspend: func() {
 				before = time.Now()
 			},
