@@ -23,7 +23,7 @@ It enables you to:
 - **Run OCI images as VMs**: In addition to running almost any Linux distribution (Alpine Linux, Fedora, Debian, Ubuntu etc.), Drafter can also run OCI images as VMs without the overhead of a nested Docker daemon or full CRI implementation. It uses a dynamic disk configuration system, an optional custom Buildroot-based OS to start the OCI image, and a familiar Docker-like networking configuration.
 - **Easily live migrate VMs between heterogeneous nodes with no downtime**: Drafter leverages a [custom optimized Firecracker fork](https://github.com/loopholelabs/firecracker) and [patches to PVM](https://github.com/loopholelabs/linux-pvm-ci) to enable live migration of VMs between heterogeneous nodes, data centers and cloud providers without hardware virtualization support, even across continents. With a [customizable hybrid pre- and post-copy strategy](https://pojntfx.github.io/networked-linux-memsync/main.pdf), migrations typically take below 100ms within the same data center and around 500ms for Europe ↔ North America migrations over the public internet, depending on the application.
 - **Hook into suspend and resume lifecycle with agents**: Drafter uses a VSock- and [panrpc](https://github.com/pojntfx/panrpc)-based agent system to signal to guest applications before a suspend/resume event, allowing them to react accordingly.
-- **Easily embed VMs inside your applications**: Drafter provides a powerful, context-aware [Go library](https://pkg.go.dev/github.com/loopholelabs/drafter) for all system components, including a NAT for guest-to-host networking, a forwarder for local port-forwarding/host-to-guest networking, an agent and liveness component for responding to snapshots and suspend/resume events inside the guest, a snapshotter for creating snapshots, a packager for packaging VM images, a runner for starting VM images locally, a registry for serving VM images over the network, a peer for starting and live migrating VMs over the network, and a terminator for backing up a VM.
+- **Easily embed VMs inside your applications**: Drafter provides a powerful, context-aware [Go library](https://pkg.go.dev/github.com/loopholelabs/drafter) for all system components, including a NAT for guest-to-host networking, a forwarder for local port-forwarding/host-to-guest networking, an agent and liveness component for responding to snapshots and suspend/resume events inside the guest, a snapshotter for creating snapshots, a packager for packaging VM images, a runner for starting VM images locally, a registry for serving VM images over the network, a mounter for re-using files and devices between VMs and moving them without migrating the VM itself, a peer for starting and live migrating VMs over the network, and a terminator for backing up a VM.
 
 **Want to see it in action?** See this snippet from our KubeCon talk where we live migrate a Minecraft server between two continents without downtime:
 
@@ -38,7 +38,7 @@ It enables you to:
 Drafter is available as static binaries on [GitHub releases](https://github.com/loopholelabs/drafter/releases). On Linux, you can install them like so:
 
 ```shell
-for BINARY in drafter-nat drafter-forwarder drafter-snapshotter drafter-packager drafter-runner drafter-registry drafter-peer drafter-terminator; do
+for BINARY in drafter-nat drafter-forwarder drafter-snapshotter drafter-packager drafter-runner drafter-registry drafter-mounter drafter-peer drafter-terminator; do
     curl -L -o "/tmp/${BINARY}" "https://github.com/loopholelabs/drafter/releases/latest/download/${BINARY}.linux-$(uname -m)"
     sudo install "/tmp/${BINARY}" /usr/local/bin
 done
@@ -918,7 +918,7 @@ On the destination, after all devices have been migrated, you should see logs li
 2024/06/24 13:55:16 Resumed VM in 60.026997ms on out/vms/firecracker/39zY39Y9Gs8N4wPMs5WoLe/root
 ```
 
-**🚀 That's it!** You've successfully created, snapshotted, started and live migrated your first service with Drafter. We can't wait to see what you're going to build next! Be sure to take a look at the [reference](#reference) (the [registry](#registry) and [terminator](#terminator) components can be quite helpful when working with live migration), [examples](#examples) and [frequently asked questions](#faq) for more information.
+**🚀 That's it!** You've successfully created, snapshotted, started and live migrated your first service with Drafter. We can't wait to see what you're going to build next! Be sure to take a look at the [reference](#reference) (the [registry](#registry), [mounter](#mounter) and [terminator](#terminator) components can be quite helpful when working with live migration), [examples](#examples) and [frequently asked questions](#faq) for more information.
 
 </details>
 
@@ -935,6 +935,7 @@ To make getting started with Drafter as a library easier, take a look at the fol
 - [**Packager**](./cmd/drafter-packager/main.go): Packages VM instances into distributable packages
 - [**Runner**](./cmd/drafter-runner/main.go): Starts VM instances from packages locally
 - [**Registry**](./cmd/drafter-registry/main.go): Distributes VM packages across the network
+- [**Mounter**](./cmd/drafter-mounter/main.go): Allows files and devices to be re-used between VMs and moved without migrating the VM using them
 - [**Peer**](./cmd/drafter-peer/main.go): Live migrates VM instances across the network
 - [**Terminator**](./cmd/drafter-terminator/main.go): Handles backup operations for VMs
 
@@ -1121,6 +1122,20 @@ Usage of drafter-registry:
         Devices configuration (default "[{\"name\":\"state\",\"input\":\"out/package/state.bin\",\"blockSize\":65536},{\"name\":\"memory\",\"input\":\"out/package/memory.bin\",\"blockSize\":65536},{\"name\":\"kernel\",\"input\":\"out/package/vmlinux\",\"blockSize\":65536},{\"name\":\"disk\",\"input\":\"out/package/rootfs.ext4\",\"blockSize\":65536},{\"name\":\"config\",\"input\":\"out/package/config.json\",\"blockSize\":65536},{\"name\":\"oci\",\"input\":\"out/blueprint/oci.ext4\",\"blockSize\":65536}]")
   -laddr string
         Address to listen on (default ":1600")
+```
+
+#### Mounter
+
+```shell
+$ Usage of drafter-mounter:
+  -concurrency int
+    	Number of concurrent workers to use in migrations (default 4096)
+  -devices string
+    	Devices configuration (default "[{\"name\":\"state\",\"base\":\"out/package/state.bin\",\"overlay\":\"out/overlay/state.bin\",\"state\":\"out/state/state.bin\",\"blockSize\":65536,\"expiry\":1000000000,\"maxDirtyBlocks\":200,\"minCycles\":5,\"maxCycles\":20,\"cycleThrottle\":500000000,\"makeMigratable\":true},{\"name\":\"memory\",\"base\":\"out/package/memory.bin\",\"overlay\":\"out/overlay/memory.bin\",\"state\":\"out/state/memory.bin\",\"blockSize\":65536,\"expiry\":1000000000,\"maxDirtyBlocks\":200,\"minCycles\":5,\"maxCycles\":20,\"cycleThrottle\":500000000,\"makeMigratable\":true},{\"name\":\"kernel\",\"base\":\"out/package/vmlinux\",\"overlay\":\"out/overlay/vmlinux\",\"state\":\"out/state/vmlinux\",\"blockSize\":65536,\"expiry\":1000000000,\"maxDirtyBlocks\":200,\"minCycles\":5,\"maxCycles\":20,\"cycleThrottle\":500000000,\"makeMigratable\":true},{\"name\":\"disk\",\"base\":\"out/package/rootfs.ext4\",\"overlay\":\"out/overlay/rootfs.ext4\",\"state\":\"out/state/rootfs.ext4\",\"blockSize\":65536,\"expiry\":1000000000,\"maxDirtyBlocks\":200,\"minCycles\":5,\"maxCycles\":20,\"cycleThrottle\":500000000,\"makeMigratable\":true},{\"name\":\"config\",\"base\":\"out/package/config.json\",\"overlay\":\"out/overlay/config.json\",\"state\":\"out/state/config.json\",\"blockSize\":65536,\"expiry\":1000000000,\"maxDirtyBlocks\":200,\"minCycles\":5,\"maxCycles\":20,\"cycleThrottle\":500000000,\"makeMigratable\":true},{\"name\":\"oci\",\"base\":\"out/package/oci.ext4\",\"overlay\":\"out/overlay/oci.ext4\",\"state\":\"out/state/oci.ext4\",\"blockSize\":65536,\"expiry\":1000000000,\"maxDirtyBlocks\":200,\"minCycles\":5,\"maxCycles\":20,\"cycleThrottle\":500000000,\"makeMigratable\":true}]")
+  -laddr string
+    	Local address to listen on (leave empty to disable) (default "localhost:1337")
+  -raddr string
+    	Remote address to connect to (leave empty to disable) (default "localhost:1337")
 ```
 
 #### Peer
