@@ -599,6 +599,14 @@ func main() {
 		[]io.Writer{conn},
 
 		roles.MigrateToHooks{
+			OnBeforeGetDirtyBlocks: func(deviceID uint32, remote bool) {
+				if remote {
+					log.Println("Getting dirty blocks for remote device", deviceID)
+				} else {
+					log.Println("Getting dirty blocks for local device", deviceID)
+				}
+			},
+
 			OnBeforeSuspend: func() {
 				before = time.Now()
 			},

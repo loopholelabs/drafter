@@ -153,6 +153,8 @@ type MigrateToDevice struct {
 }
 
 type MigrateToHooks struct {
+	OnBeforeGetDirtyBlocks func(deviceID uint32, remote bool)
+
 	OnBeforeSuspend func()
 	OnAfterSuspend  func()
 
@@ -1201,6 +1203,10 @@ func StartPeer(
 									suspendedVMLock.Unlock()
 
 									ongoingMigrationsWg.Wait()
+
+									if hook := hooks.OnBeforeGetDirtyBlocks; hook != nil {
+										hook(uint32(index), input.prev.prev.prev.remote)
+									}
 
 									blocks := mig.GetLatestDirty()
 									if blocks == nil {
