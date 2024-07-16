@@ -13,6 +13,18 @@ config BR2_PACKAGE_DRAFTER_AGENT_VSOCK_PORT
     help
       The vsock port to connect to
 
+config BR2_PACKAGE_DRAFTER_AGENT_BEFORE_SUSPEND_CMD
+    string "before-suspend-cmd"
+    default ""
+    help
+      Command to execute before suspending
+
+config BR2_PACKAGE_DRAFTER_AGENT_AFTER_RESUME_CMD
+    string "after-resume-cmd"
+    default ""
+    help
+      Command to execute after resuming
+
 config BR2_PACKAGE_DRAFTER_AGENT_SYSTEMD_DEPENDENCY
     string "systemd-dependency"
     default "oci-runtime-bundle.service"

@@ -5,7 +5,7 @@ Requires=@DRAFTER_AGENT_SYSTEMD_DEPENDENCY@
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/drafter-agent --vsock-port @DRAFTER_AGENT_VSOCK_PORT@
+ExecStart=/usr/bin/drafter-agent --vsock-port @DRAFTER_AGENT_VSOCK_PORT@ --before-suspend-cmd @DRAFTER_AGENT_BEFORE_SUSPEND_CMD@ --after-resume-cmd @DRAFTER_AGENT_AFTER_RESUME_CMD@
 StandardOutput=journal+console
 StandardError=journal+console
 Restart=always
