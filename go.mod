@@ -14,7 +14,7 @@ require (
 	github.com/pojntfx/panrpc/go v0.0.0-20240702184342-b89dd0c1dde5
 	github.com/vishvananda/netlink v1.1.0
 	github.com/vishvananda/netns v0.0.4
-	golang.org/x/sys v0.21.0
+	golang.org/x/sys v0.22.0
 	k8s.io/utils v0.0.0-20240711033017-18e509b52bc8
 )
 
