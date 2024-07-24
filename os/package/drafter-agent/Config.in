@@ -15,13 +15,13 @@ config BR2_PACKAGE_DRAFTER_AGENT_VSOCK_PORT
 
 config BR2_PACKAGE_DRAFTER_AGENT_BEFORE_SUSPEND_CMD
     string "before-suspend-cmd"
-    default ""
+    default "true"
     help
       Command to execute before suspending
 
 config BR2_PACKAGE_DRAFTER_AGENT_AFTER_RESUME_CMD
     string "after-resume-cmd"
-    default ""
+    default "true"
     help
       Command to execute after resuming
 
