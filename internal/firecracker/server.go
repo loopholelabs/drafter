@@ -36,6 +36,7 @@ const (
 
 type FirecrackerServer struct {
 	VMPath string
+	VMPid  int
 	Wait   func() error
 	Close  func() error
 }
@@ -136,6 +137,7 @@ func StartFirecrackerServer(
 	if err := cmd.Start(); err != nil {
 		panic(errors.Join(ErrCouldNotStartFirecrackerServer, err))
 	}
+	server.VMPid = cmd.Process.Pid
 
 	var closeLock sync.Mutex
 	closed := false

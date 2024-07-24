@@ -222,6 +222,7 @@ type peerStage5 struct {
 
 type Peer struct {
 	VMPath string
+	VMPid  int
 
 	Wait  func() error
 	Close func() error
@@ -299,6 +300,7 @@ func StartPeer(
 	}
 
 	peer.VMPath = runner.VMPath
+	peer.VMPid = runner.VMPid
 
 	// We don't track this because we return the wait function
 	handleGoroutinePanics(false, func() {
