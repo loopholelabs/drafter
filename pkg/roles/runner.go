@@ -64,6 +64,7 @@ type SnapshotLoadConfiguration struct {
 
 type Runner struct {
 	VMPath string
+	VMPid  int
 
 	Wait  func() error
 	Close func() error
@@ -173,6 +174,7 @@ func StartRunner(
 	}
 
 	runner.VMPath = server.VMPath
+	runner.VMPid = server.VMPid
 
 	// We intentionally don't call `wg.Add` and `wg.Done` here since we return the process's wait method
 	// We still need to `defer handleGoroutinePanic()()` here however so that we catch any errors during this call
