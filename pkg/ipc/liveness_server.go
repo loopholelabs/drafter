@@ -46,18 +46,18 @@ func (l *LivenessServer) Open() (string, error) {
 }
 
 func (l *LivenessServer) ReceiveAndClose(ctx context.Context) (errs error) {
-	ctx, handlePanics, handleGoroutinePanics, cancel, wait, _ := utils.GetPanicHandler(
+	panicHandler := utils.NewPanicHandler(
 		ctx,
 		&errs,
 		utils.GetPanicHandlerHooks{},
 	)
-	defer wait()
-	defer cancel()
-	defer handlePanics(false)()
+	defer panicHandler.Wait()
+	defer panicHandler.Cancel()
+	defer panicHandler.HandlePanics(false)()
 
-	handleGoroutinePanics(true, func() {
+	panicHandler.HandleGoroutinePanics(true, func() {
 		// Cause the `Accept()` function to unblock
-		<-ctx.Done()
+		<-panicHandler.InternalCtx.Done()
 
 		l.Close()
 	})
@@ -70,8 +70,8 @@ func (l *LivenessServer) ReceiveAndClose(ctx context.Context) (errs error) {
 		defer l.closeLock.Unlock()
 
 		if l.closed && errors.Is(err, net.ErrClosed) { // Don't treat closed errors as errors if we closed the connection
-			if err := ctx.Err(); err != nil {
-				panic(errors.Join(ErrLivenessServerContextCancelled, ctx.Err()))
+			if err := panicHandler.InternalCtx.Err(); err != nil {
+				panic(errors.Join(ErrLivenessServerContextCancelled, panicHandler.InternalCtx.Err()))
 			}
 
 			return

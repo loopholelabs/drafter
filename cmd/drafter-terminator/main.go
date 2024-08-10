@@ -70,14 +70,14 @@ func main() {
 		}
 	}()
 
-	ctx, handlePanics, _, cancel, wait, _ := utils.GetPanicHandler(
+	panicHandler := utils.NewPanicHandler(
 		ctx,
 		&errs,
 		utils.GetPanicHandlerHooks{},
 	)
-	defer wait()
-	defer cancel()
-	defer handlePanics(false)()
+	defer panicHandler.Wait()
+	defer panicHandler.Cancel()
+	defer panicHandler.HandlePanics(false)()
 
 	go func() {
 		done := make(chan os.Signal, 1)
@@ -90,7 +90,7 @@ func main() {
 		cancel()
 	}()
 
-	conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", *raddr)
+	conn, err := (&net.Dialer{}).DialContext(panicHandler.InternalCtx, "tcp", *raddr)
 	if err != nil {
 		panic(err)
 	}
@@ -99,7 +99,7 @@ func main() {
 	log.Println("Migrating from", conn.RemoteAddr())
 
 	if err := roles.Terminate(
-		ctx,
+		panicHandler.InternalCtx,
 
 		devices,
 

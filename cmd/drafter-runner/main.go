@@ -142,14 +142,14 @@ func main() {
 		}
 	}()
 
-	ctx, handlePanics, handleGoroutinePanics, cancel, wait, _ := utils.GetPanicHandler(
+	panicHandler := utils.NewPanicHandler(
 		ctx,
 		&errs,
 		utils.GetPanicHandlerHooks{},
 	)
-	defer wait()
-	defer cancel()
-	defer handlePanics(false)()
+	defer panicHandler.Wait()
+	defer panicHandler.Cancel()
+	defer panicHandler.HandlePanics(false)()
 
 	bubbleSignals := false
 
@@ -171,7 +171,7 @@ func main() {
 	}()
 
 	runner, err := roles.StartRunner(
-		ctx,
+		panicHandler.InternalCtx,
 		context.Background(), // Never give up on rescue operations
 
 		roles.HypervisorConfiguration{
@@ -197,7 +197,7 @@ func main() {
 
 	if runner.Wait != nil {
 		defer func() {
-			defer handlePanics(true)()
+			defer panicHandler.HandlePanics(true)()
 
 			if err := runner.Wait(); err != nil {
 				panic(err)
@@ -210,14 +210,14 @@ func main() {
 	}
 
 	defer func() {
-		defer handlePanics(true)()
+		defer panicHandler.HandlePanics(true)()
 
 		if err := runner.Close(); err != nil {
 			panic(err)
 		}
 	}()
 
-	handleGoroutinePanics(true, func() {
+	panicHandler.HandleGoroutinePanics(true, func() {
 		if err := runner.Wait(); err != nil {
 			panic(err)
 		}
@@ -227,7 +227,7 @@ func main() {
 		log.Println("Requested local device", index, "with name", device.Name)
 
 		defer func() {
-			defer handlePanics(true)()
+			defer panicHandler.HandlePanics(true)()
 
 			resourceInfo, err := os.Stat(device.Path)
 			if err != nil {
@@ -278,9 +278,9 @@ func main() {
 		deviceID := int((deviceMajor << 8) | deviceMinor)
 
 		select {
-		case <-ctx.Done():
-			if err := ctx.Err(); err != nil {
-				panic(ctx.Err())
+		case <-panicHandler.InternalCtx.Done():
+			if err := panicHandler.InternalCtx.Err(); err != nil {
+				panic(panicHandler.InternalCtx.Err())
 			}
 
 			return
@@ -295,7 +295,7 @@ func main() {
 	before := time.Now()
 
 	resumedRunner, err := runner.Resume(
-		ctx,
+		panicHandler.InternalCtx,
 
 		*resumeTimeout,
 		*rescueTimeout,
@@ -314,14 +314,14 @@ func main() {
 	}
 
 	defer func() {
-		defer handlePanics(true)()
+		defer panicHandler.HandlePanics(true)()
 
 		if err := resumedRunner.Close(); err != nil {
 			panic(err)
 		}
 	}()
 
-	handleGoroutinePanics(true, func() {
+	panicHandler.HandleGoroutinePanics(true, func() {
 		if err := resumedRunner.Wait(); err != nil {
 			panic(err)
 		}
@@ -332,7 +332,7 @@ func main() {
 	bubbleSignals = true
 
 	select {
-	case <-ctx.Done():
+	case <-panicHandler.InternalCtx.Done():
 		return
 
 	case <-done:
@@ -341,7 +341,7 @@ func main() {
 
 	before = time.Now()
 
-	if err := resumedRunner.SuspendAndCloseAgentServer(ctx, *resumeTimeout); err != nil {
+	if err := resumedRunner.SuspendAndCloseAgentServer(panicHandler.InternalCtx, *resumeTimeout); err != nil {
 		panic(err)
 	}
 

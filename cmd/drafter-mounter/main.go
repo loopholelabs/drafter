@@ -187,14 +187,14 @@ func main() {
 		}
 	}()
 
-	ctx, handlePanics, handleGoroutinePanics, cancel, wait, _ := utils.GetPanicHandler(
+	panicHandler := utils.NewPanicHandler(
 		ctx,
 		&errs,
 		utils.GetPanicHandlerHooks{},
 	)
-	defer wait()
-	defer cancel()
-	defer handlePanics(false)()
+	defer panicHandler.Wait()
+	defer panicHandler.Cancel()
+	defer panicHandler.HandlePanics(false)()
 
 	bubbleSignals := false
 
@@ -220,7 +220,7 @@ func main() {
 		writers []io.Writer
 	)
 	if strings.TrimSpace(*raddr) != "" {
-		conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", *raddr)
+		conn, err := (&net.Dialer{}).DialContext(panicHandler.InternalCtx, "tcp", *raddr)
 		if err != nil {
 			panic(err)
 		}
@@ -246,8 +246,8 @@ func main() {
 	}
 
 	migratedMounter, err := roles.MigrateFromAndMount(
-		ctx,
-		ctx,
+		panicHandler.InternalCtx,
+		panicHandler.InternalCtx,
 
 		migrateFromDevices,
 
@@ -290,7 +290,7 @@ func main() {
 
 	if migratedMounter.Wait != nil {
 		defer func() {
-			defer handlePanics(true)()
+			defer panicHandler.HandlePanics(true)()
 
 			if err := migratedMounter.Wait(); err != nil {
 				panic(err)
@@ -303,14 +303,14 @@ func main() {
 	}
 
 	defer func() {
-		defer handlePanics(true)()
+		defer panicHandler.HandlePanics(true)()
 
 		if err := migratedMounter.Close(); err != nil {
 			panic(err)
 		}
 	}()
 
-	handleGoroutinePanics(true, func() {
+	panicHandler.HandleGoroutinePanics(true, func() {
 		if err := migratedMounter.Wait(); err != nil {
 			panic(err)
 		}
@@ -338,7 +338,7 @@ func main() {
 		bubbleSignals = true
 
 		select {
-		case <-ctx.Done():
+		case <-panicHandler.InternalCtx.Done():
 			return
 
 		case <-done:
@@ -374,15 +374,15 @@ l:
 		defer cancelAcceptedCtx()
 
 		var conn net.Conn
-		handleGoroutinePanics(true, func() {
+		panicHandler.HandleGoroutinePanics(true, func() {
 			conn, err = lis.Accept()
 			if err != nil {
 				closeLock.Lock()
 				defer closeLock.Unlock()
 
 				if closed && errors.Is(err, net.ErrClosed) { // Don't treat closed errors as errors if we closed the connection
-					if err := ctx.Err(); err != nil {
-						panic(ctx.Err())
+					if err := panicHandler.InternalCtx.Err(); err != nil {
+						panic(panicHandler.InternalCtx.Err())
 					}
 
 					return
@@ -398,7 +398,7 @@ l:
 
 	s:
 		select {
-		case <-ctx.Done():
+		case <-panicHandler.InternalCtx.Done():
 			return
 
 		case <-done:
@@ -427,7 +427,7 @@ l:
 			}
 
 			migratableMounter, err := migratedMounter.MakeMigratable(
-				ctx,
+				panicHandler.InternalCtx,
 
 				makeMigratableDevices,
 			)
@@ -456,7 +456,7 @@ l:
 			}
 
 			return migratableMounter.MigrateTo(
-				ctx,
+				panicHandler.InternalCtx,
 
 				migrateToDevices,
 

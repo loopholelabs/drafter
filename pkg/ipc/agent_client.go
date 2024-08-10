@@ -64,17 +64,17 @@ func StartAgentClient(
 	readyCtx, cancelReadyCtx := context.WithCancel(context.Background())
 	defer cancelReadyCtx()
 
-	internalCtx, handlePanics, handleGoroutinePanics, cancel, wait, _ := utils.GetPanicHandler(
+	panicHandler := utils.NewPanicHandler(
 		dialCtx,
 		&errs,
 		utils.GetPanicHandlerHooks{},
 	)
-	defer wait()
-	defer cancel()
-	defer handlePanics(false)()
+	defer panicHandler.Wait()
+	defer panicHandler.Cancel()
+	defer panicHandler.HandlePanics(false)()
 
 	conn, err := vsock.DialContext(
-		internalCtx,
+		panicHandler.InternalCtx,
 
 		vsockCID,
 		vsockPort,
@@ -99,10 +99,10 @@ func StartAgentClient(
 	// goroutine since we return a `Wait()` function.
 	// We still need to `defer handleGoroutinePanic()()` however so that
 	// if we cancel the context during this call, we still handle it appropriately
-	handleGoroutinePanics(false, func() {
+	panicHandler.HandleGoroutinePanics(false, func() {
 		select {
 		// Failure case; we cancelled the internal context before we got a connection
-		case <-internalCtx.Done():
+		case <-panicHandler.InternalCtx.Done():
 			connectedAgentClient.Close() // We ignore errors here since we might interrupt a network connection
 
 		// Happy case; we've got a connection and we want to wait with closing the agent's connections until the context, not the internal context is cancelled
@@ -175,15 +175,15 @@ func StartAgentClient(
 	// and waiting for it to be stopped. We still need to `defer handleGoroutinePanic()()` however so that
 	// any errors we get as we're polling the socket path directory are caught
 	// It's important that we start this _after_ calling `cmd.Start`, otherwise our process would be nil
-	handleGoroutinePanics(false, func() {
+	panicHandler.HandleGoroutinePanics(false, func() {
 		if err := connectedAgentClient.Wait(); err != nil {
 			panic(errors.Join(ErrAgentContextCancelled, err))
 		}
 	})
 
 	select {
-	case <-internalCtx.Done():
-		if err := internalCtx.Err(); err != nil {
+	case <-panicHandler.InternalCtx.Done():
+		if err := panicHandler.InternalCtx.Err(); err != nil {
 			panic(errors.Join(ErrAgentContextCancelled, err))
 		}
 

@@ -7,27 +7,29 @@ import (
 	"sync"
 )
 
+type PanicHandler struct {
+	InternalCtx context.Context
+
+	HandlePanics          func(track bool) func()
+	HandleGoroutinePanics func(track bool, fn func())
+
+	Cancel func()
+	Wait   func()
+
+	ErrFinishedType error
+}
+
 type GetPanicHandlerHooks struct {
 	OnAfterRecover func()
 }
 
-func GetPanicHandler(
+func NewPanicHandler(
 	ctx context.Context,
 
 	errs *error,
 
 	hooks GetPanicHandlerHooks,
-) (
-	internalCtx context.Context,
-
-	handlePanics func(track bool) func(),
-	handleGoroutinePanics func(track bool, fn func()),
-
-	cancel func(),
-	wait func(),
-
-	errFinishedType error,
-) {
+) *PanicHandler {
 	var (
 		errsLock sync.Mutex
 		wg       sync.WaitGroup
@@ -67,7 +69,8 @@ func GetPanicHandler(
 		}
 	}
 
-	return internalCtx,
+	return &PanicHandler{
+		internalCtx,
 
 		func(track bool) func() {
 			if track {
@@ -93,5 +96,6 @@ func GetPanicHandler(
 		},
 		wg.Wait,
 
-		errFinished
+		errFinished,
+	}
 }

@@ -40,14 +40,14 @@ func main() {
 		}
 	}()
 
-	ctx, handlePanics, handleGoroutinePanics, cancel, wait, _ := utils.GetPanicHandler(
+	panicHandler := utils.NewPanicHandler(
 		ctx,
 		&errs,
 		utils.GetPanicHandlerHooks{},
 	)
-	defer wait()
-	defer cancel()
-	defer handlePanics(false)()
+	defer panicHandler.Wait()
+	defer panicHandler.Cancel()
+	defer panicHandler.HandlePanics(false)()
 
 	go func() {
 		done := make(chan os.Signal, 1)
@@ -61,7 +61,7 @@ func main() {
 	}()
 
 	nat, err := roles.CreateNAT(
-		ctx,
+		panicHandler.InternalCtx,
 		context.Background(), // Never give up on rescue operations
 
 		*hostInterface,
@@ -92,7 +92,7 @@ func main() {
 
 	if nat.Wait != nil {
 		defer func() {
-			defer handlePanics(true)()
+			defer panicHandler.HandlePanics(true)()
 
 			if err := nat.Wait(); err != nil {
 				panic(err)
@@ -105,14 +105,14 @@ func main() {
 	}
 
 	defer func() {
-		defer handlePanics(true)()
+		defer panicHandler.HandlePanics(true)()
 
 		if err := nat.Close(); err != nil {
 			panic(err)
 		}
 	}()
 
-	handleGoroutinePanics(true, func() {
+	panicHandler.HandleGoroutinePanics(true, func() {
 		if err := nat.Wait(); err != nil {
 			panic(err)
 		}
@@ -120,7 +120,7 @@ func main() {
 
 	log.Println("Created all namespaces")
 
-	<-ctx.Done()
+	<-panicHandler.InternalCtx.Done()
 
 	log.Println("Shutting down")
 }
