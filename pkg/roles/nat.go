@@ -118,7 +118,7 @@ func CreateNAT(
 		namespaceVeths     []*network.IP
 		namespaceVethsLock sync.Mutex
 
-		claimableNamespaces     = map[string]claimableNamespace{}
+		claimableNamespaces     = map[string]*claimableNamespace{}
 		claimableNamespacesLock sync.Mutex
 	)
 
@@ -164,7 +164,7 @@ func CreateNAT(
 			}
 		}
 
-		claimableNamespaces = map[string]claimableNamespace{}
+		claimableNamespaces = map[string]*claimableNamespace{}
 
 		closeLock.Lock()
 		defer closeLock.Unlock()
@@ -319,7 +319,7 @@ func CreateNAT(
 				return err
 			}
 
-			claimableNamespaces[id] = claimableNamespace{
+			claimableNamespaces[id] = &claimableNamespace{
 				namespace: namespace,
 			}
 
