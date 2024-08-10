@@ -85,21 +85,21 @@ func StartAgentServer(
 		readyCtx, cancelReadyCtx := context.WithCancel(context.Background())
 		defer cancelReadyCtx()
 
-		panicHandler := utils.NewPanicHandler(
+		goroutineManager := utils.NewGoroutineManager(
 			acceptCtx,
 			&errs,
-			utils.GetPanicHandlerHooks{},
+			utils.GoroutineManagerHooks{},
 		)
-		defer panicHandler.Wait()
-		defer panicHandler.Cancel()
-		defer panicHandler.HandlePanics(false)()
+		defer goroutineManager.WaitForForegroundGoroutines()
+		defer goroutineManager.StopAllGoroutines()
+		defer goroutineManager.CreateBackgroundPanicCollector()()
 
 		// We intentionally don't call `wg.Add` and `wg.Done` here - we are ok with leaking this
 		// goroutine since we return a `Wait()` function
 		go func() {
 			select {
 			// Failure case; we cancelled the internal context before we got a connection
-			case <-panicHandler.InternalCtx.Done():
+			case <-goroutineManager.GetGoroutineCtx().Done():
 				agentServer.Close() // We ignore errors here since we might interrupt a network connection
 
 			// Happy case; we've got a connection and we want to wait with closing the agent's connections until the context, not the internal context is cancelled
@@ -115,8 +115,8 @@ func StartAgentServer(
 			defer closeLock.Unlock()
 
 			if closed && errors.Is(err, net.ErrClosed) { // Don't treat closed errors as errors if we closed the connection
-				if err := panicHandler.InternalCtx.Err(); err != nil {
-					panic(panicHandler.InternalCtx.Err())
+				if err := goroutineManager.GetGoroutineCtx().Err(); err != nil {
+					panic(goroutineManager.GetGoroutineCtx().Err())
 				}
 
 				return
@@ -145,10 +145,10 @@ func StartAgentServer(
 		// goroutine since we return a `Wait()` function.
 		// We still need to `defer handleGoroutinePanic()()` however so that
 		// if we cancel the context during this call, we still handle it appropriately
-		panicHandler.HandleGoroutinePanics(false, func() {
+		goroutineManager.StartBackgroundGoroutine(func() {
 			select {
 			// Failure case; we cancelled the internal context before we got a connection
-			case <-panicHandler.InternalCtx.Done():
+			case <-goroutineManager.GetGoroutineCtx().Done():
 				if err := acceptingAgentServer.Close(); err != nil {
 					panic(errors.Join(ErrCouldNotCloseAcceptingAgentServer, err))
 				}
@@ -223,16 +223,16 @@ func StartAgentServer(
 		// and waiting for it to be stopped. We still need to `defer handleGoroutinePanic()()` however so that
 		// any errors we get as we're polling the socket path directory are caught
 		// It's important that we start this _after_ calling `cmd.Start`, otherwise our process would be nil
-		panicHandler.HandleGoroutinePanics(false, func() {
+		goroutineManager.StartBackgroundGoroutine(func() {
 			if err := acceptingAgentServer.Wait(); err != nil {
 				panic(err)
 			}
 		})
 
 		select {
-		case <-panicHandler.InternalCtx.Done():
-			if err := panicHandler.InternalCtx.Err(); err != nil {
-				panic(panicHandler.InternalCtx.Err())
+		case <-goroutineManager.GetGoroutineCtx().Done():
+			if err := goroutineManager.GetGoroutineCtx().Err(); err != nil {
+				panic(goroutineManager.GetGoroutineCtx().Err())
 			}
 
 			return

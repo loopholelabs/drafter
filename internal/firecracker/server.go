@@ -61,14 +61,14 @@ func StartFirecrackerServer(
 ) (server *FirecrackerServer, errs error) {
 	server = &FirecrackerServer{}
 
-	panicHandler := utils.NewPanicHandler(
+	goroutineManager := utils.NewGoroutineManager(
 		ctx,
 		&errs,
-		utils.GetPanicHandlerHooks{},
+		utils.GoroutineManagerHooks{},
 	)
-	defer panicHandler.Wait()
-	defer panicHandler.Cancel()
-	defer panicHandler.HandlePanics(false)()
+	defer goroutineManager.WaitForForegroundGoroutines()
+	defer goroutineManager.StopAllGoroutines()
+	defer goroutineManager.CreateBackgroundPanicCollector()()
 
 	id := shortuuid.New()
 
@@ -163,15 +163,15 @@ func StartFirecrackerServer(
 	// and waiting for it to be stopped. We still need to `defer handleGoroutinePanic()()` however so that
 	// any errors we get as we're polling the socket path directory are caught
 	// It's important that we start this _after_ calling `cmd.Start`, otherwise our process would be nil
-	panicHandler.HandleGoroutinePanics(false, func() {
+	goroutineManager.StartBackgroundGoroutine(func() {
 		if err := server.Wait(); err != nil {
 			panic(errors.Join(ErrCouldNotWaitForFirecracker, err))
 		}
 	})
 
-	panicHandler.HandleGoroutinePanics(true, func() {
+	goroutineManager.StartForegroundGoroutine(func() {
 		// Cause the `range Watcher.Event` loop to break if context is cancelled, e.g. when command errors
-		<-panicHandler.InternalCtx.Done()
+		<-goroutineManager.GetGoroutineCtx().Done()
 
 		if err := watcher.Close(); err != nil {
 			panic(errors.Join(ErrCouldNotCloseWatcher, err))
@@ -182,7 +182,7 @@ func StartFirecrackerServer(
 	// goroutine since we return the process, which allows tracking errors and stopping this goroutine
 	// and waiting for it to be stopped. We still need to `defer handleGoroutinePanic()()` however so that
 	// if we cancel the context during this call, we still handle it appropriately
-	panicHandler.HandleGoroutinePanics(false, func() {
+	goroutineManager.StartBackgroundGoroutine(func() {
 		// Cause the Firecracker process to be closed if context is cancelled - cancelling `ctx` on the `exec.Command`
 		// doesn't actually stop it, it only stops trying to start it!
 		<-ctx.Done() // We use ctx, not internalCtx here since this resource outlives the function call

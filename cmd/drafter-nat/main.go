@@ -40,14 +40,14 @@ func main() {
 		}
 	}()
 
-	panicHandler := utils.NewPanicHandler(
+	goroutineManager := utils.NewGoroutineManager(
 		ctx,
 		&errs,
-		utils.GetPanicHandlerHooks{},
+		utils.GoroutineManagerHooks{},
 	)
-	defer panicHandler.Wait()
-	defer panicHandler.Cancel()
-	defer panicHandler.HandlePanics(false)()
+	defer goroutineManager.WaitForForegroundGoroutines()
+	defer goroutineManager.StopAllGoroutines()
+	defer goroutineManager.CreateBackgroundPanicCollector()()
 
 	go func() {
 		done := make(chan os.Signal, 1)
@@ -61,7 +61,7 @@ func main() {
 	}()
 
 	nat, err := roles.CreateNAT(
-		panicHandler.InternalCtx,
+		goroutineManager.GetGoroutineCtx(),
 		context.Background(), // Never give up on rescue operations
 
 		*hostInterface,
@@ -92,7 +92,7 @@ func main() {
 
 	if nat.Wait != nil {
 		defer func() {
-			defer panicHandler.HandlePanics(true)()
+			defer goroutineManager.CreateForegroundPanicCollector()()
 
 			if err := nat.Wait(); err != nil {
 				panic(err)
@@ -105,14 +105,14 @@ func main() {
 	}
 
 	defer func() {
-		defer panicHandler.HandlePanics(true)()
+		defer goroutineManager.CreateForegroundPanicCollector()()
 
 		if err := nat.Close(); err != nil {
 			panic(err)
 		}
 	}()
 
-	panicHandler.HandleGoroutinePanics(true, func() {
+	goroutineManager.StartForegroundGoroutine(func() {
 		if err := nat.Wait(); err != nil {
 			panic(err)
 		}
@@ -120,7 +120,7 @@ func main() {
 
 	log.Println("Created all namespaces")
 
-	<-panicHandler.InternalCtx.Done()
+	<-goroutineManager.GetGoroutineCtx().Done()
 
 	log.Println("Shutting down")
 }

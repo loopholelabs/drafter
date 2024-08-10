@@ -21,22 +21,22 @@ func DialContext(
 	cid uint32,
 	port uint32,
 ) (c io.ReadWriteCloser, errs error) {
-	panicHandler := utils.NewPanicHandler(
+	goroutineManager := utils.NewGoroutineManager(
 		ctx,
 		&errs,
-		utils.GetPanicHandlerHooks{},
+		utils.GoroutineManagerHooks{},
 	)
-	defer panicHandler.Wait()
-	defer panicHandler.Cancel()
-	defer panicHandler.HandlePanics(false)()
+	defer goroutineManager.WaitForForegroundGoroutines()
+	defer goroutineManager.StopAllGoroutines()
+	defer goroutineManager.CreateBackgroundPanicCollector()()
 
 	fd, err := unix.Socket(unix.AF_VSOCK, unix.SOCK_STREAM, 0)
 	if err != nil {
 		panic(errors.Join(ErrVSockSocketCreationFailed, err))
 	}
 
-	panicHandler.HandleGoroutinePanics(true, func() {
-		<-panicHandler.InternalCtx.Done()
+	goroutineManager.StartForegroundGoroutine(func() {
+		<-goroutineManager.GetGoroutineCtx().Done()
 
 		// Non-happy path; context was cancelled before `connect()` completed
 		if c == nil {
@@ -55,7 +55,7 @@ func DialContext(
 				panic(errors.Join(ErrCouldNotCloseVSockConn, err))
 			}
 
-			if err := panicHandler.InternalCtx.Err(); err != nil {
+			if err := goroutineManager.GetGoroutineCtx().Err(); err != nil {
 				panic(errors.Join(ErrVSockDialContextCancelled, err))
 			}
 

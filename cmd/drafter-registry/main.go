@@ -87,14 +87,14 @@ func main() {
 		}
 	}()
 
-	panicHandler := utils.NewPanicHandler(
+	goroutineManager := utils.NewGoroutineManager(
 		ctx,
 		&errs,
-		utils.GetPanicHandlerHooks{},
+		utils.GoroutineManagerHooks{},
 	)
-	defer panicHandler.Wait()
-	defer panicHandler.Cancel()
-	defer panicHandler.HandlePanics(false)()
+	defer goroutineManager.WaitForForegroundGoroutines()
+	defer goroutineManager.StopAllGoroutines()
+	defer goroutineManager.CreateBackgroundPanicCollector()()
 
 	go func() {
 		done := make(chan os.Signal, 1)
@@ -106,7 +106,7 @@ func main() {
 
 		cancel()
 
-		defer panicHandler.HandlePanics(true)()
+		defer goroutineManager.CreateForegroundPanicCollector()()
 
 		if lis != nil {
 			if err := lis.Close(); err != nil {
@@ -120,7 +120,7 @@ l:
 		conn, err := lis.Accept()
 		if err != nil {
 			select {
-			case <-panicHandler.InternalCtx.Done():
+			case <-goroutineManager.GetGoroutineCtx().Done():
 				break l
 
 			default:
@@ -163,7 +163,7 @@ l:
 			}
 
 			if err := roles.MigrateOpenedDevices(
-				panicHandler.InternalCtx,
+				goroutineManager.GetGoroutineCtx(),
 
 				openedDevices,
 				*concurrency,

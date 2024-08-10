@@ -35,14 +35,14 @@ func main() {
 		}
 	}()
 
-	panicHandler := utils.NewPanicHandler(
+	goroutineManager := utils.NewGoroutineManager(
 		ctx,
 		&errs,
-		utils.GetPanicHandlerHooks{},
+		utils.GoroutineManagerHooks{},
 	)
-	defer panicHandler.Wait()
-	defer panicHandler.Cancel()
-	defer panicHandler.HandlePanics(false)()
+	defer goroutineManager.WaitForForegroundGoroutines()
+	defer goroutineManager.StopAllGoroutines()
+	defer goroutineManager.CreateBackgroundPanicCollector()()
 
 	go func() {
 		done := make(chan os.Signal, 1)
@@ -92,12 +92,12 @@ func main() {
 		if err := func() error {
 			log.Println("Connecting to host")
 
-			dialCtx, cancelDialCtx := context.WithTimeout(panicHandler.InternalCtx, *vsockTimeout)
+			dialCtx, cancelDialCtx := context.WithTimeout(goroutineManager.GetGoroutineCtx(), *vsockTimeout)
 			defer cancelDialCtx()
 
 			connectedAgentClient, err := ipc.StartAgentClient(
 				dialCtx,
-				panicHandler.InternalCtx,
+				goroutineManager.GetGoroutineCtx(),
 
 				ipc.VSockCIDHost,
 				uint32(*vsockPort),
@@ -113,7 +113,7 @@ func main() {
 
 			return connectedAgentClient.Wait()
 		}(); err != nil {
-			if !(errors.Is(err, context.Canceled) && errors.Is(context.Cause(panicHandler.InternalCtx), panicHandler.ErrFinishedType)) {
+			if !(errors.Is(err, context.Canceled) && errors.Is(context.Cause(goroutineManager.GetGoroutineCtx()), goroutineManager.GetErrGoroutineStopped())) {
 				log.Println("Disconnected from host with error, reconnecting:", err)
 
 				continue

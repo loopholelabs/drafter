@@ -187,14 +187,14 @@ func main() {
 		}
 	}()
 
-	panicHandler := utils.NewPanicHandler(
+	goroutineManager := utils.NewGoroutineManager(
 		ctx,
 		&errs,
-		utils.GetPanicHandlerHooks{},
+		utils.GoroutineManagerHooks{},
 	)
-	defer panicHandler.Wait()
-	defer panicHandler.Cancel()
-	defer panicHandler.HandlePanics(false)()
+	defer goroutineManager.WaitForForegroundGoroutines()
+	defer goroutineManager.StopAllGoroutines()
+	defer goroutineManager.CreateBackgroundPanicCollector()()
 
 	bubbleSignals := false
 
@@ -220,7 +220,7 @@ func main() {
 		writers []io.Writer
 	)
 	if strings.TrimSpace(*raddr) != "" {
-		conn, err := (&net.Dialer{}).DialContext(panicHandler.InternalCtx, "tcp", *raddr)
+		conn, err := (&net.Dialer{}).DialContext(goroutineManager.GetGoroutineCtx(), "tcp", *raddr)
 		if err != nil {
 			panic(err)
 		}
@@ -246,8 +246,8 @@ func main() {
 	}
 
 	migratedMounter, err := roles.MigrateFromAndMount(
-		panicHandler.InternalCtx,
-		panicHandler.InternalCtx,
+		goroutineManager.GetGoroutineCtx(),
+		goroutineManager.GetGoroutineCtx(),
 
 		migrateFromDevices,
 
@@ -290,7 +290,7 @@ func main() {
 
 	if migratedMounter.Wait != nil {
 		defer func() {
-			defer panicHandler.HandlePanics(true)()
+			defer goroutineManager.CreateForegroundPanicCollector()()
 
 			if err := migratedMounter.Wait(); err != nil {
 				panic(err)
@@ -303,14 +303,14 @@ func main() {
 	}
 
 	defer func() {
-		defer panicHandler.HandlePanics(true)()
+		defer goroutineManager.CreateForegroundPanicCollector()()
 
 		if err := migratedMounter.Close(); err != nil {
 			panic(err)
 		}
 	}()
 
-	panicHandler.HandleGoroutinePanics(true, func() {
+	goroutineManager.StartForegroundGoroutine(func() {
 		if err := migratedMounter.Wait(); err != nil {
 			panic(err)
 		}
@@ -338,7 +338,7 @@ func main() {
 		bubbleSignals = true
 
 		select {
-		case <-panicHandler.InternalCtx.Done():
+		case <-goroutineManager.GetGoroutineCtx().Done():
 			return
 
 		case <-done:
@@ -374,15 +374,15 @@ l:
 		defer cancelAcceptedCtx()
 
 		var conn net.Conn
-		panicHandler.HandleGoroutinePanics(true, func() {
+		goroutineManager.StartForegroundGoroutine(func() {
 			conn, err = lis.Accept()
 			if err != nil {
 				closeLock.Lock()
 				defer closeLock.Unlock()
 
 				if closed && errors.Is(err, net.ErrClosed) { // Don't treat closed errors as errors if we closed the connection
-					if err := panicHandler.InternalCtx.Err(); err != nil {
-						panic(panicHandler.InternalCtx.Err())
+					if err := goroutineManager.GetGoroutineCtx().Err(); err != nil {
+						panic(goroutineManager.GetGoroutineCtx().Err())
 					}
 
 					return
@@ -398,7 +398,7 @@ l:
 
 	s:
 		select {
-		case <-panicHandler.InternalCtx.Done():
+		case <-goroutineManager.GetGoroutineCtx().Done():
 			return
 
 		case <-done:
@@ -427,7 +427,7 @@ l:
 			}
 
 			migratableMounter, err := migratedMounter.MakeMigratable(
-				panicHandler.InternalCtx,
+				goroutineManager.GetGoroutineCtx(),
 
 				makeMigratableDevices,
 			)
@@ -456,7 +456,7 @@ l:
 			}
 
 			return migratableMounter.MigrateTo(
-				panicHandler.InternalCtx,
+				goroutineManager.GetGoroutineCtx(),
 
 				migrateToDevices,
 

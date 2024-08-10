@@ -58,21 +58,21 @@ func Terminate(
 
 	hooks TerminateHooks,
 ) (errs error) {
-	panicHandler := utils.NewPanicHandler(
+	goroutineManager := utils.NewGoroutineManager(
 		ctx,
 		&errs,
-		utils.GetPanicHandlerHooks{},
+		utils.GoroutineManagerHooks{},
 	)
-	defer panicHandler.Wait()
-	defer panicHandler.Cancel()
-	defer panicHandler.HandlePanics(false)()
+	defer goroutineManager.WaitForForegroundGoroutines()
+	defer goroutineManager.StopAllGoroutines()
+	defer goroutineManager.CreateBackgroundPanicCollector()()
 
 	var (
 		deviceCloseFuncsLock sync.Mutex
 		deviceCloseFuncs     []func() error
 	)
 	pro := protocol.NewProtocolRW(
-		panicHandler.InternalCtx,
+		goroutineManager.GetGoroutineCtx(),
 		readers,
 		writers,
 		func(ctx context.Context, p protocol.Protocol, index uint32) {
@@ -84,7 +84,7 @@ func Terminate(
 				ctx,
 				index,
 				func(di *packets.DevInfo) storage.StorageProvider {
-					// No need to `defer panicHandler.HandlePanics` here - panics bubble upwards
+					// No need to `defer goroutineManager.HandlePanics` here - panics bubble upwards
 
 					path := ""
 					for _, device := range devices {
@@ -158,25 +158,25 @@ func Terminate(
 				p,
 			)
 
-			panicHandler.HandleGoroutinePanics(true, func() {
+			goroutineManager.StartForegroundGoroutine(func() {
 				if err := from.HandleReadAt(); err != nil {
 					panic(errors.Join(ErrCouldNotHandleReadAt, err))
 				}
 			})
 
-			panicHandler.HandleGoroutinePanics(true, func() {
+			goroutineManager.StartForegroundGoroutine(func() {
 				if err := from.HandleWriteAt(); err != nil {
 					panic(errors.Join(ErrCouldNotHandleWriteAt, err))
 				}
 			})
 
-			panicHandler.HandleGoroutinePanics(true, func() {
+			goroutineManager.StartForegroundGoroutine(func() {
 				if err := from.HandleDevInfo(); err != nil {
 					panic(errors.Join(ErrCouldNotHandleDevInfo, err))
 				}
 			})
 
-			panicHandler.HandleGoroutinePanics(true, func() {
+			goroutineManager.StartForegroundGoroutine(func() {
 				if err := from.HandleEvent(func(e *packets.Event) {
 					switch e.Type {
 					case packets.EventCustom:
@@ -202,7 +202,7 @@ func Terminate(
 				}
 			})
 
-			panicHandler.HandleGoroutinePanics(true, func() {
+			goroutineManager.StartForegroundGoroutine(func() {
 				if err := from.HandleDirtyList(func(blocks []uint) {
 					if local != nil {
 						local.DirtyBlocks(blocks)
@@ -214,14 +214,14 @@ func Terminate(
 		})
 
 	defer func() {
-		defer panicHandler.HandlePanics(true)()
+		defer goroutineManager.CreateForegroundPanicCollector()()
 
 		deviceCloseFuncsLock.Lock()
 		defer deviceCloseFuncsLock.Unlock()
 
 		for _, closeFunc := range deviceCloseFuncs {
 			defer func(closeFunc func() error) {
-				defer panicHandler.HandlePanics(true)()
+				defer goroutineManager.CreateForegroundPanicCollector()()
 
 				if err := closeFunc(); err != nil {
 					panic(errors.Join(ErrCouldNotCloseDevice, err))
