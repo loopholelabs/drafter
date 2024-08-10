@@ -87,14 +87,14 @@ func main() {
 		}
 	}()
 
-	ctx, handlePanics, _, cancel, wait, _ := utils.GetPanicHandler(
+	panicHandler := utils.NewPanicHandler(
 		ctx,
 		&errs,
 		utils.GetPanicHandlerHooks{},
 	)
-	defer wait()
-	defer cancel()
-	defer handlePanics(false)()
+	defer panicHandler.Wait()
+	defer panicHandler.Cancel()
+	defer panicHandler.HandlePanics(false)()
 
 	go func() {
 		done := make(chan os.Signal, 1)
@@ -106,7 +106,7 @@ func main() {
 
 		cancel()
 
-		defer handlePanics(true)()
+		defer panicHandler.HandlePanics(true)()
 
 		if lis != nil {
 			if err := lis.Close(); err != nil {
@@ -120,7 +120,7 @@ l:
 		conn, err := lis.Accept()
 		if err != nil {
 			select {
-			case <-ctx.Done():
+			case <-panicHandler.InternalCtx.Done():
 				break l
 
 			default:
@@ -163,7 +163,7 @@ l:
 			}
 
 			if err := roles.MigrateOpenedDevices(
-				ctx,
+				panicHandler.InternalCtx,
 
 				openedDevices,
 				*concurrency,

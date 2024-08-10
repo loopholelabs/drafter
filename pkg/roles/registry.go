@@ -135,23 +135,23 @@ func MigrateOpenedDevices(
 
 	hooks MigrateDevicesHooks,
 ) (errs error) {
-	ctx, handlePanics, handleGoroutinePanics, cancel, wait, _ := utils.GetPanicHandler(
+	panicHandler := utils.NewPanicHandler(
 		ctx,
 		&errs,
 		utils.GetPanicHandlerHooks{},
 	)
-	defer wait()
-	defer cancel()
-	defer handlePanics(false)()
+	defer panicHandler.Wait()
+	defer panicHandler.Cancel()
+	defer panicHandler.HandlePanics(false)()
 
 	pro := protocol.NewProtocolRW(
-		ctx,
+		panicHandler.InternalCtx,
 		readers,
 		writers,
 		nil,
 	)
 
-	handleGoroutinePanics(true, func() {
+	panicHandler.HandleGoroutinePanics(true, func() {
 		if err := pro.Handle(); err != nil && !errors.Is(err, io.EOF) {
 			panic(errors.Join(ErrCouldNotHandleProtocol, err))
 		}
@@ -174,7 +174,7 @@ func MigrateOpenedDevices(
 
 			devicesLeftToSend.Add(1)
 			if devicesLeftToSend.Load() >= int32(len(openedDevices)) {
-				handleGoroutinePanics(true, func() {
+				panicHandler.HandleGoroutinePanics(true, func() {
 					if err := to.SendEvent(&packets.Event{
 						Type:       packets.EventCustom,
 						CustomType: byte(EventCustomAllDevicesSent),
@@ -188,7 +188,7 @@ func MigrateOpenedDevices(
 				})
 			}
 
-			handleGoroutinePanics(true, func() {
+			panicHandler.HandleGoroutinePanics(true, func() {
 				if err := to.HandleNeedAt(func(offset int64, length int32) {
 					// Prioritize blocks
 					endOffset := uint64(offset + int64(length))
@@ -206,7 +206,7 @@ func MigrateOpenedDevices(
 				}
 			})
 
-			handleGoroutinePanics(true, func() {
+			panicHandler.HandleGoroutinePanics(true, func() {
 				if err := to.HandleDontNeedAt(func(offset int64, length int32) {
 					// Deprioritize blocks
 					endOffset := uint64(offset + int64(length))
@@ -232,7 +232,7 @@ func MigrateOpenedDevices(
 				storage.BlockTypePriority: concurrency,
 			}
 			cfg.Locker_handler = func() {
-				defer handlePanics(false)()
+				defer panicHandler.HandlePanics(false)()
 
 				if err := to.SendEvent(&packets.Event{
 					Type: packets.EventPreLock,
@@ -249,7 +249,7 @@ func MigrateOpenedDevices(
 				}
 			}
 			cfg.Unlocker_handler = func() {
-				defer handlePanics(false)()
+				defer panicHandler.HandlePanics(false)()
 
 				if err := to.SendEvent(&packets.Event{
 					Type: packets.EventPreUnlock,
@@ -266,7 +266,7 @@ func MigrateOpenedDevices(
 				}
 			}
 			cfg.Error_handler = func(b *storage.BlockInfo, err error) {
-				defer handlePanics(false)()
+				defer panicHandler.HandlePanics(false)()
 
 				if err != nil {
 					panic(errors.Join(ErrCouldNotContinueWithMigration, err))
@@ -283,7 +283,7 @@ func MigrateOpenedDevices(
 				return errors.Join(ErrCouldNotCreateMigrator, err)
 			}
 
-			handleGoroutinePanics(true, func() {
+			panicHandler.HandleGoroutinePanics(true, func() {
 				if err := to.SendEvent(&packets.Event{
 					Type:       packets.EventCustom,
 					CustomType: byte(EventCustomTransferAuthority),

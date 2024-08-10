@@ -68,21 +68,21 @@ func CreateSnapshot(
 	networkConfiguration NetworkConfiguration,
 	agentConfiguration AgentConfiguration,
 ) (errs error) {
-	ctx, handlePanics, handleGoroutinePanics, cancel, wait, _ := utils.GetPanicHandler(
+	panicHandler := utils.NewPanicHandler(
 		ctx,
 		&errs,
 		utils.GetPanicHandlerHooks{},
 	)
-	defer wait()
-	defer cancel()
-	defer handlePanics(false)()
+	defer panicHandler.Wait()
+	defer panicHandler.Cancel()
+	defer panicHandler.HandlePanics(false)()
 
 	if err := os.MkdirAll(hypervisorConfiguration.ChrootBaseDir, os.ModePerm); err != nil {
 		panic(errors.Join(ErrCouldNotCreateChrootBaseDirectory, err))
 	}
 
 	server, err := firecracker.StartFirecrackerServer(
-		ctx,
+		panicHandler.InternalCtx,
 
 		hypervisorConfiguration.FirecrackerBin,
 		hypervisorConfiguration.JailerBin,
@@ -105,7 +105,7 @@ func CreateSnapshot(
 	defer server.Close()
 	defer os.RemoveAll(filepath.Dir(server.VMPath)) // Remove `firecracker/$id`, not just `firecracker/$id/root`
 
-	handleGoroutinePanics(true, func() {
+	panicHandler.HandleGoroutinePanics(true, func() {
 		if err := server.Wait(); err != nil {
 			panic(errors.Join(ErrCouldNotWaitForFirecrackerServer, err))
 		}
@@ -148,7 +148,7 @@ func CreateSnapshot(
 	}
 
 	defer func() {
-		defer handlePanics(true)()
+		defer panicHandler.HandlePanics(true)()
 
 		if errs != nil {
 			return
@@ -200,7 +200,7 @@ func CreateSnapshot(
 	}
 
 	if err := firecracker.StartVM(
-		ctx,
+		panicHandler.InternalCtx,
 
 		client,
 
@@ -224,7 +224,7 @@ func CreateSnapshot(
 	defer os.Remove(filepath.Join(server.VMPath, VSockName))
 
 	{
-		receiveCtx, cancel := context.WithTimeout(ctx, livenessConfiguration.ResumeTimeout)
+		receiveCtx, cancel := context.WithTimeout(panicHandler.InternalCtx, livenessConfiguration.ResumeTimeout)
 		defer cancel()
 
 		if err := liveness.ReceiveAndClose(receiveCtx); err != nil {
@@ -234,16 +234,16 @@ func CreateSnapshot(
 
 	var acceptingAgent *ipc.AcceptingAgentServer
 	{
-		acceptCtx, cancel := context.WithTimeout(ctx, agentConfiguration.ResumeTimeout)
+		acceptCtx, cancel := context.WithTimeout(panicHandler.InternalCtx, agentConfiguration.ResumeTimeout)
 		defer cancel()
 
-		acceptingAgent, err = agent.Accept(acceptCtx, ctx)
+		acceptingAgent, err = agent.Accept(acceptCtx, panicHandler.InternalCtx)
 		if err != nil {
 			panic(errors.Join(ErrCouldNotAcceptAgentConnection, err))
 		}
 		defer acceptingAgent.Close()
 
-		handleGoroutinePanics(true, func() {
+		panicHandler.HandleGoroutinePanics(true, func() {
 			if err := acceptingAgent.Wait(); err != nil {
 				panic(errors.Join(ErrCouldNotWaitForAcceptingAgent, err))
 			}
@@ -262,7 +262,7 @@ func CreateSnapshot(
 	agent.Close()
 
 	if err := firecracker.CreateSnapshot(
-		ctx,
+		panicHandler.InternalCtx,
 
 		client,
 

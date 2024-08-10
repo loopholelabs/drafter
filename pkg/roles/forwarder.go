@@ -81,14 +81,14 @@ func ForwardPorts(
 ) (forwardedPorts *ForwardedPorts, errs error) {
 	forwardedPorts = &ForwardedPorts{}
 
-	ctx, handlePanics, _, cancel, wait, _ := utils.GetPanicHandler(
+	panicHandler := utils.NewPanicHandler(
 		ctx,
 		&errs,
 		utils.GetPanicHandlerHooks{},
 	)
-	defer wait()
-	defer cancel()
-	defer handlePanics(false)()
+	defer panicHandler.Wait()
+	defer panicHandler.Cancel()
+	defer panicHandler.HandlePanics(false)()
 
 	iptable, err := iptables.New(
 		iptables.IPFamily(iptables.ProtocolIPv4),
@@ -102,8 +102,8 @@ func ForwardPorts(
 		ports,
 		func(index int, input PortForward, _ *struct{}, addDefer func(deferFunc func() error)) error {
 			select {
-			case <-ctx.Done():
-				return ctx.Err()
+			case <-panicHandler.InternalCtx.Done():
+				return panicHandler.InternalCtx.Err()
 
 			default:
 				break
@@ -190,8 +190,8 @@ func ForwardPorts(
 			}
 
 			select {
-			case <-ctx.Done():
-				return ctx.Err()
+			case <-panicHandler.InternalCtx.Done():
+				return panicHandler.InternalCtx.Err()
 
 			default:
 				break
@@ -214,8 +214,8 @@ func ForwardPorts(
 			}
 
 			select {
-			case <-ctx.Done():
-				return ctx.Err()
+			case <-panicHandler.InternalCtx.Done():
+				return panicHandler.InternalCtx.Err()
 
 			default:
 				break

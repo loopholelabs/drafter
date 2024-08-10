@@ -70,14 +70,14 @@ func main() {
 		}
 	}()
 
-	ctx, handlePanics, _, cancel, wait, _ := utils.GetPanicHandler(
+	panicHandler := utils.NewPanicHandler(
 		ctx,
 		&errs,
 		utils.GetPanicHandlerHooks{},
 	)
-	defer wait()
-	defer cancel()
-	defer handlePanics(false)()
+	defer panicHandler.Wait()
+	defer panicHandler.Cancel()
+	defer panicHandler.HandlePanics(false)()
 
 	go func() {
 		done := make(chan os.Signal, 1)
@@ -92,7 +92,7 @@ func main() {
 
 	if *extract {
 		if err := roles.ExtractPackage(
-			ctx,
+			panicHandler.InternalCtx,
 
 			*packagePath,
 			devices,
@@ -110,7 +110,7 @@ func main() {
 	}
 
 	if err := roles.ArchivePackage(
-		ctx,
+		panicHandler.InternalCtx,
 
 		devices,
 		*packagePath,

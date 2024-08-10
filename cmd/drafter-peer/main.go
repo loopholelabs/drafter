@@ -218,14 +218,14 @@ func main() {
 		}
 	}()
 
-	ctx, handlePanics, handleGoroutinePanics, cancel, wait, _ := utils.GetPanicHandler(
+	panicHandler := utils.NewPanicHandler(
 		ctx,
 		&errs,
 		utils.GetPanicHandlerHooks{},
 	)
-	defer wait()
-	defer cancel()
-	defer handlePanics(false)()
+	defer panicHandler.Wait()
+	defer panicHandler.Cancel()
+	defer panicHandler.HandlePanics(false)()
 
 	bubbleSignals := false
 
@@ -261,7 +261,7 @@ func main() {
 		writers []io.Writer
 	)
 	if strings.TrimSpace(*raddr) != "" {
-		conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", *raddr)
+		conn, err := (&net.Dialer{}).DialContext(panicHandler.InternalCtx, "tcp", *raddr)
 		if err != nil {
 			panic(err)
 		}
@@ -274,7 +274,7 @@ func main() {
 	}
 
 	peer, err := roles.StartPeer(
-		ctx,
+		panicHandler.InternalCtx,
 		context.Background(), // Never give up on rescue operations
 
 		roles.HypervisorConfiguration{
@@ -300,7 +300,7 @@ func main() {
 
 	if peer.Wait != nil {
 		defer func() {
-			defer handlePanics(true)()
+			defer panicHandler.HandlePanics(true)()
 
 			if err := peer.Wait(); err != nil {
 				panic(err)
@@ -313,14 +313,14 @@ func main() {
 	}
 
 	defer func() {
-		defer handlePanics(true)()
+		defer panicHandler.HandlePanics(true)()
 
 		if err := peer.Close(); err != nil {
 			panic(err)
 		}
 	}()
 
-	handleGoroutinePanics(true, func() {
+	panicHandler.HandleGoroutinePanics(true, func() {
 		if err := peer.Wait(); err != nil {
 			panic(err)
 		}
@@ -342,7 +342,7 @@ func main() {
 	}
 
 	migratedPeer, err := peer.MigrateFrom(
-		ctx,
+		panicHandler.InternalCtx,
 
 		migrateFromDevices,
 
@@ -385,7 +385,7 @@ func main() {
 
 	if migratedPeer.Wait != nil {
 		defer func() {
-			defer handlePanics(true)()
+			defer panicHandler.HandlePanics(true)()
 
 			if err := migratedPeer.Wait(); err != nil {
 				panic(err)
@@ -398,14 +398,14 @@ func main() {
 	}
 
 	defer func() {
-		defer handlePanics(true)()
+		defer panicHandler.HandlePanics(true)()
 
 		if err := migratedPeer.Close(); err != nil {
 			panic(err)
 		}
 	}()
 
-	handleGoroutinePanics(true, func() {
+	panicHandler.HandleGoroutinePanics(true, func() {
 		if err := migratedPeer.Wait(); err != nil {
 			panic(err)
 		}
@@ -414,7 +414,7 @@ func main() {
 	before := time.Now()
 
 	resumedPeer, err := migratedPeer.Resume(
-		ctx,
+		panicHandler.InternalCtx,
 
 		*resumeTimeout,
 		*rescueTimeout,
@@ -432,14 +432,14 @@ func main() {
 	}
 
 	defer func() {
-		defer handlePanics(true)()
+		defer panicHandler.HandlePanics(true)()
 
 		if err := resumedPeer.Close(); err != nil {
 			panic(err)
 		}
 	}()
 
-	handleGoroutinePanics(true, func() {
+	panicHandler.HandleGoroutinePanics(true, func() {
 		if err := resumedPeer.Wait(); err != nil {
 			panic(err)
 		}
@@ -455,13 +455,13 @@ func main() {
 		bubbleSignals = true
 
 		select {
-		case <-ctx.Done():
+		case <-panicHandler.InternalCtx.Done():
 			return
 
 		case <-done:
 			before = time.Now()
 
-			if err := resumedPeer.SuspendAndCloseAgentServer(ctx, *resumeTimeout); err != nil {
+			if err := resumedPeer.SuspendAndCloseAgentServer(panicHandler.InternalCtx, *resumeTimeout); err != nil {
 				panic(err)
 			}
 
@@ -497,15 +497,15 @@ func main() {
 	defer cancelAcceptedCtx()
 
 	var conn net.Conn
-	handleGoroutinePanics(true, func() {
+	panicHandler.HandleGoroutinePanics(true, func() {
 		conn, err = lis.Accept()
 		if err != nil {
 			closeLock.Lock()
 			defer closeLock.Unlock()
 
 			if closed && errors.Is(err, net.ErrClosed) { // Don't treat closed errors as errors if we closed the connection
-				if err := ctx.Err(); err != nil {
-					panic(ctx.Err())
+				if err := panicHandler.InternalCtx.Err(); err != nil {
+					panic(panicHandler.InternalCtx.Err())
 				}
 
 				return
@@ -520,13 +520,13 @@ func main() {
 	bubbleSignals = true
 
 	select {
-	case <-ctx.Done():
+	case <-panicHandler.InternalCtx.Done():
 		return
 
 	case <-done:
 		before = time.Now()
 
-		if err := resumedPeer.SuspendAndCloseAgentServer(ctx, *resumeTimeout); err != nil {
+		if err := resumedPeer.SuspendAndCloseAgentServer(panicHandler.InternalCtx, *resumeTimeout); err != nil {
 			panic(err)
 		}
 
@@ -558,7 +558,7 @@ func main() {
 	}
 
 	migratablePeer, err := resumedPeer.MakeMigratable(
-		ctx,
+		panicHandler.InternalCtx,
 
 		makeMigratableDevices,
 	)
@@ -588,7 +588,7 @@ func main() {
 
 	before = time.Now()
 	if err := migratablePeer.MigrateTo(
-		ctx,
+		panicHandler.InternalCtx,
 
 		migrateToDevices,
 

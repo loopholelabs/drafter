@@ -58,21 +58,21 @@ func Terminate(
 
 	hooks TerminateHooks,
 ) (errs error) {
-	ctx, handlePanics, handleGoroutinePanics, cancel, wait, _ := utils.GetPanicHandler(
+	panicHandler := utils.NewPanicHandler(
 		ctx,
 		&errs,
 		utils.GetPanicHandlerHooks{},
 	)
-	defer wait()
-	defer cancel()
-	defer handlePanics(false)()
+	defer panicHandler.Wait()
+	defer panicHandler.Cancel()
+	defer panicHandler.HandlePanics(false)()
 
 	var (
 		deviceCloseFuncsLock sync.Mutex
 		deviceCloseFuncs     []func() error
 	)
 	pro := protocol.NewProtocolRW(
-		ctx,
+		panicHandler.InternalCtx,
 		readers,
 		writers,
 		func(ctx context.Context, p protocol.Protocol, index uint32) {
@@ -84,7 +84,7 @@ func Terminate(
 				ctx,
 				index,
 				func(di *packets.DevInfo) storage.StorageProvider {
-					// No need to `defer handlePanics` here - panics bubble upwards
+					// No need to `defer panicHandler.HandlePanics` here - panics bubble upwards
 
 					path := ""
 					for _, device := range devices {
@@ -158,25 +158,25 @@ func Terminate(
 				p,
 			)
 
-			handleGoroutinePanics(true, func() {
+			panicHandler.HandleGoroutinePanics(true, func() {
 				if err := from.HandleReadAt(); err != nil {
 					panic(errors.Join(ErrCouldNotHandleReadAt, err))
 				}
 			})
 
-			handleGoroutinePanics(true, func() {
+			panicHandler.HandleGoroutinePanics(true, func() {
 				if err := from.HandleWriteAt(); err != nil {
 					panic(errors.Join(ErrCouldNotHandleWriteAt, err))
 				}
 			})
 
-			handleGoroutinePanics(true, func() {
+			panicHandler.HandleGoroutinePanics(true, func() {
 				if err := from.HandleDevInfo(); err != nil {
 					panic(errors.Join(ErrCouldNotHandleDevInfo, err))
 				}
 			})
 
-			handleGoroutinePanics(true, func() {
+			panicHandler.HandleGoroutinePanics(true, func() {
 				if err := from.HandleEvent(func(e *packets.Event) {
 					switch e.Type {
 					case packets.EventCustom:
@@ -202,7 +202,7 @@ func Terminate(
 				}
 			})
 
-			handleGoroutinePanics(true, func() {
+			panicHandler.HandleGoroutinePanics(true, func() {
 				if err := from.HandleDirtyList(func(blocks []uint) {
 					if local != nil {
 						local.DirtyBlocks(blocks)
@@ -214,14 +214,14 @@ func Terminate(
 		})
 
 	defer func() {
-		defer handlePanics(true)()
+		defer panicHandler.HandlePanics(true)()
 
 		deviceCloseFuncsLock.Lock()
 		defer deviceCloseFuncsLock.Unlock()
 
 		for _, closeFunc := range deviceCloseFuncs {
 			defer func(closeFunc func() error) {
-				defer handlePanics(true)()
+				defer panicHandler.HandlePanics(true)()
 
 				if err := closeFunc(); err != nil {
 					panic(errors.Join(ErrCouldNotCloseDevice, err))

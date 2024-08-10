@@ -28,14 +28,14 @@ func main() {
 		}
 	}()
 
-	ctx, handlePanics, _, cancel, wait, _ := utils.GetPanicHandler(
+	panicHandler := utils.NewPanicHandler(
 		ctx,
 		&errs,
 		utils.GetPanicHandlerHooks{},
 	)
-	defer wait()
-	defer cancel()
-	defer handlePanics(false)()
+	defer panicHandler.Wait()
+	defer panicHandler.Cancel()
+	defer panicHandler.HandlePanics(false)()
 
 	go func() {
 		done := make(chan os.Signal, 1)
@@ -50,7 +50,7 @@ func main() {
 
 	log.Println("Sending liveness ping")
 
-	dialCtx, cancelDialCtx := context.WithTimeout(ctx, *vsockTimeout)
+	dialCtx, cancelDialCtx := context.WithTimeout(panicHandler.InternalCtx, *vsockTimeout)
 	defer cancelDialCtx()
 
 	if err := ipc.SendLivenessPing(

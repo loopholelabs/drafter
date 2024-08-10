@@ -21,22 +21,22 @@ func DialContext(
 	cid uint32,
 	port uint32,
 ) (c io.ReadWriteCloser, errs error) {
-	ctx, handlePanics, handleGoroutinePanics, cancel, wait, _ := utils.GetPanicHandler(
+	panicHandler := utils.NewPanicHandler(
 		ctx,
 		&errs,
 		utils.GetPanicHandlerHooks{},
 	)
-	defer wait()
-	defer cancel()
-	defer handlePanics(false)()
+	defer panicHandler.Wait()
+	defer panicHandler.Cancel()
+	defer panicHandler.HandlePanics(false)()
 
 	fd, err := unix.Socket(unix.AF_VSOCK, unix.SOCK_STREAM, 0)
 	if err != nil {
 		panic(errors.Join(ErrVSockSocketCreationFailed, err))
 	}
 
-	handleGoroutinePanics(true, func() {
-		<-ctx.Done()
+	panicHandler.HandleGoroutinePanics(true, func() {
+		<-panicHandler.InternalCtx.Done()
 
 		// Non-happy path; context was cancelled before `connect()` completed
 		if c == nil {
@@ -55,7 +55,7 @@ func DialContext(
 				panic(errors.Join(ErrCouldNotCloseVSockConn, err))
 			}
 
-			if err := ctx.Err(); err != nil {
+			if err := panicHandler.InternalCtx.Err(); err != nil {
 				panic(errors.Join(ErrVSockDialContextCancelled, err))
 			}
 

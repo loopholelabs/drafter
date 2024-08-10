@@ -35,14 +35,14 @@ func main() {
 		}
 	}()
 
-	ctx, handlePanics, _, cancel, wait, errFinished := utils.GetPanicHandler(
+	panicHandler := utils.NewPanicHandler(
 		ctx,
 		&errs,
 		utils.GetPanicHandlerHooks{},
 	)
-	defer wait()
-	defer cancel()
-	defer handlePanics(false)()
+	defer panicHandler.Wait()
+	defer panicHandler.Cancel()
+	defer panicHandler.HandlePanics(false)()
 
 	go func() {
 		done := make(chan os.Signal, 1)
@@ -92,12 +92,12 @@ func main() {
 		if err := func() error {
 			log.Println("Connecting to host")
 
-			dialCtx, cancelDialCtx := context.WithTimeout(ctx, *vsockTimeout)
+			dialCtx, cancelDialCtx := context.WithTimeout(panicHandler.InternalCtx, *vsockTimeout)
 			defer cancelDialCtx()
 
 			connectedAgentClient, err := ipc.StartAgentClient(
 				dialCtx,
-				ctx,
+				panicHandler.InternalCtx,
 
 				ipc.VSockCIDHost,
 				uint32(*vsockPort),
@@ -113,7 +113,7 @@ func main() {
 
 			return connectedAgentClient.Wait()
 		}(); err != nil {
-			if !(errors.Is(err, context.Canceled) && errors.Is(context.Cause(ctx), errFinished)) {
+			if !(errors.Is(err, context.Canceled) && errors.Is(context.Cause(panicHandler.InternalCtx), panicHandler.ErrFinishedType)) {
 				log.Println("Disconnected from host with error, reconnecting:", err)
 
 				continue
