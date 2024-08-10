@@ -258,14 +258,14 @@ func StartPeer(
 ) {
 	peer = &Peer{}
 
-	panicHandler := utils.NewPanicHandler(
+	goroutineManager := utils.NewGoroutineManager(
 		hypervisorCtx,
 		&errs,
-		utils.GetPanicHandlerHooks{},
+		utils.GoroutineManagerHooks{},
 	)
-	defer panicHandler.Wait()
-	defer panicHandler.Cancel()
-	defer panicHandler.HandlePanics(false)()
+	defer goroutineManager.WaitForForegroundGoroutines()
+	defer goroutineManager.StopAllGoroutines()
+	defer goroutineManager.CreateBackgroundPanicCollector()()
 
 	runner, err := StartRunner(
 		hypervisorCtx,
@@ -303,7 +303,7 @@ func StartPeer(
 	peer.VMPid = runner.VMPid
 
 	// We don't track this because we return the wait function
-	panicHandler.HandleGoroutinePanics(false, func() {
+	goroutineManager.StartBackgroundGoroutine(func() {
 		if err := runner.Wait(); err != nil {
 			panic(err)
 		}
@@ -343,14 +343,14 @@ func StartPeer(
 			return nil
 		}
 
-		panicHandler := utils.NewPanicHandler(
+		goroutineManager := utils.NewGoroutineManager(
 			ctx,
 			&errs,
-			utils.GetPanicHandlerHooks{},
+			utils.GoroutineManagerHooks{},
 		)
-		defer panicHandler.Wait()
-		defer panicHandler.Cancel()
-		defer panicHandler.HandlePanics(false)()
+		defer goroutineManager.WaitForForegroundGoroutines()
+		defer goroutineManager.StopAllGoroutines()
+		defer goroutineManager.CreateBackgroundPanicCollector()()
 
 		// Use an atomic counter and `allDevicesReadyCtx` and instead of a WaitGroup so that we can `select {}` without leaking a goroutine
 		var (
@@ -378,7 +378,7 @@ func StartPeer(
 						ctx,
 						index,
 						func(di *packets.DevInfo) storage.StorageProvider {
-							// No need to `defer panicHandler.HandlePanics` here - panics bubble upwards
+							// No need to `defer goroutineManager.HandlePanics` here - panics bubble upwards
 
 							base := ""
 							for _, device := range devices {
@@ -483,8 +483,8 @@ func StartPeer(
 							deviceID := int((deviceMajor << 8) | deviceMinor)
 
 							select {
-							case <-panicHandler.InternalCtx.Done():
-								if err := panicHandler.InternalCtx.Err(); err != nil {
+							case <-goroutineManager.GetGoroutineCtx().Done():
+								if err := goroutineManager.GetGoroutineCtx().Err(); err != nil {
 									panic(errors.Join(ErrPeerContextCancelled, err))
 								}
 
@@ -505,25 +505,25 @@ func StartPeer(
 						p,
 					)
 
-					panicHandler.HandleGoroutinePanics(true, func() {
+					goroutineManager.StartForegroundGoroutine(func() {
 						if err := from.HandleReadAt(); err != nil {
 							panic(errors.Join(ErrCouldNotHandleReadAt, err))
 						}
 					})
 
-					panicHandler.HandleGoroutinePanics(true, func() {
+					goroutineManager.StartForegroundGoroutine(func() {
 						if err := from.HandleWriteAt(); err != nil {
 							panic(errors.Join(ErrCouldNotHandleWriteAt, err))
 						}
 					})
 
-					panicHandler.HandleGoroutinePanics(true, func() {
+					goroutineManager.StartForegroundGoroutine(func() {
 						if err := from.HandleDevInfo(); err != nil {
 							panic(errors.Join(ErrCouldNotHandleDevInfo, err))
 						}
 					})
 
-					panicHandler.HandleGoroutinePanics(true, func() {
+					goroutineManager.StartForegroundGoroutine(func() {
 						if err := from.HandleEvent(func(e *packets.Event) {
 							switch e.Type {
 							case packets.EventCustom:
@@ -555,7 +555,7 @@ func StartPeer(
 						}
 					})
 
-					panicHandler.HandleGoroutinePanics(true, func() {
+					goroutineManager.StartForegroundGoroutine(func() {
 						if err := from.HandleDirtyList(func(blocks []uint) {
 							if local != nil {
 								local.DirtyBlocks(blocks)
@@ -626,17 +626,17 @@ func StartPeer(
 		}
 
 		// We don't track this because we return the wait function
-		panicHandler.HandleGoroutinePanics(false, func() {
+		goroutineManager.StartBackgroundGoroutine(func() {
 			if err := migratedPeer.Wait(); err != nil {
 				panic(errors.Join(ErrCouldNotWaitForMigrationCompletion, err))
 			}
 		})
 
 		// We don't track this because we return the close function
-		panicHandler.HandleGoroutinePanics(false, func() {
+		goroutineManager.StartBackgroundGoroutine(func() {
 			select {
 			// Failure case; we cancelled the internal context before all devices are ready
-			case <-panicHandler.InternalCtx.Done():
+			case <-goroutineManager.GetGoroutineCtx().Done():
 				if err := migratedPeer.Close(); err != nil {
 					panic(errors.Join(ErrCouldNotCloseMigratedPeer, err))
 				}
@@ -654,8 +654,8 @@ func StartPeer(
 		})
 
 		select {
-		case <-panicHandler.InternalCtx.Done():
-			if err := panicHandler.InternalCtx.Err(); err != nil {
+		case <-goroutineManager.GetGoroutineCtx().Done():
+			if err := goroutineManager.GetGoroutineCtx().Err(); err != nil {
 				panic(errors.Join(ErrPeerContextCancelled, err))
 			}
 
@@ -782,8 +782,8 @@ func StartPeer(
 				deviceID := int((deviceMajor << 8) | deviceMinor)
 
 				select {
-				case <-panicHandler.InternalCtx.Done():
-					if err := panicHandler.InternalCtx.Err(); err != nil {
+				case <-goroutineManager.GetGoroutineCtx().Done():
+					if err := goroutineManager.GetGoroutineCtx().Err(); err != nil {
 						return errors.Join(ErrPeerContextCancelled, err)
 					}
 
@@ -817,8 +817,8 @@ func StartPeer(
 		}
 
 		select {
-		case <-panicHandler.InternalCtx.Done():
-			if err := panicHandler.InternalCtx.Err(); err != nil {
+		case <-goroutineManager.GetGoroutineCtx().Done():
+			if err := goroutineManager.GetGoroutineCtx().Err(); err != nil {
 				panic(errors.Join(ErrPeerContextCancelled, err))
 			}
 
@@ -967,23 +967,23 @@ func StartPeer(
 
 						hooks MigrateToHooks,
 					) (errs error) {
-						panicHandler := utils.NewPanicHandler(
+						goroutineManager := utils.NewGoroutineManager(
 							ctx,
 							&errs,
-							utils.GetPanicHandlerHooks{},
+							utils.GoroutineManagerHooks{},
 						)
-						defer panicHandler.Wait()
-						defer panicHandler.Cancel()
-						defer panicHandler.HandlePanics(false)()
+						defer goroutineManager.WaitForForegroundGoroutines()
+						defer goroutineManager.StopAllGoroutines()
+						defer goroutineManager.CreateBackgroundPanicCollector()()
 
 						pro := protocol.NewProtocolRW(
-							panicHandler.InternalCtx,
+							goroutineManager.GetGoroutineCtx(),
 							readers,
 							writers,
 							nil,
 						)
 
-						panicHandler.HandleGoroutinePanics(true, func() {
+						goroutineManager.StartForegroundGoroutine(func() {
 							if err := pro.Handle(); err != nil && !errors.Is(err, io.EOF) {
 								panic(errors.Join(ErrCouldNotHandleProtocol, err))
 							}
@@ -1007,11 +1007,11 @@ func StartPeer(
 								hook()
 							}
 
-							if err := resumedPeer.SuspendAndCloseAgentServer(panicHandler.InternalCtx, suspendTimeout); err != nil {
+							if err := resumedPeer.SuspendAndCloseAgentServer(goroutineManager.GetGoroutineCtx(), suspendTimeout); err != nil {
 								return errors.Join(ErrCouldNotSuspendAndCloseAgentServer, err)
 							}
 
-							if err := resumedRunner.Msync(panicHandler.InternalCtx); err != nil {
+							if err := resumedRunner.Msync(goroutineManager.GetGoroutineCtx()); err != nil {
 								return errors.Join(ErrCouldNotMsyncRunner, err)
 							}
 
@@ -1066,7 +1066,7 @@ func StartPeer(
 
 								devicesLeftToSend.Add(1)
 								if devicesLeftToSend.Load() >= int32(len(stage5Inputs)) {
-									panicHandler.HandleGoroutinePanics(true, func() {
+									goroutineManager.StartForegroundGoroutine(func() {
 										if err := to.SendEvent(&packets.Event{
 											Type:       packets.EventCustom,
 											CustomType: byte(EventCustomAllDevicesSent),
@@ -1080,7 +1080,7 @@ func StartPeer(
 									})
 								}
 
-								panicHandler.HandleGoroutinePanics(true, func() {
+								goroutineManager.StartForegroundGoroutine(func() {
 									if err := to.HandleNeedAt(func(offset int64, length int32) {
 										// Prioritize blocks
 										endOffset := uint64(offset + int64(length))
@@ -1098,7 +1098,7 @@ func StartPeer(
 									}
 								})
 
-								panicHandler.HandleGoroutinePanics(true, func() {
+								goroutineManager.StartForegroundGoroutine(func() {
 									if err := to.HandleDontNeedAt(func(offset int64, length int32) {
 										// Deprioritize blocks
 										endOffset := uint64(offset + int64(length))
@@ -1124,7 +1124,7 @@ func StartPeer(
 									storage.BlockTypePriority: concurrency,
 								}
 								cfg.Locker_handler = func() {
-									defer panicHandler.HandlePanics(false)()
+									defer goroutineManager.CreateBackgroundPanicCollector()()
 
 									if err := to.SendEvent(&packets.Event{
 										Type: packets.EventPreLock,
@@ -1141,7 +1141,7 @@ func StartPeer(
 									}
 								}
 								cfg.Unlocker_handler = func() {
-									defer panicHandler.HandlePanics(false)()
+									defer goroutineManager.CreateBackgroundPanicCollector()()
 
 									if err := to.SendEvent(&packets.Event{
 										Type: packets.EventPreUnlock,
@@ -1158,7 +1158,7 @@ func StartPeer(
 									}
 								}
 								cfg.Error_handler = func(b *storage.BlockInfo, err error) {
-									defer panicHandler.HandlePanics(false)()
+									defer goroutineManager.CreateBackgroundPanicCollector()()
 
 									if err != nil {
 										panic(errors.Join(ErrCouldNotContinueWithMigration, err))
@@ -1196,7 +1196,7 @@ func StartPeer(
 									suspendedVMLock.Lock()
 									// We only need to `msync` for the memory because `msync` only affects the memory
 									if !suspendedVM && input.prev.prev.prev.name == MemoryName {
-										if err := resumedRunner.Msync(panicHandler.InternalCtx); err != nil {
+										if err := resumedRunner.Msync(goroutineManager.GetGoroutineCtx()); err != nil {
 											suspendedVMLock.Unlock()
 
 											return errors.Join(ErrCouldNotMsyncRunner, err)
@@ -1229,7 +1229,7 @@ func StartPeer(
 										}
 
 										ongoingMigrationsWg.Add(1)
-										panicHandler.HandleGoroutinePanics(true, func() {
+										goroutineManager.StartForegroundGoroutine(func() {
 											defer ongoingMigrationsWg.Done()
 
 											if err := mig.MigrateDirty(blocks); err != nil {
@@ -1267,8 +1267,8 @@ func StartPeer(
 										case <-suspendedVMCtx.Done():
 											break
 
-										case <-panicHandler.InternalCtx.Done(): // ctx is the panicHandler.InternalCtx here
-											if err := panicHandler.InternalCtx.Err(); err != nil {
+										case <-goroutineManager.GetGoroutineCtx().Done(): // ctx is the goroutineManager.InternalCtx here
+											if err := goroutineManager.GetGoroutineCtx().Err(); err != nil {
 												return errors.Join(ErrPeerContextCancelled, err)
 											}
 

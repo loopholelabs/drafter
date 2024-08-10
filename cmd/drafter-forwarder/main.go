@@ -48,14 +48,14 @@ func main() {
 		}
 	}()
 
-	panicHandler := utils.NewPanicHandler(
+	goroutineManager := utils.NewGoroutineManager(
 		ctx,
 		&errs,
-		utils.GetPanicHandlerHooks{},
+		utils.GoroutineManagerHooks{},
 	)
-	defer panicHandler.Wait()
-	defer panicHandler.Cancel()
-	defer panicHandler.HandlePanics(false)()
+	defer goroutineManager.WaitForForegroundGoroutines()
+	defer goroutineManager.StopAllGoroutines()
+	defer goroutineManager.CreateBackgroundPanicCollector()()
 
 	go func() {
 		done := make(chan os.Signal, 1)
@@ -74,7 +74,7 @@ func main() {
 	}
 
 	forwardedPorts, err := roles.ForwardPorts(
-		panicHandler.InternalCtx,
+		goroutineManager.GetGoroutineCtx(),
 
 		hostVethCIDR,
 		portForwards,
@@ -91,7 +91,7 @@ func main() {
 
 	if forwardedPorts.Wait != nil {
 		defer func() {
-			defer panicHandler.HandlePanics(true)()
+			defer goroutineManager.CreateForegroundPanicCollector()()
 
 			if err := forwardedPorts.Wait(); err != nil {
 				panic(err)
@@ -104,14 +104,14 @@ func main() {
 	}
 
 	defer func() {
-		defer panicHandler.HandlePanics(true)()
+		defer goroutineManager.CreateForegroundPanicCollector()()
 
 		if err := forwardedPorts.Close(); err != nil {
 			panic(err)
 		}
 	}()
 
-	panicHandler.HandleGoroutinePanics(true, func() {
+	goroutineManager.StartForegroundGoroutine(func() {
 		if err := forwardedPorts.Wait(); err != nil {
 			panic(err)
 		}
@@ -119,7 +119,7 @@ func main() {
 
 	log.Println("Forwarded all configured ports")
 
-	<-panicHandler.InternalCtx.Done()
+	<-goroutineManager.GetGoroutineCtx().Done()
 
 	log.Println("Shutting down")
 }

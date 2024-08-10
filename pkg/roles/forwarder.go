@@ -81,14 +81,14 @@ func ForwardPorts(
 ) (forwardedPorts *ForwardedPorts, errs error) {
 	forwardedPorts = &ForwardedPorts{}
 
-	panicHandler := utils.NewPanicHandler(
+	goroutineManager := utils.NewGoroutineManager(
 		ctx,
 		&errs,
-		utils.GetPanicHandlerHooks{},
+		utils.GoroutineManagerHooks{},
 	)
-	defer panicHandler.Wait()
-	defer panicHandler.Cancel()
-	defer panicHandler.HandlePanics(false)()
+	defer goroutineManager.WaitForForegroundGoroutines()
+	defer goroutineManager.StopAllGoroutines()
+	defer goroutineManager.CreateBackgroundPanicCollector()()
 
 	iptable, err := iptables.New(
 		iptables.IPFamily(iptables.ProtocolIPv4),
@@ -102,8 +102,8 @@ func ForwardPorts(
 		ports,
 		func(index int, input PortForward, _ *struct{}, addDefer func(deferFunc func() error)) error {
 			select {
-			case <-panicHandler.InternalCtx.Done():
-				return panicHandler.InternalCtx.Err()
+			case <-goroutineManager.GetGoroutineCtx().Done():
+				return goroutineManager.GetGoroutineCtx().Err()
 
 			default:
 				break
@@ -190,8 +190,8 @@ func ForwardPorts(
 			}
 
 			select {
-			case <-panicHandler.InternalCtx.Done():
-				return panicHandler.InternalCtx.Err()
+			case <-goroutineManager.GetGoroutineCtx().Done():
+				return goroutineManager.GetGoroutineCtx().Err()
 
 			default:
 				break
@@ -214,8 +214,8 @@ func ForwardPorts(
 			}
 
 			select {
-			case <-panicHandler.InternalCtx.Done():
-				return panicHandler.InternalCtx.Err()
+			case <-goroutineManager.GetGoroutineCtx().Done():
+				return goroutineManager.GetGoroutineCtx().Err()
 
 			default:
 				break

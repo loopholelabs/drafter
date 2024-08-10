@@ -28,14 +28,14 @@ func main() {
 		}
 	}()
 
-	panicHandler := utils.NewPanicHandler(
+	goroutineManager := utils.NewGoroutineManager(
 		ctx,
 		&errs,
-		utils.GetPanicHandlerHooks{},
+		utils.GoroutineManagerHooks{},
 	)
-	defer panicHandler.Wait()
-	defer panicHandler.Cancel()
-	defer panicHandler.HandlePanics(false)()
+	defer goroutineManager.WaitForForegroundGoroutines()
+	defer goroutineManager.StopAllGoroutines()
+	defer goroutineManager.CreateBackgroundPanicCollector()()
 
 	go func() {
 		done := make(chan os.Signal, 1)
@@ -50,7 +50,7 @@ func main() {
 
 	log.Println("Sending liveness ping")
 
-	dialCtx, cancelDialCtx := context.WithTimeout(panicHandler.InternalCtx, *vsockTimeout)
+	dialCtx, cancelDialCtx := context.WithTimeout(goroutineManager.GetGoroutineCtx(), *vsockTimeout)
 	defer cancelDialCtx()
 
 	if err := ipc.SendLivenessPing(

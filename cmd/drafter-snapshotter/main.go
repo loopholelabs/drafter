@@ -109,14 +109,14 @@ func main() {
 		}
 	}()
 
-	panicHandler := utils.NewPanicHandler(
+	goroutineManager := utils.NewGoroutineManager(
 		ctx,
 		&errs,
-		utils.GetPanicHandlerHooks{},
+		utils.GoroutineManagerHooks{},
 	)
-	defer panicHandler.Wait()
-	defer panicHandler.Cancel()
-	defer panicHandler.HandlePanics(false)()
+	defer goroutineManager.WaitForForegroundGoroutines()
+	defer goroutineManager.StopAllGoroutines()
+	defer goroutineManager.CreateBackgroundPanicCollector()()
 
 	go func() {
 		done := make(chan os.Signal, 1)
@@ -130,7 +130,7 @@ func main() {
 	}()
 
 	if err := roles.CreateSnapshot(
-		panicHandler.InternalCtx,
+		goroutineManager.GetGoroutineCtx(),
 
 		devices,
 

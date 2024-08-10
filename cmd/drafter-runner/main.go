@@ -142,14 +142,14 @@ func main() {
 		}
 	}()
 
-	panicHandler := utils.NewPanicHandler(
+	goroutineManager := utils.NewGoroutineManager(
 		ctx,
 		&errs,
-		utils.GetPanicHandlerHooks{},
+		utils.GoroutineManagerHooks{},
 	)
-	defer panicHandler.Wait()
-	defer panicHandler.Cancel()
-	defer panicHandler.HandlePanics(false)()
+	defer goroutineManager.WaitForForegroundGoroutines()
+	defer goroutineManager.StopAllGoroutines()
+	defer goroutineManager.CreateBackgroundPanicCollector()()
 
 	bubbleSignals := false
 
@@ -171,7 +171,7 @@ func main() {
 	}()
 
 	runner, err := roles.StartRunner(
-		panicHandler.InternalCtx,
+		goroutineManager.GetGoroutineCtx(),
 		context.Background(), // Never give up on rescue operations
 
 		roles.HypervisorConfiguration{
@@ -197,7 +197,7 @@ func main() {
 
 	if runner.Wait != nil {
 		defer func() {
-			defer panicHandler.HandlePanics(true)()
+			defer goroutineManager.CreateForegroundPanicCollector()()
 
 			if err := runner.Wait(); err != nil {
 				panic(err)
@@ -210,14 +210,14 @@ func main() {
 	}
 
 	defer func() {
-		defer panicHandler.HandlePanics(true)()
+		defer goroutineManager.CreateForegroundPanicCollector()()
 
 		if err := runner.Close(); err != nil {
 			panic(err)
 		}
 	}()
 
-	panicHandler.HandleGoroutinePanics(true, func() {
+	goroutineManager.StartForegroundGoroutine(func() {
 		if err := runner.Wait(); err != nil {
 			panic(err)
 		}
@@ -227,7 +227,7 @@ func main() {
 		log.Println("Requested local device", index, "with name", device.Name)
 
 		defer func() {
-			defer panicHandler.HandlePanics(true)()
+			defer goroutineManager.CreateForegroundPanicCollector()()
 
 			resourceInfo, err := os.Stat(device.Path)
 			if err != nil {
@@ -278,9 +278,9 @@ func main() {
 		deviceID := int((deviceMajor << 8) | deviceMinor)
 
 		select {
-		case <-panicHandler.InternalCtx.Done():
-			if err := panicHandler.InternalCtx.Err(); err != nil {
-				panic(panicHandler.InternalCtx.Err())
+		case <-goroutineManager.GetGoroutineCtx().Done():
+			if err := goroutineManager.GetGoroutineCtx().Err(); err != nil {
+				panic(goroutineManager.GetGoroutineCtx().Err())
 			}
 
 			return
@@ -295,7 +295,7 @@ func main() {
 	before := time.Now()
 
 	resumedRunner, err := runner.Resume(
-		panicHandler.InternalCtx,
+		goroutineManager.GetGoroutineCtx(),
 
 		*resumeTimeout,
 		*rescueTimeout,
@@ -314,14 +314,14 @@ func main() {
 	}
 
 	defer func() {
-		defer panicHandler.HandlePanics(true)()
+		defer goroutineManager.CreateForegroundPanicCollector()()
 
 		if err := resumedRunner.Close(); err != nil {
 			panic(err)
 		}
 	}()
 
-	panicHandler.HandleGoroutinePanics(true, func() {
+	goroutineManager.StartForegroundGoroutine(func() {
 		if err := resumedRunner.Wait(); err != nil {
 			panic(err)
 		}
@@ -332,7 +332,7 @@ func main() {
 	bubbleSignals = true
 
 	select {
-	case <-panicHandler.InternalCtx.Done():
+	case <-goroutineManager.GetGoroutineCtx().Done():
 		return
 
 	case <-done:
@@ -341,7 +341,7 @@ func main() {
 
 	before = time.Now()
 
-	if err := resumedRunner.SuspendAndCloseAgentServer(panicHandler.InternalCtx, *resumeTimeout); err != nil {
+	if err := resumedRunner.SuspendAndCloseAgentServer(goroutineManager.GetGoroutineCtx(), *resumeTimeout); err != nil {
 		panic(err)
 	}
 

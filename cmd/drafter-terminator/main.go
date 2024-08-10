@@ -70,14 +70,14 @@ func main() {
 		}
 	}()
 
-	panicHandler := utils.NewPanicHandler(
+	goroutineManager := utils.NewGoroutineManager(
 		ctx,
 		&errs,
-		utils.GetPanicHandlerHooks{},
+		utils.GoroutineManagerHooks{},
 	)
-	defer panicHandler.Wait()
-	defer panicHandler.Cancel()
-	defer panicHandler.HandlePanics(false)()
+	defer goroutineManager.WaitForForegroundGoroutines()
+	defer goroutineManager.StopAllGoroutines()
+	defer goroutineManager.CreateBackgroundPanicCollector()()
 
 	go func() {
 		done := make(chan os.Signal, 1)
@@ -90,7 +90,7 @@ func main() {
 		cancel()
 	}()
 
-	conn, err := (&net.Dialer{}).DialContext(panicHandler.InternalCtx, "tcp", *raddr)
+	conn, err := (&net.Dialer{}).DialContext(goroutineManager.GetGoroutineCtx(), "tcp", *raddr)
 	if err != nil {
 		panic(err)
 	}
@@ -99,7 +99,7 @@ func main() {
 	log.Println("Migrating from", conn.RemoteAddr())
 
 	if err := roles.Terminate(
-		panicHandler.InternalCtx,
+		goroutineManager.GetGoroutineCtx(),
 
 		devices,
 
