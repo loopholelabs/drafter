@@ -68,8 +68,12 @@ func CreateNAT(
 	hooks CreateNamespacesHooks,
 ) (namespaces *Namespaces, errs error) {
 	namespaces = &Namespaces{
-		Wait:  func() error { return nil },
-		Close: func() error { return nil },
+		Wait: func() error {
+			return nil
+		},
+		Close: func() error {
+			return nil
+		},
 
 		claimableNamespaces: map[string]*claimableNamespace{},
 	}
