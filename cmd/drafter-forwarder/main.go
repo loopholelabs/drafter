@@ -89,15 +89,13 @@ func main() {
 		},
 	)
 
-	if forwardedPorts.Wait != nil {
-		defer func() {
-			defer goroutineManager.CreateForegroundPanicCollector()()
+	defer func() {
+		defer goroutineManager.CreateForegroundPanicCollector()()
 
-			if err := forwardedPorts.Wait(); err != nil {
-				panic(err)
-			}
-		}()
-	}
+		if err := forwardedPorts.Wait(); err != nil {
+			panic(err)
+		}
+	}()
 
 	if err != nil {
 		panic(err)

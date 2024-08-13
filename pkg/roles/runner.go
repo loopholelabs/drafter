@@ -356,12 +356,12 @@ func (runner *Runner) Resume(
 					defer cancelSuspendCtx()
 
 					// Connections need to be closed before creating the snapshot
-					if resumedRunner.acceptingAgent != nil && resumedRunner.acceptingAgent.Close != nil {
+					if resumedRunner.acceptingAgent != nil {
 						if e := resumedRunner.acceptingAgent.Close(); e != nil {
 							errs = errors.Join(errs, ErrCouldNotCloseAcceptingAgent, e)
 						}
 					}
-					if resumedRunner.agent != nil && resumedRunner.agent.Close != nil {
+					if resumedRunner.agent != nil {
 						resumedRunner.agent.Close()
 					}
 

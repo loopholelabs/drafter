@@ -135,11 +135,7 @@ func (agentServer *AgentServer) Accept(acceptCtx context.Context, remoteCtx cont
 
 		agentServer.closeLock.Unlock()
 
-		if acceptingAgentServer.Wait != nil {
-			return acceptingAgentServer.Wait()
-		}
-
-		return nil
+		return acceptingAgentServer.Wait()
 	}
 
 	// We intentionally don't call `wg.Add` and `wg.Done` here - we are ok with leaking this

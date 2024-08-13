@@ -92,15 +92,13 @@ func main() {
 		},
 	)
 
-	if nat.Wait != nil {
-		defer func() {
-			defer goroutineManager.CreateForegroundPanicCollector()()
+	defer func() {
+		defer goroutineManager.CreateForegroundPanicCollector()()
 
-			if err := nat.Wait(); err != nil {
-				panic(err)
-			}
-		}()
-	}
+		if err := nat.Wait(); err != nil {
+			panic(err)
+		}
+	}()
 
 	if err != nil {
 		panic(err)
