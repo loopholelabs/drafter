@@ -196,15 +196,13 @@ func main() {
 		roles.MemoryName,
 	)
 
-	if runner.Wait != nil {
-		defer func() {
-			defer goroutineManager.CreateForegroundPanicCollector()()
+	defer func() {
+		defer goroutineManager.CreateForegroundPanicCollector()()
 
-			if err := runner.Wait(); err != nil {
-				panic(err)
-			}
-		}()
-	}
+		if err := runner.Wait(); err != nil {
+			panic(err)
+		}
+	}()
 
 	if err != nil {
 		panic(err)
@@ -295,7 +293,7 @@ func main() {
 
 	before := time.Now()
 
-	resumedRunner, err := runner.Resume(
+	resumedRunner, err := roles.ResumeRunner(
 		goroutineManager.GetGoroutineCtx(),
 
 		*resumeTimeout,
@@ -308,6 +306,8 @@ func main() {
 			ExperimentalMapPrivateStateOutput:  *experimentalMapPrivateStateOutput,
 			ExperimentalMapPrivateMemoryOutput: *experimentalMapPrivateMemoryOutput,
 		},
+
+		runner,
 	)
 
 	if err != nil {
@@ -342,7 +342,13 @@ func main() {
 
 	before = time.Now()
 
-	if err := resumedRunner.SuspendAndCloseAgentServer(goroutineManager.GetGoroutineCtx(), *resumeTimeout); err != nil {
+	if err := roles.SuspendAndCloseAgentServer(
+		goroutineManager.GetGoroutineCtx(),
+
+		*resumeTimeout,
+
+		resumedRunner,
+	); err != nil {
 		panic(err)
 	}
 
