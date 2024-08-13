@@ -13,7 +13,7 @@ import (
 	"sync/atomic"
 
 	iutils "github.com/loopholelabs/drafter/internal/utils"
-	"github.com/loopholelabs/drafter/pkg/utils"
+	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 	"github.com/loopholelabs/silo/pkg/storage"
 	"github.com/loopholelabs/silo/pkg/storage/blocks"
 	sconfig "github.com/loopholelabs/silo/pkg/storage/config"
@@ -129,10 +129,10 @@ func MigrateFromAndMount(
 		return nil
 	}
 
-	goroutineManager := utils.NewGoroutineManager(
+	goroutineManager := manager.NewGoroutineManager(
 		migrateFromCtx,
 		&errs,
-		utils.GoroutineManagerHooks{},
+		manager.GoroutineManagerHooks{},
 	)
 	defer goroutineManager.WaitForForegroundGoroutines()
 	defer goroutineManager.StopAllGoroutines()
@@ -639,10 +639,10 @@ func MigrateFromAndMount(
 
 			hooks MounterMigrateToHooks,
 		) (errs error) {
-			goroutineManager := utils.NewGoroutineManager(
+			goroutineManager := manager.NewGoroutineManager(
 				ctx,
 				&errs,
-				utils.GoroutineManagerHooks{},
+				manager.GoroutineManagerHooks{},
 			)
 			defer goroutineManager.WaitForForegroundGoroutines()
 			defer goroutineManager.StopAllGoroutines()

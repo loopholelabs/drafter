@@ -16,7 +16,7 @@ import (
 	"time"
 
 	iutils "github.com/loopholelabs/drafter/internal/utils"
-	"github.com/loopholelabs/drafter/pkg/utils"
+	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 	"github.com/loopholelabs/silo/pkg/storage"
 	"github.com/loopholelabs/silo/pkg/storage/blocks"
 	sconfig "github.com/loopholelabs/silo/pkg/storage/config"
@@ -258,10 +258,10 @@ func StartPeer(
 ) {
 	peer = &Peer{}
 
-	goroutineManager := utils.NewGoroutineManager(
+	goroutineManager := manager.NewGoroutineManager(
 		hypervisorCtx,
 		&errs,
-		utils.GoroutineManagerHooks{},
+		manager.GoroutineManagerHooks{},
 	)
 	defer goroutineManager.WaitForForegroundGoroutines()
 	defer goroutineManager.StopAllGoroutines()
@@ -343,10 +343,10 @@ func StartPeer(
 			return nil
 		}
 
-		goroutineManager := utils.NewGoroutineManager(
+		goroutineManager := manager.NewGoroutineManager(
 			ctx,
 			&errs,
-			utils.GoroutineManagerHooks{},
+			manager.GoroutineManagerHooks{},
 		)
 		defer goroutineManager.WaitForForegroundGoroutines()
 		defer goroutineManager.StopAllGoroutines()
@@ -967,10 +967,10 @@ func StartPeer(
 
 						hooks MigrateToHooks,
 					) (errs error) {
-						goroutineManager := utils.NewGoroutineManager(
+						goroutineManager := manager.NewGoroutineManager(
 							ctx,
 							&errs,
-							utils.GoroutineManagerHooks{},
+							manager.GoroutineManagerHooks{},
 						)
 						defer goroutineManager.WaitForForegroundGoroutines()
 						defer goroutineManager.StopAllGoroutines()

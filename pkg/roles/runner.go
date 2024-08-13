@@ -15,6 +15,7 @@ import (
 	"github.com/loopholelabs/drafter/internal/firecracker"
 	"github.com/loopholelabs/drafter/pkg/ipc"
 	"github.com/loopholelabs/drafter/pkg/utils"
+	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 )
 
 const (
@@ -126,10 +127,10 @@ func StartRunner(
 ) {
 	runner = &Runner{}
 
-	goroutineManager := utils.NewGoroutineManager(
+	goroutineManager := manager.NewGoroutineManager(
 		hypervisorCtx,
 		&errs,
-		utils.GoroutineManagerHooks{},
+		manager.GoroutineManagerHooks{},
 	)
 	defer goroutineManager.WaitForForegroundGoroutines()
 	defer goroutineManager.StopAllGoroutines()
@@ -324,10 +325,10 @@ func StartRunner(
 			return nil
 		}
 
-		goroutineManager := utils.NewGoroutineManager(
+		goroutineManager := manager.NewGoroutineManager(
 			ctx,
 			&errs,
-			utils.GoroutineManagerHooks{
+			manager.GoroutineManagerHooks{
 				OnAfterRecover: func() {
 					if suspendOnPanicWithError {
 						suspendCtx, cancelSuspendCtx := context.WithTimeout(rescueCtx, rescueTimeout)

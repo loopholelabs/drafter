@@ -11,7 +11,7 @@ import (
 
 	"github.com/coreos/go-iptables/iptables"
 	iutils "github.com/loopholelabs/drafter/internal/utils"
-	"github.com/loopholelabs/drafter/pkg/utils"
+	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 	"github.com/vishvananda/netns"
 )
 
@@ -81,10 +81,10 @@ func ForwardPorts(
 ) (forwardedPorts *ForwardedPorts, errs error) {
 	forwardedPorts = &ForwardedPorts{}
 
-	goroutineManager := utils.NewGoroutineManager(
+	goroutineManager := manager.NewGoroutineManager(
 		ctx,
 		&errs,
-		utils.GoroutineManagerHooks{},
+		manager.GoroutineManagerHooks{},
 	)
 	defer goroutineManager.WaitForForegroundGoroutines()
 	defer goroutineManager.StopAllGoroutines()

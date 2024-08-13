@@ -5,7 +5,7 @@ import (
 	"errors"
 	"io"
 
-	"github.com/loopholelabs/drafter/pkg/utils"
+	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 	"golang.org/x/sys/unix"
 )
 
@@ -21,10 +21,10 @@ func DialContext(
 	cid uint32,
 	port uint32,
 ) (c io.ReadWriteCloser, errs error) {
-	goroutineManager := utils.NewGoroutineManager(
+	goroutineManager := manager.NewGoroutineManager(
 		ctx,
 		&errs,
-		utils.GoroutineManagerHooks{},
+		manager.GoroutineManagerHooks{},
 	)
 	defer goroutineManager.WaitForForegroundGoroutines()
 	defer goroutineManager.StopAllGoroutines()

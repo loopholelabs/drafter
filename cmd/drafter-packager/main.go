@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 
 	"github.com/loopholelabs/drafter/pkg/roles"
-	"github.com/loopholelabs/drafter/pkg/utils"
+	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 )
 
 func main() {
@@ -70,10 +70,10 @@ func main() {
 		}
 	}()
 
-	goroutineManager := utils.NewGoroutineManager(
+	goroutineManager := manager.NewGoroutineManager(
 		ctx,
 		&errs,
-		utils.GoroutineManagerHooks{},
+		manager.GoroutineManagerHooks{},
 	)
 	defer goroutineManager.WaitForForegroundGoroutines()
 	defer goroutineManager.StopAllGoroutines()
