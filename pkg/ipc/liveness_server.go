@@ -51,13 +51,13 @@ func (l *LivenessServer) ReceiveAndClose(ctx context.Context) (errs error) {
 		&errs,
 		manager.GoroutineManagerHooks{},
 	)
-	defer goroutineManager.WaitForForegroundGoroutines()
+	defer goroutineManager.Wait()
 	defer goroutineManager.StopAllGoroutines()
 	defer goroutineManager.CreateBackgroundPanicCollector()()
 
-	goroutineManager.StartForegroundGoroutine(func() {
+	goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
 		// Cause the `Accept()` function to unblock
-		<-goroutineManager.GetGoroutineCtx().Done()
+		<-goroutineManager.Context().Done()
 
 		l.Close()
 	})
@@ -70,8 +70,8 @@ func (l *LivenessServer) ReceiveAndClose(ctx context.Context) (errs error) {
 		defer l.closeLock.Unlock()
 
 		if l.closed && errors.Is(err, net.ErrClosed) { // Don't treat closed errors as errors if we closed the connection
-			if err := goroutineManager.GetGoroutineCtx().Err(); err != nil {
-				panic(errors.Join(ErrLivenessServerContextCancelled, goroutineManager.GetGoroutineCtx().Err()))
+			if err := goroutineManager.Context().Err(); err != nil {
+				panic(errors.Join(ErrLivenessServerContextCancelled, goroutineManager.Context().Err()))
 			}
 
 			return

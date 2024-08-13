@@ -33,7 +33,7 @@ func main() {
 		&errs,
 		manager.GoroutineManagerHooks{},
 	)
-	defer goroutineManager.WaitForForegroundGoroutines()
+	defer goroutineManager.Wait()
 	defer goroutineManager.StopAllGoroutines()
 	defer goroutineManager.CreateBackgroundPanicCollector()()
 
@@ -50,7 +50,7 @@ func main() {
 
 	log.Println("Sending liveness ping")
 
-	dialCtx, cancelDialCtx := context.WithTimeout(goroutineManager.GetGoroutineCtx(), *vsockTimeout)
+	dialCtx, cancelDialCtx := context.WithTimeout(goroutineManager.Context(), *vsockTimeout)
 	defer cancelDialCtx()
 
 	if err := ipc.SendLivenessPing(

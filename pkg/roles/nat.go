@@ -87,7 +87,7 @@ func CreateNAT(
 		&errs,
 		manager.GoroutineManagerHooks{},
 	)
-	defer goroutineManager.WaitForForegroundGoroutines()
+	defer goroutineManager.Wait()
 	defer goroutineManager.StopAllGoroutines()
 	defer goroutineManager.CreateBackgroundPanicCollector()()
 
@@ -100,13 +100,13 @@ func CreateNAT(
 		panic(errors.Join(ErrCouldNotCreateNAT, err))
 	}
 
-	hostVethIPs := network.NewIPTable(translationConfiguration.HostVethCIDR, goroutineManager.GetGoroutineCtx())
-	if err := hostVethIPs.Open(goroutineManager.GetGoroutineCtx()); err != nil {
+	hostVethIPs := network.NewIPTable(translationConfiguration.HostVethCIDR, goroutineManager.Context())
+	if err := hostVethIPs.Open(goroutineManager.Context()); err != nil {
 		panic(errors.Join(ErrCouldNotOpenHostVethIPs, err))
 	}
 
-	namespaceVethIPs := network.NewIPTable(translationConfiguration.NamespaceVethCIDR, goroutineManager.GetGoroutineCtx())
-	if err := namespaceVethIPs.Open(goroutineManager.GetGoroutineCtx()); err != nil {
+	namespaceVethIPs := network.NewIPTable(translationConfiguration.NamespaceVethCIDR, goroutineManager.Context())
+	if err := namespaceVethIPs.Open(goroutineManager.Context()); err != nil {
 		panic(errors.Join(ErrCouldNotOpenNamespaceVethIPs, err))
 	}
 
@@ -197,10 +197,10 @@ func CreateNAT(
 	// goroutine since we return the Close func. We still need to `defer handleGoroutinePanic()()` however so that
 	// if we cancel the context during this call, we still handle it appropriately
 	ready := make(chan any)
-	goroutineManager.StartBackgroundGoroutine(func() {
+	goroutineManager.StartBackgroundGoroutine(func(_ context.Context) {
 		select {
 		// Failure case; we cancelled the internal context before we got a connection
-		case <-goroutineManager.GetGoroutineCtx().Done():
+		case <-goroutineManager.Context().Done():
 			if err := namespaces.Close(); err != nil {
 				panic(errors.Join(ErrNATContextCancelled, err))
 			}
@@ -234,7 +234,7 @@ func CreateNAT(
 			}
 
 			var err error
-			hostVeth, err = hostVethIPs.GetPair(goroutineManager.GetGoroutineCtx())
+			hostVeth, err = hostVethIPs.GetPair(goroutineManager.Context())
 			if err != nil {
 				if e := namespaceVethIPs.ReleasePair(rescueCtx, hostVeth); e != nil {
 					return errors.Join(ErrCouldNotReleaseHostVethIP, err, e)
@@ -264,7 +264,7 @@ func CreateNAT(
 			}
 
 			var err error
-			namespaceVeth, err = namespaceVethIPs.GetIP(goroutineManager.GetGoroutineCtx())
+			namespaceVeth, err = namespaceVethIPs.GetIP(goroutineManager.Context())
 			if err != nil {
 				if e := namespaceVethIPs.ReleaseIP(rescueCtx, namespaceVeth); e != nil {
 					return errors.Join(ErrCouldNotReleaseNamespaceVethIP, err, e)

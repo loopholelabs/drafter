@@ -223,7 +223,7 @@ func main() {
 		&errs,
 		manager.GoroutineManagerHooks{},
 	)
-	defer goroutineManager.WaitForForegroundGoroutines()
+	defer goroutineManager.Wait()
 	defer goroutineManager.StopAllGoroutines()
 	defer goroutineManager.CreateBackgroundPanicCollector()()
 
@@ -261,7 +261,7 @@ func main() {
 		writers []io.Writer
 	)
 	if strings.TrimSpace(*raddr) != "" {
-		conn, err := (&net.Dialer{}).DialContext(goroutineManager.GetGoroutineCtx(), "tcp", *raddr)
+		conn, err := (&net.Dialer{}).DialContext(goroutineManager.Context(), "tcp", *raddr)
 		if err != nil {
 			panic(err)
 		}
@@ -274,7 +274,7 @@ func main() {
 	}
 
 	peer, err := roles.StartPeer(
-		goroutineManager.GetGoroutineCtx(),
+		goroutineManager.Context(),
 		context.Background(), // Never give up on rescue operations
 
 		roles.HypervisorConfiguration{
@@ -318,7 +318,7 @@ func main() {
 		}
 	}()
 
-	goroutineManager.StartForegroundGoroutine(func() {
+	goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
 		if err := peer.Wait(); err != nil {
 			panic(err)
 		}
@@ -340,7 +340,7 @@ func main() {
 	}
 
 	migratedPeer, err := peer.MigrateFrom(
-		goroutineManager.GetGoroutineCtx(),
+		goroutineManager.Context(),
 
 		migrateFromDevices,
 
@@ -401,7 +401,7 @@ func main() {
 		}
 	}()
 
-	goroutineManager.StartForegroundGoroutine(func() {
+	goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
 		if err := migratedPeer.Wait(); err != nil {
 			panic(err)
 		}
@@ -410,7 +410,7 @@ func main() {
 	before := time.Now()
 
 	resumedPeer, err := migratedPeer.Resume(
-		goroutineManager.GetGoroutineCtx(),
+		goroutineManager.Context(),
 
 		*resumeTimeout,
 		*rescueTimeout,
@@ -435,7 +435,7 @@ func main() {
 		}
 	}()
 
-	goroutineManager.StartForegroundGoroutine(func() {
+	goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
 		if err := resumedPeer.Wait(); err != nil {
 			panic(err)
 		}
@@ -451,13 +451,13 @@ func main() {
 		bubbleSignals = true
 
 		select {
-		case <-goroutineManager.GetGoroutineCtx().Done():
+		case <-goroutineManager.Context().Done():
 			return
 
 		case <-done:
 			before = time.Now()
 
-			if err := resumedPeer.SuspendAndCloseAgentServer(goroutineManager.GetGoroutineCtx(), *resumeTimeout); err != nil {
+			if err := resumedPeer.SuspendAndCloseAgentServer(goroutineManager.Context(), *resumeTimeout); err != nil {
 				panic(err)
 			}
 
@@ -493,15 +493,15 @@ func main() {
 	defer cancelAcceptedCtx()
 
 	var conn net.Conn
-	goroutineManager.StartForegroundGoroutine(func() {
+	goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
 		conn, err = lis.Accept()
 		if err != nil {
 			closeLock.Lock()
 			defer closeLock.Unlock()
 
 			if closed && errors.Is(err, net.ErrClosed) { // Don't treat closed errors as errors if we closed the connection
-				if err := goroutineManager.GetGoroutineCtx().Err(); err != nil {
-					panic(goroutineManager.GetGoroutineCtx().Err())
+				if err := goroutineManager.Context().Err(); err != nil {
+					panic(goroutineManager.Context().Err())
 				}
 
 				return
@@ -516,13 +516,13 @@ func main() {
 	bubbleSignals = true
 
 	select {
-	case <-goroutineManager.GetGoroutineCtx().Done():
+	case <-goroutineManager.Context().Done():
 		return
 
 	case <-done:
 		before = time.Now()
 
-		if err := resumedPeer.SuspendAndCloseAgentServer(goroutineManager.GetGoroutineCtx(), *resumeTimeout); err != nil {
+		if err := resumedPeer.SuspendAndCloseAgentServer(goroutineManager.Context(), *resumeTimeout); err != nil {
 			panic(err)
 		}
 
@@ -554,7 +554,7 @@ func main() {
 	}
 
 	migratablePeer, err := resumedPeer.MakeMigratable(
-		goroutineManager.GetGoroutineCtx(),
+		goroutineManager.Context(),
 
 		makeMigratableDevices,
 	)
@@ -584,7 +584,7 @@ func main() {
 
 	before = time.Now()
 	if err := migratablePeer.MigrateTo(
-		goroutineManager.GetGoroutineCtx(),
+		goroutineManager.Context(),
 
 		migrateToDevices,
 

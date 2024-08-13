@@ -69,12 +69,12 @@ func StartAgentClient(
 		&errs,
 		manager.GoroutineManagerHooks{},
 	)
-	defer goroutineManager.WaitForForegroundGoroutines()
+	defer goroutineManager.Wait()
 	defer goroutineManager.StopAllGoroutines()
 	defer goroutineManager.CreateBackgroundPanicCollector()()
 
 	conn, err := vsock.DialContext(
-		goroutineManager.GetGoroutineCtx(),
+		goroutineManager.Context(),
 
 		vsockCID,
 		vsockPort,
@@ -100,10 +100,10 @@ func StartAgentClient(
 	// We still need to `defer handleGoroutinePanic()()` however so that
 	// if we cancel the context during this call, we still handle it appropriately
 	ready := make(chan any)
-	goroutineManager.StartBackgroundGoroutine(func() {
+	goroutineManager.StartBackgroundGoroutine(func(_ context.Context) {
 		select {
 		// Failure case; we cancelled the internal context before we got a connection
-		case <-goroutineManager.GetGoroutineCtx().Done():
+		case <-goroutineManager.Context().Done():
 			connectedAgentClient.Close() // We ignore errors here since we might interrupt a network connection
 
 		// Happy case; we've got a connection and we want to wait with closing the agent's connections until the context, not the internal context is cancelled
@@ -176,15 +176,15 @@ func StartAgentClient(
 	// and waiting for it to be stopped. We still need to `defer handleGoroutinePanic()()` however so that
 	// any errors we get as we're polling the socket path directory are caught
 	// It's important that we start this _after_ calling `cmd.Start`, otherwise our process would be nil
-	goroutineManager.StartBackgroundGoroutine(func() {
+	goroutineManager.StartBackgroundGoroutine(func(_ context.Context) {
 		if err := connectedAgentClient.Wait(); err != nil {
 			panic(errors.Join(ErrAgentContextCancelled, err))
 		}
 	})
 
 	select {
-	case <-goroutineManager.GetGoroutineCtx().Done():
-		if err := goroutineManager.GetGoroutineCtx().Err(); err != nil {
+	case <-goroutineManager.Context().Done():
+		if err := goroutineManager.Context().Err(); err != nil {
 			panic(errors.Join(ErrAgentContextCancelled, err))
 		}
 

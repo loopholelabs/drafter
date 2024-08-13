@@ -123,7 +123,7 @@ func MigrateFromAndMount(
 		&errs,
 		manager.GoroutineManagerHooks{},
 	)
-	defer goroutineManager.WaitForForegroundGoroutines()
+	defer goroutineManager.Wait()
 	defer goroutineManager.StopAllGoroutines()
 	defer goroutineManager.CreateBackgroundPanicCollector()()
 
@@ -248,25 +248,25 @@ func MigrateFromAndMount(
 					p,
 				)
 
-				goroutineManager.StartForegroundGoroutine(func() {
+				goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
 					if err := from.HandleReadAt(); err != nil {
 						panic(errors.Join(ErrCouldNotHandleReadAt, err))
 					}
 				})
 
-				goroutineManager.StartForegroundGoroutine(func() {
+				goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
 					if err := from.HandleWriteAt(); err != nil {
 						panic(errors.Join(ErrCouldNotHandleWriteAt, err))
 					}
 				})
 
-				goroutineManager.StartForegroundGoroutine(func() {
+				goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
 					if err := from.HandleDevInfo(); err != nil {
 						panic(errors.Join(ErrCouldNotHandleDevInfo, err))
 					}
 				})
 
-				goroutineManager.StartForegroundGoroutine(func() {
+				goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
 					if err := from.HandleEvent(func(e *packets.Event) {
 						switch e.Type {
 						case packets.EventCustom:
@@ -298,7 +298,7 @@ func MigrateFromAndMount(
 					}
 				})
 
-				goroutineManager.StartForegroundGoroutine(func() {
+				goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
 					if err := from.HandleDirtyList(func(blocks []uint) {
 						if local != nil {
 							local.DirtyBlocks(blocks)
@@ -365,17 +365,17 @@ func MigrateFromAndMount(
 	}
 
 	// We don't track this because we return the wait function
-	goroutineManager.StartBackgroundGoroutine(func() {
+	goroutineManager.StartBackgroundGoroutine(func(_ context.Context) {
 		if err := migratedMounter.Wait(); err != nil {
 			panic(errors.Join(ErrCouldNotWaitForMigrationCompletion, err))
 		}
 	})
 
 	// We don't track this because we return the close function
-	goroutineManager.StartBackgroundGoroutine(func() {
+	goroutineManager.StartBackgroundGoroutine(func(_ context.Context) {
 		select {
 		// Failure case; we cancelled the internal context before all devices are ready
-		case <-goroutineManager.GetGoroutineCtx().Done():
+		case <-goroutineManager.Context().Done():
 			if err := migratedMounter.Close(); err != nil {
 				panic(errors.Join(ErrCouldNotCloseMigratedMounter, err))
 			}
@@ -393,8 +393,8 @@ func MigrateFromAndMount(
 	})
 
 	select {
-	case <-goroutineManager.GetGoroutineCtx().Done():
-		if err := goroutineManager.GetGoroutineCtx().Err(); err != nil {
+	case <-goroutineManager.Context().Done():
+		if err := goroutineManager.Context().Err(); err != nil {
 			panic(errors.Join(ErrMounterContextCancelled, err))
 		}
 
@@ -522,8 +522,8 @@ func MigrateFromAndMount(
 	}
 
 	select {
-	case <-goroutineManager.GetGoroutineCtx().Done():
-		if err := goroutineManager.GetGoroutineCtx().Err(); err != nil {
+	case <-goroutineManager.Context().Done():
+		if err := goroutineManager.Context().Err(); err != nil {
 			panic(errors.Join(ErrMounterContextCancelled, err))
 		}
 
@@ -644,18 +644,18 @@ func (migratableMounter *MigratableMounter) MigrateTo(
 		&errs,
 		manager.GoroutineManagerHooks{},
 	)
-	defer goroutineManager.WaitForForegroundGoroutines()
+	defer goroutineManager.Wait()
 	defer goroutineManager.StopAllGoroutines()
 	defer goroutineManager.CreateBackgroundPanicCollector()()
 
 	pro := protocol.NewProtocolRW(
-		goroutineManager.GetGoroutineCtx(),
+		goroutineManager.Context(),
 		readers,
 		writers,
 		nil,
 	)
 
-	goroutineManager.StartForegroundGoroutine(func() {
+	goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
 		if err := pro.Handle(); err != nil && !errors.Is(err, io.EOF) {
 			panic(errors.Join(ErrCouldNotHandleProtocol, err))
 		}
@@ -719,7 +719,7 @@ func (migratableMounter *MigratableMounter) MigrateTo(
 
 			devicesLeftToSend.Add(1)
 			if devicesLeftToSend.Load() >= int32(len(stage5Inputs)) {
-				goroutineManager.StartForegroundGoroutine(func() {
+				goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
 					if err := to.SendEvent(&packets.Event{
 						Type:       packets.EventCustom,
 						CustomType: byte(EventCustomAllDevicesSent),
@@ -733,7 +733,7 @@ func (migratableMounter *MigratableMounter) MigrateTo(
 				})
 			}
 
-			goroutineManager.StartForegroundGoroutine(func() {
+			goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
 				if err := to.HandleNeedAt(func(offset int64, length int32) {
 					// Prioritize blocks
 					endOffset := uint64(offset + int64(length))
@@ -751,7 +751,7 @@ func (migratableMounter *MigratableMounter) MigrateTo(
 				}
 			})
 
-			goroutineManager.StartForegroundGoroutine(func() {
+			goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
 				if err := to.HandleDontNeedAt(func(offset int64, length int32) {
 					// Deprioritize blocks
 					endOffset := uint64(offset + int64(length))
@@ -871,7 +871,7 @@ func (migratableMounter *MigratableMounter) MigrateTo(
 					}
 
 					ongoingMigrationsWg.Add(1)
-					goroutineManager.StartForegroundGoroutine(func() {
+					goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
 						defer ongoingMigrationsWg.Done()
 
 						if err := mig.MigrateDirty(blocks); err != nil {
@@ -909,8 +909,8 @@ func (migratableMounter *MigratableMounter) MigrateTo(
 					case <-suspendedVMCh:
 						break
 
-					case <-goroutineManager.GetGoroutineCtx().Done(): // ctx is the internalCtx here
-						if err := goroutineManager.GetGoroutineCtx().Err(); err != nil {
+					case <-goroutineManager.Context().Done(): // ctx is the internalCtx here
+						if err := goroutineManager.Context().Err(); err != nil {
 							return errors.Join(ErrMounterContextCancelled, err)
 						}
 

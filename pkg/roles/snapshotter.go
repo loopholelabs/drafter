@@ -74,7 +74,7 @@ func CreateSnapshot(
 		&errs,
 		manager.GoroutineManagerHooks{},
 	)
-	defer goroutineManager.WaitForForegroundGoroutines()
+	defer goroutineManager.Wait()
 	defer goroutineManager.StopAllGoroutines()
 	defer goroutineManager.CreateBackgroundPanicCollector()()
 
@@ -83,7 +83,7 @@ func CreateSnapshot(
 	}
 
 	server, err := firecracker.StartFirecrackerServer(
-		goroutineManager.GetGoroutineCtx(),
+		goroutineManager.Context(),
 
 		hypervisorConfiguration.FirecrackerBin,
 		hypervisorConfiguration.JailerBin,
@@ -106,7 +106,7 @@ func CreateSnapshot(
 	defer server.Close()
 	defer os.RemoveAll(filepath.Dir(server.VMPath)) // Remove `firecracker/$id`, not just `firecracker/$id/root`
 
-	goroutineManager.StartForegroundGoroutine(func() {
+	goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
 		if err := server.Wait(); err != nil {
 			panic(errors.Join(ErrCouldNotWaitForFirecrackerServer, err))
 		}
@@ -201,7 +201,7 @@ func CreateSnapshot(
 	}
 
 	if err := firecracker.StartVM(
-		goroutineManager.GetGoroutineCtx(),
+		goroutineManager.Context(),
 
 		client,
 
@@ -225,7 +225,7 @@ func CreateSnapshot(
 	defer os.Remove(filepath.Join(server.VMPath, VSockName))
 
 	{
-		receiveCtx, cancel := context.WithTimeout(goroutineManager.GetGoroutineCtx(), livenessConfiguration.ResumeTimeout)
+		receiveCtx, cancel := context.WithTimeout(goroutineManager.Context(), livenessConfiguration.ResumeTimeout)
 		defer cancel()
 
 		if err := liveness.ReceiveAndClose(receiveCtx); err != nil {
@@ -235,16 +235,16 @@ func CreateSnapshot(
 
 	var acceptingAgent *ipc.AcceptingAgentServer
 	{
-		acceptCtx, cancel := context.WithTimeout(goroutineManager.GetGoroutineCtx(), agentConfiguration.ResumeTimeout)
+		acceptCtx, cancel := context.WithTimeout(goroutineManager.Context(), agentConfiguration.ResumeTimeout)
 		defer cancel()
 
-		acceptingAgent, err = agent.Accept(acceptCtx, goroutineManager.GetGoroutineCtx())
+		acceptingAgent, err = agent.Accept(acceptCtx, goroutineManager.Context())
 		if err != nil {
 			panic(errors.Join(ErrCouldNotAcceptAgentConnection, err))
 		}
 		defer acceptingAgent.Close()
 
-		goroutineManager.StartForegroundGoroutine(func() {
+		goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
 			if err := acceptingAgent.Wait(); err != nil {
 				panic(errors.Join(ErrCouldNotWaitForAcceptingAgent, err))
 			}
@@ -263,7 +263,7 @@ func CreateSnapshot(
 	agent.Close()
 
 	if err := firecracker.CreateSnapshot(
-		goroutineManager.GetGoroutineCtx(),
+		goroutineManager.Context(),
 
 		client,
 

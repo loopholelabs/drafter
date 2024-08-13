@@ -93,7 +93,7 @@ func ForwardPorts(
 		&errs,
 		manager.GoroutineManagerHooks{},
 	)
-	defer goroutineManager.WaitForForegroundGoroutines()
+	defer goroutineManager.Wait()
 	defer goroutineManager.StopAllGoroutines()
 	defer goroutineManager.CreateBackgroundPanicCollector()()
 
@@ -109,8 +109,8 @@ func ForwardPorts(
 		ports,
 		func(index int, input PortForward, _ *struct{}, addDefer func(deferFunc func() error)) error {
 			select {
-			case <-goroutineManager.GetGoroutineCtx().Done():
-				return goroutineManager.GetGoroutineCtx().Err()
+			case <-goroutineManager.Context().Done():
+				return goroutineManager.Context().Err()
 
 			default:
 				break
@@ -197,8 +197,8 @@ func ForwardPorts(
 			}
 
 			select {
-			case <-goroutineManager.GetGoroutineCtx().Done():
-				return goroutineManager.GetGoroutineCtx().Err()
+			case <-goroutineManager.Context().Done():
+				return goroutineManager.Context().Err()
 
 			default:
 				break
@@ -221,8 +221,8 @@ func ForwardPorts(
 			}
 
 			select {
-			case <-goroutineManager.GetGoroutineCtx().Done():
-				return goroutineManager.GetGoroutineCtx().Err()
+			case <-goroutineManager.Context().Done():
+				return goroutineManager.Context().Err()
 
 			default:
 				break

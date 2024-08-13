@@ -26,7 +26,7 @@ func DialContext(
 		&errs,
 		manager.GoroutineManagerHooks{},
 	)
-	defer goroutineManager.WaitForForegroundGoroutines()
+	defer goroutineManager.Wait()
 	defer goroutineManager.StopAllGoroutines()
 	defer goroutineManager.CreateBackgroundPanicCollector()()
 
@@ -35,8 +35,8 @@ func DialContext(
 		panic(errors.Join(ErrVSockSocketCreationFailed, err))
 	}
 
-	goroutineManager.StartForegroundGoroutine(func() {
-		<-goroutineManager.GetGoroutineCtx().Done()
+	goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
+		<-goroutineManager.Context().Done()
 
 		// Non-happy path; context was cancelled before `connect()` completed
 		if c == nil {
@@ -55,7 +55,7 @@ func DialContext(
 				panic(errors.Join(ErrCouldNotCloseVSockConn, err))
 			}
 
-			if err := goroutineManager.GetGoroutineCtx().Err(); err != nil {
+			if err := goroutineManager.Context().Err(); err != nil {
 				panic(errors.Join(ErrVSockDialContextCancelled, err))
 			}
 
