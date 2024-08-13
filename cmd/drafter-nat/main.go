@@ -64,21 +64,23 @@ func main() {
 		goroutineManager.GetGoroutineCtx(),
 		context.Background(), // Never give up on rescue operations
 
-		*hostInterface,
+		roles.TranslationConfiguration{
+			HostInterface: *hostInterface,
 
-		*hostVethCIDR,
-		*namespaceVethCIDR,
-		*blockedSubnetCIDR,
+			HostVethCIDR:      *hostVethCIDR,
+			NamespaceVethCIDR: *namespaceVethCIDR,
+			BlockedSubnetCIDR: *blockedSubnetCIDR,
 
-		*namespaceInterface,
-		*namespaceInterfaceGateway,
-		uint32(*namespaceInterfaceNetmask),
-		*namespaceInterfaceIP,
-		*namespaceInterfaceMAC,
+			NamespaceInterface:        *namespaceInterface,
+			NamespaceInterfaceGateway: *namespaceInterfaceGateway,
+			NamespaceInterfaceNetmask: uint32(*namespaceInterfaceNetmask),
+			NamespaceInterfaceIP:      *namespaceInterfaceIP,
+			NamespaceInterfaceMAC:     *namespaceInterfaceMAC,
 
-		*namespacePrefix,
+			NamespacePrefix: *namespacePrefix,
 
-		*allowIncomingTraffic,
+			AllowIncomingTraffic: *allowIncomingTraffic,
+		},
 
 		roles.CreateNamespacesHooks{
 			OnBeforeCreateNamespace: func(id string) {

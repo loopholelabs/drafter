@@ -45,25 +45,29 @@ type CreateNamespacesHooks struct {
 	OnBeforeRemoveNamespace func(id string)
 }
 
+type TranslationConfiguration struct {
+	HostInterface,
+
+	HostVethCIDR,
+	NamespaceVethCIDR,
+	BlockedSubnetCIDR,
+
+	NamespaceInterface,
+	NamespaceInterfaceGateway string
+	NamespaceInterfaceNetmask uint32
+	NamespaceInterfaceIP,
+	NamespaceInterfaceMAC,
+
+	NamespacePrefix string
+
+	AllowIncomingTraffic bool
+}
+
 func CreateNAT(
 	ctx context.Context,
-	closeCtx context.Context,
+	rescueCtx context.Context,
 
-	hostInterface string,
-
-	hostVethCIDR string,
-	namespaceVethCIDR string,
-	blockedSubnetCIDR string,
-
-	namespaceInterface string,
-	namespaceInterfaceGateway string,
-	namespaceInterfaceNetmask uint32,
-	namespaceInterfaceIP string,
-	namespaceInterfaceMAC string,
-
-	namespacePrefix string,
-
-	allowIncomingTraffic bool,
+	translationConfiguration TranslationConfiguration,
 
 	hooks CreateNamespacesHooks,
 ) (namespaces *Namespaces, errs error) {
@@ -88,20 +92,20 @@ func CreateNAT(
 	defer goroutineManager.CreateBackgroundPanicCollector()()
 
 	// Check if the host interface exists
-	if _, err := net.InterfaceByName(hostInterface); err != nil {
+	if _, err := net.InterfaceByName(translationConfiguration.HostInterface); err != nil {
 		panic(errors.Join(ErrCouldNotFindHostInterface, err))
 	}
 
-	if err := network.CreateNAT(hostInterface); err != nil {
+	if err := network.CreateNAT(translationConfiguration.HostInterface); err != nil {
 		panic(errors.Join(ErrCouldNotCreateNAT, err))
 	}
 
-	hostVethIPs := network.NewIPTable(hostVethCIDR, goroutineManager.GetGoroutineCtx())
+	hostVethIPs := network.NewIPTable(translationConfiguration.HostVethCIDR, goroutineManager.GetGoroutineCtx())
 	if err := hostVethIPs.Open(goroutineManager.GetGoroutineCtx()); err != nil {
 		panic(errors.Join(ErrCouldNotOpenHostVethIPs, err))
 	}
 
-	namespaceVethIPs := network.NewIPTable(namespaceVethCIDR, goroutineManager.GetGoroutineCtx())
+	namespaceVethIPs := network.NewIPTable(translationConfiguration.NamespaceVethCIDR, goroutineManager.GetGoroutineCtx())
 	if err := namespaceVethIPs.Open(goroutineManager.GetGoroutineCtx()); err != nil {
 		panic(errors.Join(ErrCouldNotOpenNamespaceVethIPs, err))
 	}
@@ -126,7 +130,7 @@ func CreateNAT(
 	var closeLock sync.Mutex
 	closed := false
 
-	closeInProgressContext, cancelCloseInProgressContext := context.WithCancel(closeCtx) // We use `closeContext` here since this simply intercepts `ctx`
+	closeInProgressContext, cancelCloseInProgressContext := context.WithCancel(rescueCtx) // We use `closeContext` here since this simply intercepts `ctx`
 	namespaces.Close = func() (errs error) {
 		defer cancelCloseInProgressContext()
 
@@ -134,7 +138,7 @@ func CreateNAT(
 		defer hostVethsLock.Unlock()
 
 		for _, hostVeth := range hostVeths {
-			if err := namespaceVethIPs.ReleasePair(closeCtx, hostVeth); err != nil {
+			if err := namespaceVethIPs.ReleasePair(rescueCtx, hostVeth); err != nil {
 				errs = errors.Join(errs, ErrCouldNotReleaseHostVethIP, err)
 			}
 		}
@@ -145,7 +149,7 @@ func CreateNAT(
 		defer namespaceVethsLock.Unlock()
 
 		for _, namespaceVeth := range namespaceVeths {
-			if err := namespaceVethIPs.ReleaseIP(closeCtx, namespaceVeth); err != nil {
+			if err := namespaceVethIPs.ReleaseIP(rescueCtx, namespaceVeth); err != nil {
 				errs = errors.Join(errs, ErrCouldNotReleaseNamespaceVethIP, err)
 			}
 		}
@@ -173,7 +177,7 @@ func CreateNAT(
 		if !closed {
 			closed = true
 
-			if err := network.RemoveNAT(hostInterface); err != nil {
+			if err := network.RemoveNAT(translationConfiguration.HostInterface); err != nil {
 				errs = errors.Join(errs, ErrCouldNotRemoveNAT, err)
 			}
 		}
@@ -214,7 +218,7 @@ func CreateNAT(
 	})
 
 	for i := uint64(0); i < availableIPs; i++ {
-		id := fmt.Sprintf("%v%v", namespacePrefix, i)
+		id := fmt.Sprintf("%v%v", translationConfiguration.NamespacePrefix, i)
 
 		var hostVeth *network.IPPair
 		if err := func() error {
@@ -232,7 +236,7 @@ func CreateNAT(
 			var err error
 			hostVeth, err = hostVethIPs.GetPair(goroutineManager.GetGoroutineCtx())
 			if err != nil {
-				if e := namespaceVethIPs.ReleasePair(closeCtx, hostVeth); e != nil {
+				if e := namespaceVethIPs.ReleasePair(rescueCtx, hostVeth); e != nil {
 					return errors.Join(ErrCouldNotReleaseHostVethIP, err, e)
 				}
 
@@ -262,7 +266,7 @@ func CreateNAT(
 			var err error
 			namespaceVeth, err = namespaceVethIPs.GetIP(goroutineManager.GetGoroutineCtx())
 			if err != nil {
-				if e := namespaceVethIPs.ReleaseIP(closeCtx, namespaceVeth); e != nil {
+				if e := namespaceVethIPs.ReleaseIP(rescueCtx, namespaceVeth); e != nil {
 					return errors.Join(ErrCouldNotReleaseNamespaceVethIP, err, e)
 				}
 
@@ -295,23 +299,23 @@ func CreateNAT(
 			namespace := network.NewNamespace(
 				id,
 
-				hostInterface,
-				namespaceInterface,
+				translationConfiguration.HostInterface,
+				translationConfiguration.NamespaceInterface,
 
-				namespaceInterfaceGateway,
-				namespaceInterfaceNetmask,
+				translationConfiguration.NamespaceInterfaceGateway,
+				translationConfiguration.NamespaceInterfaceNetmask,
 
 				hostVeth.GetFirstIP().String(),
 				hostVeth.GetSecondIP().String(),
 
-				namespaceInterfaceIP,
+				translationConfiguration.NamespaceInterfaceIP,
 				namespaceVeth.String(),
 
-				blockedSubnetCIDR,
+				translationConfiguration.BlockedSubnetCIDR,
 
-				namespaceInterfaceMAC,
+				translationConfiguration.NamespaceInterfaceMAC,
 
-				allowIncomingTraffic,
+				translationConfiguration.AllowIncomingTraffic,
 			)
 			if err := namespace.Open(); err != nil {
 				if e := namespace.Close(); e != nil {
