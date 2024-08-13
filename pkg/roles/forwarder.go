@@ -79,7 +79,14 @@ func ForwardPorts(
 
 	hooks PortForwardHooks,
 ) (forwardedPorts *ForwardedPorts, errs error) {
-	forwardedPorts = &ForwardedPorts{}
+	forwardedPorts = &ForwardedPorts{
+		Wait: func() error {
+			return nil
+		},
+		Close: func() error {
+			return nil
+		},
+	}
 
 	goroutineManager := manager.NewGoroutineManager(
 		ctx,
