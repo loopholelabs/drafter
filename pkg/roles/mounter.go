@@ -103,13 +103,10 @@ func MigrateFromAndMount(
 		},
 	}
 
-	// We use the background context here instead of the internal context because we want to distinguish
-	// between a context cancellation from the outside and getting a response
-	allRemoteDevicesReceivedCtx, cancelAllRemoteDevicesReceivedCtx := context.WithCancel(context.Background())
-	defer cancelAllRemoteDevicesReceivedCtx()
-
-	allRemoteDevicesReadyCtx, cancelAllRemoteDevicesReadyCtx := context.WithCancel(context.Background())
-	defer cancelAllRemoteDevicesReadyCtx()
+	var (
+		allRemoteDevicesReceived = make(chan any)
+		allRemoteDevicesReady    = make(chan any)
+	)
 
 	// We don't `defer cancelProtocolCtx()` this because we cancel in the wait function
 	protocolCtx, cancelProtocolCtx := context.WithCancel(migrateFromCtx)
@@ -130,7 +127,7 @@ func MigrateFromAndMount(
 	defer goroutineManager.StopAllGoroutines()
 	defer goroutineManager.CreateBackgroundPanicCollector()()
 
-	// Use an atomic counter and `allDevicesReadyCtx` and instead of a WaitGroup so that we can `select {}` without leaking a goroutine
+	// Use an atomic counter and `allDevicesReady` and instead of a WaitGroup so that we can `select {}` without leaking a goroutine
 	var (
 		receivedButNotReadyRemoteDevices atomic.Int32
 
@@ -275,7 +272,7 @@ func MigrateFromAndMount(
 						case packets.EventCustom:
 							switch e.CustomType {
 							case byte(EventCustomAllDevicesSent):
-								cancelAllRemoteDevicesReceivedCtx()
+								close(allRemoteDevicesReceived)
 
 								if hook := hooks.OnRemoteAllDevicesReceived; hook != nil {
 									hook()
@@ -283,7 +280,7 @@ func MigrateFromAndMount(
 
 							case byte(EventCustomTransferAuthority):
 								if receivedButNotReadyRemoteDevices.Add(-1) <= 0 {
-									cancelAllRemoteDevicesReadyCtx()
+									close(allRemoteDevicesReady)
 								}
 
 								if hook := hooks.OnRemoteDeviceAuthorityReceived; hook != nil {
@@ -327,9 +324,9 @@ func MigrateFromAndMount(
 		// After the protocol has closed without errors, we can safely assume that we won't receive any
 		// additional devices, so we mark all devices as received and ready
 		select {
-		case <-allRemoteDevicesReceivedCtx.Done():
+		case <-allRemoteDevicesReceived:
 		default:
-			cancelAllRemoteDevicesReceivedCtx()
+			close(allRemoteDevicesReceived)
 
 			// We need to call the hook manually too since we would otherwise only call if we received at least one device
 			if hook := hooks.OnRemoteAllDevicesReceived; hook != nil {
@@ -337,7 +334,7 @@ func MigrateFromAndMount(
 			}
 		}
 
-		cancelAllRemoteDevicesReadyCtx()
+		close(allRemoteDevicesReady)
 
 		if hook := hooks.OnRemoteAllMigrationsCompleted; hook != nil {
 			hook()
@@ -384,7 +381,7 @@ func MigrateFromAndMount(
 			}
 
 		// Happy case; all devices are ready and we want to wait with closing the devices until we stop the mounter
-		case <-allRemoteDevicesReadyCtx.Done():
+		case <-allRemoteDevicesReady:
 			<-mounterCtx.Done()
 
 			if err := migratedMounter.Close(); err != nil {
@@ -402,7 +399,7 @@ func MigrateFromAndMount(
 		}
 
 		return
-	case <-allRemoteDevicesReceivedCtx.Done():
+	case <-allRemoteDevicesReceived:
 		break
 	}
 
@@ -531,7 +528,7 @@ func MigrateFromAndMount(
 		}
 
 		return
-	case <-allRemoteDevicesReadyCtx.Done():
+	case <-allRemoteDevicesReady:
 		break
 	}
 
@@ -672,17 +669,14 @@ func (migratableMounter *MigratableMounter) MigrateTo(
 		suspendedVM     bool
 	)
 
-	// We use the background context here instead of the internal context because we want to distinguish
-	// between a context cancellation from the outside and getting a response
-	suspendedVMCtx, cancelSuspendedVMCtx := context.WithCancel(context.Background())
-	defer cancelSuspendedVMCtx()
+	suspendedVMCh := make(chan any)
 
 	suspendAndMsyncVM := sync.OnceValue(func() error {
 		suspendedVMLock.Lock()
 		suspendedVM = true
 		suspendedVMLock.Unlock()
 
-		cancelSuspendedVMCtx()
+		close(suspendedVMCh)
 
 		return nil
 	})
@@ -912,7 +906,7 @@ func (migratableMounter *MigratableMounter) MigrateTo(
 					case <-cycleThrottleCtx.Done():
 						break
 
-					case <-suspendedVMCtx.Done():
+					case <-suspendedVMCh:
 						break
 
 					case <-goroutineManager.GetGoroutineCtx().Done(): // ctx is the internalCtx here

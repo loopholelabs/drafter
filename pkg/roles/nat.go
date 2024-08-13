@@ -78,11 +78,6 @@ func CreateNAT(
 		claimableNamespaces: map[string]*claimableNamespace{},
 	}
 
-	// We use the background context here instead of the internal context because we want to distinguish
-	// between a context cancellation from the outside and getting a response
-	readyCtx, cancelReadyCtx := context.WithCancel(context.Background())
-	defer cancelReadyCtx()
-
 	goroutineManager := manager.NewGoroutineManager(
 		ctx,
 		&errs,
@@ -197,6 +192,7 @@ func CreateNAT(
 	// We intentionally don't call `wg.Add` and `wg.Done` here - we are ok with leaking this
 	// goroutine since we return the Close func. We still need to `defer handleGoroutinePanic()()` however so that
 	// if we cancel the context during this call, we still handle it appropriately
+	ready := make(chan any)
 	goroutineManager.StartBackgroundGoroutine(func() {
 		select {
 		// Failure case; we cancelled the internal context before we got a connection
@@ -206,7 +202,7 @@ func CreateNAT(
 			}
 
 		// Happy case; we've set up all of the namespaces and we want to wait with closing the agent's connections until the context, not the internal context is cancelled
-		case <-readyCtx.Done():
+		case <-ready:
 			<-ctx.Done()
 
 			if err := namespaces.Close(); err != nil {
@@ -335,7 +331,7 @@ func CreateNAT(
 		}
 	}
 
-	cancelReadyCtx()
+	close(ready)
 
 	return
 }
