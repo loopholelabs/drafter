@@ -293,7 +293,7 @@ func main() {
 
 	before := time.Now()
 
-	resumedRunner, err := roles.ResumeRunner(
+	resumedRunner, err := runner.Resume(
 		goroutineManager.GetGoroutineCtx(),
 
 		*resumeTimeout,
@@ -306,8 +306,6 @@ func main() {
 			ExperimentalMapPrivateStateOutput:  *experimentalMapPrivateStateOutput,
 			ExperimentalMapPrivateMemoryOutput: *experimentalMapPrivateMemoryOutput,
 		},
-
-		runner,
 	)
 
 	if err != nil {
@@ -342,13 +340,7 @@ func main() {
 
 	before = time.Now()
 
-	if err := roles.SuspendAndCloseAgentServer(
-		goroutineManager.GetGoroutineCtx(),
-
-		*resumeTimeout,
-
-		resumedRunner,
-	); err != nil {
+	if err := resumedRunner.SuspendAndCloseAgentServer(goroutineManager.GetGoroutineCtx(), *resumeTimeout); err != nil {
 		panic(err)
 	}
 

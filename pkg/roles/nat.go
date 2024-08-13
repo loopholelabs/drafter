@@ -33,11 +33,11 @@ type claimableNamespace struct {
 }
 
 type Namespaces struct {
-	ReleaseNamespace func(namespace string) error
-	ClaimNamespace   func() (string, error)
-
 	Wait  func() error
 	Close func() error
+
+	claimableNamespaces     map[string]*claimableNamespace
+	claimableNamespacesLock sync.Mutex
 }
 
 type CreateNamespacesHooks struct {
@@ -67,7 +67,12 @@ func CreateNAT(
 
 	hooks CreateNamespacesHooks,
 ) (namespaces *Namespaces, errs error) {
-	namespaces = &Namespaces{}
+	namespaces = &Namespaces{
+		Wait:  func() error { return nil },
+		Close: func() error { return nil },
+
+		claimableNamespaces: map[string]*claimableNamespace{},
+	}
 
 	// We use the background context here instead of the internal context because we want to distinguish
 	// between a context cancellation from the outside and getting a response
@@ -117,9 +122,6 @@ func CreateNAT(
 
 		namespaceVeths     []*network.IP
 		namespaceVethsLock sync.Mutex
-
-		claimableNamespaces     = map[string]*claimableNamespace{}
-		claimableNamespacesLock sync.Mutex
 	)
 
 	var closeLock sync.Mutex
@@ -151,10 +153,10 @@ func CreateNAT(
 
 		namespaceVeths = []*network.IP{}
 
-		claimableNamespacesLock.Lock()
-		defer claimableNamespacesLock.Unlock()
+		namespaces.claimableNamespacesLock.Lock()
+		defer namespaces.claimableNamespacesLock.Unlock()
 
-		for _, claimableNamespace := range claimableNamespaces {
+		for _, claimableNamespace := range namespaces.claimableNamespaces {
 			if hook := hooks.OnBeforeRemoveNamespace; hook != nil {
 				hook(claimableNamespace.namespace.GetID())
 			}
@@ -164,7 +166,7 @@ func CreateNAT(
 			}
 		}
 
-		claimableNamespaces = map[string]*claimableNamespace{}
+		namespaces.claimableNamespaces = map[string]*claimableNamespace{}
 
 		closeLock.Lock()
 		defer closeLock.Unlock()
@@ -275,8 +277,8 @@ func CreateNAT(
 		}
 
 		if err := func() error {
-			claimableNamespacesLock.Lock()
-			defer claimableNamespacesLock.Unlock()
+			namespaces.claimableNamespacesLock.Lock()
+			defer namespaces.claimableNamespacesLock.Unlock()
 
 			select {
 			case <-ctx.Done():
@@ -319,7 +321,7 @@ func CreateNAT(
 				return err
 			}
 
-			claimableNamespaces[id] = &claimableNamespace{
+			namespaces.claimableNamespaces[id] = &claimableNamespace{
 				namespace: namespace,
 			}
 
@@ -329,37 +331,37 @@ func CreateNAT(
 		}
 	}
 
-	namespaces.ClaimNamespace = func() (string, error) {
-		claimableNamespacesLock.Lock()
-		defer claimableNamespacesLock.Unlock()
-
-		for _, namespace := range claimableNamespaces {
-			if !namespace.claimed {
-				namespace.claimed = true
-
-				return namespace.namespace.GetID(), nil
-			}
-		}
-
-		return "", ErrAllNamespacesClaimed
-	}
-
-	namespaces.ReleaseNamespace = func(namespace string) error {
-		claimableNamespacesLock.Lock()
-		defer claimableNamespacesLock.Unlock()
-
-		ns, ok := claimableNamespaces[namespace]
-		if !ok {
-			// Releasing non-claimed namespaces is a no-op
-			return nil
-		}
-
-		ns.claimed = false
-
-		return nil
-	}
-
 	cancelReadyCtx()
 
 	return
+}
+
+func (namespaces *Namespaces) ReleaseNamespace(namespace string) error {
+	namespaces.claimableNamespacesLock.Lock()
+	defer namespaces.claimableNamespacesLock.Unlock()
+
+	ns, ok := namespaces.claimableNamespaces[namespace]
+	if !ok {
+		// Releasing non-claimed namespaces is a no-op
+		return nil
+	}
+
+	ns.claimed = false
+
+	return nil
+}
+
+func (namespaces *Namespaces) ClaimNamespace() (string, error) {
+	namespaces.claimableNamespacesLock.Lock()
+	defer namespaces.claimableNamespacesLock.Unlock()
+
+	for _, namespace := range namespaces.claimableNamespaces {
+		if !namespace.claimed {
+			namespace.claimed = true
+
+			return namespace.namespace.GetID(), nil
+		}
+	}
+
+	return "", ErrAllNamespacesClaimed
 }
