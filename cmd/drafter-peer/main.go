@@ -298,15 +298,13 @@ func main() {
 		roles.MemoryName,
 	)
 
-	if peer.Wait != nil {
-		defer func() {
-			defer goroutineManager.CreateForegroundPanicCollector()()
+	defer func() {
+		defer goroutineManager.CreateForegroundPanicCollector()()
 
-			if err := peer.Wait(); err != nil {
-				panic(err)
-			}
-		}()
-	}
+		if err := peer.Wait(); err != nil {
+			panic(err)
+		}
+	}()
 
 	if err != nil {
 		panic(err)
@@ -383,15 +381,13 @@ func main() {
 		},
 	)
 
-	if migratedPeer.Wait != nil {
-		defer func() {
-			defer goroutineManager.CreateForegroundPanicCollector()()
+	defer func() {
+		defer goroutineManager.CreateForegroundPanicCollector()()
 
-			if err := migratedPeer.Wait(); err != nil {
-				panic(err)
-			}
-		}()
-	}
+		if err := migratedPeer.Wait(); err != nil {
+			panic(err)
+		}
+	}()
 
 	if err != nil {
 		panic(err)

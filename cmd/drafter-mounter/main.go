@@ -288,15 +288,13 @@ func main() {
 		},
 	)
 
-	if migratedMounter.Wait != nil {
-		defer func() {
-			defer goroutineManager.CreateForegroundPanicCollector()()
+	defer func() {
+		defer goroutineManager.CreateForegroundPanicCollector()()
 
-			if err := migratedMounter.Wait(); err != nil {
-				panic(err)
-			}
-		}()
-	}
+		if err := migratedMounter.Wait(); err != nil {
+			panic(err)
+		}
+	}()
 
 	if err != nil {
 		panic(err)

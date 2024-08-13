@@ -258,19 +258,11 @@ func StartPeer(
 	// We set both of these even if we return an error since we need to have a way to wait for rescue operations to complete
 	peer.Wait = peer.runner.Wait
 	peer.Close = func() error {
-		if peer.runner.Close != nil {
-			if err := peer.runner.Close(); err != nil {
-				return err
-			}
+		if err := peer.runner.Close(); err != nil {
+			return err
 		}
 
-		if peer.Wait != nil {
-			if err := peer.Wait(); err != nil {
-				return err
-			}
-		}
-
-		return nil
+		return peer.Wait()
 	}
 
 	if err != nil {
