@@ -226,7 +226,7 @@ func StartRunner(
 	return
 }
 
-func ResumeRunner(
+func (runner *Runner) Resume(
 	ctx context.Context,
 
 	resumeTimeout time.Duration,
@@ -234,8 +234,6 @@ func ResumeRunner(
 	agentVSockPort uint32,
 
 	snapshotLoadConfiguration SnapshotLoadConfiguration,
-
-	runner *Runner,
 ) (
 	resumedRunner *ResumedRunner,
 
@@ -466,11 +464,7 @@ func ResumeRunner(
 	return
 }
 
-func MsyncResumedRunner(
-	ctx context.Context,
-
-	resumedRunner *ResumedRunner,
-) error {
+func (resumedRunner *ResumedRunner) Msync(ctx context.Context) error {
 	if !resumedRunner.snapshotLoadConfiguration.ExperimentalMapPrivate {
 		if err := firecracker.CreateSnapshot(
 			ctx,
@@ -489,13 +483,7 @@ func MsyncResumedRunner(
 	return nil
 }
 
-func SuspendAndCloseAgentServer(
-	ctx context.Context,
-
-	suspendTimeout time.Duration,
-
-	resumedRunner *ResumedRunner,
-) error {
+func (resumedRunner *ResumedRunner) SuspendAndCloseAgentServer(ctx context.Context, suspendTimeout time.Duration) error {
 	suspendCtx, cancelSuspendCtx := context.WithTimeout(ctx, suspendTimeout)
 	defer cancelSuspendCtx()
 
