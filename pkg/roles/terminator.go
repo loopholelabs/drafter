@@ -63,7 +63,7 @@ func Terminate(
 		&errs,
 		manager.GoroutineManagerHooks{},
 	)
-	defer goroutineManager.WaitForForegroundGoroutines()
+	defer goroutineManager.Wait()
 	defer goroutineManager.StopAllGoroutines()
 	defer goroutineManager.CreateBackgroundPanicCollector()()
 
@@ -72,7 +72,7 @@ func Terminate(
 		deviceCloseFuncs     []func() error
 	)
 	pro := protocol.NewProtocolRW(
-		goroutineManager.GetGoroutineCtx(),
+		goroutineManager.Context(),
 		readers,
 		writers,
 		func(ctx context.Context, p protocol.Protocol, index uint32) {
@@ -158,25 +158,25 @@ func Terminate(
 				p,
 			)
 
-			goroutineManager.StartForegroundGoroutine(func() {
+			goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
 				if err := from.HandleReadAt(); err != nil {
 					panic(errors.Join(ErrCouldNotHandleReadAt, err))
 				}
 			})
 
-			goroutineManager.StartForegroundGoroutine(func() {
+			goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
 				if err := from.HandleWriteAt(); err != nil {
 					panic(errors.Join(ErrCouldNotHandleWriteAt, err))
 				}
 			})
 
-			goroutineManager.StartForegroundGoroutine(func() {
+			goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
 				if err := from.HandleDevInfo(); err != nil {
 					panic(errors.Join(ErrCouldNotHandleDevInfo, err))
 				}
 			})
 
-			goroutineManager.StartForegroundGoroutine(func() {
+			goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
 				if err := from.HandleEvent(func(e *packets.Event) {
 					switch e.Type {
 					case packets.EventCustom:
@@ -202,7 +202,7 @@ func Terminate(
 				}
 			})
 
-			goroutineManager.StartForegroundGoroutine(func() {
+			goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
 				if err := from.HandleDirtyList(func(blocks []uint) {
 					if local != nil {
 						local.DirtyBlocks(blocks)

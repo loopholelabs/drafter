@@ -140,18 +140,18 @@ func MigrateOpenedDevices(
 		&errs,
 		manager.GoroutineManagerHooks{},
 	)
-	defer goroutineManager.WaitForForegroundGoroutines()
+	defer goroutineManager.Wait()
 	defer goroutineManager.StopAllGoroutines()
 	defer goroutineManager.CreateBackgroundPanicCollector()()
 
 	pro := protocol.NewProtocolRW(
-		goroutineManager.GetGoroutineCtx(),
+		goroutineManager.Context(),
 		readers,
 		writers,
 		nil,
 	)
 
-	goroutineManager.StartForegroundGoroutine(func() {
+	goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
 		if err := pro.Handle(); err != nil && !errors.Is(err, io.EOF) {
 			panic(errors.Join(ErrCouldNotHandleProtocol, err))
 		}
@@ -174,7 +174,7 @@ func MigrateOpenedDevices(
 
 			devicesLeftToSend.Add(1)
 			if devicesLeftToSend.Load() >= int32(len(openedDevices)) {
-				goroutineManager.StartForegroundGoroutine(func() {
+				goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
 					if err := to.SendEvent(&packets.Event{
 						Type:       packets.EventCustom,
 						CustomType: byte(EventCustomAllDevicesSent),
@@ -188,7 +188,7 @@ func MigrateOpenedDevices(
 				})
 			}
 
-			goroutineManager.StartForegroundGoroutine(func() {
+			goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
 				if err := to.HandleNeedAt(func(offset int64, length int32) {
 					// Prioritize blocks
 					endOffset := uint64(offset + int64(length))
@@ -206,7 +206,7 @@ func MigrateOpenedDevices(
 				}
 			})
 
-			goroutineManager.StartForegroundGoroutine(func() {
+			goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
 				if err := to.HandleDontNeedAt(func(offset int64, length int32) {
 					// Deprioritize blocks
 					endOffset := uint64(offset + int64(length))
@@ -283,7 +283,7 @@ func MigrateOpenedDevices(
 				return errors.Join(ErrCouldNotCreateMigrator, err)
 			}
 
-			goroutineManager.StartForegroundGoroutine(func() {
+			goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
 				if err := to.SendEvent(&packets.Event{
 					Type:       packets.EventCustom,
 					CustomType: byte(EventCustomTransferAuthority),

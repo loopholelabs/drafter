@@ -40,7 +40,7 @@ func main() {
 		&errs,
 		manager.GoroutineManagerHooks{},
 	)
-	defer goroutineManager.WaitForForegroundGoroutines()
+	defer goroutineManager.Wait()
 	defer goroutineManager.StopAllGoroutines()
 	defer goroutineManager.CreateBackgroundPanicCollector()()
 
@@ -92,12 +92,12 @@ func main() {
 		if err := func() error {
 			log.Println("Connecting to host")
 
-			dialCtx, cancelDialCtx := context.WithTimeout(goroutineManager.GetGoroutineCtx(), *vsockTimeout)
+			dialCtx, cancelDialCtx := context.WithTimeout(goroutineManager.Context(), *vsockTimeout)
 			defer cancelDialCtx()
 
 			connectedAgentClient, err := ipc.StartAgentClient(
 				dialCtx,
-				goroutineManager.GetGoroutineCtx(),
+				goroutineManager.Context(),
 
 				ipc.VSockCIDHost,
 				uint32(*vsockPort),
@@ -113,7 +113,7 @@ func main() {
 
 			return connectedAgentClient.Wait()
 		}(); err != nil {
-			if !(errors.Is(err, context.Canceled) && errors.Is(context.Cause(goroutineManager.GetGoroutineCtx()), goroutineManager.GetErrGoroutineStopped())) {
+			if !(errors.Is(err, context.Canceled) && errors.Is(context.Cause(goroutineManager.Context()), goroutineManager.GetErrGoroutineStopped())) {
 				log.Println("Disconnected from host with error, reconnecting:", err)
 
 				continue

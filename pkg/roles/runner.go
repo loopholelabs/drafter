@@ -146,7 +146,7 @@ func StartRunner(
 		&errs,
 		manager.GoroutineManagerHooks{},
 	)
-	defer goroutineManager.WaitForForegroundGoroutines()
+	defer goroutineManager.Wait()
 	defer goroutineManager.StopAllGoroutines()
 	defer goroutineManager.CreateBackgroundPanicCollector()()
 
@@ -192,7 +192,7 @@ func StartRunner(
 
 	// We intentionally don't call `wg.Add` and `wg.Done` here since we return the process's wait method
 	// We still need to `defer handleGoroutinePanic()()` here however so that we catch any errors during this call
-	goroutineManager.StartBackgroundGoroutine(func() {
+	goroutineManager.StartBackgroundGoroutine(func(_ context.Context) {
 		if err := runner.server.Wait(); err != nil {
 			panic(errors.Join(ErrCouldNotWaitForFirecracker, err))
 		}
@@ -373,13 +373,13 @@ func (runner *Runner) Resume(
 			},
 		},
 	)
-	defer goroutineManager.WaitForForegroundGoroutines()
+	defer goroutineManager.Wait()
 	defer goroutineManager.StopAllGoroutines()
 	defer goroutineManager.CreateBackgroundPanicCollector()()
 
 	// We intentionally don't call `wg.Add` and `wg.Done` here since we return the process's wait method
 	// We still need to `defer handleGoroutinePanic()()` here however so that we catch any errors during this call
-	goroutineManager.StartBackgroundGoroutine(func() {
+	goroutineManager.StartBackgroundGoroutine(func(_ context.Context) {
 		if err := runner.server.Wait(); err != nil {
 			panic(errors.Join(ErrCouldNotWaitForFirecracker, err))
 		}
@@ -405,7 +405,7 @@ func (runner *Runner) Resume(
 	}
 
 	{
-		resumeSnapshotAndAcceptCtx, cancelResumeSnapshotAndAcceptCtx := context.WithTimeout(goroutineManager.GetGoroutineCtx(), resumeTimeout)
+		resumeSnapshotAndAcceptCtx, cancelResumeSnapshotAndAcceptCtx := context.WithTimeout(goroutineManager.Context(), resumeTimeout)
 		defer cancelResumeSnapshotAndAcceptCtx()
 
 		if err := firecracker.ResumeSnapshot(
@@ -431,7 +431,7 @@ func (runner *Runner) Resume(
 
 	// We intentionally don't call `wg.Add` and `wg.Done` here since we return the process's wait method
 	// We still need to `defer handleGoroutinePanic()()` here however so that we catch any errors during this call
-	goroutineManager.StartBackgroundGoroutine(func() {
+	goroutineManager.StartBackgroundGoroutine(func(_ context.Context) {
 		if err := resumedRunner.acceptingAgent.Wait(); err != nil {
 			panic(errors.Join(ErrCouldNotWaitForAcceptingAgent, err))
 		}
@@ -453,7 +453,7 @@ func (runner *Runner) Resume(
 	}
 
 	{
-		afterResumeCtx, cancelAfterResumeCtx := context.WithTimeout(goroutineManager.GetGoroutineCtx(), resumeTimeout)
+		afterResumeCtx, cancelAfterResumeCtx := context.WithTimeout(goroutineManager.Context(), resumeTimeout)
 		defer cancelAfterResumeCtx()
 
 		if err := resumedRunner.acceptingAgent.Remote.AfterResume(afterResumeCtx); err != nil {

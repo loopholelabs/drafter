@@ -75,7 +75,7 @@ func main() {
 		&errs,
 		manager.GoroutineManagerHooks{},
 	)
-	defer goroutineManager.WaitForForegroundGoroutines()
+	defer goroutineManager.Wait()
 	defer goroutineManager.StopAllGoroutines()
 	defer goroutineManager.CreateBackgroundPanicCollector()()
 
@@ -90,7 +90,7 @@ func main() {
 		cancel()
 	}()
 
-	conn, err := (&net.Dialer{}).DialContext(goroutineManager.GetGoroutineCtx(), "tcp", *raddr)
+	conn, err := (&net.Dialer{}).DialContext(goroutineManager.Context(), "tcp", *raddr)
 	if err != nil {
 		panic(err)
 	}
@@ -99,7 +99,7 @@ func main() {
 	log.Println("Migrating from", conn.RemoteAddr())
 
 	if err := roles.Terminate(
-		goroutineManager.GetGoroutineCtx(),
+		goroutineManager.Context(),
 
 		devices,
 

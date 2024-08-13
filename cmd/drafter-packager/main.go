@@ -75,7 +75,7 @@ func main() {
 		&errs,
 		manager.GoroutineManagerHooks{},
 	)
-	defer goroutineManager.WaitForForegroundGoroutines()
+	defer goroutineManager.Wait()
 	defer goroutineManager.StopAllGoroutines()
 	defer goroutineManager.CreateBackgroundPanicCollector()()
 
@@ -92,7 +92,7 @@ func main() {
 
 	if *extract {
 		if err := roles.ExtractPackage(
-			goroutineManager.GetGoroutineCtx(),
+			goroutineManager.Context(),
 
 			*packagePath,
 			devices,
@@ -110,7 +110,7 @@ func main() {
 	}
 
 	if err := roles.ArchivePackage(
-		goroutineManager.GetGoroutineCtx(),
+		goroutineManager.Context(),
 
 		devices,
 		*packagePath,

@@ -45,7 +45,7 @@ func main() {
 		&errs,
 		manager.GoroutineManagerHooks{},
 	)
-	defer goroutineManager.WaitForForegroundGoroutines()
+	defer goroutineManager.Wait()
 	defer goroutineManager.StopAllGoroutines()
 	defer goroutineManager.CreateBackgroundPanicCollector()()
 
@@ -61,7 +61,7 @@ func main() {
 	}()
 
 	nat, err := roles.CreateNAT(
-		goroutineManager.GetGoroutineCtx(),
+		goroutineManager.Context(),
 		context.Background(), // Never give up on rescue operations
 
 		roles.TranslationConfiguration{
@@ -112,7 +112,7 @@ func main() {
 		}
 	}()
 
-	goroutineManager.StartForegroundGoroutine(func() {
+	goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
 		if err := nat.Wait(); err != nil {
 			panic(err)
 		}
@@ -120,7 +120,7 @@ func main() {
 
 	log.Println("Created all namespaces")
 
-	<-goroutineManager.GetGoroutineCtx().Done()
+	<-goroutineManager.Context().Done()
 
 	log.Println("Shutting down")
 }

@@ -148,7 +148,7 @@ func main() {
 		&errs,
 		manager.GoroutineManagerHooks{},
 	)
-	defer goroutineManager.WaitForForegroundGoroutines()
+	defer goroutineManager.Wait()
 	defer goroutineManager.StopAllGoroutines()
 	defer goroutineManager.CreateBackgroundPanicCollector()()
 
@@ -172,7 +172,7 @@ func main() {
 	}()
 
 	runner, err := roles.StartRunner(
-		goroutineManager.GetGoroutineCtx(),
+		goroutineManager.Context(),
 		context.Background(), // Never give up on rescue operations
 
 		roles.HypervisorConfiguration{
@@ -216,7 +216,7 @@ func main() {
 		}
 	}()
 
-	goroutineManager.StartForegroundGoroutine(func() {
+	goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
 		if err := runner.Wait(); err != nil {
 			panic(err)
 		}
@@ -277,9 +277,9 @@ func main() {
 		deviceID := int((deviceMajor << 8) | deviceMinor)
 
 		select {
-		case <-goroutineManager.GetGoroutineCtx().Done():
-			if err := goroutineManager.GetGoroutineCtx().Err(); err != nil {
-				panic(goroutineManager.GetGoroutineCtx().Err())
+		case <-goroutineManager.Context().Done():
+			if err := goroutineManager.Context().Err(); err != nil {
+				panic(goroutineManager.Context().Err())
 			}
 
 			return
@@ -294,7 +294,7 @@ func main() {
 	before := time.Now()
 
 	resumedRunner, err := runner.Resume(
-		goroutineManager.GetGoroutineCtx(),
+		goroutineManager.Context(),
 
 		*resumeTimeout,
 		*rescueTimeout,
@@ -320,7 +320,7 @@ func main() {
 		}
 	}()
 
-	goroutineManager.StartForegroundGoroutine(func() {
+	goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
 		if err := resumedRunner.Wait(); err != nil {
 			panic(err)
 		}
@@ -331,7 +331,7 @@ func main() {
 	bubbleSignals = true
 
 	select {
-	case <-goroutineManager.GetGoroutineCtx().Done():
+	case <-goroutineManager.Context().Done():
 		return
 
 	case <-done:
@@ -340,7 +340,7 @@ func main() {
 
 	before = time.Now()
 
-	if err := resumedRunner.SuspendAndCloseAgentServer(goroutineManager.GetGoroutineCtx(), *resumeTimeout); err != nil {
+	if err := resumedRunner.SuspendAndCloseAgentServer(goroutineManager.Context(), *resumeTimeout); err != nil {
 		panic(err)
 	}
 

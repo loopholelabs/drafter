@@ -92,7 +92,7 @@ func main() {
 		&errs,
 		manager.GoroutineManagerHooks{},
 	)
-	defer goroutineManager.WaitForForegroundGoroutines()
+	defer goroutineManager.Wait()
 	defer goroutineManager.StopAllGoroutines()
 	defer goroutineManager.CreateBackgroundPanicCollector()()
 
@@ -120,7 +120,7 @@ l:
 		conn, err := lis.Accept()
 		if err != nil {
 			select {
-			case <-goroutineManager.GetGoroutineCtx().Done():
+			case <-goroutineManager.Context().Done():
 				break l
 
 			default:
@@ -163,7 +163,7 @@ l:
 			}
 
 			if err := roles.MigrateOpenedDevices(
-				goroutineManager.GetGoroutineCtx(),
+				goroutineManager.Context(),
 
 				openedDevices,
 				*concurrency,

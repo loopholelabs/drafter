@@ -240,7 +240,7 @@ func StartPeer(
 		&errs,
 		manager.GoroutineManagerHooks{},
 	)
-	defer goroutineManager.WaitForForegroundGoroutines()
+	defer goroutineManager.Wait()
 	defer goroutineManager.StopAllGoroutines()
 	defer goroutineManager.CreateBackgroundPanicCollector()()
 
@@ -273,7 +273,7 @@ func StartPeer(
 	peer.VMPid = peer.runner.VMPid
 
 	// We don't track this because we return the wait function
-	goroutineManager.StartBackgroundGoroutine(func() {
+	goroutineManager.StartBackgroundGoroutine(func(_ context.Context) {
 		if err := peer.runner.Wait(); err != nil {
 			panic(err)
 		}
@@ -330,7 +330,7 @@ func (peer *Peer) MigrateFrom(
 		&errs,
 		manager.GoroutineManagerHooks{},
 	)
-	defer goroutineManager.WaitForForegroundGoroutines()
+	defer goroutineManager.Wait()
 	defer goroutineManager.StopAllGoroutines()
 	defer goroutineManager.CreateBackgroundPanicCollector()()
 
@@ -464,8 +464,8 @@ func (peer *Peer) MigrateFrom(
 						deviceID := int((deviceMajor << 8) | deviceMinor)
 
 						select {
-						case <-goroutineManager.GetGoroutineCtx().Done():
-							if err := goroutineManager.GetGoroutineCtx().Err(); err != nil {
+						case <-goroutineManager.Context().Done():
+							if err := goroutineManager.Context().Err(); err != nil {
 								panic(errors.Join(ErrPeerContextCancelled, err))
 							}
 
@@ -486,25 +486,25 @@ func (peer *Peer) MigrateFrom(
 					p,
 				)
 
-				goroutineManager.StartForegroundGoroutine(func() {
+				goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
 					if err := from.HandleReadAt(); err != nil {
 						panic(errors.Join(ErrCouldNotHandleReadAt, err))
 					}
 				})
 
-				goroutineManager.StartForegroundGoroutine(func() {
+				goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
 					if err := from.HandleWriteAt(); err != nil {
 						panic(errors.Join(ErrCouldNotHandleWriteAt, err))
 					}
 				})
 
-				goroutineManager.StartForegroundGoroutine(func() {
+				goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
 					if err := from.HandleDevInfo(); err != nil {
 						panic(errors.Join(ErrCouldNotHandleDevInfo, err))
 					}
 				})
 
-				goroutineManager.StartForegroundGoroutine(func() {
+				goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
 					if err := from.HandleEvent(func(e *packets.Event) {
 						switch e.Type {
 						case packets.EventCustom:
@@ -536,7 +536,7 @@ func (peer *Peer) MigrateFrom(
 					}
 				})
 
-				goroutineManager.StartForegroundGoroutine(func() {
+				goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
 					if err := from.HandleDirtyList(func(blocks []uint) {
 						if local != nil {
 							local.DirtyBlocks(blocks)
@@ -607,17 +607,17 @@ func (peer *Peer) MigrateFrom(
 	}
 
 	// We don't track this because we return the wait function
-	goroutineManager.StartBackgroundGoroutine(func() {
+	goroutineManager.StartBackgroundGoroutine(func(_ context.Context) {
 		if err := migratedPeer.Wait(); err != nil {
 			panic(errors.Join(ErrCouldNotWaitForMigrationCompletion, err))
 		}
 	})
 
 	// We don't track this because we return the close function
-	goroutineManager.StartBackgroundGoroutine(func() {
+	goroutineManager.StartBackgroundGoroutine(func(_ context.Context) {
 		select {
 		// Failure case; we cancelled the internal context before all devices are ready
-		case <-goroutineManager.GetGoroutineCtx().Done():
+		case <-goroutineManager.Context().Done():
 			if err := migratedPeer.Close(); err != nil {
 				panic(errors.Join(ErrCouldNotCloseMigratedPeer, err))
 			}
@@ -635,8 +635,8 @@ func (peer *Peer) MigrateFrom(
 	})
 
 	select {
-	case <-goroutineManager.GetGoroutineCtx().Done():
-		if err := goroutineManager.GetGoroutineCtx().Err(); err != nil {
+	case <-goroutineManager.Context().Done():
+		if err := goroutineManager.Context().Err(); err != nil {
 			panic(errors.Join(ErrPeerContextCancelled, err))
 		}
 
@@ -763,8 +763,8 @@ func (peer *Peer) MigrateFrom(
 			deviceID := int((deviceMajor << 8) | deviceMinor)
 
 			select {
-			case <-goroutineManager.GetGoroutineCtx().Done():
-				if err := goroutineManager.GetGoroutineCtx().Err(); err != nil {
+			case <-goroutineManager.Context().Done():
+				if err := goroutineManager.Context().Err(); err != nil {
 					return errors.Join(ErrPeerContextCancelled, err)
 				}
 
@@ -798,8 +798,8 @@ func (peer *Peer) MigrateFrom(
 	}
 
 	select {
-	case <-goroutineManager.GetGoroutineCtx().Done():
-		if err := goroutineManager.GetGoroutineCtx().Err(); err != nil {
+	case <-goroutineManager.Context().Done():
+		if err := goroutineManager.Context().Err(); err != nil {
 			panic(errors.Join(ErrPeerContextCancelled, err))
 		}
 
@@ -988,18 +988,18 @@ func (migratablePeer *MigratablePeer) MigrateTo(
 		&errs,
 		manager.GoroutineManagerHooks{},
 	)
-	defer goroutineManager.WaitForForegroundGoroutines()
+	defer goroutineManager.Wait()
 	defer goroutineManager.StopAllGoroutines()
 	defer goroutineManager.CreateBackgroundPanicCollector()()
 
 	pro := protocol.NewProtocolRW(
-		goroutineManager.GetGoroutineCtx(),
+		goroutineManager.Context(),
 		readers,
 		writers,
 		nil,
 	)
 
-	goroutineManager.StartForegroundGoroutine(func() {
+	goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
 		if err := pro.Handle(); err != nil && !errors.Is(err, io.EOF) {
 			panic(errors.Join(ErrCouldNotHandleProtocol, err))
 		}
@@ -1020,11 +1020,11 @@ func (migratablePeer *MigratablePeer) MigrateTo(
 			hook()
 		}
 
-		if err := migratablePeer.resumedPeer.SuspendAndCloseAgentServer(goroutineManager.GetGoroutineCtx(), suspendTimeout); err != nil {
+		if err := migratablePeer.resumedPeer.SuspendAndCloseAgentServer(goroutineManager.Context(), suspendTimeout); err != nil {
 			return errors.Join(ErrCouldNotSuspendAndCloseAgentServer, err)
 		}
 
-		if err := migratablePeer.resumedPeer.resumedRunner.Msync(goroutineManager.GetGoroutineCtx()); err != nil {
+		if err := migratablePeer.resumedPeer.resumedRunner.Msync(goroutineManager.Context()); err != nil {
 			return errors.Join(ErrCouldNotMsyncRunner, err)
 		}
 
@@ -1079,7 +1079,7 @@ func (migratablePeer *MigratablePeer) MigrateTo(
 
 			devicesLeftToSend.Add(1)
 			if devicesLeftToSend.Load() >= int32(len(stage5Inputs)) {
-				goroutineManager.StartForegroundGoroutine(func() {
+				goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
 					if err := to.SendEvent(&packets.Event{
 						Type:       packets.EventCustom,
 						CustomType: byte(EventCustomAllDevicesSent),
@@ -1093,7 +1093,7 @@ func (migratablePeer *MigratablePeer) MigrateTo(
 				})
 			}
 
-			goroutineManager.StartForegroundGoroutine(func() {
+			goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
 				if err := to.HandleNeedAt(func(offset int64, length int32) {
 					// Prioritize blocks
 					endOffset := uint64(offset + int64(length))
@@ -1111,7 +1111,7 @@ func (migratablePeer *MigratablePeer) MigrateTo(
 				}
 			})
 
-			goroutineManager.StartForegroundGoroutine(func() {
+			goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
 				if err := to.HandleDontNeedAt(func(offset int64, length int32) {
 					// Deprioritize blocks
 					endOffset := uint64(offset + int64(length))
@@ -1209,7 +1209,7 @@ func (migratablePeer *MigratablePeer) MigrateTo(
 				suspendedVMLock.Lock()
 				// We only need to `msync` for the memory because `msync` only affects the memory
 				if !suspendedVM && input.prev.prev.prev.name == MemoryName {
-					if err := migratablePeer.resumedRunner.Msync(goroutineManager.GetGoroutineCtx()); err != nil {
+					if err := migratablePeer.resumedRunner.Msync(goroutineManager.Context()); err != nil {
 						suspendedVMLock.Unlock()
 
 						return errors.Join(ErrCouldNotMsyncRunner, err)
@@ -1242,7 +1242,7 @@ func (migratablePeer *MigratablePeer) MigrateTo(
 					}
 
 					ongoingMigrationsWg.Add(1)
-					goroutineManager.StartForegroundGoroutine(func() {
+					goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
 						defer ongoingMigrationsWg.Done()
 
 						if err := mig.MigrateDirty(blocks); err != nil {
@@ -1280,8 +1280,8 @@ func (migratablePeer *MigratablePeer) MigrateTo(
 					case <-suspendedVMCh:
 						break
 
-					case <-goroutineManager.GetGoroutineCtx().Done(): // ctx is the goroutineManager.InternalCtx here
-						if err := goroutineManager.GetGoroutineCtx().Err(); err != nil {
+					case <-goroutineManager.Context().Done(): // ctx is the goroutineManager.InternalCtx here
+						if err := goroutineManager.Context().Err(); err != nil {
 							return errors.Join(ErrPeerContextCancelled, err)
 						}
 

@@ -114,7 +114,7 @@ func main() {
 		&errs,
 		manager.GoroutineManagerHooks{},
 	)
-	defer goroutineManager.WaitForForegroundGoroutines()
+	defer goroutineManager.Wait()
 	defer goroutineManager.StopAllGoroutines()
 	defer goroutineManager.CreateBackgroundPanicCollector()()
 
@@ -130,7 +130,7 @@ func main() {
 	}()
 
 	if err := roles.CreateSnapshot(
-		goroutineManager.GetGoroutineCtx(),
+		goroutineManager.Context(),
 
 		devices,
 

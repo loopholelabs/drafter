@@ -192,7 +192,7 @@ func main() {
 		&errs,
 		manager.GoroutineManagerHooks{},
 	)
-	defer goroutineManager.WaitForForegroundGoroutines()
+	defer goroutineManager.Wait()
 	defer goroutineManager.StopAllGoroutines()
 	defer goroutineManager.CreateBackgroundPanicCollector()()
 
@@ -220,7 +220,7 @@ func main() {
 		writers []io.Writer
 	)
 	if strings.TrimSpace(*raddr) != "" {
-		conn, err := (&net.Dialer{}).DialContext(goroutineManager.GetGoroutineCtx(), "tcp", *raddr)
+		conn, err := (&net.Dialer{}).DialContext(goroutineManager.Context(), "tcp", *raddr)
 		if err != nil {
 			panic(err)
 		}
@@ -246,8 +246,8 @@ func main() {
 	}
 
 	migratedMounter, err := roles.MigrateFromAndMount(
-		goroutineManager.GetGoroutineCtx(),
-		goroutineManager.GetGoroutineCtx(),
+		goroutineManager.Context(),
+		goroutineManager.Context(),
 
 		migrateFromDevices,
 
@@ -308,7 +308,7 @@ func main() {
 		}
 	}()
 
-	goroutineManager.StartForegroundGoroutine(func() {
+	goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
 		if err := migratedMounter.Wait(); err != nil {
 			panic(err)
 		}
@@ -336,7 +336,7 @@ func main() {
 		bubbleSignals = true
 
 		select {
-		case <-goroutineManager.GetGoroutineCtx().Done():
+		case <-goroutineManager.Context().Done():
 			return
 
 		case <-done:
@@ -372,15 +372,15 @@ l:
 		defer cancelAcceptedCtx()
 
 		var conn net.Conn
-		goroutineManager.StartForegroundGoroutine(func() {
+		goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
 			conn, err = lis.Accept()
 			if err != nil {
 				closeLock.Lock()
 				defer closeLock.Unlock()
 
 				if closed && errors.Is(err, net.ErrClosed) { // Don't treat closed errors as errors if we closed the connection
-					if err := goroutineManager.GetGoroutineCtx().Err(); err != nil {
-						panic(goroutineManager.GetGoroutineCtx().Err())
+					if err := goroutineManager.Context().Err(); err != nil {
+						panic(goroutineManager.Context().Err())
 					}
 
 					return
@@ -396,7 +396,7 @@ l:
 
 	s:
 		select {
-		case <-goroutineManager.GetGoroutineCtx().Done():
+		case <-goroutineManager.Context().Done():
 			return
 
 		case <-done:
@@ -425,7 +425,7 @@ l:
 			}
 
 			migratableMounter, err := migratedMounter.MakeMigratable(
-				goroutineManager.GetGoroutineCtx(),
+				goroutineManager.Context(),
 
 				makeMigratableDevices,
 			)
@@ -454,7 +454,7 @@ l:
 			}
 
 			return migratableMounter.MigrateTo(
-				goroutineManager.GetGoroutineCtx(),
+				goroutineManager.Context(),
 
 				migrateToDevices,
 
