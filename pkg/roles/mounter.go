@@ -54,11 +54,7 @@ type MigratedMounter struct {
 	Wait  func() error
 	Close func() error
 
-	MakeMigratable func(
-		ctx context.Context,
-
-		devices []MakeMigratableDevice,
-	) (migratableMounter *MigratableMounter, errs error)
+	stage2Inputs []peerStage2
 }
 
 type MounterMigrateToHooks struct {
@@ -78,18 +74,7 @@ type MounterMigrateToHooks struct {
 type MigratableMounter struct {
 	Close func()
 
-	MigrateTo func(
-		ctx context.Context,
-
-		devices []MigrateToDevice,
-
-		concurrency int,
-
-		readers []io.Reader,
-		writers []io.Writer,
-
-		hooks MounterMigrateToHooks,
-	) (errs error)
+	stage4Inputs []peerStage4
 }
 
 func MigrateFromAndMount(
@@ -109,6 +94,13 @@ func MigrateFromAndMount(
 ) {
 	migratedMounter = &MigratedMounter{
 		Devices: []MigratedDevice{},
+
+		Wait: func() error {
+			return nil
+		},
+		Close: func() error {
+			return nil
+		},
 	}
 
 	// We use the background context here instead of the internal context because we want to distinguish
@@ -146,7 +138,6 @@ func MigrateFromAndMount(
 		deviceCloseFuncs     []func() error
 
 		stage2InputsLock sync.Mutex
-		stage2Inputs     = []peerStage2{}
 
 		pro *protocol.ProtocolRW
 	)
@@ -236,7 +227,7 @@ func MigrateFromAndMount(
 						device.SetProvider(local)
 
 						stage2InputsLock.Lock()
-						stage2Inputs = append(stage2Inputs, peerStage2{
+						migratedMounter.stage2Inputs = append(migratedMounter.stage2Inputs, peerStage2{
 							name: di.Name,
 
 							blockSize: di.Block_size,
@@ -418,7 +409,7 @@ func MigrateFromAndMount(
 	stage1Inputs := []MigrateFromAndMountDevice{}
 	for _, input := range devices {
 		if slices.ContainsFunc(
-			stage2Inputs,
+			migratedMounter.stage2Inputs,
 			func(r peerStage2) bool {
 				return input.Name == r.name
 			},
@@ -497,7 +488,7 @@ func MigrateFromAndMount(
 			device.SetProvider(local)
 
 			stage2InputsLock.Lock()
-			stage2Inputs = append(stage2Inputs, peerStage2{
+			migratedMounter.stage2Inputs = append(migratedMounter.stage2Inputs, peerStage2{
 				name: input.Name,
 
 				blockSize: input.BlockSize,
@@ -544,451 +535,457 @@ func MigrateFromAndMount(
 		break
 	}
 
-	for _, input := range stage2Inputs {
+	for _, input := range migratedMounter.stage2Inputs {
 		migratedMounter.Devices = append(migratedMounter.Devices, MigratedDevice{
 			Name: input.name,
 			Path: filepath.Join("/dev", input.device.Device()),
 		})
 	}
 
-	migratedMounter.MakeMigratable = func(
-		ctx context.Context,
+	return
+}
 
-		devices []MakeMigratableDevice,
-	) (migratableMounter *MigratableMounter, errs error) {
-		migratableMounter = &MigratableMounter{}
+func (migratedMounter *MigratedMounter) MakeMigratable(
+	ctx context.Context,
 
-		stage3Inputs := []peerStage3{}
-		for _, input := range stage2Inputs {
-			var makeMigratableDevice *MakeMigratableDevice
-			for _, device := range devices {
-				if device.Name == input.name {
-					makeMigratableDevice = &device
+	devices []MakeMigratableDevice,
+) (migratableMounter *MigratableMounter, errs error) {
+	migratableMounter = &MigratableMounter{
+		Close: func() {},
+	}
 
-					break
-				}
+	stage3Inputs := []peerStage3{}
+	for _, input := range migratedMounter.stage2Inputs {
+		var makeMigratableDevice *MakeMigratableDevice
+		for _, device := range devices {
+			if device.Name == input.name {
+				makeMigratableDevice = &device
+
+				break
 			}
-
-			// We don't want to make this device migratable
-			if makeMigratableDevice == nil {
-				continue
-			}
-
-			stage3Inputs = append(stage3Inputs, peerStage3{
-				prev: input,
-
-				makeMigratableDevice: *makeMigratableDevice,
-			})
 		}
 
-		stage4Inputs, deferFuncs, err := iutils.ConcurrentMap(
-			stage3Inputs,
-			func(index int, input peerStage3, output *peerStage4, addDefer func(deferFunc func() error)) error {
-				output.prev = input
+		// We don't want to make this device migratable
+		if makeMigratableDevice == nil {
+			continue
+		}
 
-				dirtyLocal, dirtyRemote := dirtytracker.NewDirtyTracker(input.prev.storage, int(input.prev.blockSize))
-				output.dirtyRemote = dirtyRemote
-				monitor := volatilitymonitor.NewVolatilityMonitor(dirtyLocal, int(input.prev.blockSize), input.makeMigratableDevice.Expiry)
+		stage3Inputs = append(stage3Inputs, peerStage3{
+			prev: input,
 
-				local := modules.NewLockable(monitor)
-				output.storage = local
-				addDefer(func() error {
-					local.Unlock()
+			makeMigratableDevice: *makeMigratableDevice,
+		})
+	}
 
-					return nil
-				})
+	var (
+		deferFuncs [][]func() error
+		err        error
+	)
+	migratableMounter.stage4Inputs, deferFuncs, err = iutils.ConcurrentMap(
+		stage3Inputs,
+		func(index int, input peerStage3, output *peerStage4, addDefer func(deferFunc func() error)) error {
+			output.prev = input
 
-				input.prev.device.SetProvider(local)
+			dirtyLocal, dirtyRemote := dirtytracker.NewDirtyTracker(input.prev.storage, int(input.prev.blockSize))
+			output.dirtyRemote = dirtyRemote
+			monitor := volatilitymonitor.NewVolatilityMonitor(dirtyLocal, int(input.prev.blockSize), input.makeMigratableDevice.Expiry)
 
-				totalBlocks := (int(local.Size()) + int(input.prev.blockSize) - 1) / int(input.prev.blockSize)
-				output.totalBlocks = totalBlocks
-
-				orderer := blocks.NewPriorityBlockOrder(totalBlocks, monitor)
-				output.orderer = orderer
-				orderer.AddAll()
+			local := modules.NewLockable(monitor)
+			output.storage = local
+			addDefer(func() error {
+				local.Unlock()
 
 				return nil
-			},
-		)
+			})
 
-		migratableMounter.Close = func() {
-			// Make sure that we schedule the `deferFuncs` even if we get an error
-			for _, deferFuncs := range deferFuncs {
-				for _, deferFunc := range deferFuncs {
-					defer deferFunc() // We can safely ignore errors here since we never call `addDefer` with a function that could return an error
-				}
+			input.prev.device.SetProvider(local)
+
+			totalBlocks := (int(local.Size()) + int(input.prev.blockSize) - 1) / int(input.prev.blockSize)
+			output.totalBlocks = totalBlocks
+
+			orderer := blocks.NewPriorityBlockOrder(totalBlocks, monitor)
+			output.orderer = orderer
+			orderer.AddAll()
+
+			return nil
+		},
+	)
+
+	migratableMounter.Close = func() {
+		// Make sure that we schedule the `deferFuncs` even if we get an error
+		for _, deferFuncs := range deferFuncs {
+			for _, deferFunc := range deferFuncs {
+				defer deferFunc() // We can safely ignore errors here since we never call `addDefer` with a function that could return an error
+			}
+		}
+	}
+
+	if err != nil {
+		// Make sure that we schedule the `deferFuncs` even if we get an error
+		migratableMounter.Close()
+
+		panic(errors.Join(ErrCouldNotCreateMigratableMounter, err))
+	}
+
+	return
+}
+
+func (migratableMounter *MigratableMounter) MigrateTo(
+	ctx context.Context,
+
+	devices []MigrateToDevice,
+
+	concurrency int,
+
+	readers []io.Reader,
+	writers []io.Writer,
+
+	hooks MounterMigrateToHooks,
+) (errs error) {
+	goroutineManager := manager.NewGoroutineManager(
+		ctx,
+		&errs,
+		manager.GoroutineManagerHooks{},
+	)
+	defer goroutineManager.WaitForForegroundGoroutines()
+	defer goroutineManager.StopAllGoroutines()
+	defer goroutineManager.CreateBackgroundPanicCollector()()
+
+	pro := protocol.NewProtocolRW(
+		goroutineManager.GetGoroutineCtx(),
+		readers,
+		writers,
+		nil,
+	)
+
+	goroutineManager.StartForegroundGoroutine(func() {
+		if err := pro.Handle(); err != nil && !errors.Is(err, io.EOF) {
+			panic(errors.Join(ErrCouldNotHandleProtocol, err))
+		}
+	})
+
+	var (
+		devicesLeftToSend                 atomic.Int32
+		devicesLeftToTransferAuthorityFor atomic.Int32
+
+		suspendedVMLock sync.Mutex
+		suspendedVM     bool
+	)
+
+	// We use the background context here instead of the internal context because we want to distinguish
+	// between a context cancellation from the outside and getting a response
+	suspendedVMCtx, cancelSuspendedVMCtx := context.WithCancel(context.Background())
+	defer cancelSuspendedVMCtx()
+
+	suspendAndMsyncVM := sync.OnceValue(func() error {
+		suspendedVMLock.Lock()
+		suspendedVM = true
+		suspendedVMLock.Unlock()
+
+		cancelSuspendedVMCtx()
+
+		return nil
+	})
+
+	stage5Inputs := []peerStage5{}
+	for _, input := range migratableMounter.stage4Inputs {
+		var migrateToDevice *MigrateToDevice
+		for _, device := range devices {
+			if device.Name == input.prev.prev.name {
+				migrateToDevice = &device
+
+				break
 			}
 		}
 
-		if err != nil {
-			// Make sure that we schedule the `deferFuncs` even if we get an error
-			migratableMounter.Close()
-
-			panic(errors.Join(ErrCouldNotCreateMigratableMounter, err))
+		// We don't want to serve this device
+		if migrateToDevice == nil {
+			continue
 		}
 
-		migratableMounter.MigrateTo = func(
-			ctx context.Context,
+		stage5Inputs = append(stage5Inputs, peerStage5{
+			prev: input,
 
-			devices []MigrateToDevice,
+			migrateToDevice: *migrateToDevice,
+		})
+	}
 
-			concurrency int,
+	_, deferFuncs, err := iutils.ConcurrentMap(
+		stage5Inputs,
+		func(index int, input peerStage5, _ *struct{}, _ func(deferFunc func() error)) error {
+			to := protocol.NewToProtocol(input.prev.storage.Size(), uint32(index), pro)
 
-			readers []io.Reader,
-			writers []io.Writer,
+			if err := to.SendDevInfo(input.prev.prev.prev.name, input.prev.prev.prev.blockSize, ""); err != nil {
+				return errors.Join(ErrCouldNotSendDevInfo, err)
+			}
 
-			hooks MounterMigrateToHooks,
-		) (errs error) {
-			goroutineManager := manager.NewGoroutineManager(
-				ctx,
-				&errs,
-				manager.GoroutineManagerHooks{},
-			)
-			defer goroutineManager.WaitForForegroundGoroutines()
-			defer goroutineManager.StopAllGoroutines()
-			defer goroutineManager.CreateBackgroundPanicCollector()()
+			if hook := hooks.OnDeviceSent; hook != nil {
+				hook(uint32(index), input.prev.prev.prev.remote)
+			}
 
-			pro := protocol.NewProtocolRW(
-				goroutineManager.GetGoroutineCtx(),
-				readers,
-				writers,
-				nil,
-			)
+			devicesLeftToSend.Add(1)
+			if devicesLeftToSend.Load() >= int32(len(stage5Inputs)) {
+				goroutineManager.StartForegroundGoroutine(func() {
+					if err := to.SendEvent(&packets.Event{
+						Type:       packets.EventCustom,
+						CustomType: byte(EventCustomAllDevicesSent),
+					}); err != nil {
+						panic(errors.Join(ErrCouldNotSendAllDevicesSentEvent, err))
+					}
+
+					if hook := hooks.OnAllDevicesSent; hook != nil {
+						hook()
+					}
+				})
+			}
 
 			goroutineManager.StartForegroundGoroutine(func() {
-				if err := pro.Handle(); err != nil && !errors.Is(err, io.EOF) {
-					panic(errors.Join(ErrCouldNotHandleProtocol, err))
+				if err := to.HandleNeedAt(func(offset int64, length int32) {
+					// Prioritize blocks
+					endOffset := uint64(offset + int64(length))
+					if endOffset > uint64(input.prev.storage.Size()) {
+						endOffset = uint64(input.prev.storage.Size())
+					}
+
+					startBlock := int(offset / int64(input.prev.prev.prev.blockSize))
+					endBlock := int((endOffset-1)/uint64(input.prev.prev.prev.blockSize)) + 1
+					for b := startBlock; b < endBlock; b++ {
+						input.prev.orderer.PrioritiseBlock(b)
+					}
+				}); err != nil {
+					panic(errors.Join(ErrCouldNotHandleNeedAt, err))
 				}
+			})
+
+			goroutineManager.StartForegroundGoroutine(func() {
+				if err := to.HandleDontNeedAt(func(offset int64, length int32) {
+					// Deprioritize blocks
+					endOffset := uint64(offset + int64(length))
+					if endOffset > uint64(input.prev.storage.Size()) {
+						endOffset = uint64(input.prev.storage.Size())
+					}
+
+					startBlock := int(offset / int64(input.prev.storage.Size()))
+					endBlock := int((endOffset-1)/uint64(input.prev.storage.Size())) + 1
+					for b := startBlock; b < endBlock; b++ {
+						input.prev.orderer.Remove(b)
+					}
+				}); err != nil {
+					panic(errors.Join(ErrCouldNotHandleDontNeedAt, err))
+				}
+			})
+
+			cfg := migrator.NewMigratorConfig().WithBlockSize(int(input.prev.prev.prev.blockSize))
+			cfg.Concurrency = map[int]int{
+				storage.BlockTypeAny:      concurrency,
+				storage.BlockTypeStandard: concurrency,
+				storage.BlockTypeDirty:    concurrency,
+				storage.BlockTypePriority: concurrency,
+			}
+			cfg.Locker_handler = func() {
+				defer goroutineManager.CreateBackgroundPanicCollector()()
+
+				if err := to.SendEvent(&packets.Event{
+					Type: packets.EventPreLock,
+				}); err != nil {
+					panic(errors.Join(ErrCouldNotSendPreLockEvent, err))
+				}
+
+				input.prev.storage.Lock()
+
+				if err := to.SendEvent(&packets.Event{
+					Type: packets.EventPostLock,
+				}); err != nil {
+					panic(errors.Join(ErrCouldNotSendPostLockEvent, err))
+				}
+			}
+			cfg.Unlocker_handler = func() {
+				defer goroutineManager.CreateBackgroundPanicCollector()()
+
+				if err := to.SendEvent(&packets.Event{
+					Type: packets.EventPreUnlock,
+				}); err != nil {
+					panic(errors.Join(ErrCouldNotSendPreUnlockEvent, err))
+				}
+
+				input.prev.storage.Unlock()
+
+				if err := to.SendEvent(&packets.Event{
+					Type: packets.EventPostUnlock,
+				}); err != nil {
+					panic(errors.Join(ErrCouldNotSendPostUnlockEvent, err))
+				}
+			}
+			cfg.Error_handler = func(b *storage.BlockInfo, err error) {
+				defer goroutineManager.CreateBackgroundPanicCollector()()
+
+				if err != nil {
+					panic(errors.Join(ErrCouldNotContinueWithMigration, err))
+				}
+			}
+			cfg.Progress_handler = func(p *migrator.MigrationProgress) {
+				if hook := hooks.OnDeviceInitialMigrationProgress; hook != nil {
+					hook(uint32(index), input.prev.prev.prev.remote, p.Ready_blocks, p.Total_blocks)
+				}
+			}
+
+			mig, err := migrator.NewMigrator(input.prev.dirtyRemote, to, input.prev.orderer, cfg)
+			if err != nil {
+				return errors.Join(ErrCouldNotCreateMigrator, err)
+			}
+
+			if err := mig.Migrate(input.prev.totalBlocks); err != nil {
+				return errors.Join(ErrCouldNotMigrateBlocks, err)
+			}
+
+			if err := mig.WaitForCompletion(); err != nil {
+				return errors.Join(ErrCouldNotWaitForMigrationCompletion, err)
+			}
+
+			markDeviceAsReadyForAuthorityTransfer := sync.OnceFunc(func() {
+				devicesLeftToTransferAuthorityFor.Add(1)
 			})
 
 			var (
-				devicesLeftToSend                 atomic.Int32
-				devicesLeftToTransferAuthorityFor atomic.Int32
-
-				suspendedVMLock sync.Mutex
-				suspendedVM     bool
+				cyclesBelowDirtyBlockTreshold = 0
+				totalCycles                   = 0
+				ongoingMigrationsWg           sync.WaitGroup
 			)
+			for {
+				ongoingMigrationsWg.Wait()
 
-			// We use the background context here instead of the internal context because we want to distinguish
-			// between a context cancellation from the outside and getting a response
-			suspendedVMCtx, cancelSuspendedVMCtx := context.WithCancel(context.Background())
-			defer cancelSuspendedVMCtx()
+				if hook := hooks.OnBeforeGetDirtyBlocks; hook != nil {
+					hook(uint32(index), input.prev.prev.prev.remote)
+				}
 
-			suspendAndMsyncVM := sync.OnceValue(func() error {
-				suspendedVMLock.Lock()
-				suspendedVM = true
-				suspendedVMLock.Unlock()
+				blocks := mig.GetLatestDirty()
+				if blocks == nil {
+					mig.Unlock()
 
-				cancelSuspendedVMCtx()
-
-				return nil
-			})
-
-			stage5Inputs := []peerStage5{}
-			for _, input := range stage4Inputs {
-				var migrateToDevice *MigrateToDevice
-				for _, device := range devices {
-					if device.Name == input.prev.prev.name {
-						migrateToDevice = &device
+					suspendedVMLock.Lock()
+					if suspendedVM {
+						suspendedVMLock.Unlock()
 
 						break
 					}
+					suspendedVMLock.Unlock()
 				}
 
-				// We don't want to serve this device
-				if migrateToDevice == nil {
-					continue
-				}
-
-				stage5Inputs = append(stage5Inputs, peerStage5{
-					prev: input,
-
-					migrateToDevice: *migrateToDevice,
-				})
-			}
-
-			_, deferFuncs, err := iutils.ConcurrentMap(
-				stage5Inputs,
-				func(index int, input peerStage5, _ *struct{}, _ func(deferFunc func() error)) error {
-					to := protocol.NewToProtocol(input.prev.storage.Size(), uint32(index), pro)
-
-					if err := to.SendDevInfo(input.prev.prev.prev.name, input.prev.prev.prev.blockSize, ""); err != nil {
-						return errors.Join(ErrCouldNotSendDevInfo, err)
+				if blocks != nil {
+					if err := to.DirtyList(int(input.prev.prev.prev.blockSize), blocks); err != nil {
+						return errors.Join(ErrCouldNotSendDirtyList, err)
 					}
 
-					if hook := hooks.OnDeviceSent; hook != nil {
-						hook(uint32(index), input.prev.prev.prev.remote)
-					}
-
-					devicesLeftToSend.Add(1)
-					if devicesLeftToSend.Load() >= int32(len(stage5Inputs)) {
-						goroutineManager.StartForegroundGoroutine(func() {
-							if err := to.SendEvent(&packets.Event{
-								Type:       packets.EventCustom,
-								CustomType: byte(EventCustomAllDevicesSent),
-							}); err != nil {
-								panic(errors.Join(ErrCouldNotSendAllDevicesSentEvent, err))
-							}
-
-							if hook := hooks.OnAllDevicesSent; hook != nil {
-								hook()
-							}
-						})
-					}
-
+					ongoingMigrationsWg.Add(1)
 					goroutineManager.StartForegroundGoroutine(func() {
-						if err := to.HandleNeedAt(func(offset int64, length int32) {
-							// Prioritize blocks
-							endOffset := uint64(offset + int64(length))
-							if endOffset > uint64(input.prev.storage.Size()) {
-								endOffset = uint64(input.prev.storage.Size())
-							}
+						defer ongoingMigrationsWg.Done()
 
-							startBlock := int(offset / int64(input.prev.prev.prev.blockSize))
-							endBlock := int((endOffset-1)/uint64(input.prev.prev.prev.blockSize)) + 1
-							for b := startBlock; b < endBlock; b++ {
-								input.prev.orderer.PrioritiseBlock(b)
-							}
-						}); err != nil {
-							panic(errors.Join(ErrCouldNotHandleNeedAt, err))
-						}
-					})
-
-					goroutineManager.StartForegroundGoroutine(func() {
-						if err := to.HandleDontNeedAt(func(offset int64, length int32) {
-							// Deprioritize blocks
-							endOffset := uint64(offset + int64(length))
-							if endOffset > uint64(input.prev.storage.Size()) {
-								endOffset = uint64(input.prev.storage.Size())
-							}
-
-							startBlock := int(offset / int64(input.prev.storage.Size()))
-							endBlock := int((endOffset-1)/uint64(input.prev.storage.Size())) + 1
-							for b := startBlock; b < endBlock; b++ {
-								input.prev.orderer.Remove(b)
-							}
-						}); err != nil {
-							panic(errors.Join(ErrCouldNotHandleDontNeedAt, err))
-						}
-					})
-
-					cfg := migrator.NewMigratorConfig().WithBlockSize(int(input.prev.prev.prev.blockSize))
-					cfg.Concurrency = map[int]int{
-						storage.BlockTypeAny:      concurrency,
-						storage.BlockTypeStandard: concurrency,
-						storage.BlockTypeDirty:    concurrency,
-						storage.BlockTypePriority: concurrency,
-					}
-					cfg.Locker_handler = func() {
-						defer goroutineManager.CreateBackgroundPanicCollector()()
-
-						if err := to.SendEvent(&packets.Event{
-							Type: packets.EventPreLock,
-						}); err != nil {
-							panic(errors.Join(ErrCouldNotSendPreLockEvent, err))
-						}
-
-						input.prev.storage.Lock()
-
-						if err := to.SendEvent(&packets.Event{
-							Type: packets.EventPostLock,
-						}); err != nil {
-							panic(errors.Join(ErrCouldNotSendPostLockEvent, err))
-						}
-					}
-					cfg.Unlocker_handler = func() {
-						defer goroutineManager.CreateBackgroundPanicCollector()()
-
-						if err := to.SendEvent(&packets.Event{
-							Type: packets.EventPreUnlock,
-						}); err != nil {
-							panic(errors.Join(ErrCouldNotSendPreUnlockEvent, err))
-						}
-
-						input.prev.storage.Unlock()
-
-						if err := to.SendEvent(&packets.Event{
-							Type: packets.EventPostUnlock,
-						}); err != nil {
-							panic(errors.Join(ErrCouldNotSendPostUnlockEvent, err))
-						}
-					}
-					cfg.Error_handler = func(b *storage.BlockInfo, err error) {
-						defer goroutineManager.CreateBackgroundPanicCollector()()
-
-						if err != nil {
-							panic(errors.Join(ErrCouldNotContinueWithMigration, err))
-						}
-					}
-					cfg.Progress_handler = func(p *migrator.MigrationProgress) {
-						if hook := hooks.OnDeviceInitialMigrationProgress; hook != nil {
-							hook(uint32(index), input.prev.prev.prev.remote, p.Ready_blocks, p.Total_blocks)
-						}
-					}
-
-					mig, err := migrator.NewMigrator(input.prev.dirtyRemote, to, input.prev.orderer, cfg)
-					if err != nil {
-						return errors.Join(ErrCouldNotCreateMigrator, err)
-					}
-
-					if err := mig.Migrate(input.prev.totalBlocks); err != nil {
-						return errors.Join(ErrCouldNotMigrateBlocks, err)
-					}
-
-					if err := mig.WaitForCompletion(); err != nil {
-						return errors.Join(ErrCouldNotWaitForMigrationCompletion, err)
-					}
-
-					markDeviceAsReadyForAuthorityTransfer := sync.OnceFunc(func() {
-						devicesLeftToTransferAuthorityFor.Add(1)
-					})
-
-					var (
-						cyclesBelowDirtyBlockTreshold = 0
-						totalCycles                   = 0
-						ongoingMigrationsWg           sync.WaitGroup
-					)
-					for {
-						ongoingMigrationsWg.Wait()
-
-						if hook := hooks.OnBeforeGetDirtyBlocks; hook != nil {
-							hook(uint32(index), input.prev.prev.prev.remote)
-						}
-
-						blocks := mig.GetLatestDirty()
-						if blocks == nil {
-							mig.Unlock()
-
-							suspendedVMLock.Lock()
-							if suspendedVM {
-								suspendedVMLock.Unlock()
-
-								break
-							}
-							suspendedVMLock.Unlock()
-						}
-
-						if blocks != nil {
-							if err := to.DirtyList(int(input.prev.prev.prev.blockSize), blocks); err != nil {
-								return errors.Join(ErrCouldNotSendDirtyList, err)
-							}
-
-							ongoingMigrationsWg.Add(1)
-							goroutineManager.StartForegroundGoroutine(func() {
-								defer ongoingMigrationsWg.Done()
-
-								if err := mig.MigrateDirty(blocks); err != nil {
-									panic(errors.Join(ErrCouldNotMigrateDirtyBlocks, err))
-								}
-
-								suspendedVMLock.Lock()
-								defer suspendedVMLock.Unlock()
-
-								if suspendedVM {
-									if hook := hooks.OnDeviceFinalMigrationProgress; hook != nil {
-										hook(uint32(index), input.prev.prev.prev.remote, len(blocks))
-									}
-								} else {
-									if hook := hooks.OnDeviceContinousMigrationProgress; hook != nil {
-										hook(uint32(index), input.prev.prev.prev.remote, len(blocks))
-									}
-								}
-							})
+						if err := mig.MigrateDirty(blocks); err != nil {
+							panic(errors.Join(ErrCouldNotMigrateDirtyBlocks, err))
 						}
 
 						suspendedVMLock.Lock()
-						if !suspendedVM && !(devicesLeftToTransferAuthorityFor.Load() >= int32(len(stage5Inputs))) {
-							suspendedVMLock.Unlock()
+						defer suspendedVMLock.Unlock()
 
-							// We use the background context here instead of the internal context because we want to distinguish
-							// between a context cancellation from the outside and getting a response
-							cycleThrottleCtx, cancelCycleThrottleCtx := context.WithTimeout(context.Background(), input.migrateToDevice.CycleThrottle)
-							defer cancelCycleThrottleCtx()
-
-							select {
-							case <-cycleThrottleCtx.Done():
-								break
-
-							case <-suspendedVMCtx.Done():
-								break
-
-							case <-goroutineManager.GetGoroutineCtx().Done(): // ctx is the internalCtx here
-								if err := goroutineManager.GetGoroutineCtx().Err(); err != nil {
-									return errors.Join(ErrMounterContextCancelled, err)
-								}
-
-								return nil
+						if suspendedVM {
+							if hook := hooks.OnDeviceFinalMigrationProgress; hook != nil {
+								hook(uint32(index), input.prev.prev.prev.remote, len(blocks))
 							}
 						} else {
-							suspendedVMLock.Unlock()
-						}
-
-						totalCycles++
-						if len(blocks) < input.migrateToDevice.MaxDirtyBlocks {
-							cyclesBelowDirtyBlockTreshold++
-							if cyclesBelowDirtyBlockTreshold > input.migrateToDevice.MinCycles {
-								markDeviceAsReadyForAuthorityTransfer()
-							}
-						} else if totalCycles > input.migrateToDevice.MaxCycles {
-							markDeviceAsReadyForAuthorityTransfer()
-						} else {
-							cyclesBelowDirtyBlockTreshold = 0
-						}
-
-						if devicesLeftToTransferAuthorityFor.Load() >= int32(len(stage5Inputs)) {
-							if err := suspendAndMsyncVM(); err != nil {
-								return errors.Join(ErrCouldNotSuspendAndMsyncVM, err)
+							if hook := hooks.OnDeviceContinousMigrationProgress; hook != nil {
+								hook(uint32(index), input.prev.prev.prev.remote, len(blocks))
 							}
 						}
+					})
+				}
+
+				suspendedVMLock.Lock()
+				if !suspendedVM && !(devicesLeftToTransferAuthorityFor.Load() >= int32(len(stage5Inputs))) {
+					suspendedVMLock.Unlock()
+
+					// We use the background context here instead of the internal context because we want to distinguish
+					// between a context cancellation from the outside and getting a response
+					cycleThrottleCtx, cancelCycleThrottleCtx := context.WithTimeout(context.Background(), input.migrateToDevice.CycleThrottle)
+					defer cancelCycleThrottleCtx()
+
+					select {
+					case <-cycleThrottleCtx.Done():
+						break
+
+					case <-suspendedVMCtx.Done():
+						break
+
+					case <-goroutineManager.GetGoroutineCtx().Done(): // ctx is the internalCtx here
+						if err := goroutineManager.GetGoroutineCtx().Err(); err != nil {
+							return errors.Join(ErrMounterContextCancelled, err)
+						}
+
+						return nil
 					}
+				} else {
+					suspendedVMLock.Unlock()
+				}
 
-					if err := to.SendEvent(&packets.Event{
-						Type:       packets.EventCustom,
-						CustomType: byte(EventCustomTransferAuthority),
-					}); err != nil {
-						panic(errors.Join(ErrCouldNotSendTransferAuthorityEvent, err))
+				totalCycles++
+				if len(blocks) < input.migrateToDevice.MaxDirtyBlocks {
+					cyclesBelowDirtyBlockTreshold++
+					if cyclesBelowDirtyBlockTreshold > input.migrateToDevice.MinCycles {
+						markDeviceAsReadyForAuthorityTransfer()
 					}
+				} else if totalCycles > input.migrateToDevice.MaxCycles {
+					markDeviceAsReadyForAuthorityTransfer()
+				} else {
+					cyclesBelowDirtyBlockTreshold = 0
+				}
 
-					if hook := hooks.OnDeviceAuthoritySent; hook != nil {
-						hook(uint32(index), input.prev.prev.prev.remote)
+				if devicesLeftToTransferAuthorityFor.Load() >= int32(len(stage5Inputs)) {
+					if err := suspendAndMsyncVM(); err != nil {
+						return errors.Join(ErrCouldNotSuspendAndMsyncVM, err)
 					}
-
-					if err := mig.WaitForCompletion(); err != nil {
-						return errors.Join(ErrCouldNotWaitForMigrationCompletion, err)
-					}
-
-					if err := to.SendEvent(&packets.Event{
-						Type: packets.EventCompleted,
-					}); err != nil {
-						return errors.Join(ErrCouldNotSendCompletedEvent, err)
-					}
-
-					if hook := hooks.OnDeviceMigrationCompleted; hook != nil {
-						hook(uint32(index), input.prev.prev.prev.remote)
-					}
-
-					return nil
-				},
-			)
-
-			if err != nil {
-				panic(errors.Join(ErrCouldNotMigrateToDevice, err))
-			}
-
-			for _, deferFuncs := range deferFuncs {
-				for _, deferFunc := range deferFuncs {
-					defer deferFunc() // We can safely ignore errors here since we never call `addDefer` with a function that could return an error
 				}
 			}
 
-			if hook := hooks.OnAllMigrationsCompleted; hook != nil {
-				hook()
+			if err := to.SendEvent(&packets.Event{
+				Type:       packets.EventCustom,
+				CustomType: byte(EventCustomTransferAuthority),
+			}); err != nil {
+				panic(errors.Join(ErrCouldNotSendTransferAuthorityEvent, err))
 			}
 
-			return
-		}
+			if hook := hooks.OnDeviceAuthoritySent; hook != nil {
+				hook(uint32(index), input.prev.prev.prev.remote)
+			}
 
-		return
+			if err := mig.WaitForCompletion(); err != nil {
+				return errors.Join(ErrCouldNotWaitForMigrationCompletion, err)
+			}
+
+			if err := to.SendEvent(&packets.Event{
+				Type: packets.EventCompleted,
+			}); err != nil {
+				return errors.Join(ErrCouldNotSendCompletedEvent, err)
+			}
+
+			if hook := hooks.OnDeviceMigrationCompleted; hook != nil {
+				hook(uint32(index), input.prev.prev.prev.remote)
+			}
+
+			return nil
+		},
+	)
+
+	if err != nil {
+		panic(errors.Join(ErrCouldNotMigrateToDevice, err))
+	}
+
+	for _, deferFuncs := range deferFuncs {
+		for _, deferFunc := range deferFuncs {
+			defer deferFunc() // We can safely ignore errors here since we never call `addDefer` with a function that could return an error
+		}
+	}
+
+	if hook := hooks.OnAllMigrationsCompleted; hook != nil {
+		hook()
 	}
 
 	return
