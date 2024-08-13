@@ -8,7 +8,7 @@ import (
 	"os"
 	"sync"
 
-	"github.com/loopholelabs/drafter/pkg/utils"
+	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 )
 
 var (
@@ -46,10 +46,10 @@ func (l *LivenessServer) Open() (string, error) {
 }
 
 func (l *LivenessServer) ReceiveAndClose(ctx context.Context) (errs error) {
-	goroutineManager := utils.NewGoroutineManager(
+	goroutineManager := manager.NewGoroutineManager(
 		ctx,
 		&errs,
-		utils.GoroutineManagerHooks{},
+		manager.GoroutineManagerHooks{},
 	)
 	defer goroutineManager.WaitForForegroundGoroutines()
 	defer goroutineManager.StopAllGoroutines()

@@ -8,7 +8,7 @@ import (
 	"sync"
 
 	"github.com/loopholelabs/drafter/internal/network"
-	"github.com/loopholelabs/drafter/pkg/utils"
+	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 )
 
 var (
@@ -74,10 +74,10 @@ func CreateNAT(
 	readyCtx, cancelReadyCtx := context.WithCancel(context.Background())
 	defer cancelReadyCtx()
 
-	goroutineManager := utils.NewGoroutineManager(
+	goroutineManager := manager.NewGoroutineManager(
 		ctx,
 		&errs,
-		utils.GoroutineManagerHooks{},
+		manager.GoroutineManagerHooks{},
 	)
 	defer goroutineManager.WaitForForegroundGoroutines()
 	defer goroutineManager.StopAllGoroutines()

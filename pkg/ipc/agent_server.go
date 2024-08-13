@@ -10,7 +10,7 @@ import (
 	"sync"
 
 	"github.com/loopholelabs/drafter/internal/remotes"
-	"github.com/loopholelabs/drafter/pkg/utils"
+	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 	"github.com/pojntfx/panrpc/go/pkg/rpc"
 )
 
@@ -85,10 +85,10 @@ func StartAgentServer(
 		readyCtx, cancelReadyCtx := context.WithCancel(context.Background())
 		defer cancelReadyCtx()
 
-		goroutineManager := utils.NewGoroutineManager(
+		goroutineManager := manager.NewGoroutineManager(
 			acceptCtx,
 			&errs,
-			utils.GoroutineManagerHooks{},
+			manager.GoroutineManagerHooks{},
 		)
 		defer goroutineManager.WaitForForegroundGoroutines()
 		defer goroutineManager.StopAllGoroutines()

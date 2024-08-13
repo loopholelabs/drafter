@@ -17,7 +17,7 @@ import (
 	"time"
 
 	"github.com/loopholelabs/drafter/pkg/roles"
-	"github.com/loopholelabs/drafter/pkg/utils"
+	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 )
 
 type CompositeDevices struct {
@@ -218,10 +218,10 @@ func main() {
 		}
 	}()
 
-	goroutineManager := utils.NewGoroutineManager(
+	goroutineManager := manager.NewGoroutineManager(
 		ctx,
 		&errs,
-		utils.GoroutineManagerHooks{},
+		manager.GoroutineManagerHooks{},
 	)
 	defer goroutineManager.WaitForForegroundGoroutines()
 	defer goroutineManager.StopAllGoroutines()

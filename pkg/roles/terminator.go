@@ -10,7 +10,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/loopholelabs/drafter/pkg/utils"
+	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 	"github.com/loopholelabs/silo/pkg/storage"
 	sconfig "github.com/loopholelabs/silo/pkg/storage/config"
 	"github.com/loopholelabs/silo/pkg/storage/device"
@@ -58,10 +58,10 @@ func Terminate(
 
 	hooks TerminateHooks,
 ) (errs error) {
-	goroutineManager := utils.NewGoroutineManager(
+	goroutineManager := manager.NewGoroutineManager(
 		ctx,
 		&errs,
-		utils.GoroutineManagerHooks{},
+		manager.GoroutineManagerHooks{},
 	)
 	defer goroutineManager.WaitForForegroundGoroutines()
 	defer goroutineManager.StopAllGoroutines()
