@@ -57,7 +57,12 @@ func StartAgentClient(
 
 	agentClient *AgentClient,
 ) (connectedAgentClient *ConnectedAgentClient, errs error) {
-	connectedAgentClient = &ConnectedAgentClient{}
+	connectedAgentClient = &ConnectedAgentClient{
+		Wait: func() error {
+			return nil
+		},
+		Close: func() {},
+	}
 
 	// We use the background context here instead of the internal context because we want to distinguish
 	// between a context cancellation from the outside and getting a response

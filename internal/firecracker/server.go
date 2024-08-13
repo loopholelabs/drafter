@@ -37,8 +37,9 @@ const (
 type FirecrackerServer struct {
 	VMPath string
 	VMPid  int
-	Wait   func() error
-	Close  func() error
+
+	Wait  func() error
+	Close func() error
 }
 
 func StartFirecrackerServer(
@@ -59,7 +60,14 @@ func StartFirecrackerServer(
 	enableOutput bool,
 	enableInput bool,
 ) (server *FirecrackerServer, errs error) {
-	server = &FirecrackerServer{}
+	server = &FirecrackerServer{
+		Wait: func() error {
+			return nil
+		},
+		Close: func() error {
+			return nil
+		},
+	}
 
 	goroutineManager := manager.NewGoroutineManager(
 		ctx,
