@@ -70,27 +70,31 @@ type Runner struct {
 	Wait  func() error
 	Close func() error
 
-	Resume func(
-		ctx context.Context,
+	ongoingResumeWg   sync.WaitGroup
+	firecrackerClient *http.Client
 
-		resumeTimeout time.Duration,
-		rescueTimeout time.Duration,
-		agentVSockPort uint32,
+	hypervisorConfiguration HypervisorConfiguration
 
-		snapshotLoadConfiguration SnapshotLoadConfiguration,
-	) (
-		resumedRunner *ResumedRunner,
+	stateName,
+	memoryName string
 
-		errs error,
-	)
+	server *firecracker.FirecrackerServer
+
+	rescueCtx context.Context
 }
 
 type ResumedRunner struct {
 	Wait  func() error
 	Close func() error
 
-	Msync                      func(ctx context.Context) error
-	SuspendAndCloseAgentServer func(ctx context.Context, suspendTimeout time.Duration) error
+	snapshotLoadConfiguration SnapshotLoadConfiguration
+
+	runner *Runner
+
+	agent          *ipc.AgentServer
+	acceptingAgent *ipc.AcceptingAgentServer
+
+	createSnapshot func(ctx context.Context) error
 }
 
 var (
@@ -125,7 +129,17 @@ func StartRunner(
 
 	errs error,
 ) {
-	runner = &Runner{}
+	runner = &Runner{
+		Wait:  func() error { return nil },
+		Close: func() error { return nil },
+
+		hypervisorConfiguration: hypervisorConfiguration,
+
+		stateName:  stateName,
+		memoryName: memoryName,
+
+		rescueCtx: rescueCtx,
+	}
 
 	goroutineManager := manager.NewGoroutineManager(
 		hypervisorCtx,
@@ -140,19 +154,18 @@ func StartRunner(
 		panic(errors.Join(ErrCouldNotCreateChrootBaseDirectory, err))
 	}
 
-	var ongoingResumeWg sync.WaitGroup
-
 	firecrackerCtx, cancelFirecrackerCtx := context.WithCancel(rescueCtx) // We use `rescueContext` here since this simply intercepts `hypervisorCtx`
 	// and then waits for `rescueCtx` or the rescue operation to complete
 	go func() {
 		<-hypervisorCtx.Done() // We use hypervisorCtx, not goroutineManager.InternalCtx here since this resource outlives the function call
 
-		ongoingResumeWg.Wait()
+		runner.ongoingResumeWg.Wait()
 
 		cancelFirecrackerCtx()
 	}()
 
-	server, err := firecracker.StartFirecrackerServer(
+	var err error
+	runner.server, err = firecracker.StartFirecrackerServer(
 		firecrackerCtx, // We use firecrackerCtx (which depends on hypervisorCtx, not goroutineManager.InternalCtx) here since this resource outlives the function call
 
 		hypervisorConfiguration.FirecrackerBin,
@@ -174,20 +187,20 @@ func StartRunner(
 		panic(errors.Join(ErrCouldNotStartFirecrackerServer, err))
 	}
 
-	runner.VMPath = server.VMPath
-	runner.VMPid = server.VMPid
+	runner.VMPath = runner.server.VMPath
+	runner.VMPid = runner.server.VMPid
 
 	// We intentionally don't call `wg.Add` and `wg.Done` here since we return the process's wait method
 	// We still need to `defer handleGoroutinePanic()()` here however so that we catch any errors during this call
 	goroutineManager.StartBackgroundGoroutine(func() {
-		if err := server.Wait(); err != nil {
+		if err := runner.server.Wait(); err != nil {
 			panic(errors.Join(ErrCouldNotWaitForFirecracker, err))
 		}
 	})
 
-	runner.Wait = server.Wait
+	runner.Wait = runner.server.Wait
 	runner.Close = func() error {
-		if err := server.Close(); err != nil {
+		if err := runner.server.Close(); err != nil {
 			return errors.Join(ErrCouldNotCloseServer, err)
 		}
 
@@ -202,7 +215,7 @@ func StartRunner(
 		return nil
 	}
 
-	firecrackerClient := &http.Client{
+	runner.firecrackerClient = &http.Client{
 		Transport: &http.Transport{
 			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 				return (&net.Dialer{}).DialContext(ctx, "unix", filepath.Join(runner.VMPath, firecracker.FirecrackerSocketName))
@@ -210,278 +223,296 @@ func StartRunner(
 		},
 	}
 
-	runner.Resume = func(
-		ctx context.Context,
+	return
+}
 
-		resumeTimeout,
-		rescueTimeout time.Duration,
-		agentVSockPort uint32,
+func ResumeRunner(
+	ctx context.Context,
 
-		snapshotLoadConfiguration SnapshotLoadConfiguration,
-	) (
-		resumedRunner *ResumedRunner,
+	resumeTimeout time.Duration,
+	rescueTimeout time.Duration,
+	agentVSockPort uint32,
 
-		errs error,
-	) {
-		resumedRunner = &ResumedRunner{}
+	snapshotLoadConfiguration SnapshotLoadConfiguration,
 
-		ongoingResumeWg.Add(1)
-		defer ongoingResumeWg.Done()
+	runner *Runner,
+) (
+	resumedRunner *ResumedRunner,
 
+	errs error,
+) {
+	resumedRunner = &ResumedRunner{
+		Wait:  func() error { return nil },
+		Close: func() error { return nil },
+
+		snapshotLoadConfiguration: snapshotLoadConfiguration,
+
+		runner: runner,
+	}
+
+	runner.ongoingResumeWg.Add(1)
+	defer runner.ongoingResumeWg.Done()
+
+	var (
+		suspendOnPanicWithError = false
+	)
+
+	resumedRunner.createSnapshot = func(ctx context.Context) error {
 		var (
-			agent                   *ipc.AgentServer
-			acceptingAgent          *ipc.AcceptingAgentServer
-			suspendOnPanicWithError = false
+			stateCopyName  = shortuuid.New()
+			memoryCopyName = shortuuid.New()
 		)
+		if snapshotLoadConfiguration.ExperimentalMapPrivate {
+			if err := firecracker.CreateSnapshot(
+				ctx,
 
-		createSnapshot := func(ctx context.Context) error {
-			var (
-				stateCopyName  = shortuuid.New()
-				memoryCopyName = shortuuid.New()
-			)
-			if snapshotLoadConfiguration.ExperimentalMapPrivate {
-				if err := firecracker.CreateSnapshot(
-					ctx,
+				runner.firecrackerClient,
 
-					firecrackerClient,
+				// We need to write the state and memory to a separate file since we can't truncate an `mmap`ed file
+				stateCopyName,
+				memoryCopyName,
 
-					// We need to write the state and memory to a separate file since we can't truncate an `mmap`ed file
-					stateCopyName,
-					memoryCopyName,
-
-					firecracker.SnapshotTypeFull,
-				); err != nil {
-					return errors.Join(ErrCouldNotCreateSnapshot, err)
-				}
-			} else {
-				if err := firecracker.CreateSnapshot(
-					ctx,
-
-					firecrackerClient,
-
-					stateName,
-					"",
-
-					firecracker.SnapshotTypeMsyncAndState,
-				); err != nil {
-					return errors.Join(ErrCouldNotCreateSnapshot, err)
-				}
-			}
-
-			if snapshotLoadConfiguration.ExperimentalMapPrivate {
-				if err := server.Close(); err != nil {
-					return errors.Join(ErrCouldNotCloseServer, err)
-				}
-
-				if err := runner.Wait(); err != nil {
-					return errors.Join(ErrCouldNotWaitForFirecracker, err)
-				}
-
-				for _, device := range [][3]string{
-					{stateName, stateCopyName, snapshotLoadConfiguration.ExperimentalMapPrivateStateOutput},
-					{memoryName, memoryCopyName, snapshotLoadConfiguration.ExperimentalMapPrivateMemoryOutput},
-				} {
-					inputFile, err := os.Open(filepath.Join(server.VMPath, device[1]))
-					if err != nil {
-						return errors.Join(ErrCouldNotOpenInputFile, err)
-					}
-					defer inputFile.Close()
-
-					var (
-						outputPath = device[2]
-						addPadding = true
-					)
-					if outputPath == "" {
-						outputPath = filepath.Join(server.VMPath, device[0])
-						addPadding = false
-					}
-
-					if err := os.MkdirAll(filepath.Dir(outputPath), os.ModePerm); err != nil {
-						panic(errors.Join(ErrCouldNotCreateOutputDir, err))
-					}
-
-					outputFile, err := os.OpenFile(outputPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, os.ModePerm)
-					if err != nil {
-						return errors.Join(ErrCouldNotOpenOutputFile, err)
-					}
-					defer outputFile.Close()
-
-					deviceSize, err := io.Copy(outputFile, inputFile)
-					if err != nil {
-						return errors.Join(ErrCouldNotCopyFile, err)
-					}
-
-					// We need to add a padding like the snapshotter if we're writing to a file instead of a block device
-					if addPadding {
-						if paddingLength := utils.GetBlockDevicePadding(deviceSize); paddingLength > 0 {
-							if _, err := outputFile.Write(make([]byte, paddingLength)); err != nil {
-								return errors.Join(ErrCouldNotWritePadding, err)
-							}
-						}
-					}
-				}
-			}
-
-			return nil
-		}
-
-		goroutineManager := manager.NewGoroutineManager(
-			ctx,
-			&errs,
-			manager.GoroutineManagerHooks{
-				OnAfterRecover: func() {
-					if suspendOnPanicWithError {
-						suspendCtx, cancelSuspendCtx := context.WithTimeout(rescueCtx, rescueTimeout)
-						defer cancelSuspendCtx()
-
-						// Connections need to be closed before creating the snapshot
-						if acceptingAgent != nil && acceptingAgent.Close != nil {
-							if e := acceptingAgent.Close(); e != nil {
-								errs = errors.Join(errs, ErrCouldNotCloseAcceptingAgent, e)
-							}
-						}
-						if agent != nil && agent.Close != nil {
-							agent.Close()
-						}
-
-						// If a resume failed, flush the snapshot so that we can re-try
-						if err := createSnapshot(suspendCtx); err != nil {
-							errs = errors.Join(errs, ErrCouldNotCreateRecoverySnapshot, err)
-						}
-					}
-				},
-			},
-		)
-		defer goroutineManager.WaitForForegroundGoroutines()
-		defer goroutineManager.StopAllGoroutines()
-		defer goroutineManager.CreateBackgroundPanicCollector()()
-
-		// We intentionally don't call `wg.Add` and `wg.Done` here since we return the process's wait method
-		// We still need to `defer handleGoroutinePanic()()` here however so that we catch any errors during this call
-		goroutineManager.StartBackgroundGoroutine(func() {
-			if err := server.Wait(); err != nil {
-				panic(errors.Join(ErrCouldNotWaitForFirecracker, err))
-			}
-		})
-
-		agent, err = ipc.StartAgentServer(
-			filepath.Join(server.VMPath, VSockName),
-			uint32(agentVSockPort),
-		)
-		if err != nil {
-			panic(errors.Join(ErrCouldNotStartAgentServer, err))
-		}
-
-		resumedRunner.Close = func() error {
-			agent.Close()
-
-			return nil
-		}
-
-		if err := os.Chown(agent.VSockPath, hypervisorConfiguration.UID, hypervisorConfiguration.GID); err != nil {
-			panic(errors.Join(ErrCouldNotChownVSockPath, err))
-		}
-
-		{
-			resumeSnapshotAndAcceptCtx, cancelResumeSnapshotAndAcceptCtx := context.WithTimeout(goroutineManager.GetGoroutineCtx(), resumeTimeout)
-			defer cancelResumeSnapshotAndAcceptCtx()
-
-			if err := firecracker.ResumeSnapshot(
-				resumeSnapshotAndAcceptCtx,
-
-				firecrackerClient,
-
-				stateName,
-				memoryName,
-
-				!snapshotLoadConfiguration.ExperimentalMapPrivate,
+				firecracker.SnapshotTypeFull,
 			); err != nil {
-				panic(errors.Join(ErrCouldNotResumeSnapshot, err))
-			}
-
-			suspendOnPanicWithError = true
-
-			acceptingAgent, err = agent.Accept(resumeSnapshotAndAcceptCtx, ctx)
-			if err != nil {
-				panic(errors.Join(ErrCouldNotAcceptAgent, err))
-			}
-		}
-
-		// We intentionally don't call `wg.Add` and `wg.Done` here since we return the process's wait method
-		// We still need to `defer handleGoroutinePanic()()` here however so that we catch any errors during this call
-		goroutineManager.StartBackgroundGoroutine(func() {
-			if err := acceptingAgent.Wait(); err != nil {
-				panic(errors.Join(ErrCouldNotWaitForAcceptingAgent, err))
-			}
-		})
-
-		resumedRunner.Wait = acceptingAgent.Wait
-		resumedRunner.Close = func() error {
-			if err := acceptingAgent.Close(); err != nil {
-				return errors.Join(ErrCouldNotCloseAcceptingAgent, err)
-			}
-
-			agent.Close()
-
-			if err := resumedRunner.Wait(); err != nil {
-				return errors.Join(ErrCouldNotWaitForAcceptingAgent, err)
-			}
-
-			return nil
-		}
-
-		{
-			afterResumeCtx, cancelAfterResumeCtx := context.WithTimeout(goroutineManager.GetGoroutineCtx(), resumeTimeout)
-			defer cancelAfterResumeCtx()
-
-			if err := acceptingAgent.Remote.AfterResume(afterResumeCtx); err != nil {
-				panic(errors.Join(ErrCouldNotCallAfterResumeRPC, err))
-			}
-		}
-
-		resumedRunner.Msync = func(ctx context.Context) error {
-			if !snapshotLoadConfiguration.ExperimentalMapPrivate {
-				if err := firecracker.CreateSnapshot(
-					ctx,
-
-					firecrackerClient,
-
-					stateName,
-					"",
-
-					firecracker.SnapshotTypeMsync,
-				); err != nil {
-					return errors.Join(ErrCouldNotCreateSnapshot, err)
-				}
-			}
-
-			return nil
-		}
-
-		resumedRunner.SuspendAndCloseAgentServer = func(ctx context.Context, suspendTimeout time.Duration) error {
-			suspendCtx, cancelSuspendCtx := context.WithTimeout(ctx, suspendTimeout)
-			defer cancelSuspendCtx()
-
-			if err := acceptingAgent.Remote.BeforeSuspend(suspendCtx); err != nil {
-				return errors.Join(ErrCouldNotCallBeforeSuspendRPC, err)
-			}
-
-			// Connections need to be closed before creating the snapshot
-			if err := acceptingAgent.Close(); err != nil {
-				return errors.Join(ErrCouldNotCloseAcceptingAgent, err)
-			}
-
-			agent.Close()
-
-			if err := createSnapshot(suspendCtx); err != nil {
 				return errors.Join(ErrCouldNotCreateSnapshot, err)
 			}
+		} else {
+			if err := firecracker.CreateSnapshot(
+				ctx,
 
-			return nil
+				runner.firecrackerClient,
+
+				runner.stateName,
+				"",
+
+				firecracker.SnapshotTypeMsyncAndState,
+			); err != nil {
+				return errors.Join(ErrCouldNotCreateSnapshot, err)
+			}
 		}
 
-		return
+		if snapshotLoadConfiguration.ExperimentalMapPrivate {
+			if err := runner.server.Close(); err != nil {
+				return errors.Join(ErrCouldNotCloseServer, err)
+			}
+
+			if err := runner.Wait(); err != nil {
+				return errors.Join(ErrCouldNotWaitForFirecracker, err)
+			}
+
+			for _, device := range [][3]string{
+				{runner.stateName, stateCopyName, snapshotLoadConfiguration.ExperimentalMapPrivateStateOutput},
+				{runner.memoryName, memoryCopyName, snapshotLoadConfiguration.ExperimentalMapPrivateMemoryOutput},
+			} {
+				inputFile, err := os.Open(filepath.Join(runner.server.VMPath, device[1]))
+				if err != nil {
+					return errors.Join(ErrCouldNotOpenInputFile, err)
+				}
+				defer inputFile.Close()
+
+				var (
+					outputPath = device[2]
+					addPadding = true
+				)
+				if outputPath == "" {
+					outputPath = filepath.Join(runner.server.VMPath, device[0])
+					addPadding = false
+				}
+
+				if err := os.MkdirAll(filepath.Dir(outputPath), os.ModePerm); err != nil {
+					panic(errors.Join(ErrCouldNotCreateOutputDir, err))
+				}
+
+				outputFile, err := os.OpenFile(outputPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, os.ModePerm)
+				if err != nil {
+					return errors.Join(ErrCouldNotOpenOutputFile, err)
+				}
+				defer outputFile.Close()
+
+				deviceSize, err := io.Copy(outputFile, inputFile)
+				if err != nil {
+					return errors.Join(ErrCouldNotCopyFile, err)
+				}
+
+				// We need to add a padding like the snapshotter if we're writing to a file instead of a block device
+				if addPadding {
+					if paddingLength := utils.GetBlockDevicePadding(deviceSize); paddingLength > 0 {
+						if _, err := outputFile.Write(make([]byte, paddingLength)); err != nil {
+							return errors.Join(ErrCouldNotWritePadding, err)
+						}
+					}
+				}
+			}
+		}
+
+		return nil
+	}
+
+	goroutineManager := manager.NewGoroutineManager(
+		ctx,
+		&errs,
+		manager.GoroutineManagerHooks{
+			OnAfterRecover: func() {
+				if suspendOnPanicWithError {
+					suspendCtx, cancelSuspendCtx := context.WithTimeout(runner.rescueCtx, rescueTimeout)
+					defer cancelSuspendCtx()
+
+					// Connections need to be closed before creating the snapshot
+					if resumedRunner.acceptingAgent != nil && resumedRunner.acceptingAgent.Close != nil {
+						if e := resumedRunner.acceptingAgent.Close(); e != nil {
+							errs = errors.Join(errs, ErrCouldNotCloseAcceptingAgent, e)
+						}
+					}
+					if resumedRunner.agent != nil && resumedRunner.agent.Close != nil {
+						resumedRunner.agent.Close()
+					}
+
+					// If a resume failed, flush the snapshot so that we can re-try
+					if err := resumedRunner.createSnapshot(suspendCtx); err != nil {
+						errs = errors.Join(errs, ErrCouldNotCreateRecoverySnapshot, err)
+					}
+				}
+			},
+		},
+	)
+	defer goroutineManager.WaitForForegroundGoroutines()
+	defer goroutineManager.StopAllGoroutines()
+	defer goroutineManager.CreateBackgroundPanicCollector()()
+
+	// We intentionally don't call `wg.Add` and `wg.Done` here since we return the process's wait method
+	// We still need to `defer handleGoroutinePanic()()` here however so that we catch any errors during this call
+	goroutineManager.StartBackgroundGoroutine(func() {
+		if err := runner.server.Wait(); err != nil {
+			panic(errors.Join(ErrCouldNotWaitForFirecracker, err))
+		}
+	})
+
+	var err error
+	resumedRunner.agent, err = ipc.StartAgentServer(
+		filepath.Join(runner.server.VMPath, VSockName),
+		uint32(agentVSockPort),
+	)
+	if err != nil {
+		panic(errors.Join(ErrCouldNotStartAgentServer, err))
+	}
+
+	resumedRunner.Close = func() error {
+		resumedRunner.agent.Close()
+
+		return nil
+	}
+
+	if err := os.Chown(resumedRunner.agent.VSockPath, runner.hypervisorConfiguration.UID, runner.hypervisorConfiguration.GID); err != nil {
+		panic(errors.Join(ErrCouldNotChownVSockPath, err))
+	}
+
+	{
+		resumeSnapshotAndAcceptCtx, cancelResumeSnapshotAndAcceptCtx := context.WithTimeout(goroutineManager.GetGoroutineCtx(), resumeTimeout)
+		defer cancelResumeSnapshotAndAcceptCtx()
+
+		if err := firecracker.ResumeSnapshot(
+			resumeSnapshotAndAcceptCtx,
+
+			runner.firecrackerClient,
+
+			runner.stateName,
+			runner.memoryName,
+
+			!snapshotLoadConfiguration.ExperimentalMapPrivate,
+		); err != nil {
+			panic(errors.Join(ErrCouldNotResumeSnapshot, err))
+		}
+
+		suspendOnPanicWithError = true
+
+		resumedRunner.acceptingAgent, err = resumedRunner.agent.Accept(resumeSnapshotAndAcceptCtx, ctx)
+		if err != nil {
+			panic(errors.Join(ErrCouldNotAcceptAgent, err))
+		}
+	}
+
+	// We intentionally don't call `wg.Add` and `wg.Done` here since we return the process's wait method
+	// We still need to `defer handleGoroutinePanic()()` here however so that we catch any errors during this call
+	goroutineManager.StartBackgroundGoroutine(func() {
+		if err := resumedRunner.acceptingAgent.Wait(); err != nil {
+			panic(errors.Join(ErrCouldNotWaitForAcceptingAgent, err))
+		}
+	})
+
+	resumedRunner.Wait = resumedRunner.acceptingAgent.Wait
+	resumedRunner.Close = func() error {
+		if err := resumedRunner.acceptingAgent.Close(); err != nil {
+			return errors.Join(ErrCouldNotCloseAcceptingAgent, err)
+		}
+
+		resumedRunner.agent.Close()
+
+		if err := resumedRunner.Wait(); err != nil {
+			return errors.Join(ErrCouldNotWaitForAcceptingAgent, err)
+		}
+
+		return nil
+	}
+
+	{
+		afterResumeCtx, cancelAfterResumeCtx := context.WithTimeout(goroutineManager.GetGoroutineCtx(), resumeTimeout)
+		defer cancelAfterResumeCtx()
+
+		if err := resumedRunner.acceptingAgent.Remote.AfterResume(afterResumeCtx); err != nil {
+			panic(errors.Join(ErrCouldNotCallAfterResumeRPC, err))
+		}
 	}
 
 	return
+}
+
+func MsyncResumedRunner(
+	ctx context.Context,
+
+	resumedRunner *ResumedRunner,
+) error {
+	if !resumedRunner.snapshotLoadConfiguration.ExperimentalMapPrivate {
+		if err := firecracker.CreateSnapshot(
+			ctx,
+
+			resumedRunner.runner.firecrackerClient,
+
+			resumedRunner.runner.stateName,
+			"",
+
+			firecracker.SnapshotTypeMsync,
+		); err != nil {
+			return errors.Join(ErrCouldNotCreateSnapshot, err)
+		}
+	}
+
+	return nil
+}
+
+func SuspendAndCloseAgentServer(
+	ctx context.Context,
+
+	suspendTimeout time.Duration,
+
+	resumedRunner *ResumedRunner,
+) error {
+	suspendCtx, cancelSuspendCtx := context.WithTimeout(ctx, suspendTimeout)
+	defer cancelSuspendCtx()
+
+	if err := resumedRunner.acceptingAgent.Remote.BeforeSuspend(suspendCtx); err != nil {
+		return errors.Join(ErrCouldNotCallBeforeSuspendRPC, err)
+	}
+
+	// Connections need to be closed before creating the snapshot
+	if err := resumedRunner.acceptingAgent.Close(); err != nil {
+		return errors.Join(ErrCouldNotCloseAcceptingAgent, err)
+	}
+
+	resumedRunner.agent.Close()
+
+	if err := resumedRunner.createSnapshot(suspendCtx); err != nil {
+		return errors.Join(ErrCouldNotCreateSnapshot, err)
+	}
+
+	return nil
 }

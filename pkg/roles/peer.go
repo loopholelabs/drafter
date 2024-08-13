@@ -859,7 +859,7 @@ func StartPeer(
 				return nil, errors.Join(ErrCouldNotDecodeConfigFile, err)
 			}
 
-			resumedRunner, err := runner.Resume(
+			resumedRunner, err := ResumeRunner(
 				ctx,
 
 				resumeTimeout,
@@ -867,6 +867,8 @@ func StartPeer(
 				packageConfig.AgentVSockPort,
 
 				snapshotLoadConfiguration,
+
+				runner,
 			)
 			if err != nil {
 				return nil, errors.Join(ErrCouldNotResumeRunner, err)
@@ -876,7 +878,15 @@ func StartPeer(
 				Wait:  resumedRunner.Wait,
 				Close: resumedRunner.Close,
 
-				SuspendAndCloseAgentServer: resumedRunner.SuspendAndCloseAgentServer,
+				SuspendAndCloseAgentServer: func(ctx context.Context, resumeTimeout time.Duration) error {
+					return SuspendAndCloseAgentServer(
+						ctx,
+
+						resumeTimeout,
+
+						resumedRunner,
+					)
+				},
 
 				MakeMigratable: func(
 					ctx context.Context,
@@ -1011,7 +1021,11 @@ func StartPeer(
 								return errors.Join(ErrCouldNotSuspendAndCloseAgentServer, err)
 							}
 
-							if err := resumedRunner.Msync(goroutineManager.GetGoroutineCtx()); err != nil {
+							if err := MsyncResumedRunner(
+								goroutineManager.GetGoroutineCtx(),
+
+								resumedRunner,
+							); err != nil {
 								return errors.Join(ErrCouldNotMsyncRunner, err)
 							}
 
@@ -1196,7 +1210,11 @@ func StartPeer(
 									suspendedVMLock.Lock()
 									// We only need to `msync` for the memory because `msync` only affects the memory
 									if !suspendedVM && input.prev.prev.prev.name == MemoryName {
-										if err := resumedRunner.Msync(goroutineManager.GetGoroutineCtx()); err != nil {
+										if err := MsyncResumedRunner(
+											goroutineManager.GetGoroutineCtx(),
+
+											resumedRunner,
+										); err != nil {
 											suspendedVMLock.Unlock()
 
 											return errors.Join(ErrCouldNotMsyncRunner, err)
