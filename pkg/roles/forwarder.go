@@ -277,9 +277,9 @@ func ForwardPorts(
 		},
 	)
 
-	closeInProgressContext, cancelCloseInProgressContext := context.WithCancel(context.Background()) // We use `context.Background` here since this simply intercepts `ctx`
+	closeInProgress := make(chan any)
 	forwardedPorts.Close = func() (errs error) {
-		defer cancelCloseInProgressContext()
+		defer close(closeInProgress)
 
 		for _, closeFuncs := range deferFuncs {
 			for _, closeFunc := range closeFuncs {
@@ -295,7 +295,7 @@ func ForwardPorts(
 	}
 	// Future-proofing; if we decide that port-forwarding should use a background copy loop like `socat`, we can wait for that loop to finish here and return any errors
 	forwardedPorts.Wait = func() error {
-		<-closeInProgressContext.Done()
+		<-closeInProgress
 
 		return nil
 	}

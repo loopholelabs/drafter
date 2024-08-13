@@ -64,11 +64,6 @@ func StartAgentClient(
 		Close: func() {},
 	}
 
-	// We use the background context here instead of the internal context because we want to distinguish
-	// between a context cancellation from the outside and getting a response
-	readyCtx, cancelReadyCtx := context.WithCancel(context.Background())
-	defer cancelReadyCtx()
-
 	goroutineManager := manager.NewGoroutineManager(
 		dialCtx,
 		&errs,
@@ -104,6 +99,7 @@ func StartAgentClient(
 	// goroutine since we return a `Wait()` function.
 	// We still need to `defer handleGoroutinePanic()()` however so that
 	// if we cancel the context during this call, we still handle it appropriately
+	ready := make(chan any)
 	goroutineManager.StartBackgroundGoroutine(func() {
 		select {
 		// Failure case; we cancelled the internal context before we got a connection
@@ -111,7 +107,7 @@ func StartAgentClient(
 			connectedAgentClient.Close() // We ignore errors here since we might interrupt a network connection
 
 		// Happy case; we've got a connection and we want to wait with closing the agent's connections until the context, not the internal context is cancelled
-		case <-readyCtx.Done():
+		case <-ready:
 			<-remoteCtx.Done()
 
 			connectedAgentClient.Close() // We ignore errors here since we might interrupt a network connection
@@ -127,7 +123,7 @@ func StartAgentClient(
 
 		&rpc.RegistryHooks{
 			OnClientConnect: func(remoteID string) {
-				cancelReadyCtx()
+				close(ready)
 			},
 		},
 	)
@@ -193,7 +189,7 @@ func StartAgentClient(
 		}
 
 		return
-	case <-readyCtx.Done():
+	case <-ready:
 		break
 	}
 

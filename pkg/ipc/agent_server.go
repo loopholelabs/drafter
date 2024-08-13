@@ -85,11 +85,6 @@ func (agentServer *AgentServer) Accept(acceptCtx context.Context, remoteCtx cont
 		},
 	}
 
-	// We use the background context here instead of the internal context because we want to distinguish
-	// between a context cancellation from the outside and getting a response
-	readyCtx, cancelReadyCtx := context.WithCancel(context.Background())
-	defer cancelReadyCtx()
-
 	goroutineManager := manager.NewGoroutineManager(
 		acceptCtx,
 		&errs,
@@ -101,6 +96,7 @@ func (agentServer *AgentServer) Accept(acceptCtx context.Context, remoteCtx cont
 
 	// We intentionally don't call `wg.Add` and `wg.Done` here - we are ok with leaking this
 	// goroutine since we return a `Wait()` function
+	ready := make(chan any)
 	go func() {
 		select {
 		// Failure case; we cancelled the internal context before we got a connection
@@ -109,7 +105,7 @@ func (agentServer *AgentServer) Accept(acceptCtx context.Context, remoteCtx cont
 
 		// Happy case; we've got a connection and we want to wait with closing the agent's connections until the context, not the internal context is cancelled
 		// We don't do anything here because the `acceptingAgent` context handler must close in order
-		case <-readyCtx.Done():
+		case <-ready:
 			break
 		}
 	}()
@@ -160,7 +156,7 @@ func (agentServer *AgentServer) Accept(acceptCtx context.Context, remoteCtx cont
 			agentServer.Close() // We ignore errors here since we might interrupt a network connection
 
 		// Happy case; we've got a connection and we want to wait with closing the agent's connections until the context, not the internal context is cancelled
-		case <-readyCtx.Done():
+		case <-ready:
 			<-remoteCtx.Done()
 
 			if err := acceptingAgentServer.Close(); err != nil {
@@ -179,7 +175,7 @@ func (agentServer *AgentServer) Accept(acceptCtx context.Context, remoteCtx cont
 
 		&rpc.RegistryHooks{
 			OnClientConnect: func(remoteID string) {
-				cancelReadyCtx()
+				close(ready)
 			},
 		},
 	)
@@ -241,7 +237,7 @@ func (agentServer *AgentServer) Accept(acceptCtx context.Context, remoteCtx cont
 		}
 
 		return
-	case <-readyCtx.Done():
+	case <-ready:
 		break
 	}
 
