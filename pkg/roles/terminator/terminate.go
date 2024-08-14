@@ -1,4 +1,4 @@
-package roles
+package terminator
 
 import (
 	"context"
@@ -10,28 +10,14 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/loopholelabs/drafter/pkg/roles/registry"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 	"github.com/loopholelabs/silo/pkg/storage"
-	sconfig "github.com/loopholelabs/silo/pkg/storage/config"
+	"github.com/loopholelabs/silo/pkg/storage/config"
 	"github.com/loopholelabs/silo/pkg/storage/device"
 	"github.com/loopholelabs/silo/pkg/storage/protocol"
 	"github.com/loopholelabs/silo/pkg/storage/protocol/packets"
 	"github.com/loopholelabs/silo/pkg/storage/waitingcache"
-)
-
-type CustomEventType byte
-
-const (
-	EventCustomAllDevicesSent    = CustomEventType(0)
-	EventCustomTransferAuthority = CustomEventType(1)
-)
-
-var (
-	ErrUnknownDeviceName                = errors.New("unknown device name")
-	ErrCouldNotCreateReceivingDirectory = errors.New("could not create receiving directory")
-	ErrCouldNotSendNeedAt               = errors.New("could not send NeedAt")
-	ErrCouldNotSendDontNeedAt           = errors.New("could not send DontNeedAt")
-	ErrCouldNotCloseDevice              = errors.New("could not close device")
 )
 
 type TerminatorDevice struct {
@@ -107,7 +93,7 @@ func Terminate(
 						panic(errors.Join(ErrCouldNotCreateReceivingDirectory, err))
 					}
 
-					src, device, err := device.NewDevice(&sconfig.DeviceSchema{
+					src, device, err := device.NewDevice(&config.DeviceSchema{
 						Name:      di.Name,
 						System:    "file",
 						Location:  path,
@@ -181,12 +167,12 @@ func Terminate(
 					switch e.Type {
 					case packets.EventCustom:
 						switch e.CustomType {
-						case byte(EventCustomAllDevicesSent):
+						case byte(registry.EventCustomAllDevicesSent):
 							if hook := hooks.OnAllDevicesReceived; hook != nil {
 								hook()
 							}
 
-						case byte(EventCustomTransferAuthority):
+						case byte(registry.EventCustomTransferAuthority):
 							if hook := hooks.OnDeviceAuthorityReceived; hook != nil {
 								hook(index)
 							}
@@ -231,7 +217,7 @@ func Terminate(
 	}()
 
 	if err := pro.Handle(); err != nil && !errors.Is(err, io.EOF) {
-		panic(errors.Join(ErrCouldNotHandleProtocol, err))
+		panic(errors.Join(registry.ErrCouldNotHandleProtocol, err))
 	}
 
 	if hook := hooks.OnAllMigrationsCompleted; hook != nil {

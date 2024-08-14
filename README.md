@@ -1234,7 +1234,7 @@ LABEL=mydisk    /mymount    ext4    defaults    0    2
 
 ### How Can I Add Additional VSocks to My VM?
 
-Using additional VSocks requires getting access to the runner's `VMPath`, which is available at `${runner.VMPath}/${roles.VSockName}` and `${peer.VMPath}/${roles.VSockName}`. Other than that, refer to the [Firecracker docs](https://github.com/firecracker-microvm/firecracker/blob/main/docs/vsock.md) and [examples](#examples) for more information on how to use Firecracker's VSock-via-UNIX socket implementation.
+Using additional VSocks requires getting access to the runner's `VMPath`, which is available at `${runner.VMPath}/${packager.VSockName}` and `${peer.VMPath}/${packager.VSockName}`. Other than that, refer to the [Firecracker docs](https://github.com/firecracker-microvm/firecracker/blob/main/docs/vsock.md) and [examples](#examples) for more information on how to use Firecracker's VSock-via-UNIX socket implementation.
 
 ### Does Drafter Support IPv6?
 

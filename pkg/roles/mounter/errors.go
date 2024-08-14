@@ -1,0 +1,30 @@
+package mounter
+
+import "errors"
+
+var (
+	ErrMounterContextCancelled            = errors.New("mounter context cancelled")
+	ErrCouldNotCloseMigratedMounter       = errors.New("could not close migrated mounter")
+	ErrCouldNotCreateMigratableMounter    = errors.New("could not create migratable mounter")
+	ErrCouldNotCreateDeviceDirectory      = errors.New("could not create device directory")
+	ErrCouldNotRequestBlock               = errors.New("could not request block")
+	ErrCouldNotReleaseBlock               = errors.New("could not release block")
+	ErrCouldNotGetBaseDeviceStat          = errors.New("could not get base device statistics")
+	ErrCouldNotCreateOverlayDirectory     = errors.New("could not create overlay directory")
+	ErrCouldNotCreateStateDirectory       = errors.New("could not create state directory")
+	ErrCouldNotCreateLocalDevice          = errors.New("could not create local device")
+	ErrCouldNotSetupDevices               = errors.New("could not setup devices")
+	ErrCouldNotSendDevInfo                = errors.New("could not send device info")
+	ErrCouldNotSendAllDevicesSentEvent    = errors.New("could not send all devices sent event")
+	ErrCouldNotSendPreLockEvent           = errors.New("could not send pre-lock event")
+	ErrCouldNotSendPostLockEvent          = errors.New("could not send post-lock event")
+	ErrCouldNotSendPreUnlockEvent         = errors.New("could not send pre-unlock event")
+	ErrCouldNotSendPostUnlockEvent        = errors.New("could not send post-unlock event")
+	ErrCouldNotMigrateBlocks              = errors.New("could not migrate blocks")
+	ErrCouldNotSendDirtyList              = errors.New("could not send dirty list")
+	ErrCouldNotMigrateDirtyBlocks         = errors.New("could not migrate dirty blocks")
+	ErrCouldNotSuspendAndMsyncVM          = errors.New("could not suspend and msync VM")
+	ErrCouldNotSendTransferAuthorityEvent = errors.New("could not send transfer authority event")
+	ErrCouldNotSendCompletedEvent         = errors.New("could not send completed event")
+	ErrCouldNotMigrateToDevice            = errors.New("could not migrate to device")
+)

@@ -13,7 +13,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/loopholelabs/drafter/pkg/roles"
+	"github.com/loopholelabs/drafter/pkg/roles/packager"
+	"github.com/loopholelabs/drafter/pkg/roles/peer"
+	"github.com/loopholelabs/drafter/pkg/roles/runner"
+	"github.com/loopholelabs/drafter/pkg/roles/snapshotter"
 	"github.com/loopholelabs/drafter/pkg/utils"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 	"golang.org/x/sys/unix"
@@ -28,29 +31,29 @@ type SharableDevice struct {
 func main() {
 	defaultDevices, err := json.Marshal([]SharableDevice{
 		{
-			Name:   roles.StateName,
+			Name:   packager.StateName,
 			Path:   filepath.Join("out", "package", "state.bin"),
 			Shared: false,
 		},
 		{
-			Name:   roles.MemoryName,
+			Name:   packager.MemoryName,
 			Path:   filepath.Join("out", "package", "memory.bin"),
 			Shared: false,
 		},
 
 		{
-			Name:   roles.KernelName,
+			Name:   packager.KernelName,
 			Path:   filepath.Join("out", "package", "vmlinux"),
 			Shared: false,
 		},
 		{
-			Name:   roles.DiskName,
+			Name:   packager.DiskName,
 			Path:   filepath.Join("out", "package", "rootfs.ext4"),
 			Shared: false,
 		},
 
 		{
-			Name:   roles.ConfigName,
+			Name:   packager.ConfigName,
 			Path:   filepath.Join("out", "package", "config.json"),
 			Shared: false,
 		},
@@ -112,7 +115,7 @@ func main() {
 
 	configPath := ""
 	for _, device := range devices {
-		if device.Name == roles.ConfigName {
+		if device.Name == packager.ConfigName {
 			configPath = device.Path
 
 			break
@@ -120,7 +123,7 @@ func main() {
 	}
 
 	if strings.TrimSpace(configPath) == "" {
-		panic(roles.ErrConfigFileNotFound)
+		panic(peer.ErrConfigFileNotFound)
 	}
 
 	configFile, err := os.Open(configPath)
@@ -129,7 +132,7 @@ func main() {
 	}
 	defer configFile.Close()
 
-	var packageConfig roles.PackageConfiguration
+	var packageConfig snapshotter.PackageConfiguration
 	if err := json.NewDecoder(configFile).Decode(&packageConfig); err != nil {
 		panic(err)
 	}
@@ -171,11 +174,11 @@ func main() {
 		cancel()
 	}()
 
-	runner, err := roles.StartRunner(
+	r, err := runner.StartRunner(
 		goroutineManager.Context(),
 		context.Background(), // Never give up on rescue operations
 
-		roles.HypervisorConfiguration{
+		snapshotter.HypervisorConfiguration{
 			FirecrackerBin: firecrackerBin,
 			JailerBin:      jailerBin,
 
@@ -192,14 +195,14 @@ func main() {
 			EnableInput:  *enableInput,
 		},
 
-		roles.StateName,
-		roles.MemoryName,
+		packager.StateName,
+		packager.MemoryName,
 	)
 
 	defer func() {
 		defer goroutineManager.CreateForegroundPanicCollector()()
 
-		if err := runner.Wait(); err != nil {
+		if err := r.Wait(); err != nil {
 			panic(err)
 		}
 	}()
@@ -211,13 +214,13 @@ func main() {
 	defer func() {
 		defer goroutineManager.CreateForegroundPanicCollector()()
 
-		if err := runner.Close(); err != nil {
+		if err := r.Close(); err != nil {
 			panic(err)
 		}
 	}()
 
 	goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
-		if err := runner.Wait(); err != nil {
+		if err := r.Wait(); err != nil {
 			panic(err)
 		}
 	})
@@ -268,7 +271,7 @@ func main() {
 
 		deviceStat, ok := deviceInfo.Sys().(*syscall.Stat_t)
 		if !ok {
-			panic(roles.ErrCouldNotGetDeviceStat)
+			panic(snapshotter.ErrCouldNotGetDeviceStat)
 		}
 
 		deviceMajor := uint64(deviceStat.Rdev / 256)
@@ -285,7 +288,7 @@ func main() {
 			return
 
 		default:
-			if err := unix.Mknod(filepath.Join(runner.VMPath, device.Name), unix.S_IFBLK|0666, deviceID); err != nil {
+			if err := unix.Mknod(filepath.Join(r.VMPath, device.Name), unix.S_IFBLK|0666, deviceID); err != nil {
 				panic(err)
 			}
 		}
@@ -293,14 +296,14 @@ func main() {
 
 	before := time.Now()
 
-	resumedRunner, err := runner.Resume(
+	resumedRunner, err := r.Resume(
 		goroutineManager.Context(),
 
 		*resumeTimeout,
 		*rescueTimeout,
 		packageConfig.AgentVSockPort,
 
-		roles.SnapshotLoadConfiguration{
+		runner.SnapshotLoadConfiguration{
 			ExperimentalMapPrivate: *experimentalMapPrivate,
 
 			ExperimentalMapPrivateStateOutput:  *experimentalMapPrivateStateOutput,
@@ -326,7 +329,7 @@ func main() {
 		}
 	})
 
-	log.Println("Resumed VM in", time.Since(before), "on", runner.VMPath)
+	log.Println("Resumed VM in", time.Since(before), "on", r.VMPath)
 
 	bubbleSignals = true
 

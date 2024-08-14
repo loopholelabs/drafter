@@ -1,4 +1,4 @@
-package roles
+package snapshotter
 
 import (
 	"context"
@@ -16,30 +16,14 @@ import (
 	"github.com/loopholelabs/drafter/internal/firecracker"
 	iutils "github.com/loopholelabs/drafter/internal/utils"
 	"github.com/loopholelabs/drafter/pkg/ipc"
+	"github.com/loopholelabs/drafter/pkg/roles/packager"
 	"github.com/loopholelabs/drafter/pkg/utils"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 )
 
-var (
-	ErrCouldNotGetDeviceStat                 = errors.New("could not get NBD device stat")
-	ErrCouldNotWaitForFirecrackerServer      = errors.New("could not wait for Firecracker server")
-	ErrCouldNotOpenLivenessServer            = errors.New("could not open liveness server")
-	ErrCouldNotChownLivenessServerVSock      = errors.New("could not change ownership of liveness server VSock")
-	ErrCouldNotChownAgentServerVSock         = errors.New("could not change ownership of agent server VSock")
-	ErrCouldNotOpenInputFile                 = errors.New("could not open input file")
-	ErrCouldNotCreateOutputFile              = errors.New("could not create output file")
-	ErrCouldNotCopyFile                      = errors.New("error copying file")
-	ErrCouldNotWritePadding                  = errors.New("could not write padding")
-	ErrCouldNotCopyDeviceFile                = errors.New("could not copy device file")
-	ErrCouldNotStartVM                       = errors.New("could not start VM")
-	ErrCouldNotReceiveAndCloseLivenessServer = errors.New("could not receive and close liveness server")
-	ErrCouldNotAcceptAgentConnection         = errors.New("could not accept agent connection")
-	ErrCouldNotBeforeSuspend                 = errors.New("error before suspend")
-	ErrCouldNotMarshalPackageConfig          = errors.New("could not marshal package configuration")
-	ErrCouldNotOpenPackageConfigFile         = errors.New("could not open package configuration file")
-	ErrCouldNotWritePackageConfig            = errors.New("could not write package configuration")
-	ErrCouldNotChownPackageConfigFile        = errors.New("could not change ownership of package configuration file")
-)
+type PackageConfiguration struct {
+	AgentVSockPort uint32 `json:"agentVSockPort"`
+}
 
 type AgentConfiguration struct {
 	AgentVSockPort uint32
@@ -55,6 +39,36 @@ type SnapshotDevice struct {
 	Name   string `json:"name"`
 	Input  string `json:"input"`
 	Output string `json:"output"`
+}
+
+type HypervisorConfiguration struct {
+	FirecrackerBin string
+	JailerBin      string
+
+	ChrootBaseDir string
+
+	UID int
+	GID int
+
+	NetNS         string
+	NumaNode      int
+	CgroupVersion int
+
+	EnableOutput bool
+	EnableInput  bool
+}
+
+type NetworkConfiguration struct {
+	Interface string
+	MAC       string
+}
+
+type VMConfiguration struct {
+	CPUCount    int
+	MemorySize  int
+	CPUTemplate string
+
+	BootArgs string
 }
 
 func CreateSnapshot(
@@ -163,7 +177,7 @@ func CreateSnapshot(
 			defer inputFile.Close()
 
 			if err := os.MkdirAll(filepath.Dir(device.Output), os.ModePerm); err != nil {
-				panic(errors.Join(ErrCouldNotCreateOutputDir, err))
+				panic(errors.Join(packager.ErrCouldNotCreateOutputDir, err))
 			}
 
 			outputFile, err := os.OpenFile(device.Output, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, os.ModePerm)
@@ -195,7 +209,7 @@ func CreateSnapshot(
 			}
 		}
 
-		if !slices.Contains(KnownNames, device.Name) || device.Name == DiskName {
+		if !slices.Contains(packager.KnownNames, device.Name) || device.Name == packager.DiskName {
 			disks = append(disks, device.Name)
 		}
 	}
@@ -205,7 +219,7 @@ func CreateSnapshot(
 
 		client,
 
-		KernelName,
+		packager.KernelName,
 
 		disks,
 
@@ -267,8 +281,8 @@ func CreateSnapshot(
 
 		client,
 
-		StateName,
-		MemoryName,
+		packager.StateName,
+		packager.MemoryName,
 
 		firecracker.SnapshotTypeFull,
 	); err != nil {
@@ -282,7 +296,7 @@ func CreateSnapshot(
 		panic(errors.Join(ErrCouldNotMarshalPackageConfig, err))
 	}
 
-	outputFile, err := os.OpenFile(filepath.Join(server.VMPath, ConfigName), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, os.ModePerm)
+	outputFile, err := os.OpenFile(filepath.Join(server.VMPath, packager.ConfigName), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, os.ModePerm)
 	if err != nil {
 		panic(errors.Join(ErrCouldNotOpenPackageConfigFile, err))
 	}
@@ -292,7 +306,7 @@ func CreateSnapshot(
 		panic(errors.Join(ErrCouldNotWritePackageConfig, err))
 	}
 
-	if err := os.Chown(filepath.Join(server.VMPath, ConfigName), hypervisorConfiguration.UID, hypervisorConfiguration.GID); err != nil {
+	if err := os.Chown(filepath.Join(server.VMPath, packager.ConfigName), hypervisorConfiguration.UID, hypervisorConfiguration.GID); err != nil {
 		panic(errors.Join(ErrCouldNotChownPackageConfigFile, err))
 	}
 

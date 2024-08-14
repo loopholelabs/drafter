@@ -9,14 +9,14 @@ import (
 	"os"
 	"os/signal"
 
-	"github.com/loopholelabs/drafter/pkg/roles"
+	"github.com/loopholelabs/drafter/pkg/roles/forwarder"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 )
 
 func main() {
 	rawHostVethCIDR := flag.String("host-veth-cidr", "10.0.8.0/22", "CIDR for the veths outside the namespace")
 
-	defaultPortForwards, err := json.Marshal([]roles.PortForward{
+	defaultPortForwards, err := json.Marshal([]forwarder.PortForward{
 		{
 			Netns:        "ark0",
 			InternalPort: "6379",
@@ -33,7 +33,7 @@ func main() {
 
 	flag.Parse()
 
-	var portForwards []roles.PortForward
+	var portForwards []forwarder.PortForward
 	if err := json.Unmarshal([]byte(*rawPortForwards), &portForwards); err != nil {
 		panic(err)
 	}
@@ -73,13 +73,13 @@ func main() {
 		panic(err)
 	}
 
-	forwardedPorts, err := roles.ForwardPorts(
+	forwardedPorts, err := forwarder.ForwardPorts(
 		goroutineManager.Context(),
 
 		hostVethCIDR,
 		portForwards,
 
-		roles.PortForwardHooks{
+		forwarder.PortForwardHooks{
 			OnAfterPortForward: func(portID int, netns, internalIP, internalPort, externalIP, externalPort, protocol string) {
 				log.Printf("Forwarding port with ID %v from %v:%v/%v in network namespace %v to %v:%v/%v", portID, internalIP, internalPort, protocol, netns, externalIP, externalPort, protocol)
 			},

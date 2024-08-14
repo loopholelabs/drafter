@@ -16,7 +16,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/loopholelabs/drafter/pkg/roles"
+	"github.com/loopholelabs/drafter/pkg/roles/mounter"
+	"github.com/loopholelabs/drafter/pkg/roles/packager"
+	"github.com/loopholelabs/drafter/pkg/roles/peer"
+	"github.com/loopholelabs/drafter/pkg/roles/runner"
+	"github.com/loopholelabs/drafter/pkg/roles/snapshotter"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 )
 
@@ -67,7 +71,7 @@ func main() {
 
 	defaultDevices, err := json.Marshal([]CompositeDevices{
 		{
-			Name: roles.StateName,
+			Name: packager.StateName,
 
 			Base:    filepath.Join("out", "package", "state.bin"),
 			Overlay: filepath.Join("out", "overlay", "state.bin"),
@@ -87,7 +91,7 @@ func main() {
 			Shared:         false,
 		},
 		{
-			Name: roles.MemoryName,
+			Name: packager.MemoryName,
 
 			Base:    filepath.Join("out", "package", "memory.bin"),
 			Overlay: filepath.Join("out", "overlay", "memory.bin"),
@@ -108,7 +112,7 @@ func main() {
 		},
 
 		{
-			Name: roles.KernelName,
+			Name: packager.KernelName,
 
 			Base:    filepath.Join("out", "package", "vmlinux"),
 			Overlay: filepath.Join("out", "overlay", "vmlinux"),
@@ -128,7 +132,7 @@ func main() {
 			Shared:         false,
 		},
 		{
-			Name: roles.DiskName,
+			Name: packager.DiskName,
 
 			Base:    filepath.Join("out", "package", "rootfs.ext4"),
 			Overlay: filepath.Join("out", "overlay", "rootfs.ext4"),
@@ -149,7 +153,7 @@ func main() {
 		},
 
 		{
-			Name: roles.ConfigName,
+			Name: packager.ConfigName,
 
 			Base:    filepath.Join("out", "package", "config.json"),
 			Overlay: filepath.Join("out", "overlay", "config.json"),
@@ -273,11 +277,11 @@ func main() {
 		writers = []io.Writer{conn}
 	}
 
-	peer, err := roles.StartPeer(
+	p, err := peer.StartPeer(
 		goroutineManager.Context(),
 		context.Background(), // Never give up on rescue operations
 
-		roles.HypervisorConfiguration{
+		snapshotter.HypervisorConfiguration{
 			FirecrackerBin: firecrackerBin,
 			JailerBin:      jailerBin,
 
@@ -294,14 +298,14 @@ func main() {
 			EnableInput:  *enableInput,
 		},
 
-		roles.StateName,
-		roles.MemoryName,
+		packager.StateName,
+		packager.MemoryName,
 	)
 
 	defer func() {
 		defer goroutineManager.CreateForegroundPanicCollector()()
 
-		if err := peer.Wait(); err != nil {
+		if err := p.Wait(); err != nil {
 			panic(err)
 		}
 	}()
@@ -313,20 +317,20 @@ func main() {
 	defer func() {
 		defer goroutineManager.CreateForegroundPanicCollector()()
 
-		if err := peer.Close(); err != nil {
+		if err := p.Close(); err != nil {
 			panic(err)
 		}
 	}()
 
 	goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
-		if err := peer.Wait(); err != nil {
+		if err := p.Wait(); err != nil {
 			panic(err)
 		}
 	})
 
-	migrateFromDevices := []roles.MigrateFromDevice{}
+	migrateFromDevices := []peer.MigrateFromDevice{}
 	for _, device := range devices {
-		migrateFromDevices = append(migrateFromDevices, roles.MigrateFromDevice{
+		migrateFromDevices = append(migrateFromDevices, peer.MigrateFromDevice{
 			Name: device.Name,
 
 			Base:    device.Base,
@@ -339,7 +343,7 @@ func main() {
 		})
 	}
 
-	migratedPeer, err := peer.MigrateFrom(
+	migratedPeer, err := p.MigrateFrom(
 		goroutineManager.Context(),
 
 		migrateFromDevices,
@@ -347,7 +351,7 @@ func main() {
 		readers,
 		writers,
 
-		roles.MigrateFromHooks{
+		mounter.MigrateFromHooks{
 			OnRemoteDeviceReceived: func(remoteDeviceID uint32, name string) {
 				log.Println("Received remote device", remoteDeviceID, "with name", name)
 			},
@@ -415,7 +419,7 @@ func main() {
 		*resumeTimeout,
 		*rescueTimeout,
 
-		roles.SnapshotLoadConfiguration{
+		runner.SnapshotLoadConfiguration{
 			ExperimentalMapPrivate: *experimentalMapPrivate,
 
 			ExperimentalMapPrivateStateOutput:  *experimentalMapPrivateStateOutput,
@@ -441,7 +445,7 @@ func main() {
 		}
 	})
 
-	log.Println("Resumed VM in", time.Since(before), "on", peer.VMPath)
+	log.Println("Resumed VM in", time.Since(before), "on", p.VMPath)
 
 	if err := migratedPeer.Wait(); err != nil {
 		panic(err)
@@ -540,13 +544,13 @@ func main() {
 
 	log.Println("Migrating to", conn.RemoteAddr())
 
-	makeMigratableDevices := []roles.MakeMigratableDevice{}
+	makeMigratableDevices := []mounter.MakeMigratableDevice{}
 	for _, device := range devices {
 		if !device.MakeMigratable || device.Shared {
 			continue
 		}
 
-		makeMigratableDevices = append(makeMigratableDevices, roles.MakeMigratableDevice{
+		makeMigratableDevices = append(makeMigratableDevices, mounter.MakeMigratableDevice{
 			Name: device.Name,
 
 			Expiry: device.Expiry,
@@ -565,13 +569,13 @@ func main() {
 
 	defer migratablePeer.Close()
 
-	migrateToDevices := []roles.MigrateToDevice{}
+	migrateToDevices := []mounter.MigrateToDevice{}
 	for _, device := range devices {
 		if !device.MakeMigratable || device.Shared {
 			continue
 		}
 
-		migrateToDevices = append(migrateToDevices, roles.MigrateToDevice{
+		migrateToDevices = append(migrateToDevices, mounter.MigrateToDevice{
 			Name: device.Name,
 
 			MaxDirtyBlocks: device.MaxDirtyBlocks,
@@ -594,7 +598,7 @@ func main() {
 		[]io.Reader{conn},
 		[]io.Writer{conn},
 
-		roles.MigrateToHooks{
+		peer.MigrateToHooks{
 			OnBeforeGetDirtyBlocks: func(deviceID uint32, remote bool) {
 				if remote {
 					log.Println("Getting dirty blocks for remote device", deviceID)
