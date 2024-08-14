@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 
-	"github.com/loopholelabs/drafter/pkg/roles/runner"
-	"github.com/loopholelabs/drafter/pkg/roles/snapshotter"
+	"github.com/loopholelabs/drafter/pkg/runner"
+	"github.com/loopholelabs/drafter/pkg/snapshotter"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 )
 

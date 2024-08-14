@@ -13,8 +13,8 @@ import (
 	"sync/atomic"
 
 	iutils "github.com/loopholelabs/drafter/internal/utils"
-	"github.com/loopholelabs/drafter/pkg/roles/registry"
-	"github.com/loopholelabs/drafter/pkg/roles/terminator"
+	"github.com/loopholelabs/drafter/pkg/registry"
+	"github.com/loopholelabs/drafter/pkg/terminator"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 	"github.com/loopholelabs/silo/pkg/storage"
 	"github.com/loopholelabs/silo/pkg/storage/config"

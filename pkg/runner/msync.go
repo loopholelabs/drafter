@@ -5,7 +5,7 @@ import (
 	"errors"
 
 	"github.com/loopholelabs/drafter/internal/firecracker"
-	"github.com/loopholelabs/drafter/pkg/roles/snapshotter"
+	"github.com/loopholelabs/drafter/pkg/snapshotter"
 )
 
 func (resumedRunner *ResumedRunner) Msync(ctx context.Context) error {

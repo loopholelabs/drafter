@@ -10,7 +10,7 @@ import (
 	"sync"
 
 	"github.com/loopholelabs/drafter/internal/firecracker"
-	"github.com/loopholelabs/drafter/pkg/roles/snapshotter"
+	"github.com/loopholelabs/drafter/pkg/snapshotter"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 )
 

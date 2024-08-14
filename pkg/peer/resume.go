@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loopholelabs/drafter/pkg/roles/packager"
-	"github.com/loopholelabs/drafter/pkg/roles/runner"
-	"github.com/loopholelabs/drafter/pkg/roles/snapshotter"
+	"github.com/loopholelabs/drafter/pkg/packager"
+	"github.com/loopholelabs/drafter/pkg/runner"
+	"github.com/loopholelabs/drafter/pkg/snapshotter"
 )
 
 type MigratedPeer struct {

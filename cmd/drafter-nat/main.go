@@ -7,7 +7,7 @@ import (
 	"os"
 	"os/signal"
 
-	"github.com/loopholelabs/drafter/pkg/roles/nat"
+	"github.com/loopholelabs/drafter/pkg/nat"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 )
 

@@ -9,7 +9,7 @@ import (
 	"os/signal"
 	"path/filepath"
 
-	"github.com/loopholelabs/drafter/pkg/roles/packager"
+	"github.com/loopholelabs/drafter/pkg/packager"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 )
 
