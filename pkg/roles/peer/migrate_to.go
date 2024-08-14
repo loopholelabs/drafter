@@ -41,7 +41,7 @@ type MigratablePeer struct {
 	Close func()
 
 	resumedPeer   *ResumedPeer
-	stage4Inputs  []mounter.PeerStage4
+	stage4Inputs  []stage4
 	resumedRunner *runner.ResumedRunner
 }
 
@@ -116,11 +116,11 @@ func (migratablePeer *MigratablePeer) MigrateTo(
 		return nil
 	})
 
-	stage5Inputs := []mounter.PeerStage5{}
+	stage5Inputs := []stage5{}
 	for _, input := range migratablePeer.stage4Inputs {
 		var migrateToDevice *mounter.MigrateToDevice
 		for _, device := range devices {
-			if device.Name == input.Prev.Prev.Name {
+			if device.Name == input.prev.prev.name {
 				migrateToDevice = &device
 
 				break
@@ -132,24 +132,24 @@ func (migratablePeer *MigratablePeer) MigrateTo(
 			continue
 		}
 
-		stage5Inputs = append(stage5Inputs, mounter.PeerStage5{
-			Prev: input,
+		stage5Inputs = append(stage5Inputs, stage5{
+			prev: input,
 
-			MigrateToDevice: *migrateToDevice,
+			migrateToDevice: *migrateToDevice,
 		})
 	}
 
 	_, deferFuncs, err := utils.ConcurrentMap(
 		stage5Inputs,
-		func(index int, input mounter.PeerStage5, _ *struct{}, _ func(deferFunc func() error)) error {
-			to := protocol.NewToProtocol(input.Prev.Storage.Size(), uint32(index), pro)
+		func(index int, input stage5, _ *struct{}, _ func(deferFunc func() error)) error {
+			to := protocol.NewToProtocol(input.prev.storage.Size(), uint32(index), pro)
 
-			if err := to.SendDevInfo(input.Prev.Prev.Prev.Name, input.Prev.Prev.Prev.BlockSize, ""); err != nil {
+			if err := to.SendDevInfo(input.prev.prev.prev.name, input.prev.prev.prev.blockSize, ""); err != nil {
 				return errors.Join(mounter.ErrCouldNotSendDevInfo, err)
 			}
 
 			if hook := hooks.OnDeviceSent; hook != nil {
-				hook(uint32(index), input.Prev.Prev.Prev.Remote)
+				hook(uint32(index), input.prev.prev.prev.remote)
 			}
 
 			devicesLeftToSend.Add(1)
@@ -172,14 +172,14 @@ func (migratablePeer *MigratablePeer) MigrateTo(
 				if err := to.HandleNeedAt(func(offset int64, length int32) {
 					// Prioritize blocks
 					endOffset := uint64(offset + int64(length))
-					if endOffset > uint64(input.Prev.Storage.Size()) {
-						endOffset = uint64(input.Prev.Storage.Size())
+					if endOffset > uint64(input.prev.storage.Size()) {
+						endOffset = uint64(input.prev.storage.Size())
 					}
 
-					startBlock := int(offset / int64(input.Prev.Prev.Prev.BlockSize))
-					endBlock := int((endOffset-1)/uint64(input.Prev.Prev.Prev.BlockSize)) + 1
+					startBlock := int(offset / int64(input.prev.prev.prev.blockSize))
+					endBlock := int((endOffset-1)/uint64(input.prev.prev.prev.blockSize)) + 1
 					for b := startBlock; b < endBlock; b++ {
-						input.Prev.Orderer.PrioritiseBlock(b)
+						input.prev.orderer.PrioritiseBlock(b)
 					}
 				}); err != nil {
 					panic(errors.Join(registry.ErrCouldNotHandleNeedAt, err))
@@ -190,21 +190,21 @@ func (migratablePeer *MigratablePeer) MigrateTo(
 				if err := to.HandleDontNeedAt(func(offset int64, length int32) {
 					// Deprioritize blocks
 					endOffset := uint64(offset + int64(length))
-					if endOffset > uint64(input.Prev.Storage.Size()) {
-						endOffset = uint64(input.Prev.Storage.Size())
+					if endOffset > uint64(input.prev.storage.Size()) {
+						endOffset = uint64(input.prev.storage.Size())
 					}
 
-					startBlock := int(offset / int64(input.Prev.Storage.Size()))
-					endBlock := int((endOffset-1)/uint64(input.Prev.Storage.Size())) + 1
+					startBlock := int(offset / int64(input.prev.storage.Size()))
+					endBlock := int((endOffset-1)/uint64(input.prev.storage.Size())) + 1
 					for b := startBlock; b < endBlock; b++ {
-						input.Prev.Orderer.Remove(b)
+						input.prev.orderer.Remove(b)
 					}
 				}); err != nil {
 					panic(errors.Join(registry.ErrCouldNotHandleDontNeedAt, err))
 				}
 			})
 
-			cfg := migrator.NewMigratorConfig().WithBlockSize(int(input.Prev.Prev.Prev.BlockSize))
+			cfg := migrator.NewMigratorConfig().WithBlockSize(int(input.prev.prev.prev.blockSize))
 			cfg.Concurrency = map[int]int{
 				storage.BlockTypeAny:      concurrency,
 				storage.BlockTypeStandard: concurrency,
@@ -220,7 +220,7 @@ func (migratablePeer *MigratablePeer) MigrateTo(
 					panic(errors.Join(mounter.ErrCouldNotSendPreLockEvent, err))
 				}
 
-				input.Prev.Storage.Lock()
+				input.prev.storage.Lock()
 
 				if err := to.SendEvent(&packets.Event{
 					Type: packets.EventPostLock,
@@ -237,7 +237,7 @@ func (migratablePeer *MigratablePeer) MigrateTo(
 					panic(errors.Join(mounter.ErrCouldNotSendPreUnlockEvent, err))
 				}
 
-				input.Prev.Storage.Unlock()
+				input.prev.storage.Unlock()
 
 				if err := to.SendEvent(&packets.Event{
 					Type: packets.EventPostUnlock,
@@ -254,16 +254,16 @@ func (migratablePeer *MigratablePeer) MigrateTo(
 			}
 			cfg.Progress_handler = func(p *migrator.MigrationProgress) {
 				if hook := hooks.OnDeviceInitialMigrationProgress; hook != nil {
-					hook(uint32(index), input.Prev.Prev.Prev.Remote, p.Ready_blocks, p.Total_blocks)
+					hook(uint32(index), input.prev.prev.prev.remote, p.Ready_blocks, p.Total_blocks)
 				}
 			}
 
-			mig, err := migrator.NewMigrator(input.Prev.DirtyRemote, to, input.Prev.Orderer, cfg)
+			mig, err := migrator.NewMigrator(input.prev.dirtyRemote, to, input.prev.orderer, cfg)
 			if err != nil {
 				return errors.Join(registry.ErrCouldNotCreateMigrator, err)
 			}
 
-			if err := mig.Migrate(input.Prev.TotalBlocks); err != nil {
+			if err := mig.Migrate(input.prev.totalBlocks); err != nil {
 				return errors.Join(mounter.ErrCouldNotMigrateBlocks, err)
 			}
 
@@ -283,7 +283,7 @@ func (migratablePeer *MigratablePeer) MigrateTo(
 			for {
 				suspendedVMLock.Lock()
 				// We only need to `msync` for the memory because `msync` only affects the memory
-				if !suspendedVM && input.Prev.Prev.Prev.Name == packager.MemoryName {
+				if !suspendedVM && input.prev.prev.prev.name == packager.MemoryName {
 					if err := migratablePeer.resumedRunner.Msync(goroutineManager.Context()); err != nil {
 						suspendedVMLock.Unlock()
 
@@ -295,7 +295,7 @@ func (migratablePeer *MigratablePeer) MigrateTo(
 				ongoingMigrationsWg.Wait()
 
 				if hook := hooks.OnBeforeGetDirtyBlocks; hook != nil {
-					hook(uint32(index), input.Prev.Prev.Prev.Remote)
+					hook(uint32(index), input.prev.prev.prev.remote)
 				}
 
 				blocks := mig.GetLatestDirty()
@@ -312,7 +312,7 @@ func (migratablePeer *MigratablePeer) MigrateTo(
 				}
 
 				if blocks != nil {
-					if err := to.DirtyList(int(input.Prev.Prev.Prev.BlockSize), blocks); err != nil {
+					if err := to.DirtyList(int(input.prev.prev.prev.blockSize), blocks); err != nil {
 						return errors.Join(mounter.ErrCouldNotSendDirtyList, err)
 					}
 
@@ -329,11 +329,11 @@ func (migratablePeer *MigratablePeer) MigrateTo(
 
 						if suspendedVM {
 							if hook := hooks.OnDeviceFinalMigrationProgress; hook != nil {
-								hook(uint32(index), input.Prev.Prev.Prev.Remote, len(blocks))
+								hook(uint32(index), input.prev.prev.prev.remote, len(blocks))
 							}
 						} else {
 							if hook := hooks.OnDeviceContinousMigrationProgress; hook != nil {
-								hook(uint32(index), input.Prev.Prev.Prev.Remote, len(blocks))
+								hook(uint32(index), input.prev.prev.prev.remote, len(blocks))
 							}
 						}
 					})
@@ -345,7 +345,7 @@ func (migratablePeer *MigratablePeer) MigrateTo(
 
 					// We use the background context here instead of the internal context because we want to distinguish
 					// between a context cancellation from the outside and getting a response
-					cycleThrottleCtx, cancelCycleThrottleCtx := context.WithTimeout(context.Background(), input.MigrateToDevice.CycleThrottle)
+					cycleThrottleCtx, cancelCycleThrottleCtx := context.WithTimeout(context.Background(), input.migrateToDevice.CycleThrottle)
 					defer cancelCycleThrottleCtx()
 
 					select {
@@ -367,12 +367,12 @@ func (migratablePeer *MigratablePeer) MigrateTo(
 				}
 
 				totalCycles++
-				if len(blocks) < input.MigrateToDevice.MaxDirtyBlocks {
+				if len(blocks) < input.migrateToDevice.MaxDirtyBlocks {
 					cyclesBelowDirtyBlockTreshold++
-					if cyclesBelowDirtyBlockTreshold > input.MigrateToDevice.MinCycles {
+					if cyclesBelowDirtyBlockTreshold > input.migrateToDevice.MinCycles {
 						markDeviceAsReadyForAuthorityTransfer()
 					}
-				} else if totalCycles > input.MigrateToDevice.MaxCycles {
+				} else if totalCycles > input.migrateToDevice.MaxCycles {
 					markDeviceAsReadyForAuthorityTransfer()
 				} else {
 					cyclesBelowDirtyBlockTreshold = 0
@@ -393,7 +393,7 @@ func (migratablePeer *MigratablePeer) MigrateTo(
 			}
 
 			if hook := hooks.OnDeviceAuthoritySent; hook != nil {
-				hook(uint32(index), input.Prev.Prev.Prev.Remote)
+				hook(uint32(index), input.prev.prev.prev.remote)
 			}
 
 			if err := mig.WaitForCompletion(); err != nil {
@@ -407,7 +407,7 @@ func (migratablePeer *MigratablePeer) MigrateTo(
 			}
 
 			if hook := hooks.OnDeviceMigrationCompleted; hook != nil {
-				hook(uint32(index), input.Prev.Prev.Prev.Remote)
+				hook(uint32(index), input.prev.prev.prev.remote)
 			}
 
 			return nil

@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loopholelabs/drafter/pkg/roles/mounter"
 	"github.com/loopholelabs/drafter/pkg/roles/packager"
 	"github.com/loopholelabs/drafter/pkg/roles/runner"
 	"github.com/loopholelabs/drafter/pkg/roles/snapshotter"
@@ -21,7 +20,7 @@ type MigratedPeer struct {
 	devices []MigrateFromDevice
 	runner  *runner.Runner
 
-	stage2Inputs []mounter.PeerStage2
+	stage2Inputs []stage2
 }
 
 func (migratedPeer *MigratedPeer) Resume(
