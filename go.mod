@@ -2,14 +2,12 @@ module github.com/loopholelabs/drafter
 
 go 1.22.5
 
-replace github.com/loopholelabs/goroutine-manager v0.1.0 => ../goroutine-manager
-
 require (
 	github.com/coreos/go-iptables v0.7.0
 	github.com/freddierice/go-losetup/v2 v2.0.1
 	github.com/klauspost/compress v1.17.9
 	github.com/lithammer/shortuuid/v4 v4.0.0
-	github.com/loopholelabs/goroutine-manager v0.1.0
+	github.com/loopholelabs/goroutine-manager v0.1.1
 	github.com/loopholelabs/silo v0.0.8
 	github.com/metal-stack/go-ipam v1.14.0
 	github.com/pojntfx/panrpc/go v0.0.0-20240702184342-b89dd0c1dde5
