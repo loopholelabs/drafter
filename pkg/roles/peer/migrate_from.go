@@ -65,7 +65,7 @@ func (peer *Peer) MigrateFrom(
 		devices: devices,
 		runner:  peer.runner,
 
-		stage2Inputs: []mounter.PeerStage2{},
+		stage2Inputs: []stage2{},
 	}
 
 	var (
@@ -191,16 +191,16 @@ func (peer *Peer) MigrateFrom(
 						dev.SetProvider(local)
 
 						stage2InputsLock.Lock()
-						migratedPeer.stage2Inputs = append(migratedPeer.stage2Inputs, mounter.PeerStage2{
-							Name: di.Name,
+						migratedPeer.stage2Inputs = append(migratedPeer.stage2Inputs, stage2{
+							name: di.Name,
 
-							BlockSize: di.Block_size,
+							blockSize: di.Block_size,
 
-							ID:     index,
-							Remote: true,
+							id:     index,
+							remote: true,
 
-							Storage: local,
-							Device:  dev,
+							storage: local,
+							device:  dev,
 						})
 						stage2InputsLock.Unlock()
 
@@ -407,8 +407,8 @@ func (peer *Peer) MigrateFrom(
 	for _, input := range devices {
 		if slices.ContainsFunc(
 			migratedPeer.stage2Inputs,
-			func(r mounter.PeerStage2) bool {
-				return input.Name == r.Name
+			func(r stage2) bool {
+				return input.Name == r.name
 			},
 		) {
 			continue
@@ -489,16 +489,16 @@ func (peer *Peer) MigrateFrom(
 				dev.SetProvider(local)
 
 				stage2InputsLock.Lock()
-				migratedPeer.stage2Inputs = append(migratedPeer.stage2Inputs, mounter.PeerStage2{
-					Name: input.Name,
+				migratedPeer.stage2Inputs = append(migratedPeer.stage2Inputs, stage2{
+					name: input.Name,
 
-					BlockSize: input.BlockSize,
+					blockSize: input.BlockSize,
 
-					ID:     uint32(index),
-					Remote: false,
+					id:     uint32(index),
+					remote: false,
 
-					Storage: local,
-					Device:  dev,
+					storage: local,
+					device:  dev,
 				})
 				stage2InputsLock.Unlock()
 

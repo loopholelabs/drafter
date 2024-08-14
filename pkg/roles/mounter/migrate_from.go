@@ -196,16 +196,16 @@ func MigrateFromAndMount(
 						device.SetProvider(local)
 
 						stage2InputsLock.Lock()
-						migratedMounter.stage2Inputs = append(migratedMounter.stage2Inputs, PeerStage2{
-							Name: di.Name,
+						migratedMounter.stage2Inputs = append(migratedMounter.stage2Inputs, stage2{
+							name: di.Name,
 
-							BlockSize: di.Block_size,
+							blockSize: di.Block_size,
 
-							ID:     index,
-							Remote: true,
+							id:     index,
+							remote: true,
 
-							Storage: local,
-							Device:  device,
+							storage: local,
+							device:  device,
 						})
 						stage2InputsLock.Unlock()
 
@@ -379,8 +379,8 @@ func MigrateFromAndMount(
 	for _, input := range devices {
 		if slices.ContainsFunc(
 			migratedMounter.stage2Inputs,
-			func(r PeerStage2) bool {
-				return input.Name == r.Name
+			func(r stage2) bool {
+				return input.Name == r.name
 			},
 		) {
 			continue
@@ -457,16 +457,16 @@ func MigrateFromAndMount(
 			dev.SetProvider(local)
 
 			stage2InputsLock.Lock()
-			migratedMounter.stage2Inputs = append(migratedMounter.stage2Inputs, PeerStage2{
-				Name: input.Name,
+			migratedMounter.stage2Inputs = append(migratedMounter.stage2Inputs, stage2{
+				name: input.Name,
 
-				BlockSize: input.BlockSize,
+				blockSize: input.BlockSize,
 
-				ID:     uint32(index),
-				Remote: false,
+				id:     uint32(index),
+				remote: false,
 
-				Storage: local,
-				Device:  dev,
+				storage: local,
+				device:  dev,
 			})
 			stage2InputsLock.Unlock()
 
@@ -506,8 +506,8 @@ func MigrateFromAndMount(
 
 	for _, input := range migratedMounter.stage2Inputs {
 		migratedMounter.Devices = append(migratedMounter.Devices, MigratedDevice{
-			Name: input.Name,
-			Path: filepath.Join("/dev", input.Device.Device()),
+			Name: input.name,
+			Path: filepath.Join("/dev", input.device.Device()),
 		})
 	}
 

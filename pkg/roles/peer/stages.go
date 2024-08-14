@@ -1,6 +1,7 @@
-package mounter
+package peer
 
 import (
+	"github.com/loopholelabs/drafter/pkg/roles/mounter"
 	"github.com/loopholelabs/silo/pkg/storage"
 	"github.com/loopholelabs/silo/pkg/storage/blocks"
 	"github.com/loopholelabs/silo/pkg/storage/dirtytracker"
@@ -22,7 +23,7 @@ type stage2 struct {
 type stage3 struct {
 	prev stage2
 
-	makeMigratableDevice MakeMigratableDevice
+	makeMigratableDevice mounter.MakeMigratableDevice
 }
 
 type stage4 struct {
@@ -37,5 +38,5 @@ type stage4 struct {
 type stage5 struct {
 	prev stage4
 
-	migrateToDevice MigrateToDevice
+	migrateToDevice mounter.MigrateToDevice
 }

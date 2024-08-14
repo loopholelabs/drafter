@@ -19,8 +19,8 @@ type ResumedPeer struct {
 
 	resumedRunner *runner.ResumedRunner
 
-	stage2Inputs []mounter.PeerStage2
-	stage4Inputs []mounter.PeerStage4
+	stage2Inputs []stage2
+	stage4Inputs []stage4
 }
 
 func (resumedPeer *ResumedPeer) MakeMigratable(
@@ -36,11 +36,11 @@ func (resumedPeer *ResumedPeer) MakeMigratable(
 		resumedRunner: resumedPeer.resumedRunner,
 	}
 
-	stage3Inputs := []mounter.PeerStage3{}
+	stage3Inputs := []stage3{}
 	for _, input := range resumedPeer.stage2Inputs {
 		var makeMigratableDevice *mounter.MakeMigratableDevice
 		for _, device := range devices {
-			if device.Name == input.Name {
+			if device.Name == input.name {
 				makeMigratableDevice = &device
 
 				break
@@ -52,10 +52,10 @@ func (resumedPeer *ResumedPeer) MakeMigratable(
 			continue
 		}
 
-		stage3Inputs = append(stage3Inputs, mounter.PeerStage3{
-			Prev: input,
+		stage3Inputs = append(stage3Inputs, stage3{
+			prev: input,
 
-			MakeMigratableDevice: *makeMigratableDevice,
+			makeMigratableDevice: *makeMigratableDevice,
 		})
 	}
 
@@ -65,28 +65,28 @@ func (resumedPeer *ResumedPeer) MakeMigratable(
 	)
 	resumedPeer.stage4Inputs, deferFuncs, err = utils.ConcurrentMap(
 		stage3Inputs,
-		func(index int, input mounter.PeerStage3, output *mounter.PeerStage4, addDefer func(deferFunc func() error)) error {
-			output.Prev = input
+		func(index int, input stage3, output *stage4, addDefer func(deferFunc func() error)) error {
+			output.prev = input
 
-			dirtyLocal, dirtyRemote := dirtytracker.NewDirtyTracker(input.Prev.Storage, int(input.Prev.BlockSize))
-			output.DirtyRemote = dirtyRemote
-			monitor := volatilitymonitor.NewVolatilityMonitor(dirtyLocal, int(input.Prev.BlockSize), input.MakeMigratableDevice.Expiry)
+			dirtyLocal, dirtyRemote := dirtytracker.NewDirtyTracker(input.prev.storage, int(input.prev.blockSize))
+			output.dirtyRemote = dirtyRemote
+			monitor := volatilitymonitor.NewVolatilityMonitor(dirtyLocal, int(input.prev.blockSize), input.makeMigratableDevice.Expiry)
 
 			local := modules.NewLockable(monitor)
-			output.Storage = local
+			output.storage = local
 			addDefer(func() error {
 				local.Unlock()
 
 				return nil
 			})
 
-			input.Prev.Device.SetProvider(local)
+			input.prev.device.SetProvider(local)
 
-			totalBlocks := (int(local.Size()) + int(input.Prev.BlockSize) - 1) / int(input.Prev.BlockSize)
-			output.TotalBlocks = totalBlocks
+			totalBlocks := (int(local.Size()) + int(input.prev.blockSize) - 1) / int(input.prev.blockSize)
+			output.totalBlocks = totalBlocks
 
 			orderer := blocks.NewPriorityBlockOrder(totalBlocks, monitor)
-			output.Orderer = orderer
+			output.orderer = orderer
 			orderer.AddAll()
 
 			return nil
