@@ -1205,7 +1205,7 @@ Integrating Drafter into your Go project is straightforward; it's a pure Go libr
 $ go get github.com/loopholelabs/drafter/...@latest
 ```
 
-The [`pkg/roles`](https://pkg.go.dev/github.com/loopholelabs/drafter/pkg) package includes all the necessary functionality for most usage scenarios. For practical implementation examples, refer to [examples](#examples).
+The [`pkg`](https://pkg.go.dev/github.com/loopholelabs/drafter/pkg) package includes all the necessary functionality for most usage scenarios. For practical implementation examples, refer to [examples](#examples).
 
 ### How Can I Add Additional Disks to My VM Instance?
 
@@ -1234,7 +1234,7 @@ LABEL=mydisk    /mymount    ext4    defaults    0    2
 
 ### How Can I Add Additional VSocks to My VM?
 
-Using additional VSocks requires getting access to the runner's `VMPath`, which is available at `${runner.VMPath}/${packager.VSockName}` and `${peer.VMPath}/${packager.VSockName}`. Other than that, refer to the [Firecracker docs](https://github.com/firecracker-microvm/firecracker/blob/main/docs/vsock.md) and [examples](#examples) for more information on how to use Firecracker's VSock-via-UNIX socket implementation.
+Using additional VSocks requires getting access to the runner's `VMPath`, which is available at `${runner.VMPath}/${snapshotter.VSockName}` and `${peer.VMPath}/${snapshotter.VSockName}`. Other than that, refer to the [Firecracker docs](https://github.com/firecracker-microvm/firecracker/blob/main/docs/vsock.md) and [examples](#examples) for more information on how to use Firecracker's VSock-via-UNIX socket implementation.
 
 ### Does Drafter Support IPv6?
 
