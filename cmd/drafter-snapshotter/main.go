@@ -11,7 +11,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/loopholelabs/drafter/pkg/roles"
+	"github.com/loopholelabs/drafter/pkg/roles/packager"
+	"github.com/loopholelabs/drafter/pkg/roles/snapshotter"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 )
 
@@ -39,29 +40,29 @@ func main() {
 	livenessVSockPort := flag.Int("liveness-vsock-port", 25, "Liveness VSock port")
 	agentVSockPort := flag.Int("agent-vsock-port", 26, "Agent VSock port")
 
-	defaultDevices, err := json.Marshal([]roles.SnapshotDevice{
+	defaultDevices, err := json.Marshal([]snapshotter.SnapshotDevice{
 		{
-			Name:   roles.StateName,
+			Name:   packager.StateName,
 			Output: filepath.Join("out", "package", "state.bin"),
 		},
 		{
-			Name:   roles.MemoryName,
+			Name:   packager.MemoryName,
 			Output: filepath.Join("out", "package", "memory.bin"),
 		},
 
 		{
-			Name:   roles.KernelName,
+			Name:   packager.KernelName,
 			Input:  filepath.Join("out", "blueprint", "vmlinux"),
 			Output: filepath.Join("out", "package", "vmlinux"),
 		},
 		{
-			Name:   roles.DiskName,
+			Name:   packager.DiskName,
 			Input:  filepath.Join("out", "blueprint", "rootfs.ext4"),
 			Output: filepath.Join("out", "package", "rootfs.ext4"),
 		},
 
 		{
-			Name:   roles.ConfigName,
+			Name:   packager.ConfigName,
 			Output: filepath.Join("out", "package", "config.json"),
 		},
 
@@ -80,14 +81,14 @@ func main() {
 	cpuCount := flag.Int("cpu-count", 1, "CPU count")
 	memorySize := flag.Int("memory-size", 1024, "Memory size (in MB)")
 	cpuTemplate := flag.String("cpu-template", "None", "Firecracker CPU template (see https://github.com/firecracker-microvm/firecracker/blob/main/docs/cpu_templates/cpu-templates.md#static-cpu-templates for the options)")
-	bootArgs := flag.String("boot-args", roles.DefaultBootArgs, "Boot/kernel arguments")
+	bootArgs := flag.String("boot-args", snapshotter.DefaultBootArgs, "Boot/kernel arguments")
 
 	flag.Parse()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	var devices []roles.SnapshotDevice
+	var devices []snapshotter.SnapshotDevice
 	if err := json.Unmarshal([]byte(*rawDevices), &devices); err != nil {
 		panic(err)
 	}
@@ -129,24 +130,24 @@ func main() {
 		cancel()
 	}()
 
-	if err := roles.CreateSnapshot(
+	if err := snapshotter.CreateSnapshot(
 		goroutineManager.Context(),
 
 		devices,
 
-		roles.VMConfiguration{
+		snapshotter.VMConfiguration{
 			CPUCount:    *cpuCount,
 			MemorySize:  *memorySize,
 			CPUTemplate: *cpuTemplate,
 
 			BootArgs: *bootArgs,
 		},
-		roles.LivenessConfiguration{
+		snapshotter.LivenessConfiguration{
 			LivenessVSockPort: uint32(*livenessVSockPort),
 			ResumeTimeout:     *resumeTimeout,
 		},
 
-		roles.HypervisorConfiguration{
+		snapshotter.HypervisorConfiguration{
 			FirecrackerBin: firecrackerBin,
 			JailerBin:      jailerBin,
 
@@ -162,11 +163,11 @@ func main() {
 			EnableOutput: *enableOutput,
 			EnableInput:  *enableInput,
 		},
-		roles.NetworkConfiguration{
+		snapshotter.NetworkConfiguration{
 			Interface: *iface,
 			MAC:       *mac,
 		},
-		roles.AgentConfiguration{
+		snapshotter.AgentConfiguration{
 			AgentVSockPort: uint32(*agentVSockPort),
 			ResumeTimeout:  *resumeTimeout,
 		},

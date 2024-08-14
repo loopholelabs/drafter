@@ -9,32 +9,32 @@ import (
 	"os/signal"
 	"path/filepath"
 
-	"github.com/loopholelabs/drafter/pkg/roles"
+	"github.com/loopholelabs/drafter/pkg/roles/packager"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 )
 
 func main() {
-	defaultDevices, err := json.Marshal([]roles.PackagerDevice{
+	defaultDevices, err := json.Marshal([]packager.PackagerDevice{
 		{
-			Name: roles.StateName,
+			Name: packager.StateName,
 			Path: filepath.Join("out", "package", "state.bin"),
 		},
 		{
-			Name: roles.MemoryName,
+			Name: packager.MemoryName,
 			Path: filepath.Join("out", "package", "memory.bin"),
 		},
 
 		{
-			Name: roles.KernelName,
+			Name: packager.KernelName,
 			Path: filepath.Join("out", "package", "vmlinux"),
 		},
 		{
-			Name: roles.DiskName,
+			Name: packager.DiskName,
 			Path: filepath.Join("out", "package", "rootfs.ext4"),
 		},
 
 		{
-			Name: roles.ConfigName,
+			Name: packager.ConfigName,
 			Path: filepath.Join("out", "package", "config.json"),
 		},
 
@@ -55,7 +55,7 @@ func main() {
 
 	flag.Parse()
 
-	var devices []roles.PackagerDevice
+	var devices []packager.PackagerDevice
 	if err := json.Unmarshal([]byte(*rawDevices), &devices); err != nil {
 		panic(err)
 	}
@@ -91,13 +91,13 @@ func main() {
 	}()
 
 	if *extract {
-		if err := roles.ExtractPackage(
+		if err := packager.ExtractPackage(
 			goroutineManager.Context(),
 
 			*packagePath,
 			devices,
 
-			roles.PackagerHooks{
+			packager.PackagerHooks{
 				OnBeforeProcessFile: func(name, path string) {
 					log.Println("Extracting device", name, "to", path)
 				},
@@ -109,13 +109,13 @@ func main() {
 		return
 	}
 
-	if err := roles.ArchivePackage(
+	if err := packager.ArchivePackage(
 		goroutineManager.Context(),
 
 		devices,
 		*packagePath,
 
-		roles.PackagerHooks{
+		packager.PackagerHooks{
 			OnBeforeProcessFile: func(name, path string) {
 				log.Println("Archiving device", name, "from", path)
 			},

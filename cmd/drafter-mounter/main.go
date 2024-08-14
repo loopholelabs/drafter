@@ -15,7 +15,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/loopholelabs/drafter/pkg/roles"
+	"github.com/loopholelabs/drafter/pkg/roles/mounter"
+	"github.com/loopholelabs/drafter/pkg/roles/packager"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 )
 
@@ -42,7 +43,7 @@ type CompositeDevices struct {
 func main() {
 	defaultDevices, err := json.Marshal([]CompositeDevices{
 		{
-			Name: roles.StateName,
+			Name: packager.StateName,
 
 			Base:    filepath.Join("out", "package", "state.bin"),
 			Overlay: filepath.Join("out", "overlay", "state.bin"),
@@ -61,7 +62,7 @@ func main() {
 			MakeMigratable: true,
 		},
 		{
-			Name: roles.MemoryName,
+			Name: packager.MemoryName,
 
 			Base:    filepath.Join("out", "package", "memory.bin"),
 			Overlay: filepath.Join("out", "overlay", "memory.bin"),
@@ -81,7 +82,7 @@ func main() {
 		},
 
 		{
-			Name: roles.KernelName,
+			Name: packager.KernelName,
 
 			Base:    filepath.Join("out", "package", "vmlinux"),
 			Overlay: filepath.Join("out", "overlay", "vmlinux"),
@@ -100,7 +101,7 @@ func main() {
 			MakeMigratable: true,
 		},
 		{
-			Name: roles.DiskName,
+			Name: packager.DiskName,
 
 			Base:    filepath.Join("out", "package", "rootfs.ext4"),
 			Overlay: filepath.Join("out", "overlay", "rootfs.ext4"),
@@ -120,7 +121,7 @@ func main() {
 		},
 
 		{
-			Name: roles.ConfigName,
+			Name: packager.ConfigName,
 
 			Base:    filepath.Join("out", "package", "config.json"),
 			Overlay: filepath.Join("out", "overlay", "config.json"),
@@ -232,9 +233,9 @@ func main() {
 		writers = []io.Writer{conn}
 	}
 
-	migrateFromDevices := []roles.MigrateFromAndMountDevice{}
+	migrateFromDevices := []mounter.MigrateFromAndMountDevice{}
 	for _, device := range devices {
-		migrateFromDevices = append(migrateFromDevices, roles.MigrateFromAndMountDevice{
+		migrateFromDevices = append(migrateFromDevices, mounter.MigrateFromAndMountDevice{
 			Name: device.Name,
 
 			Base:    device.Base,
@@ -245,7 +246,7 @@ func main() {
 		})
 	}
 
-	migratedMounter, err := roles.MigrateFromAndMount(
+	migratedMounter, err := mounter.MigrateFromAndMount(
 		goroutineManager.Context(),
 		goroutineManager.Context(),
 
@@ -254,7 +255,7 @@ func main() {
 		readers,
 		writers,
 
-		roles.MigrateFromHooks{
+		mounter.MigrateFromHooks{
 			OnRemoteDeviceReceived: func(remoteDeviceID uint32, name string) {
 				log.Println("Received remote device", remoteDeviceID, "with name", name)
 			},
@@ -411,13 +412,13 @@ l:
 
 			log.Println("Migrating to", conn.RemoteAddr())
 
-			makeMigratableDevices := []roles.MakeMigratableDevice{}
+			makeMigratableDevices := []mounter.MakeMigratableDevice{}
 			for _, device := range devices {
 				if !device.MakeMigratable {
 					continue
 				}
 
-				makeMigratableDevices = append(makeMigratableDevices, roles.MakeMigratableDevice{
+				makeMigratableDevices = append(makeMigratableDevices, mounter.MakeMigratableDevice{
 					Name: device.Name,
 
 					Expiry: device.Expiry,
@@ -436,13 +437,13 @@ l:
 
 			defer migratableMounter.Close()
 
-			migrateToDevices := []roles.MigrateToDevice{}
+			migrateToDevices := []mounter.MigrateToDevice{}
 			for _, device := range devices {
 				if !device.MakeMigratable {
 					continue
 				}
 
-				migrateToDevices = append(migrateToDevices, roles.MigrateToDevice{
+				migrateToDevices = append(migrateToDevices, mounter.MigrateToDevice{
 					Name: device.Name,
 
 					MaxDirtyBlocks: device.MaxDirtyBlocks,
@@ -463,7 +464,7 @@ l:
 				[]io.Reader{conn},
 				[]io.Writer{conn},
 
-				roles.MounterMigrateToHooks{
+				mounter.MounterMigrateToHooks{
 					OnBeforeGetDirtyBlocks: func(deviceID uint32, remote bool) {
 						if remote {
 							log.Println("Getting dirty blocks for remote device", deviceID)

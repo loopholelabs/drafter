@@ -7,7 +7,7 @@ import (
 	"os"
 	"os/signal"
 
-	"github.com/loopholelabs/drafter/pkg/roles"
+	"github.com/loopholelabs/drafter/pkg/roles/nat"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 )
 
@@ -60,11 +60,11 @@ func main() {
 		cancel()
 	}()
 
-	nat, err := roles.CreateNAT(
+	namespaces, err := nat.CreateNAT(
 		goroutineManager.Context(),
 		context.Background(), // Never give up on rescue operations
 
-		roles.TranslationConfiguration{
+		nat.TranslationConfiguration{
 			HostInterface: *hostInterface,
 
 			HostVethCIDR:      *hostVethCIDR,
@@ -82,7 +82,7 @@ func main() {
 			AllowIncomingTraffic: *allowIncomingTraffic,
 		},
 
-		roles.CreateNamespacesHooks{
+		nat.CreateNamespacesHooks{
 			OnBeforeCreateNamespace: func(id string) {
 				log.Println("Creating namespace", id)
 			},
@@ -95,7 +95,7 @@ func main() {
 	defer func() {
 		defer goroutineManager.CreateForegroundPanicCollector()()
 
-		if err := nat.Wait(); err != nil {
+		if err := namespaces.Wait(); err != nil {
 			panic(err)
 		}
 	}()
@@ -107,13 +107,13 @@ func main() {
 	defer func() {
 		defer goroutineManager.CreateForegroundPanicCollector()()
 
-		if err := nat.Close(); err != nil {
+		if err := namespaces.Close(); err != nil {
 			panic(err)
 		}
 	}()
 
 	goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
-		if err := nat.Wait(); err != nil {
+		if err := namespaces.Wait(); err != nil {
 			panic(err)
 		}
 	})

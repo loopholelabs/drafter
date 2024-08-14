@@ -12,36 +12,37 @@ import (
 	"os/signal"
 	"path/filepath"
 
-	"github.com/loopholelabs/drafter/pkg/roles"
+	"github.com/loopholelabs/drafter/pkg/roles/packager"
+	"github.com/loopholelabs/drafter/pkg/roles/registry"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 )
 
 func main() {
-	defaultDevices, err := json.Marshal([]roles.RegistryDevice{
+	defaultDevices, err := json.Marshal([]registry.RegistryDevice{
 		{
-			Name:      roles.StateName,
+			Name:      packager.StateName,
 			Input:     filepath.Join("out", "package", "state.bin"),
 			BlockSize: 1024 * 64,
 		},
 		{
-			Name:      roles.MemoryName,
+			Name:      packager.MemoryName,
 			Input:     filepath.Join("out", "package", "memory.bin"),
 			BlockSize: 1024 * 64,
 		},
 
 		{
-			Name:      roles.KernelName,
+			Name:      packager.KernelName,
 			Input:     filepath.Join("out", "package", "vmlinux"),
 			BlockSize: 1024 * 64,
 		},
 		{
-			Name:      roles.DiskName,
+			Name:      packager.DiskName,
 			Input:     filepath.Join("out", "package", "rootfs.ext4"),
 			BlockSize: 1024 * 64,
 		},
 
 		{
-			Name:      roles.ConfigName,
+			Name:      packager.ConfigName,
 			Input:     filepath.Join("out", "package", "config.json"),
 			BlockSize: 1024 * 64,
 		},
@@ -67,7 +68,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	var devices []roles.RegistryDevice
+	var devices []registry.RegistryDevice
 	if err := json.Unmarshal([]byte(*rawDevices), &devices); err != nil {
 		panic(err)
 	}
@@ -145,10 +146,10 @@ l:
 				}
 			}()
 
-			openedDevices, defers, err := roles.OpenDevices(
+			openedDevices, defers, err := registry.OpenDevices(
 				devices,
 
-				roles.OpenDevicesHooks{
+				registry.OpenDevicesHooks{
 					OnDeviceOpened: func(deviceID uint32, name string) {
 						log.Println("Opened device", deviceID, "with name", name)
 					},
@@ -162,7 +163,7 @@ l:
 				defer deferFunc()
 			}
 
-			if err := roles.MigrateOpenedDevices(
+			if err := registry.MigrateTo(
 				goroutineManager.Context(),
 
 				openedDevices,
@@ -171,7 +172,7 @@ l:
 				[]io.Reader{conn},
 				[]io.Writer{conn},
 
-				roles.MigrateDevicesHooks{
+				registry.MigrateToHooks{
 					OnDeviceSent: func(deviceID uint32) {
 						log.Println("Sent device", deviceID)
 					},

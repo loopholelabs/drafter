@@ -34,13 +34,6 @@ type AgentServer struct {
 	closeLock sync.Mutex
 }
 
-type AcceptingAgentServer struct {
-	Remote remotes.AgentRemote
-
-	Wait  func() error
-	Close func() error
-}
-
 func StartAgentServer(
 	vsockPath string,
 	vsockPort uint32,
@@ -73,6 +66,13 @@ func StartAgentServer(
 	}
 
 	return
+}
+
+type AcceptingAgentServer struct {
+	Remote remotes.AgentRemote
+
+	Wait  func() error
+	Close func() error
 }
 
 func (agentServer *AgentServer) Accept(acceptCtx context.Context, remoteCtx context.Context) (acceptingAgentServer *AcceptingAgentServer, errs error) {

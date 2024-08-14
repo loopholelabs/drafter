@@ -1,4 +1,4 @@
-package roles
+package nat
 
 import (
 	"context"
@@ -11,56 +11,22 @@ import (
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 )
 
-var (
-	ErrNotEnoughAvailableIPsInHostCIDR      = errors.New("not enough available IPs in host CIDR")
-	ErrNotEnoughAvailableIPsInNamespaceCIDR = errors.New("not enough available IPs in namespace CIDR")
-	ErrAllNamespacesClaimed                 = errors.New("all namespaces claimed")
-	ErrCouldNotFindHostInterface            = errors.New("could not find host interface")
-	ErrCouldNotCreateNAT                    = errors.New("could not create NAT")
-	ErrCouldNotOpenHostVethIPs              = errors.New("could not open host Veth IPs")
-	ErrCouldNotOpenNamespaceVethIPs         = errors.New("could not open namespace Veth IPs")
-	ErrCouldNotReleaseHostVethIP            = errors.New("could not release host Veth IP")
-	ErrCouldNotReleaseNamespaceVethIP       = errors.New("could not release namespace Veth IP")
-	ErrCouldNotOpenNamespace                = errors.New("could not open namespace")
-	ErrCouldNotCloseNamespace               = errors.New("could not close namespace")
-	ErrCouldNotRemoveNAT                    = errors.New("could not remove NAT")
-	ErrNATContextCancelled                  = errors.New("context for NAT cancelled")
-)
-
-type claimableNamespace struct {
-	namespace *network.Namespace
-	claimed   bool
-}
-
-type Namespaces struct {
-	Wait  func() error
-	Close func() error
-
-	claimableNamespaces     map[string]*claimableNamespace
-	claimableNamespacesLock sync.Mutex
-}
-
-type CreateNamespacesHooks struct {
-	OnBeforeCreateNamespace func(id string)
-	OnBeforeRemoveNamespace func(id string)
-}
-
 type TranslationConfiguration struct {
-	HostInterface,
+	HostInterface string `json:"hostInterface"`
 
-	HostVethCIDR,
-	NamespaceVethCIDR,
-	BlockedSubnetCIDR,
+	HostVethCIDR      string `json:"hostVethCIDR"`
+	NamespaceVethCIDR string `json:"namespaceVethCIDR"`
+	BlockedSubnetCIDR string `json:"blockedSubnetCIDR"`
 
-	NamespaceInterface,
-	NamespaceInterfaceGateway string
-	NamespaceInterfaceNetmask uint32
-	NamespaceInterfaceIP,
-	NamespaceInterfaceMAC,
+	NamespaceInterface        string `json:"namespaceInterface"`
+	NamespaceInterfaceGateway string `json:"namespaceInterfaceGateway"`
+	NamespaceInterfaceNetmask uint32 `json:"namespaceInterfaceNetmask"`
+	NamespaceInterfaceIP      string `json:"namespaceInterfaceIP"`
+	NamespaceInterfaceMAC     string `json:"namespaceInterfaceMAC"`
 
-	NamespacePrefix string
+	NamespacePrefix string `json:"namespacePrefix"`
 
-	AllowIncomingTraffic bool
+	AllowIncomingTraffic bool `json:"allowIncomingTraffic"`
 }
 
 func CreateNAT(
@@ -338,34 +304,4 @@ func CreateNAT(
 	close(ready)
 
 	return
-}
-
-func (namespaces *Namespaces) ReleaseNamespace(namespace string) error {
-	namespaces.claimableNamespacesLock.Lock()
-	defer namespaces.claimableNamespacesLock.Unlock()
-
-	ns, ok := namespaces.claimableNamespaces[namespace]
-	if !ok {
-		// Releasing non-claimed namespaces is a no-op
-		return nil
-	}
-
-	ns.claimed = false
-
-	return nil
-}
-
-func (namespaces *Namespaces) ClaimNamespace() (string, error) {
-	namespaces.claimableNamespacesLock.Lock()
-	defer namespaces.claimableNamespacesLock.Unlock()
-
-	for _, namespace := range namespaces.claimableNamespaces {
-		if !namespace.claimed {
-			namespace.claimed = true
-
-			return namespace.namespace.GetID(), nil
-		}
-	}
-
-	return "", ErrAllNamespacesClaimed
 }

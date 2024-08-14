@@ -11,32 +11,33 @@ import (
 	"os/signal"
 	"path/filepath"
 
-	"github.com/loopholelabs/drafter/pkg/roles"
+	"github.com/loopholelabs/drafter/pkg/roles/packager"
+	"github.com/loopholelabs/drafter/pkg/roles/terminator"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 )
 
 func main() {
-	defaultDevices, err := json.Marshal([]roles.TerminatorDevice{
+	defaultDevices, err := json.Marshal([]terminator.TerminatorDevice{
 		{
-			Name:   roles.StateName,
+			Name:   packager.StateName,
 			Output: filepath.Join("out", "package", "state.bin"),
 		},
 		{
-			Name:   roles.MemoryName,
+			Name:   packager.MemoryName,
 			Output: filepath.Join("out", "package", "memory.bin"),
 		},
 
 		{
-			Name:   roles.KernelName,
+			Name:   packager.KernelName,
 			Output: filepath.Join("out", "package", "vmlinux"),
 		},
 		{
-			Name:   roles.DiskName,
+			Name:   packager.DiskName,
 			Output: filepath.Join("out", "package", "rootfs.ext4"),
 		},
 
 		{
-			Name:   roles.ConfigName,
+			Name:   packager.ConfigName,
 			Output: filepath.Join("out", "package", "config.json"),
 		},
 
@@ -58,7 +59,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	var devices []roles.TerminatorDevice
+	var devices []terminator.TerminatorDevice
 	if err := json.Unmarshal([]byte(*rawDevices), &devices); err != nil {
 		panic(err)
 	}
@@ -98,7 +99,7 @@ func main() {
 
 	log.Println("Migrating from", conn.RemoteAddr())
 
-	if err := roles.Terminate(
+	if err := terminator.Terminate(
 		goroutineManager.Context(),
 
 		devices,
@@ -106,7 +107,7 @@ func main() {
 		[]io.Reader{conn},
 		[]io.Writer{conn},
 
-		roles.TerminateHooks{
+		terminator.TerminateHooks{
 			OnDeviceReceived: func(deviceID uint32, name string) {
 				log.Println("Received device", deviceID, "with name", name)
 			},
