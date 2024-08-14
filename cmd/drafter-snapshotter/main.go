@@ -11,8 +11,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/loopholelabs/drafter/pkg/roles/packager"
-	"github.com/loopholelabs/drafter/pkg/roles/snapshotter"
+	"github.com/loopholelabs/drafter/pkg/packager"
+	"github.com/loopholelabs/drafter/pkg/snapshotter"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 )
 

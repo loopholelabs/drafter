@@ -5,7 +5,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/loopholelabs/drafter/pkg/roles/snapshotter"
+	"github.com/loopholelabs/drafter/pkg/snapshotter"
 )
 
 func (resumedRunner *ResumedRunner) SuspendAndCloseAgentServer(ctx context.Context, suspendTimeout time.Duration) error {

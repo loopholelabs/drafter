@@ -12,8 +12,8 @@ import (
 	"os/signal"
 	"path/filepath"
 
-	"github.com/loopholelabs/drafter/pkg/roles/packager"
-	"github.com/loopholelabs/drafter/pkg/roles/registry"
+	"github.com/loopholelabs/drafter/pkg/packager"
+	"github.com/loopholelabs/drafter/pkg/registry"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 )
 

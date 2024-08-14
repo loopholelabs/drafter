@@ -5,8 +5,8 @@ import (
 	"errors"
 
 	"github.com/loopholelabs/drafter/internal/utils"
-	"github.com/loopholelabs/drafter/pkg/roles/mounter"
-	"github.com/loopholelabs/drafter/pkg/roles/runner"
+	"github.com/loopholelabs/drafter/pkg/mounter"
+	"github.com/loopholelabs/drafter/pkg/runner"
 	"github.com/loopholelabs/silo/pkg/storage/blocks"
 	"github.com/loopholelabs/silo/pkg/storage/dirtytracker"
 	"github.com/loopholelabs/silo/pkg/storage/modules"

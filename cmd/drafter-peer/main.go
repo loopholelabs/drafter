@@ -16,11 +16,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/loopholelabs/drafter/pkg/roles/mounter"
-	"github.com/loopholelabs/drafter/pkg/roles/packager"
-	"github.com/loopholelabs/drafter/pkg/roles/peer"
-	"github.com/loopholelabs/drafter/pkg/roles/runner"
-	"github.com/loopholelabs/drafter/pkg/roles/snapshotter"
+	"github.com/loopholelabs/drafter/pkg/mounter"
+	"github.com/loopholelabs/drafter/pkg/packager"
+	"github.com/loopholelabs/drafter/pkg/peer"
+	"github.com/loopholelabs/drafter/pkg/runner"
+	"github.com/loopholelabs/drafter/pkg/snapshotter"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 )
 

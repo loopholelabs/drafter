@@ -1205,7 +1205,7 @@ Integrating Drafter into your Go project is straightforward; it's a pure Go libr
 $ go get github.com/loopholelabs/drafter/...@latest
 ```
 
-The [`pkg/roles`](https://pkg.go.dev/github.com/loopholelabs/drafter/pkg/roles) package includes all the necessary functionality for most usage scenarios. For practical implementation examples, refer to [examples](#examples).
+The [`pkg/roles`](https://pkg.go.dev/github.com/loopholelabs/drafter/pkg) package includes all the necessary functionality for most usage scenarios. For practical implementation examples, refer to [examples](#examples).
 
 ### How Can I Add Additional Disks to My VM Instance?
 

@@ -1,7 +1,7 @@
 package peer
 
 import (
-	"github.com/loopholelabs/drafter/pkg/roles/mounter"
+	"github.com/loopholelabs/drafter/pkg/mounter"
 	"github.com/loopholelabs/silo/pkg/storage"
 	"github.com/loopholelabs/silo/pkg/storage/blocks"
 	"github.com/loopholelabs/silo/pkg/storage/dirtytracker"

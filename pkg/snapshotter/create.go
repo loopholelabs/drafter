@@ -16,7 +16,7 @@ import (
 	"github.com/loopholelabs/drafter/internal/firecracker"
 	iutils "github.com/loopholelabs/drafter/internal/utils"
 	"github.com/loopholelabs/drafter/pkg/ipc"
-	"github.com/loopholelabs/drafter/pkg/roles/packager"
+	"github.com/loopholelabs/drafter/pkg/packager"
 	"github.com/loopholelabs/drafter/pkg/utils"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 )

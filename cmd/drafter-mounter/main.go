@@ -15,8 +15,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/loopholelabs/drafter/pkg/roles/mounter"
-	"github.com/loopholelabs/drafter/pkg/roles/packager"
+	"github.com/loopholelabs/drafter/pkg/mounter"
+	"github.com/loopholelabs/drafter/pkg/packager"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 )
 
