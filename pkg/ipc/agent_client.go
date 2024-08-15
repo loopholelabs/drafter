@@ -102,7 +102,7 @@ func StartAgentClient(
 	ready := make(chan any)
 	goroutineManager.StartBackgroundGoroutine(func(_ context.Context) {
 		select {
-		// Failure case; we cancelled the internal context before we got a connection
+		// Failure case; something failed and the goroutineManager.Context() was cancelled before we got a connection
 		case <-goroutineManager.Context().Done():
 			connectedAgentClient.Close() // We ignore errors here since we might interrupt a network connection
 
