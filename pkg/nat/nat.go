@@ -165,7 +165,7 @@ func CreateNAT(
 	ready := make(chan any)
 	goroutineManager.StartBackgroundGoroutine(func(_ context.Context) {
 		select {
-		// Failure case; we cancelled the internal context before we got a connection
+		// Failure case; something failed and the goroutineManager.Context() was cancelled before were ready
 		case <-goroutineManager.Context().Done():
 			if err := namespaces.Close(); err != nil {
 				panic(errors.Join(ErrNATContextCancelled, err))

@@ -99,7 +99,7 @@ func (agentServer *AgentServer) Accept(acceptCtx context.Context, remoteCtx cont
 	ready := make(chan any)
 	go func() {
 		select {
-		// Failure case; we cancelled the internal context before we got a connection
+		// Failure case; something failed and the goroutineManager.Context() was cancelled before we got a connection
 		case <-goroutineManager.Context().Done():
 			agentServer.Close() // We ignore errors here since we might interrupt a network connection
 
@@ -144,7 +144,7 @@ func (agentServer *AgentServer) Accept(acceptCtx context.Context, remoteCtx cont
 	// if we cancel the context during this call, we still handle it appropriately
 	goroutineManager.StartBackgroundGoroutine(func(_ context.Context) {
 		select {
-		// Failure case; we cancelled the internal context before we got a connection
+		// Failure case; something failed and the goroutineManager.Context() was cancelled before we got a connection
 		case <-goroutineManager.Context().Done():
 			if err := acceptingAgentServer.Close(); err != nil {
 				panic(errors.Join(ErrCouldNotCloseAcceptingAgentServer, err))
