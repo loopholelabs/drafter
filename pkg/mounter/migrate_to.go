@@ -329,7 +329,7 @@ func (migratableMounter *MigratableMounter) MigrateTo(
 					case <-suspendedVMCh:
 						break
 
-					case <-goroutineManager.Context().Done(): // ctx is the internalCtx here
+					case <-goroutineManager.Context().Done(): // ctx is the goroutineManager.Context() here
 						if err := goroutineManager.Context().Err(); err != nil {
 							return errors.Join(ErrMounterContextCancelled, err)
 						}

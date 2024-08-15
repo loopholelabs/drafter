@@ -101,7 +101,7 @@ func StartFirecrackerServer(
 	}
 
 	cmd := exec.CommandContext(
-		ctx, // We use ctx, not internalCtx here since this resource outlives the function call
+		ctx, // We use ctx, not goroutineManager.Context() here since this resource outlives the function call
 		jailerBin,
 		"--chroot-base-dir",
 		chrootBaseDir,
@@ -193,7 +193,7 @@ func StartFirecrackerServer(
 	goroutineManager.StartBackgroundGoroutine(func(_ context.Context) {
 		// Cause the Firecracker process to be closed if context is cancelled - cancelling `ctx` on the `exec.Command`
 		// doesn't actually stop it, it only stops trying to start it!
-		<-ctx.Done() // We use ctx, not internalCtx here since this resource outlives the function call
+		<-ctx.Done() // We use ctx, not goroutineManager.Context() here since this resource outlives the function call
 
 		if err := server.Close(); err != nil {
 			panic(errors.Join(ErrCouldNotCloseServer, err))
