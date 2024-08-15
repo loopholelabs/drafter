@@ -7,6 +7,7 @@ import (
 	"github.com/loopholelabs/drafter/internal/utils"
 	"github.com/loopholelabs/drafter/pkg/mounter"
 	"github.com/loopholelabs/drafter/pkg/runner"
+	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 	"github.com/loopholelabs/silo/pkg/storage/blocks"
 	"github.com/loopholelabs/silo/pkg/storage/dirtytracker"
 	"github.com/loopholelabs/silo/pkg/storage/modules"
@@ -35,6 +36,15 @@ func (resumedPeer *ResumedPeer) MakeMigratable(
 		stage4Inputs:  resumedPeer.stage4Inputs,
 		resumedRunner: resumedPeer.resumedRunner,
 	}
+
+	goroutineManager := manager.NewGoroutineManager(
+		ctx,
+		&errs,
+		manager.GoroutineManagerHooks{},
+	)
+	defer goroutineManager.Wait()
+	defer goroutineManager.StopAllGoroutines()
+	defer goroutineManager.CreateBackgroundPanicCollector()()
 
 	stage3Inputs := []stage3{}
 	for _, input := range resumedPeer.stage2Inputs {
