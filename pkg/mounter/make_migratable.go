@@ -6,6 +6,7 @@ import (
 	"time"
 
 	iutils "github.com/loopholelabs/drafter/internal/utils"
+	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 	"github.com/loopholelabs/silo/pkg/storage/blocks"
 	"github.com/loopholelabs/silo/pkg/storage/dirtytracker"
 	"github.com/loopholelabs/silo/pkg/storage/modules"
@@ -40,6 +41,15 @@ func (migratedMounter *MigratedMounter) MakeMigratable(
 	migratableMounter = &MigratableMounter{
 		Close: func() {},
 	}
+
+	goroutineManager := manager.NewGoroutineManager(
+		ctx,
+		&errs,
+		manager.GoroutineManagerHooks{},
+	)
+	defer goroutineManager.Wait()
+	defer goroutineManager.StopAllGoroutines()
+	defer goroutineManager.CreateBackgroundPanicCollector()()
 
 	stage3Inputs := []stage3{}
 	for _, input := range migratedMounter.stage2Inputs {
