@@ -96,7 +96,7 @@ func CreateNAT(
 	var closeLock sync.Mutex
 	closed := false
 
-	closeInProgressContext, cancelCloseInProgressContext := context.WithCancel(rescueCtx) // We use `closeContext` here since this simply intercepts `ctx`
+	closeInProgressContext, cancelCloseInProgressContext := context.WithCancel(rescueCtx) // We use `rescueCtx` here since this simply intercepts `ctx`
 	namespaces.Close = func() (errs error) {
 		defer cancelCloseInProgressContext()
 
