@@ -82,7 +82,7 @@ func StartRunner(
 	firecrackerCtx, cancelFirecrackerCtx := context.WithCancel(rescueCtx) // We use `rescueContext` here since this simply intercepts `hypervisorCtx`
 	// and then waits for `rescueCtx` or the rescue operation to complete
 	go func() {
-		<-hypervisorCtx.Done() // We use hypervisorCtx, not goroutineManager.InternalCtx here since this resource outlives the function call
+		<-hypervisorCtx.Done() // We use hypervisorCtx, not goroutineManager.goroutineManager.Context() here since this resource outlives the function call
 
 		runner.ongoingResumeWg.Wait()
 
@@ -91,7 +91,7 @@ func StartRunner(
 
 	var err error
 	runner.server, err = firecracker.StartFirecrackerServer(
-		firecrackerCtx, // We use firecrackerCtx (which depends on hypervisorCtx, not goroutineManager.InternalCtx) here since this resource outlives the function call
+		firecrackerCtx, // We use firecrackerCtx (which depends on hypervisorCtx, not goroutineManager.goroutineManager.Context()) here since this resource outlives the function call
 
 		hypervisorConfiguration.FirecrackerBin,
 		hypervisorConfiguration.JailerBin,

@@ -355,7 +355,7 @@ func (migratablePeer *MigratablePeer) MigrateTo(
 					case <-suspendedVMCh:
 						break
 
-					case <-goroutineManager.Context().Done(): // ctx is the goroutineManager.InternalCtx here
+					case <-goroutineManager.Context().Done(): // ctx is the goroutineManager.goroutineManager.Context() here
 						if err := goroutineManager.Context().Err(); err != nil {
 							return errors.Join(ErrPeerContextCancelled, err)
 						}
