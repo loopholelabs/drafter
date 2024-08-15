@@ -344,10 +344,10 @@ func MigrateFromAndMount(
 	})
 
 	// We don't track this because we return the close function
-	goroutineManager.StartBackgroundGoroutine(func(_ context.Context) {
+	goroutineManager.StartBackgroundGoroutine(func(ctx context.Context) {
 		select {
 		// Failure case; we cancelled the internal context before all devices are ready
-		case <-goroutineManager.Context().Done():
+		case <-ctx.Done():
 			if err := migratedMounter.Close(); err != nil {
 				panic(errors.Join(ErrCouldNotCloseMigratedMounter, err))
 			}

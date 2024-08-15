@@ -96,10 +96,10 @@ func (agentServer *AgentServer) Accept(acceptCtx context.Context, remoteCtx cont
 
 	ready := make(chan any)
 	// This goroutine will not leak on function return because it selects on `goroutineManager.Context().Done()` internally
-	goroutineManager.StartBackgroundGoroutine(func(_ context.Context) {
+	goroutineManager.StartBackgroundGoroutine(func(ctx context.Context) {
 		select {
 		// Failure case; something failed and the goroutineManager.Context() was cancelled before we got a connection
-		case <-goroutineManager.Context().Done():
+		case <-ctx.Done():
 			agentServer.Close() // We ignore errors here since we might interrupt a network connection
 
 		// Happy case; we've got a connection and we want to wait with closing the agent's connections until the context, not the internal context is cancelled
@@ -141,10 +141,10 @@ func (agentServer *AgentServer) Accept(acceptCtx context.Context, remoteCtx cont
 	// Despite returning a wait function, we still need to start this goroutine however so that any errors
 	// we get as we're waiting for a connection are caught
 	// It's important that we start this _after_ calling `cmd.Start`, otherwise our process would be nil
-	goroutineManager.StartBackgroundGoroutine(func(_ context.Context) {
+	goroutineManager.StartBackgroundGoroutine(func(ctx context.Context) {
 		select {
 		// Failure case; something failed and the goroutineManager.Context() was cancelled before we got a connection
-		case <-goroutineManager.Context().Done():
+		case <-ctx.Done():
 			if err := acceptingAgentServer.Close(); err != nil {
 				panic(errors.Join(ErrCouldNotCloseAcceptingAgentServer, err))
 			}
