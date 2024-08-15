@@ -30,7 +30,7 @@ type MigratedMounter struct {
 	Wait  func() error
 	Close func() error
 
-	stage2Inputs []stage2
+	stage2Inputs []migrateFromAndMountStage
 }
 
 func (migratedMounter *MigratedMounter) MakeMigratable(
@@ -51,7 +51,7 @@ func (migratedMounter *MigratedMounter) MakeMigratable(
 	defer goroutineManager.StopAllGoroutines()
 	defer goroutineManager.CreateBackgroundPanicCollector()()
 
-	stage3Inputs := []stage3{}
+	stage3Inputs := []makeMigratableFilterStage{}
 	for _, input := range migratedMounter.stage2Inputs {
 		var makeMigratableDevice *MakeMigratableDevice
 		for _, device := range devices {
@@ -67,7 +67,7 @@ func (migratedMounter *MigratedMounter) MakeMigratable(
 			continue
 		}
 
-		stage3Inputs = append(stage3Inputs, stage3{
+		stage3Inputs = append(stage3Inputs, makeMigratableFilterStage{
 			prev: input,
 
 			makeMigratableDevice: *makeMigratableDevice,
@@ -80,7 +80,7 @@ func (migratedMounter *MigratedMounter) MakeMigratable(
 	)
 	migratableMounter.stage4Inputs, deferFuncs, err = iutils.ConcurrentMap(
 		stage3Inputs,
-		func(index int, input stage3, output *stage4, addDefer func(deferFunc func() error)) error {
+		func(index int, input makeMigratableFilterStage, output *makeMigratableDeviceStage, addDefer func(deferFunc func() error)) error {
 			output.prev = input
 
 			dirtyLocal, dirtyRemote := dirtytracker.NewDirtyTracker(input.prev.storage, int(input.prev.blockSize))

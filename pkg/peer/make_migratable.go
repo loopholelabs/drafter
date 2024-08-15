@@ -20,8 +20,8 @@ type ResumedPeer struct {
 
 	resumedRunner *runner.ResumedRunner
 
-	stage2Inputs []stage2
-	stage4Inputs []stage4
+	stage2Inputs []migrateFromStage
+	stage4Inputs []makeMigratableDeviceStage
 }
 
 func (resumedPeer *ResumedPeer) MakeMigratable(
@@ -46,7 +46,7 @@ func (resumedPeer *ResumedPeer) MakeMigratable(
 	defer goroutineManager.StopAllGoroutines()
 	defer goroutineManager.CreateBackgroundPanicCollector()()
 
-	stage3Inputs := []stage3{}
+	stage3Inputs := []makeMigratableFilterStage{}
 	for _, input := range resumedPeer.stage2Inputs {
 		var makeMigratableDevice *mounter.MakeMigratableDevice
 		for _, device := range devices {
@@ -62,7 +62,7 @@ func (resumedPeer *ResumedPeer) MakeMigratable(
 			continue
 		}
 
-		stage3Inputs = append(stage3Inputs, stage3{
+		stage3Inputs = append(stage3Inputs, makeMigratableFilterStage{
 			prev: input,
 
 			makeMigratableDevice: *makeMigratableDevice,
@@ -75,7 +75,7 @@ func (resumedPeer *ResumedPeer) MakeMigratable(
 	)
 	resumedPeer.stage4Inputs, deferFuncs, err = utils.ConcurrentMap(
 		stage3Inputs,
-		func(index int, input stage3, output *stage4, addDefer func(deferFunc func() error)) error {
+		func(index int, input makeMigratableFilterStage, output *makeMigratableDeviceStage, addDefer func(deferFunc func() error)) error {
 			output.prev = input
 
 			dirtyLocal, dirtyRemote := dirtytracker.NewDirtyTracker(input.prev.storage, int(input.prev.blockSize))

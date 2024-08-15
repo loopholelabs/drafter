@@ -8,7 +8,7 @@ import (
 	"github.com/loopholelabs/silo/pkg/storage/modules"
 )
 
-type stage2 struct {
+type migrateFromStage struct {
 	name string
 
 	blockSize uint32
@@ -20,14 +20,14 @@ type stage2 struct {
 	device  storage.ExposedStorage
 }
 
-type stage3 struct {
-	prev stage2
+type makeMigratableFilterStage struct {
+	prev migrateFromStage
 
 	makeMigratableDevice mounter.MakeMigratableDevice
 }
 
-type stage4 struct {
-	prev stage3
+type makeMigratableDeviceStage struct {
+	prev makeMigratableFilterStage
 
 	storage     *modules.Lockable
 	orderer     *blocks.PriorityBlockOrder
@@ -35,8 +35,8 @@ type stage4 struct {
 	dirtyRemote *dirtytracker.DirtyTrackerRemote
 }
 
-type stage5 struct {
-	prev stage4
+type migrateToStage struct {
+	prev makeMigratableDeviceStage
 
 	migrateToDevice mounter.MigrateToDevice
 }

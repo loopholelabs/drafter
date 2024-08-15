@@ -41,7 +41,7 @@ type MigratablePeer struct {
 	Close func()
 
 	resumedPeer   *ResumedPeer
-	stage4Inputs  []stage4
+	stage4Inputs  []makeMigratableDeviceStage
 	resumedRunner *runner.ResumedRunner
 }
 
@@ -116,7 +116,7 @@ func (migratablePeer *MigratablePeer) MigrateTo(
 		return nil
 	})
 
-	stage5Inputs := []stage5{}
+	stage5Inputs := []migrateToStage{}
 	for _, input := range migratablePeer.stage4Inputs {
 		var migrateToDevice *mounter.MigrateToDevice
 		for _, device := range devices {
@@ -132,7 +132,7 @@ func (migratablePeer *MigratablePeer) MigrateTo(
 			continue
 		}
 
-		stage5Inputs = append(stage5Inputs, stage5{
+		stage5Inputs = append(stage5Inputs, migrateToStage{
 			prev: input,
 
 			migrateToDevice: *migrateToDevice,
@@ -141,7 +141,7 @@ func (migratablePeer *MigratablePeer) MigrateTo(
 
 	_, deferFuncs, err := utils.ConcurrentMap(
 		stage5Inputs,
-		func(index int, input stage5, _ *struct{}, _ func(deferFunc func() error)) error {
+		func(index int, input migrateToStage, _ *struct{}, _ func(deferFunc func() error)) error {
 			to := protocol.NewToProtocol(input.prev.storage.Size(), uint32(index), pro)
 
 			if err := to.SendDevInfo(input.prev.prev.prev.name, input.prev.prev.prev.blockSize, ""); err != nil {
