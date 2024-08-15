@@ -159,10 +159,8 @@ func CreateNAT(
 		return nil
 	}
 
-	// We intentionally don't call `wg.Add` and `wg.Done` here - we are ok with leaking this
-	// goroutine since we return the Close func. We still need to `defer handleGoroutinePanic()()` however so that
-	// if we cancel the context during this call, we still handle it appropriately
 	ready := make(chan any)
+	// This goroutine will not leak on function return because it selects on `goroutineManager.Context().Done()` internally
 	goroutineManager.StartBackgroundGoroutine(func(_ context.Context) {
 		select {
 		// Failure case; something failed and the goroutineManager.Context() was cancelled before were ready

@@ -166,10 +166,9 @@ func StartFirecrackerServer(
 		return nil
 	})
 
-	// We intentionally don't call `wg.Add` and `wg.Done` here - we are ok with leaking this
-	// goroutine since we return the process, which allows tracking errors and stopping this goroutine
-	// and waiting for it to be stopped. We still need to `defer handleGoroutinePanic()()` however so that
-	// any errors we get as we're polling the socket path directory are caught
+	// It is safe to start a background goroutine here since we return a wait function
+	// Despite returning a wait function, we still need to start this goroutine however so that any errors
+	// we get as we're polling the socket path directory are caught
 	// It's important that we start this _after_ calling `cmd.Start`, otherwise our process would be nil
 	goroutineManager.StartBackgroundGoroutine(func(_ context.Context) {
 		if err := server.Wait(); err != nil {
@@ -186,10 +185,7 @@ func StartFirecrackerServer(
 		}
 	})
 
-	// We intentionally don't call `wg.Add` and `wg.Done` here - we are ok with leaking this
-	// goroutine since we return the process, which allows tracking errors and stopping this goroutine
-	// and waiting for it to be stopped. We still need to `defer handleGoroutinePanic()()` however so that
-	// if we cancel the context during this call, we still handle it appropriately
+	// If the context is cancelled, shut down the server
 	goroutineManager.StartBackgroundGoroutine(func(_ context.Context) {
 		// Cause the Firecracker process to be closed if context is cancelled - cancelling `ctx` on the `exec.Command`
 		// doesn't actually stop it, it only stops trying to start it!
