@@ -20,7 +20,7 @@ type MigratedPeer struct {
 	devices []MigrateFromDevice
 	runner  *runner.Runner
 
-	stage2Inputs []stage2
+	stage2Inputs []migrateFromStage
 }
 
 func (migratedPeer *MigratedPeer) Resume(

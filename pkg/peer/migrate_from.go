@@ -65,7 +65,7 @@ func (peer *Peer) MigrateFrom(
 		devices: devices,
 		runner:  peer.runner,
 
-		stage2Inputs: []stage2{},
+		stage2Inputs: []migrateFromStage{},
 	}
 
 	var (
@@ -191,7 +191,7 @@ func (peer *Peer) MigrateFrom(
 						dev.SetProvider(local)
 
 						stage2InputsLock.Lock()
-						migratedPeer.stage2Inputs = append(migratedPeer.stage2Inputs, stage2{
+						migratedPeer.stage2Inputs = append(migratedPeer.stage2Inputs, migrateFromStage{
 							name: di.Name,
 
 							blockSize: di.Block_size,
@@ -407,7 +407,7 @@ func (peer *Peer) MigrateFrom(
 	for _, input := range devices {
 		if slices.ContainsFunc(
 			migratedPeer.stage2Inputs,
-			func(r stage2) bool {
+			func(r migrateFromStage) bool {
 				return input.Name == r.name
 			},
 		) {
@@ -489,7 +489,7 @@ func (peer *Peer) MigrateFrom(
 				dev.SetProvider(local)
 
 				stage2InputsLock.Lock()
-				migratedPeer.stage2Inputs = append(migratedPeer.stage2Inputs, stage2{
+				migratedPeer.stage2Inputs = append(migratedPeer.stage2Inputs, migrateFromStage{
 					name: input.Name,
 
 					blockSize: input.BlockSize,

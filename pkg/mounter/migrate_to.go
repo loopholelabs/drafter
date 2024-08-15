@@ -44,7 +44,7 @@ type MigrateToDevice struct {
 type MigratableMounter struct {
 	Close func()
 
-	stage4Inputs []stage4
+	stage4Inputs []makeMigratableDeviceStage
 }
 
 func (migratableMounter *MigratableMounter) MigrateTo(
@@ -101,7 +101,7 @@ func (migratableMounter *MigratableMounter) MigrateTo(
 		return nil
 	})
 
-	stage5Inputs := []stage5{}
+	stage5Inputs := []migrateToStage{}
 	for _, input := range migratableMounter.stage4Inputs {
 		var migrateToDevice *MigrateToDevice
 		for _, device := range devices {
@@ -117,7 +117,7 @@ func (migratableMounter *MigratableMounter) MigrateTo(
 			continue
 		}
 
-		stage5Inputs = append(stage5Inputs, stage5{
+		stage5Inputs = append(stage5Inputs, migrateToStage{
 			prev: input,
 
 			migrateToDevice: *migrateToDevice,
@@ -126,7 +126,7 @@ func (migratableMounter *MigratableMounter) MigrateTo(
 
 	_, deferFuncs, err := iutils.ConcurrentMap(
 		stage5Inputs,
-		func(index int, input stage5, _ *struct{}, _ func(deferFunc func() error)) error {
+		func(index int, input migrateToStage, _ *struct{}, _ func(deferFunc func() error)) error {
 			to := protocol.NewToProtocol(input.prev.storage.Size(), uint32(index), pro)
 
 			if err := to.SendDevInfo(input.prev.prev.prev.name, input.prev.prev.prev.blockSize, ""); err != nil {

@@ -196,7 +196,7 @@ func MigrateFromAndMount(
 						device.SetProvider(local)
 
 						stage2InputsLock.Lock()
-						migratedMounter.stage2Inputs = append(migratedMounter.stage2Inputs, stage2{
+						migratedMounter.stage2Inputs = append(migratedMounter.stage2Inputs, migrateFromAndMountStage{
 							name: di.Name,
 
 							blockSize: di.Block_size,
@@ -379,7 +379,7 @@ func MigrateFromAndMount(
 	for _, input := range devices {
 		if slices.ContainsFunc(
 			migratedMounter.stage2Inputs,
-			func(r stage2) bool {
+			func(r migrateFromAndMountStage) bool {
 				return input.Name == r.name
 			},
 		) {
@@ -457,7 +457,7 @@ func MigrateFromAndMount(
 			dev.SetProvider(local)
 
 			stage2InputsLock.Lock()
-			migratedMounter.stage2Inputs = append(migratedMounter.stage2Inputs, stage2{
+			migratedMounter.stage2Inputs = append(migratedMounter.stage2Inputs, migrateFromAndMountStage{
 				name: input.Name,
 
 				blockSize: input.BlockSize,
