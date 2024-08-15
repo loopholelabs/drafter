@@ -98,10 +98,10 @@ func StartAgentClient(
 	ready := make(chan any)
 	// This goroutine will not leak on function return because it selects on `goroutineManager.Context().Done()`
 	// internally and we return a wait function
-	goroutineManager.StartBackgroundGoroutine(func(_ context.Context) {
+	goroutineManager.StartBackgroundGoroutine(func(ctx context.Context) {
 		select {
 		// Failure case; something failed and the goroutineManager.Context() was cancelled before we got a connection
-		case <-goroutineManager.Context().Done():
+		case <-ctx.Done():
 			connectedAgentClient.Close() // We ignore errors here since we might interrupt a network connection
 
 		// Happy case; we've got a connection and we want to wait with closing the agent's connections until the ready channel is closed.

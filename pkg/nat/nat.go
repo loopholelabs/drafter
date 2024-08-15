@@ -161,10 +161,10 @@ func CreateNAT(
 
 	ready := make(chan any)
 	// This goroutine will not leak on function return because it selects on `goroutineManager.Context().Done()` internally
-	goroutineManager.StartBackgroundGoroutine(func(_ context.Context) {
+	goroutineManager.StartBackgroundGoroutine(func(internalCtx context.Context) {
 		select {
 		// Failure case; something failed and the goroutineManager.Context() was cancelled before were ready
-		case <-goroutineManager.Context().Done():
+		case <-internalCtx.Done():
 			if err := namespaces.Close(); err != nil {
 				panic(errors.Join(ErrNATContextCancelled, err))
 			}
