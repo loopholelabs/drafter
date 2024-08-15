@@ -95,18 +95,16 @@ func StartAgentClient(
 		_ = conn.Close() // We ignore errors here since we might interrupt a network connection
 	}
 
-	// We intentionally don't call `wg.Add` and `wg.Done` here - we are ok with leaking this
-	// goroutine since we return a `Wait()` function.
-	// We still need to `defer handleGoroutinePanic()()` however so that
-	// if we cancel the context during this call, we still handle it appropriately
 	ready := make(chan any)
+	// This goroutine will not leak on function return because it selects on `goroutineManager.Context().Done()`
+	// internally and we return a wait function
 	goroutineManager.StartBackgroundGoroutine(func(_ context.Context) {
 		select {
 		// Failure case; something failed and the goroutineManager.Context() was cancelled before we got a connection
 		case <-goroutineManager.Context().Done():
 			connectedAgentClient.Close() // We ignore errors here since we might interrupt a network connection
 
-		// Happy case; we've got a connection and we want to wait with closing the agent's connections until the context, not the internal context is cancelled
+		// Happy case; we've got a connection and we want to wait with closing the agent's connections until the ready channel is closed.
 		case <-ready:
 			<-remoteCtx.Done()
 
@@ -171,11 +169,9 @@ func StartAgentClient(
 		return nil
 	})
 
-	// We intentionally don't call `wg.Add` and `wg.Done` here - we are ok with leaking this
-	// goroutine since we return the process, which allows tracking errors and stopping this goroutine
-	// and waiting for it to be stopped. We still need to `defer handleGoroutinePanic()()` however so that
-	// any errors we get as we're polling the socket path directory are caught
-	// It's important that we start this _after_ calling `cmd.Start`, otherwise our process would be nil
+	// It is safe to start a background goroutine here since we return a wait function
+	// Despite returning a wait function, we still need to start this goroutine however so that any errors
+	// we get as we're waiting for a connection are caught
 	goroutineManager.StartBackgroundGoroutine(func(_ context.Context) {
 		if err := connectedAgentClient.Wait(); err != nil {
 			panic(errors.Join(ErrAgentContextCancelled, err))

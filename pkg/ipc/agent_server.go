@@ -94,10 +94,9 @@ func (agentServer *AgentServer) Accept(acceptCtx context.Context, remoteCtx cont
 	defer goroutineManager.StopAllGoroutines()
 	defer goroutineManager.CreateBackgroundPanicCollector()()
 
-	// We intentionally don't call `wg.Add` and `wg.Done` here - we are ok with leaking this
-	// goroutine since we return a `Wait()` function
 	ready := make(chan any)
-	go func() {
+	// This goroutine will not leak on function return because it selects on `goroutineManager.Context().Done()` internally
+	goroutineManager.StartBackgroundGoroutine(func(_ context.Context) {
 		select {
 		// Failure case; something failed and the goroutineManager.Context() was cancelled before we got a connection
 		case <-goroutineManager.Context().Done():
@@ -108,7 +107,7 @@ func (agentServer *AgentServer) Accept(acceptCtx context.Context, remoteCtx cont
 		case <-ready:
 			break
 		}
-	}()
+	})
 
 	conn, err := agentServer.lis.Accept()
 	if err != nil {
@@ -138,10 +137,10 @@ func (agentServer *AgentServer) Accept(acceptCtx context.Context, remoteCtx cont
 		return acceptingAgentServer.Wait()
 	}
 
-	// We intentionally don't call `wg.Add` and `wg.Done` here - we are ok with leaking this
-	// goroutine since we return a `Wait()` function.
-	// We still need to `defer handleGoroutinePanic()()` however so that
-	// if we cancel the context during this call, we still handle it appropriately
+	// It is safe to start a background goroutine here since we return a wait function
+	// Despite returning a wait function, we still need to start this goroutine however so that any errors
+	// we get as we're waiting for a connection are caught
+	// It's important that we start this _after_ calling `cmd.Start`, otherwise our process would be nil
 	goroutineManager.StartBackgroundGoroutine(func(_ context.Context) {
 		select {
 		// Failure case; something failed and the goroutineManager.Context() was cancelled before we got a connection
@@ -215,11 +214,9 @@ func (agentServer *AgentServer) Accept(acceptCtx context.Context, remoteCtx cont
 		return nil
 	})
 
-	// We intentionally don't call `wg.Add` and `wg.Done` here - we are ok with leaking this
-	// goroutine since we return the process, which allows tracking errors and stopping this goroutine
-	// and waiting for it to be stopped. We still need to `defer handleGoroutinePanic()()` however so that
-	// any errors we get as we're polling the socket path directory are caught
-	// It's important that we start this _after_ calling `cmd.Start`, otherwise our process would be nil
+	// It is safe to start a background goroutine here since we return a wait function
+	// Despite returning a wait function, we still need to start this goroutine however so that any errors
+	// we get as we're waiting for a connection are caught
 	goroutineManager.StartBackgroundGoroutine(func(_ context.Context) {
 		if err := acceptingAgentServer.Wait(); err != nil {
 			panic(err)
@@ -229,7 +226,7 @@ func (agentServer *AgentServer) Accept(acceptCtx context.Context, remoteCtx cont
 	select {
 	case <-goroutineManager.Context().Done():
 		if err := goroutineManager.Context().Err(); err != nil {
-			panic(goroutineManager.Context().Err())
+			panic(err)
 		}
 
 		return
