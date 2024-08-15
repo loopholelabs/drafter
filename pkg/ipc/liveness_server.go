@@ -71,7 +71,7 @@ func (l *LivenessServer) ReceiveAndClose(ctx context.Context) (errs error) {
 
 		if l.closed && errors.Is(err, net.ErrClosed) { // Don't treat closed errors as errors if we closed the connection
 			if err := goroutineManager.Context().Err(); err != nil {
-				panic(errors.Join(ErrLivenessServerContextCancelled, goroutineManager.Context().Err()))
+				panic(errors.Join(ErrLivenessServerContextCancelled, err))
 			}
 
 			return

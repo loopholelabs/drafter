@@ -282,7 +282,7 @@ func main() {
 		select {
 		case <-goroutineManager.Context().Done():
 			if err := goroutineManager.Context().Err(); err != nil {
-				panic(goroutineManager.Context().Err())
+				panic(err)
 			}
 
 			return

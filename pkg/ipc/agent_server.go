@@ -116,7 +116,7 @@ func (agentServer *AgentServer) Accept(acceptCtx context.Context, remoteCtx cont
 
 		if agentServer.closed && errors.Is(err, net.ErrClosed) { // Don't treat closed errors as errors if we closed the connection
 			if err := goroutineManager.Context().Err(); err != nil {
-				panic(goroutineManager.Context().Err())
+				panic(err)
 			}
 
 			return
