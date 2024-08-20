@@ -8,7 +8,7 @@ OCI_IMAGE_URI ?= docker://valkey/valkey:latest
 OCI_IMAGE_ARCHITECTURE ?= amd64
 OCI_IMAGE_HOSTNAME ?= drafterguest
 
-OS_URL ?= https://buildroot.org/downloads/buildroot-2024.05.tar.gz
+OS_URL ?= https://buildroot.org/downloads/buildroot-2024.08-rc1.tar.gz
 OS_DEFCONFIG ?= drafteros-firecracker-x86_64_defconfig
 OS_BR2_EXTERNAL ?= ../../os
 
