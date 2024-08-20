@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"net"
 	"sync"
 
 	"github.com/loopholelabs/drafter/internal/vsock"
@@ -86,13 +85,15 @@ func StartAgentClient(
 	var closeLock sync.Mutex
 	closed := false
 
+	linkCtx, cancelLinkCtx := context.WithCancelCause(remoteCtx) // This resource outlives the current scope, so we use the external context
+
 	connectedAgentClient.Close = func() {
 		closeLock.Lock()
 		defer closeLock.Unlock()
 
 		closed = true
 
-		_ = conn.Close() // We ignore errors here since we might interrupt a network connection
+		cancelLinkCtx(goroutineManager.GetErrGoroutineStopped())
 	}
 
 	ready := make(chan any)
@@ -117,8 +118,6 @@ func StartAgentClient(
 	registry := rpc.NewRegistry[struct{}, json.RawMessage](
 		agentClient,
 
-		remoteCtx, // This resource outlives the current scope, so we use the external context
-
 		&rpc.RegistryHooks{
 			OnClientConnect: func(remoteID string) {
 				close(ready)
@@ -127,10 +126,15 @@ func StartAgentClient(
 	)
 
 	connectedAgentClient.Wait = sync.OnceValue(func() error {
+		defer conn.Close() // We ignore errors here since we might interrupt a network connection
+		defer cancelLinkCtx(nil)
+
 		encoder := json.NewEncoder(conn)
 		decoder := json.NewDecoder(conn)
 
 		if err := registry.LinkStream(
+			linkCtx,
+
 			func(v rpc.Message[json.RawMessage]) error {
 				return encoder.Encode(v)
 			},
@@ -159,11 +163,12 @@ func StartAgentClient(
 			closeLock.Lock()
 			defer closeLock.Unlock()
 
-			if closed && errors.Is(err, net.ErrClosed) { // Don't treat closed errors as errors if we closed the connection
-				return remoteCtx.Err()
+			// Don't treat closed errors as errors if we closed the connection
+			if !(closed && errors.Is(err, context.Canceled) && errors.Is(context.Cause(goroutineManager.Context()), goroutineManager.GetErrGoroutineStopped())) {
+				return errors.Join(ErrAgentServerDisconnected, ErrCouldNotLinkRegistry, err)
 			}
 
-			return errors.Join(ErrAgentServerDisconnected, err)
+			return remoteCtx.Err()
 		}
 
 		return nil

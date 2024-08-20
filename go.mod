@@ -2,6 +2,8 @@ module github.com/loopholelabs/drafter
 
 go 1.22.5
 
+toolchain go1.22.6
+
 require (
 	github.com/coreos/go-iptables v0.7.0
 	github.com/freddierice/go-losetup/v2 v2.0.1
@@ -10,7 +12,7 @@ require (
 	github.com/loopholelabs/goroutine-manager v0.1.1
 	github.com/loopholelabs/silo v0.0.8
 	github.com/metal-stack/go-ipam v1.14.0
-	github.com/pojntfx/panrpc/go v0.0.0-20240702184342-b89dd0c1dde5
+	github.com/pojntfx/panrpc/go v0.0.0-20240816011753-7169be8c89fb
 	github.com/vishvananda/netlink v1.1.0
 	github.com/vishvananda/netns v0.0.4
 	golang.org/x/sys v0.22.0
@@ -47,7 +49,7 @@ require (
 	github.com/minio/minio-go/v7 v7.0.73 // indirect
 	github.com/mitchellh/go-wordwrap v0.0.0-20150314170334-ad45545899c7 // indirect
 	github.com/montanaflynn/stats v0.7.1 // indirect
-	github.com/redis/go-redis/v9 v9.5.2 // indirect
+	github.com/redis/go-redis/v9 v9.6.1 // indirect
 	github.com/rs/xid v1.5.0 // indirect
 	github.com/xdg-go/pbkdf2 v1.0.0 // indirect
 	github.com/xdg-go/scram v1.1.2 // indirect
@@ -61,9 +63,9 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
 	go4.org/netipx v0.0.0-20231129151722-fdeea329fbba // indirect
-	golang.org/x/crypto v0.24.0 // indirect
+	golang.org/x/crypto v0.25.0 // indirect
 	golang.org/x/mod v0.17.0 // indirect
-	golang.org/x/net v0.26.0 // indirect
+	golang.org/x/net v0.27.0 // indirect
 	golang.org/x/sync v0.7.0 // indirect
 	golang.org/x/text v0.16.0 // indirect
 	golang.org/x/tools v0.21.1-0.20240508182429-e35e4ccd0d2d // indirect

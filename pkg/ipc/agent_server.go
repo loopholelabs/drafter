@@ -125,12 +125,14 @@ func (agentServer *AgentServer) Accept(acceptCtx context.Context, remoteCtx cont
 		panic(errors.Join(ErrCouldNotAcceptAgentClient, err))
 	}
 
+	linkCtx, cancelLinkCtx := context.WithCancelCause(remoteCtx) // This resource outlives the current scope, so we use the external context
+
 	acceptingAgentServer.Close = func() error {
 		agentServer.closeLock.Lock()
 
 		agentServer.closed = true
 
-		_ = conn.Close() // We ignore errors here since we might interrupt a network connection
+		cancelLinkCtx(goroutineManager.GetErrGoroutineStopped())
 
 		agentServer.closeLock.Unlock()
 
@@ -166,8 +168,6 @@ func (agentServer *AgentServer) Accept(acceptCtx context.Context, remoteCtx cont
 	registry := rpc.NewRegistry[remotes.AgentRemote, json.RawMessage](
 		&struct{}{},
 
-		remoteCtx, // This resource outlives the current scope, so we use the external context
-
 		&rpc.RegistryHooks{
 			OnClientConnect: func(remoteID string) {
 				close(ready)
@@ -176,10 +176,15 @@ func (agentServer *AgentServer) Accept(acceptCtx context.Context, remoteCtx cont
 	)
 
 	acceptingAgentServer.Wait = sync.OnceValue(func() error {
+		defer conn.Close() // We ignore errors here since we might interrupt a network connection
+		defer cancelLinkCtx(nil)
+
 		encoder := json.NewEncoder(conn)
 		decoder := json.NewDecoder(conn)
 
 		if err := registry.LinkStream(
+			linkCtx,
+
 			func(v rpc.Message[json.RawMessage]) error {
 				return encoder.Encode(v)
 			},
@@ -204,11 +209,12 @@ func (agentServer *AgentServer) Accept(acceptCtx context.Context, remoteCtx cont
 			agentServer.closeLock.Lock()
 			defer agentServer.closeLock.Unlock()
 
-			if agentServer.closed && errors.Is(err, net.ErrClosed) { // Don't treat closed errors as errors if we closed the connection
-				return remoteCtx.Err()
+			// Don't treat closed errors as errors if we closed the connection
+			if !(agentServer.closed && errors.Is(err, context.Canceled) && errors.Is(context.Cause(goroutineManager.Context()), goroutineManager.GetErrGoroutineStopped())) {
+				return errors.Join(ErrAgentClientDisconnected, ErrCouldNotLinkRegistry, err)
 			}
 
-			return errors.Join(ErrAgentClientDisconnected, ErrCouldNotLinkRegistry, err)
+			return remoteCtx.Err()
 		}
 
 		return nil
