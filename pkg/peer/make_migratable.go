@@ -21,7 +21,6 @@ type ResumedPeer struct {
 	resumedRunner *runner.ResumedRunner
 
 	stage2Inputs []migrateFromStage
-	stage4Inputs []makeMigratableDeviceStage
 }
 
 func (resumedPeer *ResumedPeer) MakeMigratable(
@@ -33,7 +32,7 @@ func (resumedPeer *ResumedPeer) MakeMigratable(
 		Close: func() {},
 
 		resumedPeer:   resumedPeer,
-		stage4Inputs:  resumedPeer.stage4Inputs,
+		stage4Inputs:  []makeMigratableDeviceStage{},
 		resumedRunner: resumedPeer.resumedRunner,
 	}
 
@@ -73,7 +72,7 @@ func (resumedPeer *ResumedPeer) MakeMigratable(
 		deferFuncs [][]func() error
 		err        error
 	)
-	resumedPeer.stage4Inputs, deferFuncs, err = utils.ConcurrentMap(
+	migratablePeer.stage4Inputs, deferFuncs, err = utils.ConcurrentMap(
 		stage3Inputs,
 		func(index int, input makeMigratableFilterStage, output *makeMigratableDeviceStage, addDefer func(deferFunc func() error)) error {
 			output.prev = input
