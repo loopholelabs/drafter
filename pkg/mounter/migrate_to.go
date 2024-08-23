@@ -89,14 +89,14 @@ func (migratableMounter *MigratableMounter) MigrateTo(
 		suspendedVM     bool
 	)
 
-	suspendedVMCh := make(chan any)
+	suspendedVMCh := make(chan struct{})
 
 	suspendAndMsyncVM := sync.OnceValue(func() error {
 		suspendedVMLock.Lock()
 		suspendedVM = true
 		suspendedVMLock.Unlock()
 
-		close(suspendedVMCh)
+		close(suspendedVMCh) // We can safely close() this channel since the caller only runs once/is `sync.OnceFunc`d
 
 		return nil
 	})

@@ -481,20 +481,28 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	defer lis.Close()
 	defer func() {
+		defer goroutineManager.CreateForegroundPanicCollector()()
+
 		closeLock.Lock()
-		defer closeLock.Unlock()
 
 		closed = true
+
+		closeLock.Unlock()
+
+		if err := lis.Close(); err != nil {
+			panic(err)
+		}
 	}()
 
 	log.Println("Serving on", lis.Addr())
 
-	// We use `context.Background` here because we want to distinguish between a cancellation and a successful accept
-	// We select between `acceptedCtx` and `ctx` on all code paths so we don't leak the context
-	acceptedCtx, cancelAcceptedCtx := context.WithCancel(context.Background())
-	defer cancelAcceptedCtx()
+	var (
+		ready       = make(chan struct{})
+		signalReady = sync.OnceFunc(func() {
+			close(ready) // We can safely close() this channel since the caller only runs once/is `sync.OnceFunc`d
+		})
+	)
 
 	var conn net.Conn
 	goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
@@ -514,7 +522,7 @@ func main() {
 			panic(err)
 		}
 
-		cancelAcceptedCtx()
+		signalReady()
 	})
 
 	bubbleSignals = true
@@ -536,7 +544,7 @@ func main() {
 
 		return
 
-	case <-acceptedCtx.Done():
+	case <-ready:
 		break
 	}
 

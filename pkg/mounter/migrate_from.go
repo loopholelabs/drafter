@@ -76,8 +76,15 @@ func MigrateFromAndMount(
 	}
 
 	var (
-		allRemoteDevicesReceived = make(chan any)
-		allRemoteDevicesReady    = make(chan any)
+		allRemoteDevicesReceived       = make(chan struct{})
+		signalAllRemoteDevicesReceived = sync.OnceFunc(func() {
+			close(allRemoteDevicesReceived) // We can safely close() this channel since the caller only runs once/is `sync.OnceFunc`d
+		})
+
+		allRemoteDevicesReady       = make(chan struct{})
+		signalAllRemoteDevicesReady = sync.OnceFunc(func() {
+			close(allRemoteDevicesReady) // We can safely close() this channel since the caller only runs once/is `sync.OnceFunc`d
+		})
 	)
 
 	// We don't `defer cancelProtocolCtx()` this because we cancel in the wait function
@@ -244,7 +251,7 @@ func MigrateFromAndMount(
 						case packets.EventCustom:
 							switch e.CustomType {
 							case byte(registry.EventCustomAllDevicesSent):
-								close(allRemoteDevicesReceived)
+								signalAllRemoteDevicesReceived()
 
 								if hook := hooks.OnRemoteAllDevicesReceived; hook != nil {
 									hook()
@@ -252,7 +259,7 @@ func MigrateFromAndMount(
 
 							case byte(registry.EventCustomTransferAuthority):
 								if receivedButNotReadyRemoteDevices.Add(-1) <= 0 {
-									close(allRemoteDevicesReady)
+									signalAllRemoteDevicesReady()
 								}
 
 								if hook := hooks.OnRemoteDeviceAuthorityReceived; hook != nil {
@@ -298,7 +305,7 @@ func MigrateFromAndMount(
 		select {
 		case <-allRemoteDevicesReceived:
 		default:
-			close(allRemoteDevicesReceived)
+			signalAllRemoteDevicesReceived()
 
 			// We need to call the hook manually too since we would otherwise only call if we received at least one device
 			if hook := hooks.OnRemoteAllDevicesReceived; hook != nil {
@@ -306,7 +313,7 @@ func MigrateFromAndMount(
 			}
 		}
 
-		close(allRemoteDevicesReady)
+		signalAllRemoteDevicesReady()
 
 		if hook := hooks.OnRemoteAllMigrationsCompleted; hook != nil {
 			hook()
