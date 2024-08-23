@@ -94,7 +94,12 @@ func (agentServer *AgentServer) Accept(acceptCtx context.Context, remoteCtx cont
 	defer goroutineManager.StopAllGoroutines()
 	defer goroutineManager.CreateBackgroundPanicCollector()()
 
-	ready := make(chan struct{})
+	var (
+		ready       = make(chan struct{})
+		signalReady = sync.OnceFunc(func() {
+			close(ready) // We can safely close() this channel since the caller only runs once/is `sync.OnceFunc`d
+		})
+	)
 	// This goroutine will not leak on function return because it selects on `goroutineManager.Context().Done()` internally
 	goroutineManager.StartBackgroundGoroutine(func(ctx context.Context) {
 		select {
@@ -170,7 +175,7 @@ func (agentServer *AgentServer) Accept(acceptCtx context.Context, remoteCtx cont
 
 		&rpc.RegistryHooks{
 			OnClientConnect: func(remoteID string) {
-				close(ready)
+				signalReady()
 			},
 		},
 	)

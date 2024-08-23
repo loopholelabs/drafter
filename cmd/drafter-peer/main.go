@@ -497,7 +497,12 @@ func main() {
 
 	log.Println("Serving on", lis.Addr())
 
-	ready := make(chan struct{})
+	var (
+		ready       = make(chan struct{})
+		signalReady = sync.OnceFunc(func() {
+			close(ready) // We can safely close() this channel since the caller only runs once/is `sync.OnceFunc`d
+		})
+	)
 
 	var conn net.Conn
 	goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
@@ -517,7 +522,7 @@ func main() {
 			panic(err)
 		}
 
-		close(ready)
+		signalReady()
 	})
 
 	bubbleSignals = true

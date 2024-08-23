@@ -96,7 +96,7 @@ func (migratableMounter *MigratableMounter) MigrateTo(
 		suspendedVM = true
 		suspendedVMLock.Unlock()
 
-		close(suspendedVMCh)
+		close(suspendedVMCh) // We can safely close() this channel since the caller only runs once/is `sync.OnceFunc`d
 
 		return nil
 	})

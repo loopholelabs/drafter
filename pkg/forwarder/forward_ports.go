@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sync"
 
 	"github.com/coreos/go-iptables/iptables"
 	"github.com/loopholelabs/drafter/internal/utils"
@@ -252,9 +253,14 @@ func ForwardPorts(
 		},
 	)
 
-	closeInProgress := make(chan struct{})
+	var (
+		closeInProgress       = make(chan struct{})
+		signalCloseInProgress = sync.OnceFunc(func() {
+			close(closeInProgress) // We can safely close() this channel since the caller only runs once/is `sync.OnceFunc`d
+		})
+	)
 	forwardedPorts.Close = func() (errs error) {
-		defer close(closeInProgress)
+		defer signalCloseInProgress()
 
 		for _, closeFuncs := range deferFuncs {
 			for _, closeFunc := range closeFuncs {

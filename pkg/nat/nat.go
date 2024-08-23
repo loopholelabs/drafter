@@ -299,7 +299,7 @@ func CreateNAT(
 		}
 	}
 
-	close(ready)
+	close(ready) // We can safely close() this channel since this code path will only run once
 
 	return
 }

@@ -96,7 +96,12 @@ func StartAgentClient(
 		cancelLinkCtx(goroutineManager.GetErrGoroutineStopped())
 	}
 
-	ready := make(chan struct{})
+	var (
+		ready       = make(chan struct{})
+		signalReady = sync.OnceFunc(func() {
+			close(ready) // We can safely close() this channel since the caller only runs once/is `sync.OnceFunc`d
+		})
+	)
 	// This goroutine will not leak on function return because it selects on `goroutineManager.Context().Done()`
 	// internally and we return a wait function
 	goroutineManager.StartBackgroundGoroutine(func(ctx context.Context) {
@@ -120,7 +125,7 @@ func StartAgentClient(
 
 		&rpc.RegistryHooks{
 			OnClientConnect: func(remoteID string) {
-				close(ready)
+				signalReady()
 			},
 		},
 	)

@@ -111,7 +111,7 @@ func (migratablePeer *MigratablePeer) MigrateTo(
 		suspendedVM = true
 		suspendedVMLock.Unlock()
 
-		close(suspendedVMCh)
+		close(suspendedVMCh) // We can safely close() this channel since the caller only runs once/is `sync.OnceValue`d
 
 		return nil
 	})
