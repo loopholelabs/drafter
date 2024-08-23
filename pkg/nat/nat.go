@@ -159,7 +159,7 @@ func CreateNAT(
 		return nil
 	}
 
-	ready := make(chan any)
+	ready := make(chan struct{})
 	// This goroutine will not leak on function return because it selects on `goroutineManager.Context().Done()` internally
 	goroutineManager.StartBackgroundGoroutine(func(internalCtx context.Context) {
 		select {

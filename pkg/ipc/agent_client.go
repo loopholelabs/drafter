@@ -96,7 +96,7 @@ func StartAgentClient(
 		cancelLinkCtx(goroutineManager.GetErrGoroutineStopped())
 	}
 
-	ready := make(chan any)
+	ready := make(chan struct{})
 	// This goroutine will not leak on function return because it selects on `goroutineManager.Context().Done()`
 	// internally and we return a wait function
 	goroutineManager.StartBackgroundGoroutine(func(ctx context.Context) {

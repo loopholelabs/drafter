@@ -94,7 +94,7 @@ func (agentServer *AgentServer) Accept(acceptCtx context.Context, remoteCtx cont
 	defer goroutineManager.StopAllGoroutines()
 	defer goroutineManager.CreateBackgroundPanicCollector()()
 
-	ready := make(chan any)
+	ready := make(chan struct{})
 	// This goroutine will not leak on function return because it selects on `goroutineManager.Context().Done()` internally
 	goroutineManager.StartBackgroundGoroutine(func(ctx context.Context) {
 		select {

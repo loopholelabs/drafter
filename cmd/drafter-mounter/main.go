@@ -373,10 +373,7 @@ func main() {
 
 l:
 	for {
-		// We use `context.Background` here because we want to distinguish between a cancellation and a successful accept
-		// We select between `acceptedCtx` and `ctx` on all code paths so we don't leak the context
-		acceptedCtx, cancelAcceptedCtx := context.WithCancel(context.Background())
-		defer cancelAcceptedCtx()
+		ready := make(chan struct{})
 
 		var conn net.Conn
 		goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
@@ -396,7 +393,7 @@ l:
 				panic(err)
 			}
 
-			cancelAcceptedCtx()
+			close(ready)
 		})
 
 		bubbleSignals = true
@@ -409,7 +406,7 @@ l:
 		case <-done:
 			break l
 
-		case <-acceptedCtx.Done():
+		case <-ready:
 			break s
 		}
 

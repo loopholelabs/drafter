@@ -69,8 +69,8 @@ func (peer *Peer) MigrateFrom(
 	}
 
 	var (
-		allRemoteDevicesReceived = make(chan any)
-		allRemoteDevicesReady    = make(chan any)
+		allRemoteDevicesReceived = make(chan struct{})
+		allRemoteDevicesReady    = make(chan struct{})
 	)
 
 	// We don't `defer cancelProtocolCtx()` this because we cancel in the wait function

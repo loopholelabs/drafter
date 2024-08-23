@@ -252,7 +252,7 @@ func ForwardPorts(
 		},
 	)
 
-	closeInProgress := make(chan any)
+	closeInProgress := make(chan struct{})
 	forwardedPorts.Close = func() (errs error) {
 		defer close(closeInProgress)
 

@@ -88,7 +88,7 @@ func (migratablePeer *MigratablePeer) MigrateTo(
 		suspendedVM     bool
 	)
 
-	suspendedVMCh := make(chan any)
+	suspendedVMCh := make(chan struct{})
 
 	suspendAndMsyncVM := sync.OnceValue(func() error {
 		if hook := hooks.OnBeforeSuspend; hook != nil {
