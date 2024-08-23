@@ -481,12 +481,18 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	defer lis.Close()
 	defer func() {
+		defer goroutineManager.CreateForegroundPanicCollector()()
+
 		closeLock.Lock()
-		defer closeLock.Unlock()
 
 		closed = true
+
+		closeLock.Unlock()
+
+		if err := lis.Close(); err != nil {
+			panic(err)
+		}
 	}()
 
 	log.Println("Serving on", lis.Addr())
