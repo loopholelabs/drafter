@@ -13,7 +13,7 @@ require (
 	github.com/loopholelabs/silo v0.0.8
 	github.com/metal-stack/go-ipam v1.14.0
 	github.com/pojntfx/panrpc/go v0.0.0-20240816011753-7169be8c89fb
-	github.com/vishvananda/netlink v1.1.0
+	github.com/vishvananda/netlink v1.3.0
 	github.com/vishvananda/netns v0.0.4
 	golang.org/x/sys v0.24.0
 	k8s.io/utils v0.0.0-20240711033017-18e509b52bc8
