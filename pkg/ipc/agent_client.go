@@ -19,44 +19,57 @@ var (
 	ErrAgentContextCancelled   = errors.New("agent context cancelled")
 )
 
-type AgentClient struct {
+// The RPCs the agent server can call on this client
+// See https://github.com/pojntfx/panrpc/tree/main?tab=readme-ov-file#5-calling-the-clients-rpcs-from-the-server
+type AgentClientLocal interface {
+	BeforeSuspend(ctx context.Context) error
+	AfterResume(ctx context.Context) error
+}
+
+// The RPCs this client can call on the agent server
+// See https://github.com/pojntfx/panrpc/tree/main?tab=readme-ov-file#4-calling-the-servers-rpcs-from-the-client
+type AgentClientRemote any
+
+type HookAgentClient struct {
 	beforeSuspend func(ctx context.Context) error
 	afterResume   func(ctx context.Context) error
 }
 
-func NewAgentClient(
+func NewHookAgentClient(
 	beforeSuspend func(ctx context.Context) error,
 	afterResume func(ctx context.Context) error,
-) *AgentClient {
-	return &AgentClient{
+) *HookAgentClient {
+	return &HookAgentClient{
 		beforeSuspend: beforeSuspend,
 		afterResume:   afterResume,
 	}
 }
 
-func (l *AgentClient) BeforeSuspend(ctx context.Context) error {
+func (l *HookAgentClient) BeforeSuspend(ctx context.Context) error {
 	return l.beforeSuspend(ctx)
 }
 
-func (l *AgentClient) AfterResume(ctx context.Context) error {
+func (l *HookAgentClient) AfterResume(ctx context.Context) error {
 	return l.afterResume(ctx)
 }
 
-type ConnectedAgentClient struct {
+type ConnectedAgentClient[L AgentClientLocal, R AgentClientRemote] struct {
+	Remote R
+
 	Wait  func() error
 	Close func()
 }
 
-func StartAgentClient(
+func StartAgentClient[L AgentClientLocal, R AgentClientRemote](
 	dialCtx context.Context,
 	remoteCtx context.Context,
 
 	vsockCID uint32,
 	vsockPort uint32,
 
-	agentClient *AgentClient,
-) (connectedAgentClient *ConnectedAgentClient, errs error) {
-	connectedAgentClient = &ConnectedAgentClient{
+	agentClientLocal L,
+) (connectedAgentClient *ConnectedAgentClient[L, R], errs error) {
+	connectedAgentClient = &ConnectedAgentClient[L, R]{
 		Wait: func() error {
 			return nil
 		},
@@ -120,8 +133,8 @@ func StartAgentClient(
 		}
 	})
 
-	registry := rpc.NewRegistry[struct{}, json.RawMessage](
-		agentClient,
+	registry := rpc.NewRegistry[R, json.RawMessage](
+		agentClientLocal,
 
 		&rpc.RegistryHooks{
 			OnClientConnect: func(remoteID string) {
@@ -197,6 +210,20 @@ func StartAgentClient(
 		return
 	case <-ready:
 		break
+	}
+
+	found := false
+	if err := registry.ForRemotes(func(remoteID string, r R) error {
+		connectedAgentClient.Remote = r
+		found = true
+
+		return nil
+	}); err != nil {
+		panic(err)
+	}
+
+	if !found {
+		panic(ErrNoRemoteFound)
 	}
 
 	return

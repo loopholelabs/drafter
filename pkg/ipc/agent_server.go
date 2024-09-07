@@ -9,7 +9,6 @@ import (
 	"os"
 	"sync"
 
-	"github.com/loopholelabs/drafter/internal/remotes"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 	"github.com/pojntfx/panrpc/go/pkg/rpc"
 )
@@ -23,7 +22,18 @@ var (
 	ErrCouldNotLinkRegistry              = errors.New("could not link registry")
 )
 
-type AgentServer struct {
+// The RPCs the agent client can call on this server
+// See https://github.com/pojntfx/panrpc/tree/main?tab=readme-ov-file#5-calling-the-clients-rpcs-from-the-server
+type AgentServerLocal any
+
+// The RPCs this server can call on the agent client
+// See https://github.com/pojntfx/panrpc/tree/main?tab=readme-ov-file#4-calling-the-servers-rpcs-from-the-client
+type AgentServerRemote struct {
+	BeforeSuspend func(ctx context.Context) error
+	AfterResume   func(ctx context.Context) error
+}
+
+type AgentServer[L AgentServerLocal, R AgentServerRemote] struct {
 	VSockPath string
 
 	Close func()
@@ -32,18 +42,24 @@ type AgentServer struct {
 
 	closed    bool
 	closeLock sync.Mutex
+
+	agentServerLocal L
 }
 
-func StartAgentServer(
+func StartAgentServer[L AgentServerLocal, R AgentServerRemote](
 	vsockPath string,
 	vsockPort uint32,
+
+	agentServerLocal L,
 ) (
-	agentServer *AgentServer,
+	agentServer *AgentServer[L, R],
 
 	err error,
 ) {
-	agentServer = &AgentServer{
+	agentServer = &AgentServer[L, R]{
 		Close: func() {},
+
+		agentServerLocal: agentServerLocal,
 	}
 
 	agentServer.VSockPath = fmt.Sprintf("%s_%d", vsockPath, vsockPort)
@@ -68,15 +84,15 @@ func StartAgentServer(
 	return
 }
 
-type AcceptingAgentServer struct {
-	Remote remotes.AgentRemote
+type AcceptingAgentServer[L AgentServerLocal, R AgentServerRemote] struct {
+	Remote R
 
 	Wait  func() error
 	Close func() error
 }
 
-func (agentServer *AgentServer) Accept(acceptCtx context.Context, remoteCtx context.Context) (acceptingAgentServer *AcceptingAgentServer, errs error) {
-	acceptingAgentServer = &AcceptingAgentServer{
+func (agentServer *AgentServer[L, R]) Accept(acceptCtx context.Context, remoteCtx context.Context) (acceptingAgentServer *AcceptingAgentServer[L, R], errs error) {
+	acceptingAgentServer = &AcceptingAgentServer[L, R]{
 		Wait: func() error {
 			return nil
 		},
@@ -170,8 +186,8 @@ func (agentServer *AgentServer) Accept(acceptCtx context.Context, remoteCtx cont
 		}
 	})
 
-	registry := rpc.NewRegistry[remotes.AgentRemote, json.RawMessage](
-		&struct{}{},
+	registry := rpc.NewRegistry[R, json.RawMessage](
+		agentServer.agentServerLocal,
 
 		&rpc.RegistryHooks{
 			OnClientConnect: func(remoteID string) {
@@ -246,7 +262,7 @@ func (agentServer *AgentServer) Accept(acceptCtx context.Context, remoteCtx cont
 	}
 
 	found := false
-	if err := registry.ForRemotes(func(remoteID string, r remotes.AgentRemote) error {
+	if err := registry.ForRemotes(func(remoteID string, r R) error {
 		acceptingAgentServer.Remote = r
 		found = true
 

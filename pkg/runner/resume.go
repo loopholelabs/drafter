@@ -25,8 +25,8 @@ type ResumedRunner struct {
 
 	runner *Runner
 
-	agent          *ipc.AgentServer
-	acceptingAgent *ipc.AcceptingAgentServer
+	agent          *ipc.AgentServer[struct{}, ipc.AgentServerRemote]
+	acceptingAgent *ipc.AcceptingAgentServer[struct{}, ipc.AgentServerRemote]
 
 	createSnapshot func(ctx context.Context) error
 }
@@ -191,9 +191,11 @@ func (runner *Runner) Resume(
 	})
 
 	var err error
-	resumedRunner.agent, err = ipc.StartAgentServer(
+	resumedRunner.agent, err = ipc.StartAgentServer[struct{}, ipc.AgentServerRemote](
 		filepath.Join(runner.server.VMPath, snapshotter.VSockName),
 		uint32(agentVSockPort),
+
+		struct{}{},
 	)
 	if err != nil {
 		panic(errors.Join(snapshotter.ErrCouldNotStartAgentServer, err))

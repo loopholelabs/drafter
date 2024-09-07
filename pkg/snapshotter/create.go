@@ -141,9 +141,11 @@ func CreateSnapshot(
 		panic(errors.Join(ErrCouldNotChownLivenessServerVSock, err))
 	}
 
-	agent, err := ipc.StartAgentServer(
+	agent, err := ipc.StartAgentServer[struct{}, ipc.AgentServerRemote](
 		filepath.Join(server.VMPath, VSockName),
 		uint32(agentConfiguration.AgentVSockPort),
+
+		struct{}{},
 	)
 	if err != nil {
 		panic(errors.Join(ErrCouldNotStartAgentServer, err))
@@ -247,7 +249,7 @@ func CreateSnapshot(
 		}
 	}
 
-	var acceptingAgent *ipc.AcceptingAgentServer
+	var acceptingAgent *ipc.AcceptingAgentServer[struct{}, ipc.AgentServerRemote]
 	{
 		acceptCtx, cancel := context.WithTimeout(goroutineManager.Context(), agentConfiguration.ResumeTimeout)
 		defer cancel()
