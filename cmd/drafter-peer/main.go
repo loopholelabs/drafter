@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/loopholelabs/drafter/pkg/ipc"
 	"github.com/loopholelabs/drafter/pkg/mounter"
 	"github.com/loopholelabs/drafter/pkg/packager"
 	"github.com/loopholelabs/drafter/pkg/peer"
@@ -277,7 +278,7 @@ func main() {
 		writers = []io.Writer{conn}
 	}
 
-	p, err := peer.StartPeer(
+	p, err := peer.StartPeer[struct{}, ipc.AgentServerRemote](
 		goroutineManager.Context(),
 		context.Background(), // Never give up on rescue operations
 
@@ -328,9 +329,9 @@ func main() {
 		}
 	})
 
-	migrateFromDevices := []peer.MigrateFromDevice{}
+	migrateFromDevices := []peer.MigrateFromDevice[struct{}, ipc.AgentServerRemote]{}
 	for _, device := range devices {
-		migrateFromDevices = append(migrateFromDevices, peer.MigrateFromDevice{
+		migrateFromDevices = append(migrateFromDevices, peer.MigrateFromDevice[struct{}, ipc.AgentServerRemote]{
 			Name: device.Name,
 
 			Base:    device.Base,
@@ -418,6 +419,8 @@ func main() {
 
 		*resumeTimeout,
 		*rescueTimeout,
+
+		struct{}{},
 
 		runner.SnapshotLoadConfiguration{
 			ExperimentalMapPrivate: *experimentalMapPrivate,

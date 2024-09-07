@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"github.com/loopholelabs/drafter/internal/firecracker"
+	"github.com/loopholelabs/drafter/pkg/ipc"
 	"github.com/loopholelabs/drafter/pkg/snapshotter"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 )
@@ -21,7 +22,7 @@ type SnapshotLoadConfiguration struct {
 	ExperimentalMapPrivateMemoryOutput string
 }
 
-type Runner struct {
+type Runner[L ipc.AgentServerLocal, R ipc.AgentServerRemote] struct {
 	VMPath string
 	VMPid  int
 
@@ -41,7 +42,7 @@ type Runner struct {
 	rescueCtx context.Context
 }
 
-func StartRunner(
+func StartRunner[L ipc.AgentServerLocal, R ipc.AgentServerRemote](
 	hypervisorCtx context.Context,
 	rescueCtx context.Context,
 
@@ -50,11 +51,11 @@ func StartRunner(
 	stateName string,
 	memoryName string,
 ) (
-	runner *Runner,
+	runner *Runner[L, R],
 
 	errs error,
 ) {
-	runner = &Runner{
+	runner = &Runner[L, R]{
 		Wait:  func() error { return nil },
 		Close: func() error { return nil },
 

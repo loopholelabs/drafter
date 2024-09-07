@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"time"
 
 	"github.com/lithammer/shortuuid/v4"
@@ -17,34 +18,38 @@ import (
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 )
 
-type ResumedRunner struct {
+type ResumedRunner[L ipc.AgentServerLocal, R ipc.AgentServerRemote] struct {
+	Remote R
+
 	Wait  func() error
 	Close func() error
 
 	snapshotLoadConfiguration SnapshotLoadConfiguration
 
-	runner *Runner
+	runner *Runner[L, R]
 
-	agent          *ipc.AgentServer[struct{}, ipc.AgentServerRemote]
-	acceptingAgent *ipc.AcceptingAgentServer[struct{}, ipc.AgentServerRemote]
+	agent          *ipc.AgentServer[L, R]
+	acceptingAgent *ipc.AcceptingAgentServer[L, R]
 
 	createSnapshot func(ctx context.Context) error
 }
 
-func (runner *Runner) Resume(
+func (runner *Runner[L, R]) Resume(
 	ctx context.Context,
 
 	resumeTimeout time.Duration,
 	rescueTimeout time.Duration,
 	agentVSockPort uint32,
 
+	agentServerLocal L,
+
 	snapshotLoadConfiguration SnapshotLoadConfiguration,
 ) (
-	resumedRunner *ResumedRunner,
+	resumedRunner *ResumedRunner[L, R],
 
 	errs error,
 ) {
-	resumedRunner = &ResumedRunner{
+	resumedRunner = &ResumedRunner[L, R]{
 		Wait:  func() error { return nil },
 		Close: func() error { return nil },
 
@@ -191,11 +196,11 @@ func (runner *Runner) Resume(
 	})
 
 	var err error
-	resumedRunner.agent, err = ipc.StartAgentServer[struct{}, ipc.AgentServerRemote](
+	resumedRunner.agent, err = ipc.StartAgentServer[L, R](
 		filepath.Join(runner.server.VMPath, snapshotter.VSockName),
 		uint32(agentVSockPort),
 
-		struct{}{},
+		agentServerLocal,
 	)
 	if err != nil {
 		panic(errors.Join(snapshotter.ErrCouldNotStartAgentServer, err))
@@ -234,6 +239,7 @@ func (runner *Runner) Resume(
 		if err != nil {
 			panic(errors.Join(ErrCouldNotAcceptAgent, err))
 		}
+		resumedRunner.Remote = resumedRunner.acceptingAgent.Remote
 	}
 
 	// We intentionally don't call `wg.Add` and `wg.Done` here since we return the process's wait method
@@ -263,7 +269,10 @@ func (runner *Runner) Resume(
 		afterResumeCtx, cancelAfterResumeCtx := context.WithTimeout(goroutineManager.Context(), resumeTimeout)
 		defer cancelAfterResumeCtx()
 
-		if err := resumedRunner.acceptingAgent.Remote.AfterResume(afterResumeCtx); err != nil {
+		// This is a safe type cast because R is constrained by ipc.AgentServerRemote, so this specific AfterResume field
+		// must be defined or there will be a compile-time error.
+		// The Go Generics system can't catch this here however, it can only catch it once the type is concrete, so we need to manually cast.
+		if err := reflect.ValueOf(resumedRunner.acceptingAgent.Remote).Interface().(ipc.AgentServerRemote).AfterResume(afterResumeCtx); err != nil {
 			panic(errors.Join(ErrCouldNotCallAfterResumeRPC, err))
 		}
 	}

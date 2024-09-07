@@ -4,12 +4,13 @@ import (
 	"context"
 	"errors"
 
+	"github.com/loopholelabs/drafter/pkg/ipc"
 	"github.com/loopholelabs/drafter/pkg/runner"
 	"github.com/loopholelabs/drafter/pkg/snapshotter"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 )
 
-type Peer struct {
+type Peer[L ipc.AgentServerLocal, R ipc.AgentServerRemote] struct {
 	VMPath string
 	VMPid  int
 
@@ -18,10 +19,10 @@ type Peer struct {
 
 	hypervisorCtx context.Context
 
-	runner *runner.Runner
+	runner *runner.Runner[L, R]
 }
 
-func StartPeer(
+func StartPeer[L ipc.AgentServerLocal, R ipc.AgentServerRemote](
 	hypervisorCtx context.Context,
 	rescueCtx context.Context,
 
@@ -30,11 +31,11 @@ func StartPeer(
 	stateName string,
 	memoryName string,
 ) (
-	peer *Peer,
+	peer *Peer[L, R],
 
 	errs error,
 ) {
-	peer = &Peer{
+	peer = &Peer[L, R]{
 		hypervisorCtx: hypervisorCtx,
 
 		Wait: func() error {
@@ -55,7 +56,7 @@ func StartPeer(
 	defer goroutineManager.CreateBackgroundPanicCollector()()
 
 	var err error
-	peer.runner, err = runner.StartRunner(
+	peer.runner, err = runner.StartRunner[L, R](
 		hypervisorCtx,
 		rescueCtx,
 

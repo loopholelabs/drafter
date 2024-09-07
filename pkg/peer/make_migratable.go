@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/loopholelabs/drafter/internal/utils"
+	"github.com/loopholelabs/drafter/pkg/ipc"
 	"github.com/loopholelabs/drafter/pkg/mounter"
 	"github.com/loopholelabs/drafter/pkg/runner"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
@@ -14,21 +15,23 @@ import (
 	"github.com/loopholelabs/silo/pkg/storage/volatilitymonitor"
 )
 
-type ResumedPeer struct {
+type ResumedPeer[L ipc.AgentServerLocal, R ipc.AgentServerRemote] struct {
+	Remote R
+
 	Wait  func() error
 	Close func() error
 
-	resumedRunner *runner.ResumedRunner
+	resumedRunner *runner.ResumedRunner[L, R]
 
 	stage2Inputs []migrateFromStage
 }
 
-func (resumedPeer *ResumedPeer) MakeMigratable(
+func (resumedPeer *ResumedPeer[L, R]) MakeMigratable(
 	ctx context.Context,
 
 	devices []mounter.MakeMigratableDevice,
-) (migratablePeer *MigratablePeer, errs error) {
-	migratablePeer = &MigratablePeer{
+) (migratablePeer *MigratablePeer[L, R], errs error) {
+	migratablePeer = &MigratablePeer[L, R]{
 		Close: func() {},
 
 		resumedPeer:   resumedPeer,
