@@ -278,7 +278,7 @@ func main() {
 		writers = []io.Writer{conn}
 	}
 
-	p, err := peer.StartPeer[struct{}, ipc.AgentServerRemote](
+	p, err := peer.StartPeer[struct{}, ipc.AgentServerRemote[struct{}]](
 		goroutineManager.Context(),
 		context.Background(), // Never give up on rescue operations
 
@@ -329,9 +329,9 @@ func main() {
 		}
 	})
 
-	migrateFromDevices := []peer.MigrateFromDevice[struct{}, ipc.AgentServerRemote]{}
+	migrateFromDevices := []peer.MigrateFromDevice[struct{}, ipc.AgentServerRemote[struct{}], struct{}]{}
 	for _, device := range devices {
-		migrateFromDevices = append(migrateFromDevices, peer.MigrateFromDevice[struct{}, ipc.AgentServerRemote]{
+		migrateFromDevices = append(migrateFromDevices, peer.MigrateFromDevice[struct{}, ipc.AgentServerRemote[struct{}], struct{}]{
 			Name: device.Name,
 
 			Base:    device.Base,

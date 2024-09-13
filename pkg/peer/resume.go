@@ -14,17 +14,17 @@ import (
 	"github.com/loopholelabs/drafter/pkg/snapshotter"
 )
 
-type MigratedPeer[L ipc.AgentServerLocal, R ipc.AgentServerRemote] struct {
+type MigratedPeer[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] struct {
 	Wait  func() error
 	Close func() error
 
-	devices []MigrateFromDevice[L, R]
-	runner  *runner.Runner[L, R]
+	devices []MigrateFromDevice[L, R, G]
+	runner  *runner.Runner[L, R, G]
 
 	stage2Inputs []migrateFromStage
 }
 
-func (migratedPeer *MigratedPeer[L, R]) Resume(
+func (migratedPeer *MigratedPeer[L, R, G]) Resume(
 	ctx context.Context,
 
 	resumeTimeout,
@@ -33,8 +33,8 @@ func (migratedPeer *MigratedPeer[L, R]) Resume(
 	agentServerLocal L,
 
 	snapshotLoadConfiguration runner.SnapshotLoadConfiguration,
-) (resumedPeer *ResumedPeer[L, R], errs error) {
-	resumedPeer = &ResumedPeer[L, R]{
+) (resumedPeer *ResumedPeer[L, R, G], errs error) {
+	resumedPeer = &ResumedPeer[L, R, G]{
 		Wait: func() error {
 			return nil
 		},

@@ -28,12 +28,14 @@ type AgentServerLocal any
 
 // The RPCs this server can call on the agent client
 // See https://github.com/pojntfx/panrpc/tree/main?tab=readme-ov-file#4-calling-the-servers-rpcs-from-the-client
-type AgentServerRemote struct {
+type AgentServerRemote[G any] struct {
+	GuestService G
+
 	BeforeSuspend func(ctx context.Context) error
 	AfterResume   func(ctx context.Context) error
 }
 
-type AgentServer[L AgentServerLocal, R AgentServerRemote] struct {
+type AgentServer[L AgentServerLocal, R AgentServerRemote[G], G any] struct {
 	VSockPath string
 
 	Close func()
@@ -46,17 +48,17 @@ type AgentServer[L AgentServerLocal, R AgentServerRemote] struct {
 	agentServerLocal L
 }
 
-func StartAgentServer[L AgentServerLocal, R AgentServerRemote](
+func StartAgentServer[L AgentServerLocal, R AgentServerRemote[G], G any](
 	vsockPath string,
 	vsockPort uint32,
 
 	agentServerLocal L,
 ) (
-	agentServer *AgentServer[L, R],
+	agentServer *AgentServer[L, R, G],
 
 	err error,
 ) {
-	agentServer = &AgentServer[L, R]{
+	agentServer = &AgentServer[L, R, G]{
 		Close: func() {},
 
 		agentServerLocal: agentServerLocal,
@@ -84,15 +86,15 @@ func StartAgentServer[L AgentServerLocal, R AgentServerRemote](
 	return
 }
 
-type AcceptingAgentServer[L AgentServerLocal, R AgentServerRemote] struct {
+type AcceptingAgentServer[L AgentServerLocal, R AgentServerRemote[G], G any] struct {
 	Remote R
 
 	Wait  func() error
 	Close func() error
 }
 
-func (agentServer *AgentServer[L, R]) Accept(acceptCtx context.Context, remoteCtx context.Context) (acceptingAgentServer *AcceptingAgentServer[L, R], errs error) {
-	acceptingAgentServer = &AcceptingAgentServer[L, R]{
+func (agentServer *AgentServer[L, R, G]) Accept(acceptCtx context.Context, remoteCtx context.Context) (acceptingAgentServer *AcceptingAgentServer[L, R, G], errs error) {
+	acceptingAgentServer = &AcceptingAgentServer[L, R, G]{
 		Wait: func() error {
 			return nil
 		},

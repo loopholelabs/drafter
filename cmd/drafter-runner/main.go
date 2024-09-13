@@ -175,7 +175,7 @@ func main() {
 		cancel()
 	}()
 
-	r, err := runner.StartRunner[struct{}, ipc.AgentServerRemote](
+	r, err := runner.StartRunner[struct{}, ipc.AgentServerRemote[struct{}]](
 		goroutineManager.Context(),
 		context.Background(), // Never give up on rescue operations
 

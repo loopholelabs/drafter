@@ -22,7 +22,7 @@ type SnapshotLoadConfiguration struct {
 	ExperimentalMapPrivateMemoryOutput string
 }
 
-type Runner[L ipc.AgentServerLocal, R ipc.AgentServerRemote] struct {
+type Runner[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] struct {
 	VMPath string
 	VMPid  int
 
@@ -42,7 +42,7 @@ type Runner[L ipc.AgentServerLocal, R ipc.AgentServerRemote] struct {
 	rescueCtx context.Context
 }
 
-func StartRunner[L ipc.AgentServerLocal, R ipc.AgentServerRemote](
+func StartRunner[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 	hypervisorCtx context.Context,
 	rescueCtx context.Context,
 
@@ -51,11 +51,11 @@ func StartRunner[L ipc.AgentServerLocal, R ipc.AgentServerRemote](
 	stateName string,
 	memoryName string,
 ) (
-	runner *Runner[L, R],
+	runner *Runner[L, R, G],
 
 	errs error,
 ) {
-	runner = &Runner[L, R]{
+	runner = &Runner[L, R, G]{
 		Wait:  func() error { return nil },
 		Close: func() error { return nil },
 

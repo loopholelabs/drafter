@@ -38,15 +38,15 @@ type MigrateToHooks struct {
 	OnAllMigrationsCompleted func()
 }
 
-type MigratablePeer[L ipc.AgentServerLocal, R ipc.AgentServerRemote] struct {
+type MigratablePeer[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] struct {
 	Close func()
 
-	resumedPeer   *ResumedPeer[L, R]
+	resumedPeer   *ResumedPeer[L, R, G]
 	stage4Inputs  []makeMigratableDeviceStage
-	resumedRunner *runner.ResumedRunner[L, R]
+	resumedRunner *runner.ResumedRunner[L, R, G]
 }
 
-func (migratablePeer *MigratablePeer[L, R]) MigrateTo(
+func (migratablePeer *MigratablePeer[L, R, G]) MigrateTo(
 	ctx context.Context,
 
 	devices []mounter.MigrateToDevice,

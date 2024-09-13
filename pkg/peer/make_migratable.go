@@ -15,23 +15,23 @@ import (
 	"github.com/loopholelabs/silo/pkg/storage/volatilitymonitor"
 )
 
-type ResumedPeer[L ipc.AgentServerLocal, R ipc.AgentServerRemote] struct {
+type ResumedPeer[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] struct {
 	Remote R
 
 	Wait  func() error
 	Close func() error
 
-	resumedRunner *runner.ResumedRunner[L, R]
+	resumedRunner *runner.ResumedRunner[L, R, G]
 
 	stage2Inputs []migrateFromStage
 }
 
-func (resumedPeer *ResumedPeer[L, R]) MakeMigratable(
+func (resumedPeer *ResumedPeer[L, R, G]) MakeMigratable(
 	ctx context.Context,
 
 	devices []mounter.MakeMigratableDevice,
-) (migratablePeer *MigratablePeer[L, R], errs error) {
-	migratablePeer = &MigratablePeer[L, R]{
+) (migratablePeer *MigratablePeer[L, R, G], errs error) {
+	migratablePeer = &MigratablePeer[L, R, G]{
 		Close: func() {},
 
 		resumedPeer:   resumedPeer,

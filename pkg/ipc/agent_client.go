@@ -21,46 +21,47 @@ var (
 
 // The RPCs the agent server can call on this client
 // See https://github.com/pojntfx/panrpc/tree/main?tab=readme-ov-file#5-calling-the-clients-rpcs-from-the-server
-type AgentClientLocal interface {
-	BeforeSuspend(ctx context.Context) error
-	AfterResume(ctx context.Context) error
+type AgentClientLocal[G any] struct {
+	GuestService G
+
+	beforeSuspend func(ctx context.Context) error
+	afterResume   func(ctx context.Context) error
 }
 
 // The RPCs this client can call on the agent server
 // See https://github.com/pojntfx/panrpc/tree/main?tab=readme-ov-file#4-calling-the-servers-rpcs-from-the-client
 type AgentClientRemote any
 
-type HookAgentClient struct {
-	beforeSuspend func(ctx context.Context) error
-	afterResume   func(ctx context.Context) error
-}
+func NewAgentClient[G any](
+	guestService G,
 
-func NewHookAgentClient(
 	beforeSuspend func(ctx context.Context) error,
 	afterResume func(ctx context.Context) error,
-) *HookAgentClient {
-	return &HookAgentClient{
+) *AgentClientLocal[G] {
+	return &AgentClientLocal[G]{
+		GuestService: guestService,
+
 		beforeSuspend: beforeSuspend,
 		afterResume:   afterResume,
 	}
 }
 
-func (l *HookAgentClient) BeforeSuspend(ctx context.Context) error {
+func (l *AgentClientLocal[G]) BeforeSuspend(ctx context.Context) error {
 	return l.beforeSuspend(ctx)
 }
 
-func (l *HookAgentClient) AfterResume(ctx context.Context) error {
+func (l *AgentClientLocal[G]) AfterResume(ctx context.Context) error {
 	return l.afterResume(ctx)
 }
 
-type ConnectedAgentClient[L AgentClientLocal, R AgentClientRemote] struct {
+type ConnectedAgentClient[L *AgentClientLocal[G], R AgentClientRemote, G any] struct {
 	Remote R
 
 	Wait  func() error
 	Close func()
 }
 
-func StartAgentClient[L AgentClientLocal, R AgentClientRemote](
+func StartAgentClient[L *AgentClientLocal[G], R AgentClientRemote, G any](
 	dialCtx context.Context,
 	remoteCtx context.Context,
 
@@ -68,8 +69,8 @@ func StartAgentClient[L AgentClientLocal, R AgentClientRemote](
 	vsockPort uint32,
 
 	agentClientLocal L,
-) (connectedAgentClient *ConnectedAgentClient[L, R], errs error) {
-	connectedAgentClient = &ConnectedAgentClient[L, R]{
+) (connectedAgentClient *ConnectedAgentClient[L, R, G], errs error) {
+	connectedAgentClient = &ConnectedAgentClient[L, R, G]{
 		Wait: func() error {
 			return nil
 		},

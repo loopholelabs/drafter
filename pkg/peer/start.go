@@ -10,7 +10,7 @@ import (
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 )
 
-type Peer[L ipc.AgentServerLocal, R ipc.AgentServerRemote] struct {
+type Peer[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] struct {
 	VMPath string
 	VMPid  int
 
@@ -19,10 +19,10 @@ type Peer[L ipc.AgentServerLocal, R ipc.AgentServerRemote] struct {
 
 	hypervisorCtx context.Context
 
-	runner *runner.Runner[L, R]
+	runner *runner.Runner[L, R, G]
 }
 
-func StartPeer[L ipc.AgentServerLocal, R ipc.AgentServerRemote](
+func StartPeer[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 	hypervisorCtx context.Context,
 	rescueCtx context.Context,
 
@@ -31,11 +31,11 @@ func StartPeer[L ipc.AgentServerLocal, R ipc.AgentServerRemote](
 	stateName string,
 	memoryName string,
 ) (
-	peer *Peer[L, R],
+	peer *Peer[L, R, G],
 
 	errs error,
 ) {
-	peer = &Peer[L, R]{
+	peer = &Peer[L, R, G]{
 		hypervisorCtx: hypervisorCtx,
 
 		Wait: func() error {
