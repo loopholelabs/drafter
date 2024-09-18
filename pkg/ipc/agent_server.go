@@ -199,7 +199,7 @@ func (agentServer *AgentServer[L, R, G]) Accept(acceptCtx context.Context, remot
 	)
 
 	acceptingAgentServer.Wait = sync.OnceValue(func() error {
-		defer conn.Close() // We ignore errors here since we might interrupt a network connection
+		// We don't `defer conn.Close` here since Firecracker handles resetting active VSock connections for us
 		defer cancelLinkCtx(nil)
 
 		encoder := json.NewEncoder(conn)

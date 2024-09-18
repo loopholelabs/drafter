@@ -17,14 +17,11 @@ func SendLivenessPing(
 	vsockCID uint32,
 	vsockPort uint32,
 ) error {
-	conn, err := vsock.DialContext(ctx, vsockCID, vsockPort)
-	if err != nil {
+	if _, err := vsock.DialContext(ctx, vsockCID, vsockPort); err != nil {
 		return errors.Join(ErrCouldNotDialLivenessVSockConnection, err)
 	}
 
-	if err := conn.Close(); err != nil {
-		return errors.Join(ErrCouldNotCloseLivenessVSockConnection, err)
-	}
+	// We don't `conn.Close` here since Firecracker handles resetting active VSock connections for us
 
 	return nil
 }
