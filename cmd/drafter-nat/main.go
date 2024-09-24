@@ -19,9 +19,9 @@ func main() {
 	blockedSubnetCIDR := flag.String("blocked-subnet-cidr", "10.0.15.0/24", "CIDR to block for the namespace")
 
 	namespaceInterface := flag.String("namespace-interface", "tap0", "Name for the interface inside the namespace")
-	namespaceInterfaceGateway := flag.String("namespace-interface-gateway", "172.100.100.1", "Gateway for the interface inside the namespace")
+	namespaceInterfaceGateway := flag.String("namespace-interface-gateway", "172.16.0.1", "Gateway for the interface inside the namespace")
 	namespaceInterfaceNetmask := flag.Uint("namespace-interface-netmask", 30, "Netmask for the interface inside the namespace")
-	namespaceInterfaceIP := flag.String("namespace-interface-ip", "172.100.100.2", "IP for the interface inside the namespace")
+	namespaceInterfaceIP := flag.String("namespace-interface-ip", "172.16.0.2", "IP for the interface inside the namespace")
 	namespaceInterfaceMAC := flag.String("namespace-interface-mac", "02:0e:d9:fd:68:3d", "MAC address for the interface inside the namespace")
 
 	namespacePrefix := flag.String("namespace-prefix", "ark", "Prefix for the namespace IDs")

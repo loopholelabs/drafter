@@ -960,9 +960,9 @@ Usage of drafter-nat:
   -namespace-interface string
         Name for the interface inside the namespace (default "tap0")
   -namespace-interface-gateway string
-        Gateway for the interface inside the namespace (default "172.100.100.1")
+        Gateway for the interface inside the namespace (default "172.16.0.1")
   -namespace-interface-ip string
-        IP for the interface inside the namespace (default "172.100.100.2")
+        IP for the interface inside the namespace (default "172.16.0.2")
   -namespace-interface-mac string
         MAC address for the interface inside the namespace (default "02:0e:d9:fd:68:3d")
   -namespace-interface-netmask uint
