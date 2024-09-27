@@ -42,6 +42,7 @@ func (runner *Runner[L, R, G]) Resume(
 	agentVSockPort uint32,
 
 	agentServerLocal L,
+	agentServerHooks ipc.AgentServerAcceptHooks[R, G],
 
 	snapshotLoadConfiguration SnapshotLoadConfiguration,
 ) (
@@ -235,7 +236,12 @@ func (runner *Runner[L, R, G]) Resume(
 
 		suspendOnPanicWithError = true
 
-		resumedRunner.acceptingAgent, err = resumedRunner.agent.Accept(resumeSnapshotAndAcceptCtx, ctx)
+		resumedRunner.acceptingAgent, err = resumedRunner.agent.Accept(
+			resumeSnapshotAndAcceptCtx,
+			ctx,
+
+			agentServerHooks,
+		)
 		if err != nil {
 			panic(errors.Join(ErrCouldNotAcceptAgent, err))
 		}

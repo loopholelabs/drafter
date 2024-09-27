@@ -86,6 +86,10 @@ func StartAgentServer[L AgentServerLocal, R AgentServerRemote[G], G any](
 	return
 }
 
+type AgentServerAcceptHooks[R AgentServerRemote[G], G any] struct {
+	OnAfterRegistrySetup func(forRemotes func(cb func(remoteID string, remote R) error) error) error
+}
+
 type AcceptingAgentServer[L AgentServerLocal, R AgentServerRemote[G], G any] struct {
 	Remote R
 
@@ -93,7 +97,12 @@ type AcceptingAgentServer[L AgentServerLocal, R AgentServerRemote[G], G any] str
 	Close func() error
 }
 
-func (agentServer *AgentServer[L, R, G]) Accept(acceptCtx context.Context, remoteCtx context.Context) (acceptingAgentServer *AcceptingAgentServer[L, R, G], errs error) {
+func (agentServer *AgentServer[L, R, G]) Accept(
+	acceptCtx context.Context,
+	remoteCtx context.Context,
+
+	hooks AgentServerAcceptHooks[R, G],
+) (acceptingAgentServer *AcceptingAgentServer[L, R, G], errs error) {
 	acceptingAgentServer = &AcceptingAgentServer[L, R, G]{
 		Wait: func() error {
 			return nil
@@ -197,6 +206,10 @@ func (agentServer *AgentServer[L, R, G]) Accept(acceptCtx context.Context, remot
 			},
 		},
 	)
+
+	if hook := hooks.OnAfterRegistrySetup; hook != nil {
+		hook(registry.ForRemotes)
+	}
 
 	acceptingAgentServer.Wait = sync.OnceValue(func() error {
 		// We don't `defer conn.Close` here since Firecracker handles resetting active VSock connections for us

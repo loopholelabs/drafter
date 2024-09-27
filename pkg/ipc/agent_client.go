@@ -61,6 +61,10 @@ type ConnectedAgentClient[L *AgentClientLocal[G], R AgentClientRemote, G any] st
 	Close func()
 }
 
+type StartAgentClientHooks[R AgentClientRemote] struct {
+	OnAfterRegistrySetup func(forRemotes func(cb func(remoteID string, remote R) error) error) error
+}
+
 func StartAgentClient[L *AgentClientLocal[G], R AgentClientRemote, G any](
 	dialCtx context.Context,
 	remoteCtx context.Context,
@@ -69,6 +73,7 @@ func StartAgentClient[L *AgentClientLocal[G], R AgentClientRemote, G any](
 	vsockPort uint32,
 
 	agentClientLocal L,
+	hooks StartAgentClientHooks[R],
 ) (connectedAgentClient *ConnectedAgentClient[L, R, G], errs error) {
 	connectedAgentClient = &ConnectedAgentClient[L, R, G]{
 		Wait: func() error {
@@ -143,6 +148,10 @@ func StartAgentClient[L *AgentClientLocal[G], R AgentClientRemote, G any](
 			},
 		},
 	)
+
+	if hook := hooks.OnAfterRegistrySetup; hook != nil {
+		hook(registry.ForRemotes)
+	}
 
 	connectedAgentClient.Wait = sync.OnceValue(func() error {
 		// We don't `defer conn.Close` here since Firecracker handles resetting active VSock connections for us

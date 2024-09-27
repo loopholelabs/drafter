@@ -305,6 +305,7 @@ func main() {
 		packageConfig.AgentVSockPort,
 
 		struct{}{},
+		ipc.AgentServerAcceptHooks[ipc.AgentServerRemote[struct{}], struct{}]{},
 
 		runner.SnapshotLoadConfiguration{
 			ExperimentalMapPrivate: *experimentalMapPrivate,

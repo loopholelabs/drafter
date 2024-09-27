@@ -31,6 +31,7 @@ func (migratedPeer *MigratedPeer[L, R, G]) Resume(
 	rescueTimeout time.Duration,
 
 	agentServerLocal L,
+	agentServerHooks ipc.AgentServerAcceptHooks[R, G],
 
 	snapshotLoadConfiguration runner.SnapshotLoadConfiguration,
 ) (resumedPeer *ResumedPeer[L, R, G], errs error) {
@@ -77,6 +78,7 @@ func (migratedPeer *MigratedPeer[L, R, G]) Resume(
 		packageConfig.AgentVSockPort,
 
 		agentServerLocal,
+		agentServerHooks,
 
 		snapshotLoadConfiguration,
 	)

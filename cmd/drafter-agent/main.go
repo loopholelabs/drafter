@@ -105,6 +105,7 @@ func main() {
 				uint32(*vsockPort),
 
 				agentClient,
+				ipc.StartAgentClientHooks[struct{}]{},
 			)
 			if err != nil {
 				return err

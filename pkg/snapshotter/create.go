@@ -254,7 +254,12 @@ func CreateSnapshot(
 		acceptCtx, cancel := context.WithTimeout(goroutineManager.Context(), agentConfiguration.ResumeTimeout)
 		defer cancel()
 
-		acceptingAgent, err = agent.Accept(acceptCtx, goroutineManager.Context())
+		acceptingAgent, err = agent.Accept(
+			acceptCtx,
+			goroutineManager.Context(),
+
+			ipc.AgentServerAcceptHooks[ipc.AgentServerRemote[struct{}], struct{}]{},
+		)
 		if err != nil {
 			panic(errors.Join(ErrCouldNotAcceptAgentConnection, err))
 		}
