@@ -5,7 +5,7 @@ go 1.22.5
 toolchain go1.22.6
 
 require (
-	github.com/coreos/go-iptables v0.7.0
+	github.com/coreos/go-iptables v0.8.0
 	github.com/freddierice/go-losetup/v2 v2.0.1
 	github.com/klauspost/compress v1.17.9
 	github.com/lithammer/shortuuid/v4 v4.0.0
