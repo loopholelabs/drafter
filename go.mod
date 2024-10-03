@@ -7,7 +7,7 @@ toolchain go1.22.6
 require (
 	github.com/coreos/go-iptables v0.7.0
 	github.com/freddierice/go-losetup/v2 v2.0.1
-	github.com/klauspost/compress v1.17.9
+	github.com/klauspost/compress v1.17.10
 	github.com/lithammer/shortuuid/v4 v4.0.0
 	github.com/loopholelabs/goroutine-manager v0.1.1
 	github.com/loopholelabs/silo v0.0.8
