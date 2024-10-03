@@ -14,6 +14,7 @@ import (
 	"syscall"
 
 	"github.com/loopholelabs/drafter/internal/utils"
+	"github.com/loopholelabs/drafter/pkg/ipc"
 	"github.com/loopholelabs/drafter/pkg/mounter"
 	"github.com/loopholelabs/drafter/pkg/registry"
 	"github.com/loopholelabs/drafter/pkg/snapshotter"
@@ -28,7 +29,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-type MigrateFromDevice struct {
+type MigrateFromDevice[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] struct {
 	Name string `json:"name"`
 
 	Base    string `json:"base"`
@@ -40,21 +41,21 @@ type MigrateFromDevice struct {
 	Shared bool `json:"shared"`
 }
 
-func (peer *Peer) MigrateFrom(
+func (peer *Peer[L, R, G]) MigrateFrom(
 	ctx context.Context,
 
-	devices []MigrateFromDevice,
+	devices []MigrateFromDevice[L, R, G],
 
 	readers []io.Reader,
 	writers []io.Writer,
 
 	hooks mounter.MigrateFromHooks,
 ) (
-	migratedPeer *MigratedPeer,
+	migratedPeer *MigratedPeer[L, R, G],
 
 	errs error,
 ) {
-	migratedPeer = &MigratedPeer{
+	migratedPeer = &MigratedPeer[L, R, G]{
 		Wait: func() error {
 			return nil
 		},
@@ -410,7 +411,7 @@ func (peer *Peer) MigrateFrom(
 		break
 	}
 
-	stage1Inputs := []MigrateFromDevice{}
+	stage1Inputs := []MigrateFromDevice[L, R, G]{}
 	for _, input := range devices {
 		if slices.ContainsFunc(
 			migratedPeer.stage2Inputs,
@@ -430,7 +431,7 @@ func (peer *Peer) MigrateFrom(
 
 	_, deferFuncs, err := utils.ConcurrentMap(
 		stage1Inputs,
-		func(index int, input MigrateFromDevice, _ *struct{}, addDefer func(deferFunc func() error)) error {
+		func(index int, input MigrateFromDevice[L, R, G], _ *struct{}, addDefer func(deferFunc func() error)) error {
 			if hook := hooks.OnLocalDeviceRequested; hook != nil {
 				hook(uint32(index), input.Name)
 			}

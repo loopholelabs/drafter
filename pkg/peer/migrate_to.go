@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/loopholelabs/drafter/internal/utils"
+	"github.com/loopholelabs/drafter/pkg/ipc"
 	"github.com/loopholelabs/drafter/pkg/mounter"
 	"github.com/loopholelabs/drafter/pkg/packager"
 	"github.com/loopholelabs/drafter/pkg/registry"
@@ -37,15 +38,15 @@ type MigrateToHooks struct {
 	OnAllMigrationsCompleted func()
 }
 
-type MigratablePeer struct {
+type MigratablePeer[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] struct {
 	Close func()
 
-	resumedPeer   *ResumedPeer
+	resumedPeer   *ResumedPeer[L, R, G]
 	stage4Inputs  []makeMigratableDeviceStage
-	resumedRunner *runner.ResumedRunner
+	resumedRunner *runner.ResumedRunner[L, R, G]
 }
 
-func (migratablePeer *MigratablePeer) MigrateTo(
+func (migratablePeer *MigratablePeer[L, R, G]) MigrateTo(
 	ctx context.Context,
 
 	devices []mounter.MigrateToDevice,

@@ -8,30 +8,34 @@ import (
 	"strings"
 	"time"
 
+	"github.com/loopholelabs/drafter/pkg/ipc"
 	"github.com/loopholelabs/drafter/pkg/packager"
 	"github.com/loopholelabs/drafter/pkg/runner"
 	"github.com/loopholelabs/drafter/pkg/snapshotter"
 )
 
-type MigratedPeer struct {
+type MigratedPeer[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] struct {
 	Wait  func() error
 	Close func() error
 
-	devices []MigrateFromDevice
-	runner  *runner.Runner
+	devices []MigrateFromDevice[L, R, G]
+	runner  *runner.Runner[L, R, G]
 
 	stage2Inputs []migrateFromStage
 }
 
-func (migratedPeer *MigratedPeer) Resume(
+func (migratedPeer *MigratedPeer[L, R, G]) Resume(
 	ctx context.Context,
 
 	resumeTimeout,
 	rescueTimeout time.Duration,
 
+	agentServerLocal L,
+	agentServerHooks ipc.AgentServerAcceptHooks[R, G],
+
 	snapshotLoadConfiguration runner.SnapshotLoadConfiguration,
-) (resumedPeer *ResumedPeer, errs error) {
-	resumedPeer = &ResumedPeer{
+) (resumedPeer *ResumedPeer[L, R, G], errs error) {
+	resumedPeer = &ResumedPeer[L, R, G]{
 		Wait: func() error {
 			return nil
 		},
@@ -73,11 +77,15 @@ func (migratedPeer *MigratedPeer) Resume(
 		rescueTimeout,
 		packageConfig.AgentVSockPort,
 
+		agentServerLocal,
+		agentServerHooks,
+
 		snapshotLoadConfiguration,
 	)
 	if err != nil {
 		return nil, errors.Join(ErrCouldNotResumeRunner, err)
 	}
+	resumedPeer.Remote = resumedPeer.resumedRunner.Remote
 
 	resumedPeer.Wait = resumedPeer.resumedRunner.Wait
 	resumedPeer.Close = resumedPeer.resumedRunner.Close

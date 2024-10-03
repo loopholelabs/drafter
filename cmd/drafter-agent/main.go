@@ -55,7 +55,9 @@ func main() {
 		cancel()
 	}()
 
-	agentClient := ipc.NewAgentClient(
+	agentClient := ipc.NewAgentClient[struct{}](
+		struct{}{},
+
 		func(ctx context.Context) error {
 			log.Println("Running pre-suspend command")
 
@@ -95,7 +97,7 @@ func main() {
 			dialCtx, cancelDialCtx := context.WithTimeout(goroutineManager.Context(), *vsockTimeout)
 			defer cancelDialCtx()
 
-			connectedAgentClient, err := ipc.StartAgentClient(
+			connectedAgentClient, err := ipc.StartAgentClient[*ipc.AgentClientLocal[struct{}], struct{}](
 				dialCtx,
 				goroutineManager.Context(),
 
@@ -103,6 +105,7 @@ func main() {
 				uint32(*vsockPort),
 
 				agentClient,
+				ipc.StartAgentClientHooks[struct{}]{},
 			)
 			if err != nil {
 				return err

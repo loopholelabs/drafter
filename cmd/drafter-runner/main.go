@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/loopholelabs/drafter/pkg/ipc"
 	"github.com/loopholelabs/drafter/pkg/packager"
 	"github.com/loopholelabs/drafter/pkg/peer"
 	"github.com/loopholelabs/drafter/pkg/runner"
@@ -174,7 +175,7 @@ func main() {
 		cancel()
 	}()
 
-	r, err := runner.StartRunner(
+	r, err := runner.StartRunner[struct{}, ipc.AgentServerRemote[struct{}]](
 		goroutineManager.Context(),
 		context.Background(), // Never give up on rescue operations
 
@@ -302,6 +303,9 @@ func main() {
 		*resumeTimeout,
 		*rescueTimeout,
 		packageConfig.AgentVSockPort,
+
+		struct{}{},
+		ipc.AgentServerAcceptHooks[ipc.AgentServerRemote[struct{}], struct{}]{},
 
 		runner.SnapshotLoadConfiguration{
 			ExperimentalMapPrivate: *experimentalMapPrivate,

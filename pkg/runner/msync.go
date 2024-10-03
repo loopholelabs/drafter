@@ -8,7 +8,7 @@ import (
 	"github.com/loopholelabs/drafter/pkg/snapshotter"
 )
 
-func (resumedRunner *ResumedRunner) Msync(ctx context.Context) error {
+func (resumedRunner *ResumedRunner[L, R, G]) Msync(ctx context.Context) error {
 	if !resumedRunner.snapshotLoadConfiguration.ExperimentalMapPrivate {
 		if err := firecracker.CreateSnapshot(
 			ctx,

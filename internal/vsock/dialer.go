@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"sync"
 
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 	"golang.org/x/sys/unix"
@@ -35,10 +36,14 @@ func DialContext(
 		panic(errors.Join(ErrVSockSocketCreationFailed, err))
 	}
 
+	var cLock sync.Mutex
 	goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
 		<-goroutineManager.Context().Done()
 
 		// Non-happy path; context was cancelled before `connect()` completed
+		cLock.Lock()
+		defer cLock.Unlock()
+
 		if c == nil {
 			if err := unix.Shutdown(fd, unix.SHUT_RDWR); err != nil {
 				// Always close the file descriptor even if shutdown fails
@@ -69,6 +74,9 @@ func DialContext(
 	}); err != nil {
 		panic(errors.Join(ErrVSockConnectFailed, err))
 	}
+
+	cLock.Lock()
+	defer cLock.Unlock()
 
 	c = &conn{fd}
 
