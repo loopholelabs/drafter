@@ -4,3 +4,6 @@ Name=eth0
 [Network]
 Address=172.16.0.2/30
 Gateway=172.16.0.1
+
+[Link]
+MTUBytes=1460
