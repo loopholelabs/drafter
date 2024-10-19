@@ -51,13 +51,13 @@ The Firecracker fork is available as static binaries on [GitHub releases](https:
 ```shell
 # Without PVM support
 for BINARY in firecracker jailer; do
-    curl -L -o "/tmp/${BINARY}" "https://github.com/loopholelabs/firecracker/releases/download/release-firecracker-v1.7-live-migration-and-msync/${BINARY}.linux-$(uname -m)"
+    curl -L -o "/tmp/${BINARY}" "https://github.com/loopholelabs/firecracker/releases/download/release-firecracker-release-main-live-migration/${BINARY}.linux-$(uname -m)"
     sudo install "/tmp/${BINARY}" /usr/local/bin
 done
 
 # With PVM support
 for BINARY in firecracker jailer; do
-    curl -L -o "/tmp/${BINARY}" "https://github.com/loopholelabs/firecracker/releases/download/release-firecracker-v1.7-live-migration-pvm-and-msync/${BINARY}.linux-$(uname -m)"
+    curl -L -o "/tmp/${BINARY}" "https://github.com/loopholelabs/firecracker/releases/download/release-firecracker-release-main-live-migration-pvm/${BINARY}.linux-$(uname -m)"
     sudo install "/tmp/${BINARY}" /usr/local/bin
 done
 ```
