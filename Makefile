@@ -43,9 +43,18 @@ build/os:
 config/os:
 	$(MAKE) -C $(OUTPUT_DIR)/buildroot BR2_EXTERNAL="$(OS_BR2_EXTERNAL)" menuconfig
 
+# Configure kernel
+config/kernel:
+	$(MAKE) -C $(OUTPUT_DIR)/buildroot BR2_EXTERNAL="$(OS_BR2_EXTERNAL)" linux-menuconfig
+
 # Save OS defconfig changes
 save/os:
 	$(MAKE) -C $(OUTPUT_DIR)/buildroot BR2_EXTERNAL="$(OS_BR2_EXTERNAL)" savedefconfig
+
+# Save kernel defconfig changes
+save/kernel:
+	$(MAKE) -C $(OUTPUT_DIR)/buildroot BR2_EXTERNAL="$(OS_BR2_EXTERNAL)" linux-savedefconfig
+	$(MAKE) -C $(OUTPUT_DIR)/buildroot BR2_EXTERNAL="$(OS_BR2_EXTERNAL)" linux-update-defconfig
 
 # Unpack OCI runtime bundle
 unpack/oci:
