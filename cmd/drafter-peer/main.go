@@ -204,7 +204,7 @@ func main() {
 	raddr := flag.String("raddr", "localhost:1337", "Remote address to connect to (leave empty to disable)")
 	laddr := flag.String("laddr", "localhost:1337", "Local address to listen on (leave empty to disable)")
 
-	concurrency := flag.Int("concurrency", 4096, "Number of concurrent workers to use in migrations")
+	concurrency := flag.Int("concurrency", 1024, "Number of concurrent workers to use in migrations")
 
 	flag.Parse()
 
@@ -550,6 +550,9 @@ func main() {
 
 	case <-ready:
 		break
+
+		// default:
+		// 	return
 	}
 
 	defer conn.Close()
