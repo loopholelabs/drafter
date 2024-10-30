@@ -44,7 +44,7 @@ func MigrateTo(
 	defer goroutineManager.StopAllGoroutines()
 	defer goroutineManager.CreateBackgroundPanicCollector()()
 
-	pro := protocol.NewProtocolRW(
+	pro := protocol.NewRW(
 		goroutineManager.Context(),
 		readers,
 		writers,
@@ -124,14 +124,14 @@ func MigrateTo(
 				}
 			})
 
-			cfg := migrator.NewMigratorConfig().WithBlockSize(int(input.RegistryDevice.BlockSize))
+			cfg := migrator.NewConfig().WithBlockSize(int(input.RegistryDevice.BlockSize))
 			cfg.Concurrency = map[int]int{
 				storage.BlockTypeAny:      concurrency,
 				storage.BlockTypeStandard: concurrency,
 				storage.BlockTypeDirty:    concurrency,
 				storage.BlockTypePriority: concurrency,
 			}
-			cfg.Locker_handler = func() {
+			cfg.LockerHandler = func() {
 				defer goroutineManager.CreateBackgroundPanicCollector()()
 
 				if err := to.SendEvent(&packets.Event{
@@ -148,7 +148,7 @@ func MigrateTo(
 					panic(errors.Join(ErrCouldNotSendEvent, err))
 				}
 			}
-			cfg.Unlocker_handler = func() {
+			cfg.UnlockerHandler = func() {
 				defer goroutineManager.CreateBackgroundPanicCollector()()
 
 				if err := to.SendEvent(&packets.Event{
@@ -165,16 +165,16 @@ func MigrateTo(
 					panic(errors.Join(ErrCouldNotSendEvent, err))
 				}
 			}
-			cfg.Error_handler = func(b *storage.BlockInfo, err error) {
+			cfg.ErrorHandler = func(b *storage.BlockInfo, err error) {
 				defer goroutineManager.CreateBackgroundPanicCollector()()
 
 				if err != nil {
 					panic(errors.Join(ErrCouldNotContinueWithMigration, err))
 				}
 			}
-			cfg.Progress_handler = func(p *migrator.MigrationProgress) {
+			cfg.ProgressHandler = func(p *migrator.MigrationProgress) {
 				if hook := hooks.OnDeviceMigrationProgress; hook != nil {
-					hook(uint32(index), p.Ready_blocks, p.Total_blocks)
+					hook(uint32(index), p.ReadyBlocks, p.TotalBlocks)
 				}
 			}
 
