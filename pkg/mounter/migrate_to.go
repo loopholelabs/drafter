@@ -68,7 +68,7 @@ func (migratableMounter *MigratableMounter) MigrateTo(
 	defer goroutineManager.StopAllGoroutines()
 	defer goroutineManager.CreateBackgroundPanicCollector()()
 
-	pro := protocol.NewProtocolRW(
+	pro := protocol.NewRW(
 		goroutineManager.Context(),
 		readers,
 		writers,
@@ -189,14 +189,14 @@ func (migratableMounter *MigratableMounter) MigrateTo(
 				}
 			})
 
-			cfg := migrator.NewMigratorConfig().WithBlockSize(int(input.prev.prev.prev.blockSize))
+			cfg := migrator.NewConfig().WithBlockSize(int(input.prev.prev.prev.blockSize))
 			cfg.Concurrency = map[int]int{
 				storage.BlockTypeAny:      concurrency,
 				storage.BlockTypeStandard: concurrency,
 				storage.BlockTypeDirty:    concurrency,
 				storage.BlockTypePriority: concurrency,
 			}
-			cfg.Locker_handler = func() {
+			cfg.LockerHandler = func() {
 				defer goroutineManager.CreateBackgroundPanicCollector()()
 
 				if err := to.SendEvent(&packets.Event{
@@ -213,7 +213,7 @@ func (migratableMounter *MigratableMounter) MigrateTo(
 					panic(errors.Join(ErrCouldNotSendPostLockEvent, err))
 				}
 			}
-			cfg.Unlocker_handler = func() {
+			cfg.UnlockerHandler = func() {
 				defer goroutineManager.CreateBackgroundPanicCollector()()
 
 				if err := to.SendEvent(&packets.Event{
@@ -230,16 +230,16 @@ func (migratableMounter *MigratableMounter) MigrateTo(
 					panic(errors.Join(ErrCouldNotSendPostUnlockEvent, err))
 				}
 			}
-			cfg.Error_handler = func(b *storage.BlockInfo, err error) {
+			cfg.ErrorHandler = func(b *storage.BlockInfo, err error) {
 				defer goroutineManager.CreateBackgroundPanicCollector()()
 
 				if err != nil {
 					panic(errors.Join(registry.ErrCouldNotContinueWithMigration, err))
 				}
 			}
-			cfg.Progress_handler = func(p *migrator.MigrationProgress) {
+			cfg.ProgressHandler = func(p *migrator.MigrationProgress) {
 				if hook := hooks.OnDeviceInitialMigrationProgress; hook != nil {
-					hook(uint32(index), input.prev.prev.prev.remote, p.Ready_blocks, p.Total_blocks)
+					hook(uint32(index), input.prev.prev.prev.remote, p.ReadyBlocks, p.TotalBlocks)
 				}
 			}
 

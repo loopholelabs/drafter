@@ -27,7 +27,7 @@ type OpenedRegistryDevice struct {
 	storage     *modules.Lockable
 	orderer     *blocks.PriorityBlockOrder
 	totalBlocks int
-	dirtyRemote *dirtytracker.DirtyTrackerRemote
+	dirtyRemote *dirtytracker.Remote
 }
 
 type OpenDevicesHooks struct {
