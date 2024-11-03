@@ -57,19 +57,19 @@ func Terminate(
 		deviceCloseFuncsLock sync.Mutex
 		deviceCloseFuncs     []func() error
 	)
-	pro := protocol.NewProtocolRW(
+	pro := protocol.NewRW(
 		goroutineManager.Context(),
 		readers,
 		writers,
 		func(ctx context.Context, p protocol.Protocol, index uint32) {
 			var (
 				from  *protocol.FromProtocol
-				local *waitingcache.WaitingCacheLocal
+				local *waitingcache.Local
 			)
 			from = protocol.NewFromProtocol(
 				ctx,
 				index,
-				func(di *packets.DevInfo) storage.StorageProvider {
+				func(di *packets.DevInfo) storage.Provider {
 					// No need to `defer goroutineManager.HandlePanics` here - panics bubble upwards
 
 					path := ""
@@ -98,7 +98,7 @@ func Terminate(
 						System:    "file",
 						Location:  path,
 						Size:      fmt.Sprintf("%v", di.Size),
-						BlockSize: fmt.Sprintf("%v", di.Block_size),
+						BlockSize: fmt.Sprintf("%v", di.BlockSize),
 						Expose:    true,
 					})
 					if err != nil {
@@ -108,8 +108,8 @@ func Terminate(
 					deviceCloseFuncs = append(deviceCloseFuncs, device.Shutdown) // defer device.Shutdown()
 					deviceCloseFuncsLock.Unlock()
 
-					var remote *waitingcache.WaitingCacheRemote
-					local, remote = waitingcache.NewWaitingCache(src, int(di.Block_size))
+					var remote *waitingcache.Remote
+					local, remote = waitingcache.NewWaitingCache(src, int(di.BlockSize))
 					local.NeedAt = func(offset int64, length int32) {
 						// Only access the `from` protocol if it's not already closed
 						select {

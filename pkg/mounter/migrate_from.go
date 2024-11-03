@@ -115,22 +115,22 @@ func MigrateFromAndMount(
 
 		stage2InputsLock sync.Mutex
 
-		pro *protocol.ProtocolRW
+		pro *protocol.RW
 	)
 	if len(readers) > 0 && len(writers) > 0 { // Only open the protocol if we want passed in readers and writers
-		pro = protocol.NewProtocolRW(
+		pro = protocol.NewRW(
 			protocolCtx, // We don't track this because we return the wait function
 			readers,
 			writers,
 			func(ctx context.Context, p protocol.Protocol, index uint32) {
 				var (
 					from  *protocol.FromProtocol
-					local *waitingcache.WaitingCacheLocal
+					local *waitingcache.Local
 				)
 				from = protocol.NewFromProtocol(
 					ctx,
 					index,
-					func(di *packets.DevInfo) storage.StorageProvider {
+					func(di *packets.DevInfo) storage.Provider {
 						// No need to `defer goroutineManager.HandlePanics` here - panics bubble upwards
 
 						base := ""
@@ -161,7 +161,7 @@ func MigrateFromAndMount(
 							System:    "file",
 							Location:  base,
 							Size:      fmt.Sprintf("%v", di.Size),
-							BlockSize: fmt.Sprintf("%v", di.Block_size),
+							BlockSize: fmt.Sprintf("%v", di.BlockSize),
 							Expose:    true,
 						})
 						if err != nil {
@@ -171,8 +171,8 @@ func MigrateFromAndMount(
 						deviceCloseFuncs = append(deviceCloseFuncs, device.Shutdown) // defer device.Shutdown()
 						deviceCloseFuncsLock.Unlock()
 
-						var remote *waitingcache.WaitingCacheRemote
-						local, remote = waitingcache.NewWaitingCache(src, int(di.Block_size))
+						var remote *waitingcache.Remote
+						local, remote = waitingcache.NewWaitingCache(src, int(di.BlockSize))
 						local.NeedAt = func(offset int64, length int32) {
 							// Only access the `from` protocol if it's not already closed
 							select {
@@ -206,7 +206,7 @@ func MigrateFromAndMount(
 						migratedMounter.stage2Inputs = append(migratedMounter.stage2Inputs, migrateFromAndMountStage{
 							name: di.Name,
 
-							blockSize: di.Block_size,
+							blockSize: di.BlockSize,
 
 							id:     index,
 							remote: true,
@@ -419,7 +419,7 @@ func MigrateFromAndMount(
 			}
 
 			var (
-				local storage.StorageProvider
+				local storage.Provider
 				dev   storage.ExposedStorage
 			)
 			if strings.TrimSpace(input.Overlay) == "" || strings.TrimSpace(input.State) == "" {

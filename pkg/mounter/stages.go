@@ -15,7 +15,7 @@ type migrateFromAndMountStage struct {
 	id     uint32
 	remote bool
 
-	storage storage.StorageProvider
+	storage storage.Provider
 	device  storage.ExposedStorage
 }
 
@@ -31,7 +31,7 @@ type makeMigratableDeviceStage struct {
 	storage     *modules.Lockable
 	orderer     *blocks.PriorityBlockOrder
 	totalBlocks int
-	dirtyRemote *dirtytracker.DirtyTrackerRemote
+	dirtyRemote *dirtytracker.Remote
 }
 
 type migrateToStage struct {
