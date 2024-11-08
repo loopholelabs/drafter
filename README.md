@@ -91,14 +91,14 @@ To download the pre-built blueprints for your architecture, execute the followin
 
 ```shell
 $ mkdir -p out
-$ curl -Lo out/drafteros.tar.zst "https://github.com/loopholelabs/drafter/releases/latest/download/drafteros-$(uname -m).tar.zst" # Use `drafteros-$(uname -m)_pvm.tar.zst` if you're using PVM
+$ curl -Lo out/drafteros-oci.tar.zst "https://github.com/loopholelabs/drafter/releases/latest/download/drafteros-oci-$(uname -m).tar.zst" # Use `drafteros-oci-$(uname -m)_pvm.tar.zst` if you're using PVM
 $ curl -Lo out/oci-valkey.tar.zst "https://github.com/loopholelabs/drafter/releases/latest/download/oci-valkey-$(uname -m).tar.zst"
 ```
 
 Next, use `drafter-packager` to extract the blueprints:
 
 ```shell
-$ drafter-packager --package-path out/drafteros.tar.zst --extract --devices '[
+$ drafter-packager --package-path out/drafteros-oci.tar.zst --extract --devices '[
   {
     "name": "kernel",
     "path": "out/blueprint/vmlinux"
@@ -168,7 +168,7 @@ out/
 You can optionally package the VM blueprint files using `drafter-packager` for distribution by running the following:
 
 ```shell
-$ drafter-packager --package-path out/drafteros.tar.zst --devices '[
+$ drafter-packager --package-path out/drafteros-oci.tar.zst --devices '[
   {
     "name": "kernel",
     "path": "out/blueprint/vmlinux"
