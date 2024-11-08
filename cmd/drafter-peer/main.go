@@ -550,9 +550,6 @@ func main() {
 
 	case <-ready:
 		break
-
-		// default:
-		// 	return
 	}
 
 	defer conn.Close()
