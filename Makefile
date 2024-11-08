@@ -5,7 +5,7 @@ OUTPUT_DIR ?= out
 DST ?=
 
 OCI_IMAGE_URI ?= docker://valkey/valkey:latest
-OCI_IMAGE_DRAFTERURE ?= amd64
+OCI_IMAGE_ARCHITECTURE ?= amd64
 OCI_IMAGE_HOSTNAME ?= drafterguest
 
 # We're pinning to this specific commit since there isn't a release with Go 1.23+ yet, once there is use `OS_URL ?= https://buildroot.org/downloads/buildroot-2024.08.2.tar.gz` instead
@@ -79,7 +79,7 @@ save/kernel:
 unpack/oci:
 	rm -rf $(OUTPUT_DIR)/oci-image
 	mkdir -p $(OUTPUT_DIR)/oci-image
-	skopeo --override-arch $(OCI_IMAGE_DRAFTERURE) copy $(OCI_IMAGE_URI) oci:$(OUTPUT_DIR)/oci-image:latest
+	skopeo --override-arch $(OCI_IMAGE_ARCHITECTURE) copy $(OCI_IMAGE_URI) oci:$(OUTPUT_DIR)/oci-image:latest
 
 	sudo rm -rf $(OUTPUT_DIR)/oci-runtime-bundle
 	mkdir -p $(OUTPUT_DIR)/oci-runtime-bundle
