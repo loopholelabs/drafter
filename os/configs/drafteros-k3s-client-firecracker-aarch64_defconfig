@@ -29,3 +29,4 @@ BR2_PACKAGE_DRAFTER_LIVENESS=y
 BR2_PACKAGE_DRAFTER_AGENT=y
 BR2_PACKAGE_DRAFTER_AGENT_SYSTEMD_DEPENDENCY="k3s.service"
 BR2_PACKAGE_K3S=y
+BR2_PACKAGE_K3S_SYSTEMD_EXEC_START_ARGS="agent --node-name=drafter-k3s-agent --with-node-id --token=mytoken --server=https://192.168.124.220:6443 --node-ip=192.168.124.121 --node-external-ip=192.168.124.121"
