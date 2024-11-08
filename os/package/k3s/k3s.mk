@@ -28,10 +28,10 @@ define K3S_INSTALL_TARGET_CMDS
 endef
 
 define K3S_INSTALL_INIT_SYSTEMD
-    mkdir -p $(TARGET_DIR)/usr/lib/systemd/system
-    sed -e "" \
-        $(K3S_PKGDIR)/k3s.service.in \
-        > $(TARGET_DIR)/usr/lib/systemd/system/k3s.service
+	mkdir -p $(TARGET_DIR)/usr/lib/systemd/system
+	sed -e 's%@K3S_SYSTEMD_EXEC_START_ARGS@%$(shell echo $(BR2_PACKAGE_K3S_SYSTEMD_EXEC_START_ARGS))%g' \
+		$(K3S_PKGDIR)/k3s.service.in \
+		> $(TARGET_DIR)/usr/lib/systemd/system/k3s.service
 endef
 
 $(eval $(generic-package))
