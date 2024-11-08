@@ -1,0 +1,15 @@
+config BR2_PACKAGE_K3S
+    bool "k3s"
+    depends on (BR2_x86_64 || BR2_arm64 || BR2_arm)
+    help
+      Lightweight Kubernetes
+
+if BR2_PACKAGE_K3S
+
+config BR2_PACKAGE_K3S_DOWNLOAD_BASE_URL
+    string "download-base-url"
+    default "https://github.com/k3s-io/k3s/releases/download"
+    help
+      The base URL to download the static k3s binary from
+
+endif

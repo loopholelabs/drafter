@@ -5,11 +5,12 @@ OUTPUT_DIR ?= out
 DST ?=
 
 OCI_IMAGE_URI ?= docker://valkey/valkey:latest
-OCI_IMAGE_ARCHITECTURE ?= amd64
+OCI_IMAGE_DRAFTERURE ?= amd64
 OCI_IMAGE_HOSTNAME ?= drafterguest
 
-OS_URL ?= https://buildroot.org/downloads/buildroot-2024.08.tar.gz
-OS_DEFCONFIG ?= drafteros-firecracker-x86_64_defconfig
+# We're pinning to this specific commit since there isn't a release with Go 1.23+ yet, once there is use `OS_URL ?= https://buildroot.org/downloads/buildroot-2024.08.2.tar.gz` instead
+OS_URL ?= https://gitlab.com/buildroot.org/buildroot/-/archive/11ae90b0011abe3ad01d9953c7d41d444e689f5c/buildroot-11ae90b0011abe3ad01d9953c7d41d444e689f5c.tar.gz
+OS_DEFCONFIG ?= drafteros-oci-firecracker-x86_64_defconfig
 OS_BR2_EXTERNAL ?= ../../os
 
 # Private variables
@@ -32,7 +33,25 @@ build/oci:
 
 # Build OS
 build/os:
-	$(MAKE) -C $(OUTPUT_DIR)/buildroot BR2_EXTERNAL="$(OS_BR2_EXTERNAL)" drafter-liveness-reconfigure drafter-agent-reconfigure oci-runtime-bundle-reconfigure
+	# Common OS packages
+	if grep -q "BR2_PACKAGE_DRAFTER_AGENT=y" $(OUTPUT_DIR)/buildroot/.config; then \
+		$(MAKE) -C $(OUTPUT_DIR)/buildroot BR2_EXTERNAL="$(OS_BR2_EXTERNAL)" drafter-agent-reconfigure; \
+	fi
+	if grep -q "BR2_PACKAGE_DRAFTER_LIVENESS=y" $(OUTPUT_DIR)/buildroot/.config; then \
+		$(MAKE) -C $(OUTPUT_DIR)/buildroot BR2_EXTERNAL="$(OS_BR2_EXTERNAL)" drafter-liveness-reconfigure; \
+	fi	
+
+	# OCI OS packages
+	if grep -q "BR2_PACKAGE_OCI_RUNTIME_BUNDLE=y" $(OUTPUT_DIR)/buildroot/.config; then \
+		$(MAKE) -C $(OUTPUT_DIR)/buildroot BR2_EXTERNAL="$(OS_BR2_EXTERNAL)" oci-runtime-bundle-reconfigure; \
+	fi
+
+	# k3s OS packages
+	if grep -q "BR2_PACKAGE_K3S=y" $(OUTPUT_DIR)/buildroot/.config; then \
+		$(MAKE) -C $(OUTPUT_DIR)/buildroot BR2_EXTERNAL="$(OS_BR2_EXTERNAL)" k3s-dirclean; \
+		$(MAKE) -C $(OUTPUT_DIR)/buildroot BR2_EXTERNAL="$(OS_BR2_EXTERNAL)" k3s-reconfigure; \
+	fi
+
 	$(MAKE) -C $(OUTPUT_DIR)/buildroot BR2_EXTERNAL="$(OS_BR2_EXTERNAL)"
 
 	mkdir -p $(OUTPUT_DIR)/blueprint
@@ -60,7 +79,7 @@ save/kernel:
 unpack/oci:
 	rm -rf $(OUTPUT_DIR)/oci-image
 	mkdir -p $(OUTPUT_DIR)/oci-image
-	skopeo --override-arch $(OCI_IMAGE_ARCHITECTURE) copy $(OCI_IMAGE_URI) oci:$(OUTPUT_DIR)/oci-image:latest
+	skopeo --override-arch $(OCI_IMAGE_DRAFTERURE) copy $(OCI_IMAGE_URI) oci:$(OUTPUT_DIR)/oci-image:latest
 
 	sudo rm -rf $(OUTPUT_DIR)/oci-runtime-bundle
 	mkdir -p $(OUTPUT_DIR)/oci-runtime-bundle

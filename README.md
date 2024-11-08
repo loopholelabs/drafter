@@ -142,7 +142,7 @@ To build the blueprints locally, you can use the [included Makefile](./Makefile)
 
 ```shell
 # Build the DrafterOS blueprint
-$ make depend/os OS_DEFCONFIG=drafteros-firecracker-x86_64_defconfig # Use `drafteros-firecracker-x86_64_pvm_defconfig` if you're using PVM and `drafteros-firecracker-aarch64_defconfig` if you're on `aarch64`
+$ make depend/os OS_DEFCONFIG=drafteros-oci-firecracker-x86_64_defconfig # Use `drafteros-oci-firecracker-x86_64_pvm_defconfig` if you're using PVM and `drafteros-oci-firecracker-aarch64_defconfig` if you're on `aarch64`
 $ make config/kernel # Optional: Configure kernel
 $ make save/kernel # Optional: Write back the kernel configuration to the defconfig
 $ make config/os # Optional: Configure DrafterOS
