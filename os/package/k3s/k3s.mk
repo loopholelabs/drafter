@@ -24,7 +24,7 @@ define K3S_EXTRACT_CMDS
 endef
 
 define K3S_INSTALL_TARGET_CMDS
-    install -m 0755 $(@D)/$(K3S_SOURCE) $(TARGET_DIR)/usr/local/bin/k3s
+    install -D -m 0755 $(@D)/$(K3S_SOURCE) $(TARGET_DIR)/usr/local/bin/k3s
 endef
 
 define K3S_INSTALL_INIT_SYSTEMD
