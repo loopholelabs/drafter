@@ -14,7 +14,7 @@ require (
 	github.com/metal-stack/go-ipam v1.14.0
 	github.com/pojntfx/panrpc/go v0.0.0-20240913062914-ea5ef6b07692
 	github.com/vishvananda/netlink v1.1.0
-	github.com/vishvananda/netns v0.0.4
+	github.com/vishvananda/netns v0.0.5
 	golang.org/x/sys v0.26.0
 	k8s.io/utils v0.0.0-20240711033017-18e509b52bc8
 )
