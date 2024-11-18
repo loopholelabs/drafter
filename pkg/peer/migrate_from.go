@@ -150,14 +150,35 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 							panic(errors.Join(mounter.ErrCouldNotCreateDeviceDirectory, err))
 						}
 
-						src, dev, err := device.NewDevice(&config.DeviceSchema{
+						s := &config.DeviceSchema{
 							Name:      di.Name,
 							System:    "file",
 							Location:  base,
 							Size:      fmt.Sprintf("%v", di.Size),
 							BlockSize: fmt.Sprintf("%v", di.BlockSize),
 							Expose:    true,
-						})
+						}
+
+						if di.Name == "memory" {
+							s.Sync = &config.SyncS3Schema{
+								Secure:    true,
+								AutoStart: false,
+								AccessKey: "<REDACTED>",
+								SecretKey: "<REDACTED>",
+								Endpoint:  "s3.eu-west-2.amazonaws.com",
+								Bucket:    "silo-test",
+								Config: &config.SyncConfigSchema{
+									OnlyDirty:   false,
+									BlockShift:  2,
+									MaxAge:      "200ms",
+									MinChanged:  4,
+									Limit:       8,
+									CheckPeriod: "100ms",
+								},
+							}
+						}
+
+						src, dev, err := device.NewDevice(s)
 						if err != nil {
 							panic(errors.Join(terminator.ErrCouldNotCreateDevice, err))
 						}
@@ -456,6 +477,7 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 					dev   storage.ExposedStorage
 				)
 				if strings.TrimSpace(input.Overlay) == "" || strings.TrimSpace(input.State) == "" {
+
 					local, dev, err = device.NewDevice(&config.DeviceSchema{
 						Name:      input.Name,
 						System:    "file",
@@ -473,7 +495,7 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 						return errors.Join(mounter.ErrCouldNotCreateStateDirectory, err)
 					}
 
-					local, dev, err = device.NewDevice(&config.DeviceSchema{
+					s := &config.DeviceSchema{
 						Name:      input.Name,
 						System:    "sparsefile",
 						Location:  input.Overlay,
@@ -486,7 +508,27 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 							Location: input.Base,
 							Size:     fmt.Sprintf("%v", stat.Size()),
 						},
-					})
+					}
+					if input.Name == "memory" {
+						s.Sync = &config.SyncS3Schema{
+							Secure:    true,
+							AutoStart: true,
+							AccessKey: "<REDACTED>",
+							SecretKey: "<REDACTED>",
+							Endpoint:  "s3.eu-west-2.amazonaws.com",
+							Bucket:    "silo-test",
+							Config: &config.SyncConfigSchema{
+								OnlyDirty:   false,
+								BlockShift:  2,
+								MaxAge:      "200ms",
+								MinChanged:  4,
+								Limit:       8,
+								CheckPeriod: "100ms",
+							},
+						}
+					}
+
+					local, dev, err = device.NewDevice(s)
 				}
 				if err != nil {
 					return errors.Join(mounter.ErrCouldNotCreateLocalDevice, err)
