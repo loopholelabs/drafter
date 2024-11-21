@@ -201,10 +201,10 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 							}
 						}
 
-						dev.SetProvider(local)
-
 						dirtyLocal, dirtyRemote := dirtytracker.NewDirtyTracker(local, int(di.BlockSize))
 						vmonitor := volatilitymonitor.NewVolatilityMonitor(dirtyLocal, int(di.BlockSize), volatilityExpiry)
+
+						dev.SetProvider(vmonitor)
 
 						stage2InputsLock.Lock()
 						migratedPeer.stage2Inputs = append(migratedPeer.stage2Inputs, migrateFromStage{
@@ -505,10 +505,10 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 				addDefer(local.Close)
 				addDefer(dev.Shutdown)
 
-				dev.SetProvider(local)
-
 				dirtyLocal, dirtyRemote := dirtytracker.NewDirtyTracker(local, int(input.BlockSize))
 				vmonitor := volatilitymonitor.NewVolatilityMonitor(dirtyLocal, int(input.BlockSize), volatilityExpiry)
+
+				dev.SetProvider(vmonitor)
 
 				stage2InputsLock.Lock()
 				migratedPeer.stage2Inputs = append(migratedPeer.stage2Inputs, migrateFromStage{
