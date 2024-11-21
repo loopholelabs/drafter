@@ -12,6 +12,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"syscall"
+	"time"
 
 	"github.com/loopholelabs/drafter/internal/utils"
 	"github.com/loopholelabs/drafter/pkg/ipc"
@@ -23,11 +24,15 @@ import (
 	"github.com/loopholelabs/silo/pkg/storage"
 	"github.com/loopholelabs/silo/pkg/storage/config"
 	"github.com/loopholelabs/silo/pkg/storage/device"
+	"github.com/loopholelabs/silo/pkg/storage/dirtytracker"
 	"github.com/loopholelabs/silo/pkg/storage/protocol"
 	"github.com/loopholelabs/silo/pkg/storage/protocol/packets"
+	"github.com/loopholelabs/silo/pkg/storage/volatilitymonitor"
 	"github.com/loopholelabs/silo/pkg/storage/waitingcache"
 	"golang.org/x/sys/unix"
 )
+
+const volatilityExpiry = time.Minute * 30
 
 type MigrateFromDevice[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] struct {
 	Name string `json:"name"`
@@ -198,6 +203,9 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 
 						dev.SetProvider(local)
 
+						dirtyLocal, dirtyRemote := dirtytracker.NewDirtyTracker(local, int(di.BlockSize))
+						vmonitor := volatilitymonitor.NewVolatilityMonitor(dirtyLocal, int(di.BlockSize), volatilityExpiry)
+
 						stage2InputsLock.Lock()
 						migratedPeer.stage2Inputs = append(migratedPeer.stage2Inputs, migrateFromStage{
 							name: di.Name,
@@ -207,8 +215,11 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 							id:     index,
 							remote: true,
 
-							storage: local,
-							device:  dev,
+							storage:           local,
+							device:            dev,
+							dirtyLocal:        dirtyLocal,
+							dirtyRemote:       dirtyRemote,
+							volatilityMonitor: vmonitor,
 						})
 						stage2InputsLock.Unlock()
 
@@ -496,6 +507,9 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 
 				dev.SetProvider(local)
 
+				dirtyLocal, dirtyRemote := dirtytracker.NewDirtyTracker(local, int(input.BlockSize))
+				vmonitor := volatilitymonitor.NewVolatilityMonitor(dirtyLocal, int(input.BlockSize), volatilityExpiry)
+
 				stage2InputsLock.Lock()
 				migratedPeer.stage2Inputs = append(migratedPeer.stage2Inputs, migrateFromStage{
 					name: input.Name,
@@ -505,8 +519,11 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 					id:     uint32(index),
 					remote: false,
 
-					storage: local,
-					device:  dev,
+					storage:           local,
+					device:            dev,
+					dirtyLocal:        dirtyLocal,
+					dirtyRemote:       dirtyRemote,
+					volatilityMonitor: vmonitor,
 				})
 				stage2InputsLock.Unlock()
 

@@ -10,9 +10,7 @@ import (
 	"github.com/loopholelabs/drafter/pkg/runner"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 	"github.com/loopholelabs/silo/pkg/storage/blocks"
-	"github.com/loopholelabs/silo/pkg/storage/dirtytracker"
 	"github.com/loopholelabs/silo/pkg/storage/modules"
-	"github.com/loopholelabs/silo/pkg/storage/volatilitymonitor"
 )
 
 type ResumedPeer[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] struct {
@@ -79,10 +77,8 @@ func (resumedPeer *ResumedPeer[L, R, G]) MakeMigratable(
 		stage3Inputs,
 		func(index int, input makeMigratableFilterStage, output *makeMigratableDeviceStage, addDefer func(deferFunc func() error)) error {
 			output.prev = input
-
-			dirtyLocal, dirtyRemote := dirtytracker.NewDirtyTracker(input.prev.storage, int(input.prev.blockSize))
-			output.dirtyRemote = dirtyRemote
-			monitor := volatilitymonitor.NewVolatilityMonitor(dirtyLocal, int(input.prev.blockSize), input.makeMigratableDevice.Expiry)
+			output.dirtyRemote = input.prev.dirtyRemote
+			monitor := input.prev.volatilityMonitor
 
 			local := modules.NewLockable(monitor)
 			output.storage = local
