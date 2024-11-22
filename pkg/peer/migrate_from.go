@@ -203,6 +203,7 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 
 						dirtyLocal, dirtyRemote := dirtytracker.NewDirtyTracker(local, int(di.BlockSize))
 						vmonitor := volatilitymonitor.NewVolatilityMonitor(dirtyLocal, int(di.BlockSize), volatilityExpiry)
+						vmonitor.AddAll()
 
 						dev.SetProvider(vmonitor)
 
@@ -507,6 +508,7 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 
 				dirtyLocal, dirtyRemote := dirtytracker.NewDirtyTracker(local, int(input.BlockSize))
 				vmonitor := volatilitymonitor.NewVolatilityMonitor(dirtyLocal, int(input.BlockSize), volatilityExpiry)
+				vmonitor.AddAll()
 
 				dev.SetProvider(vmonitor)
 
