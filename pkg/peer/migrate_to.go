@@ -145,6 +145,9 @@ func (migratablePeer *MigratablePeer[L, R, G]) MigrateTo(
 		func(index int, input migrateToStage, _ *struct{}, _ func(deferFunc func() error)) error {
 			to := protocol.NewToProtocol(input.prev.storage.Size(), uint32(index), pro)
 
+			// FIXME: Make this bool come from a per device config
+			to.SetCompression(true)
+
 			if err := to.SendDevInfo(input.prev.prev.prev.name, input.prev.prev.prev.blockSize, ""); err != nil {
 				return errors.Join(mounter.ErrCouldNotSendDevInfo, err)
 			}
