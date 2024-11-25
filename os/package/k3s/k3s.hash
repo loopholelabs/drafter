@@ -1,0 +1,8 @@
+# Hash from: https://github.com/k3s-io/k3s/releases/download/v1.31.2%2Bk3s1/sha256sum-amd64.txt:
+sha256  256ca852ff2ca165afbc14ed34df450aa1295e4eb01e3d1da9f251f37e546712    k3s
+
+# Hash from: https://github.com/k3s-io/k3s/releases/download/v1.31.2%2Bk3s1/sha256sum-arm64.txt:
+sha256  a9c4cdb7f038ea46f84bdf1b5c1e518637a8bdf84c39f281a6400bc7e9d8f9f0    k3s-arm64
+
+# Hash from: https://github.com/k3s-io/k3s/releases/download/v1.31.2%2Bk3s1/sha256sum-arm.txt:
+sha256  0c5b47e292c98fab58f09f32aee4325d9ef2972639b233939d2e06399a3f0ee0    k3s-armhf

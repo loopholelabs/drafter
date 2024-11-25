@@ -1,0 +1,21 @@
+config BR2_PACKAGE_K3S
+    bool "k3s"
+    depends on (BR2_x86_64 || BR2_arm64 || BR2_arm)
+    help
+      Lightweight Kubernetes
+
+if BR2_PACKAGE_K3S
+
+config BR2_PACKAGE_K3S_DOWNLOAD_BASE_URL
+    string "download-base-url"
+    default "https://github.com/k3s-io/k3s/releases/download"
+    help
+      The base URL to download the static k3s binary from
+
+config BR2_PACKAGE_K3S_SYSTEMD_EXEC_START_ARGS
+    string "exec-start-args"
+    default "server --node-name=drafter-k3s-server-1 --token=mytoken --tls-san=192.168.124.220 --node-ip=192.168.124.220 --node-external-ip=192.168.124.220 --advertise-port=6443"
+    help
+      Arguments to k3s to use in the k3s systemd service
+
+endif

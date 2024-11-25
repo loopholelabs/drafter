@@ -61,7 +61,7 @@ func main() {
 
 	laddr := flag.String("laddr", ":1600", "Address to listen on")
 
-	concurrency := flag.Int("concurrency", 4096, "Number of concurrent workers to use in migrations")
+	concurrency := flag.Int("concurrency", 1024, "Number of concurrent workers to use in migrations")
 
 	flag.Parse()
 

@@ -1,6 +1,12 @@
 [Match]
 Name=eth0
 
+[Link]
+# We need to explicitly set a MAC address here that's different from the one used
+# by 00-lo.network, else we get the same addresses assigned to both devices assigned
+# and systemd-networkd-wait-online.service will hang
+MACAddress=02:0e:d9:fd:68:3e
+
 [Network]
 Address=172.16.0.2/30
 Gateway=172.16.0.1

@@ -91,14 +91,14 @@ To download the pre-built blueprints for your architecture, execute the followin
 
 ```shell
 $ mkdir -p out
-$ curl -Lo out/drafteros.tar.zst "https://github.com/loopholelabs/drafter/releases/latest/download/drafteros-$(uname -m).tar.zst" # Use `drafteros-$(uname -m)_pvm.tar.zst` if you're using PVM
+$ curl -Lo out/drafteros-oci.tar.zst "https://github.com/loopholelabs/drafter/releases/latest/download/drafteros-oci-$(uname -m).tar.zst" # Use `drafteros-oci-$(uname -m)_pvm.tar.zst` if you're using PVM
 $ curl -Lo out/oci-valkey.tar.zst "https://github.com/loopholelabs/drafter/releases/latest/download/oci-valkey-$(uname -m).tar.zst"
 ```
 
 Next, use `drafter-packager` to extract the blueprints:
 
 ```shell
-$ drafter-packager --package-path out/drafteros.tar.zst --extract --devices '[
+$ drafter-packager --package-path out/drafteros-oci.tar.zst --extract --devices '[
   {
     "name": "kernel",
     "path": "out/blueprint/vmlinux"
@@ -142,7 +142,9 @@ To build the blueprints locally, you can use the [included Makefile](./Makefile)
 
 ```shell
 # Build the DrafterOS blueprint
-$ make depend/os OS_DEFCONFIG=drafteros-firecracker-x86_64_defconfig # Use `drafteros-firecracker-x86_64_pvm_defconfig` if you're using PVM and `drafteros-firecracker-aarch64_defconfig` if you're on `aarch64`
+$ make depend/os OS_DEFCONFIG=drafteros-oci-firecracker-x86_64_defconfig # Use `drafteros-oci-firecracker-x86_64_pvm_defconfig` if you're using PVM and `drafteros-oci-firecracker-aarch64_defconfig` if you're on `aarch64`
+$ make config/kernel # Optional: Configure kernel
+$ make save/kernel # Optional: Write back the kernel configuration to the defconfig
 $ make config/os # Optional: Configure DrafterOS
 $ make save/os # Optional: Write back the DrafterOS configuration to the defconfig
 $ make build/os
@@ -166,7 +168,7 @@ out/
 You can optionally package the VM blueprint files using `drafter-packager` for distribution by running the following:
 
 ```shell
-$ drafter-packager --package-path out/drafteros.tar.zst --devices '[
+$ drafter-packager --package-path out/drafteros-oci.tar.zst --devices '[
   {
     "name": "kernel",
     "path": "out/blueprint/vmlinux"
