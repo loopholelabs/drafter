@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"os"
 	"path"
 
 	v1 "github.com/loopholelabs/drafter/internal/api/http/firecracker/v1"
@@ -100,6 +101,37 @@ func StartVM(
 		return errors.Join(ErrCouldNotSetBootSource, err)
 	}
 
+	logs, _ := os.Create("logs.file")
+	logs.Close()
+	err := submitJSON(
+		ctx,
+		http.MethodPut,
+		client,
+		&v1.Logger{
+			Level:   "trace",
+			LogPath: "logs.file",
+		},
+		"logger",
+	)
+	if err != nil {
+		return errors.Join(errors.New("could not set logger"), err)
+	}
+
+	metrics, _ := os.Create("metrics.file")
+	metrics.Close()
+	err = submitJSON(
+		ctx,
+		http.MethodPut,
+		client,
+		&v1.Metrics{
+			MetricsPath: "metrics.file",
+		},
+		"logger",
+	)
+	if err != nil {
+		return errors.Join(errors.New("could not set metrics"), err)
+	}
+
 	for _, disk := range disks {
 		if err := submitJSON(
 			ctx,
@@ -110,6 +142,7 @@ func StartVM(
 				PathOnHost:   disk,
 				IsRootDevice: false,
 				IsReadOnly:   false,
+				IOEngine:     "Async",
 			},
 			path.Join("drives", disk),
 		); err != nil {
