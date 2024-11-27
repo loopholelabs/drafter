@@ -5,18 +5,6 @@ type BootSource struct {
 	BootArgs        string `json:"boot_args"`
 }
 
-type Logger struct {
-	Level         string `json:"level"`
-	LogPath       string `json:"log_path"`
-	ShowLevel     bool   `json:"show_level"`
-	ShowLogOrigin bool   `json:"show_log_origin"`
-	Module        string `json:"module"`
-}
-
-type Metrics struct {
-	MetricsPath string `json:"metrics_path"`
-}
-
 type Drive struct {
 	DriveID      string `json:"drive_id"`
 	PathOnHost   string `json:"path_on_host"`

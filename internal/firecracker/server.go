@@ -22,6 +22,8 @@ var (
 	ErrFirecrackerExited              = errors.New("firecracker exited")
 	ErrCouldNotCreateVMPathDirectory  = errors.New("could not create VM path directory")
 	ErrCouldNotCreateInotifyWatcher   = errors.New("could not create inotify watcher")
+	ErrCouldNotCreateLogsFile         = errors.New("could not create logs file")
+	ErrCouldNotCreateMetricsFile      = errors.New("could not create metrics file")
 	ErrCouldNotAddInotifyWatch        = errors.New("could not add inotify watch")
 	ErrCouldNotReadNUMACPUList        = errors.New("could not read NUMA CPU list")
 	ErrCouldNotStartFirecrackerServer = errors.New("could not start firecracker server")
@@ -31,7 +33,9 @@ var (
 )
 
 const (
-	FirecrackerSocketName = "firecracker.sock"
+	FirecrackerSocketName      = "firecracker.sock"
+	FirecrackerMetricsFileName = "metrics.file"
+	FirecrackerLogsFileName    = "logs.file"
 )
 
 type FirecrackerServer struct {
@@ -100,6 +104,18 @@ func StartFirecrackerServer(
 		panic(errors.Join(ErrCouldNotReadNUMACPUList, err))
 	}
 
+	f, err := os.Create(filepath.Join(server.VMPath, FirecrackerMetricsFileName))
+	if err != nil {
+		panic(errors.Join(ErrCouldNotCreateMetricsFile, err))
+	}
+	f.Close()
+
+	f, err = os.Create(filepath.Join(server.VMPath, FirecrackerLogsFileName))
+	if err != nil {
+		panic(errors.Join(ErrCouldNotCreateLogsFile, err))
+	}
+	f.Close()
+
 	cmd := exec.CommandContext(
 		ctx, // We use ctx, not goroutineManager.Context() here since this resource outlives the function call
 		jailerBin,
@@ -124,6 +140,12 @@ func StartFirecrackerServer(
 		"--",
 		"--api-sock",
 		FirecrackerSocketName,
+		"--metrics-path",
+		FirecrackerMetricsFileName,
+		"--log-path",
+		FirecrackerLogsFileName,
+		"--level",
+		"Trace",
 	)
 
 	if enableOutput {
