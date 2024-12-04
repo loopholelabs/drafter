@@ -10,7 +10,7 @@ require (
 	github.com/klauspost/compress v1.17.11
 	github.com/lithammer/shortuuid/v4 v4.2.0
 	github.com/loopholelabs/goroutine-manager v0.1.1
-	github.com/loopholelabs/silo v0.1.2
+	github.com/loopholelabs/silo v0.1.4
 	github.com/metal-stack/go-ipam v1.14.7
 	github.com/pojntfx/panrpc/go v0.0.0-20241003051136-b93809e92a15
 	github.com/vishvananda/netlink v1.3.0
@@ -36,7 +36,7 @@ require (
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/google/go-cmp v0.6.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
-	github.com/hashicorp/hcl/v2 v2.22.0 // indirect
+	github.com/hashicorp/hcl/v2 v2.23.0 // indirect
 	github.com/jmoiron/sqlx v1.4.0 // indirect
 	github.com/josharian/native v1.1.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.9 // indirect
