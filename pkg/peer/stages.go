@@ -6,6 +6,7 @@ import (
 	"github.com/loopholelabs/silo/pkg/storage/blocks"
 	"github.com/loopholelabs/silo/pkg/storage/dirtytracker"
 	"github.com/loopholelabs/silo/pkg/storage/modules"
+	"github.com/loopholelabs/silo/pkg/storage/volatilitymonitor"
 )
 
 type migrateFromStage struct {
@@ -16,8 +17,11 @@ type migrateFromStage struct {
 	id     uint32
 	remote bool
 
-	storage storage.Provider
-	device  storage.ExposedStorage
+	storage           storage.Provider
+	device            storage.ExposedStorage
+	dirtyLocal        *dirtytracker.Local
+	dirtyRemote       *dirtytracker.Remote
+	volatilityMonitor *volatilitymonitor.VolatilityMonitor
 }
 
 type makeMigratableFilterStage struct {
