@@ -8,8 +8,7 @@ OCI_IMAGE_URI ?= docker://valkey/valkey:latest
 OCI_IMAGE_ARCHITECTURE ?= amd64
 OCI_IMAGE_HOSTNAME ?= drafterguest
 
-# We're pinning to this specific commit since there isn't a release with Go 1.23+ yet, once there is use `OS_URL ?= https://buildroot.org/downloads/buildroot-2024.08.2.tar.gz` instead
-OS_URL ?= https://gitlab.com/buildroot.org/buildroot/-/archive/11ae90b0011abe3ad01d9953c7d41d444e689f5c/buildroot-11ae90b0011abe3ad01d9953c7d41d444e689f5c.tar.gz
+OS_URL ?= https://buildroot.org/downloads/buildroot-2024.11.tar.gz
 OS_DEFCONFIG ?= drafteros-oci-firecracker-x86_64_defconfig
 OS_BR2_EXTERNAL ?= ../../os
 
