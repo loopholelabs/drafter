@@ -1,4 +1,4 @@
-sudo drafter-peer --metrics ':2113' --netns ark1 --raddr 'localhost:1337' --laddr '' --devices '[
+sudo drafter-peer --netns ark1 --raddr 'localhost:1337' --laddr '' --devices '[
   {
     "name": "state",
     "base": "image/package/state.bin",
