@@ -4,15 +4,20 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
+	"path/filepath"
 	"slices"
 	"sync"
 	"sync/atomic"
+	"syscall"
 
 	"github.com/loopholelabs/drafter/pkg/ipc"
 	"github.com/loopholelabs/drafter/pkg/mounter"
 	"github.com/loopholelabs/drafter/pkg/registry"
+	"github.com/loopholelabs/drafter/pkg/snapshotter"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 	"github.com/loopholelabs/silo/pkg/storage/protocol"
+	"golang.org/x/sys/unix"
 )
 
 type MigrateFromDevice[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] struct {
@@ -232,6 +237,10 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 		break
 	}
 
+	//
+	// Now deal with any local devices we want...
+	//
+
 	stage1Inputs := []MigrateFromDevice[L, R, G]{}
 	for _, input := range devices {
 		if slices.ContainsFunc(
@@ -245,10 +254,6 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 
 		stage1Inputs = append(stage1Inputs, input)
 	}
-
-	// Use an atomic counter instead of a WaitGroup so that we can wait without leaking a goroutine
-	var remainingRequestedLocalDevices atomic.Int32
-	remainingRequestedLocalDevices.Add(int32(len(stage1Inputs)))
 
 	addDeviceCloseFuncSingle := func(f func() error) {
 		deviceCloseFuncsLock.Lock()
@@ -268,9 +273,45 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 		})
 	}
 
-	err := SiloMigrateFromLocal(siloDevices, goroutineManager, hooks, stageOutputCb, peer.runner.VMPath,
+	exposedCb := func(index int, name string, devicePath string) error {
+		deviceInfo, err := os.Stat(devicePath)
+		if err != nil {
+			return errors.Join(snapshotter.ErrCouldNotGetDeviceStat, err)
+		}
+
+		deviceStat, ok := deviceInfo.Sys().(*syscall.Stat_t)
+		if !ok {
+			return ErrCouldNotGetNBDDeviceStat
+		}
+
+		deviceMajor := uint64(deviceStat.Rdev / 256)
+		deviceMinor := uint64(deviceStat.Rdev % 256)
+
+		deviceID := int((deviceMajor << 8) | deviceMinor)
+
+		select {
+		case <-goroutineManager.Context().Done():
+			if err := goroutineManager.Context().Err(); err != nil {
+				return errors.Join(ErrPeerContextCancelled, err)
+			}
+
+			return nil
+
+		default:
+			if err := unix.Mknod(filepath.Join(peer.runner.VMPath, name), unix.S_IFBLK|0666, deviceID); err != nil {
+				return errors.Join(ErrCouldNotCreateDeviceNode, err)
+			}
+		}
+
+		if hook := hooks.OnLocalDeviceExposed; hook != nil {
+			hook(uint32(index), devicePath)
+		}
+		return nil
+	}
+
+	err := SiloMigrateFromLocal(siloDevices, goroutineManager, hooks, stageOutputCb,
 		addDeviceCloseFuncSingle,
-		&remainingRequestedLocalDevices,
+		exposedCb,
 	)
 
 	if err != nil {

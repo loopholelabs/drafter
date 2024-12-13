@@ -7,16 +7,13 @@ import (
 	"path/filepath"
 	"strings"
 	"sync/atomic"
-	"syscall"
 
 	"github.com/loopholelabs/drafter/internal/utils"
 	"github.com/loopholelabs/drafter/pkg/mounter"
-	"github.com/loopholelabs/drafter/pkg/snapshotter"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 	"github.com/loopholelabs/silo/pkg/storage"
 	"github.com/loopholelabs/silo/pkg/storage/config"
 	"github.com/loopholelabs/silo/pkg/storage/device"
-	"golang.org/x/sys/unix"
 )
 
 type MigrateFromStage struct {
@@ -30,10 +27,13 @@ type MigrateFromStage struct {
 
 func SiloMigrateFromLocal(devices []*MigrateFromStage, goroutineManager *manager.GoroutineManager, hooks mounter.MigrateFromHooks,
 	stageOutputCb func(mfs migrateFromStage),
-	vmPath string,
 	addDeviceCloseFuncSingle func(f func() error),
-	remainingRequestedLocalDevices *atomic.Int32,
+	exposedCb func(index int, name string, devicePath string) error,
 ) error {
+	// Use an atomic counter instead of a WaitGroup so that we can wait without leaking a goroutine
+	var remainingRequestedLocalDevices atomic.Int32
+	remainingRequestedLocalDevices.Add(int32(len(devices)))
+
 	_, deferFuncs, err := utils.ConcurrentMap(
 		devices,
 		func(index int, input *MigrateFromStage, _ *struct{}, addDefer func(deferFunc func() error)) error {
@@ -102,54 +102,19 @@ func SiloMigrateFromLocal(devices []*MigrateFromStage, goroutineManager *manager
 				dev.SetProvider(local)
 
 				stageOutputCb(migrateFromStage{
-					name: input.Name,
-
+					name:      input.Name,
 					blockSize: input.BlockSize,
-
-					id:     uint32(index),
-					remote: false,
-
-					storage: local,
-					device:  dev,
+					id:        uint32(index),
+					remote:    false,
+					storage:   local,
+					device:    dev,
 				})
 
 				devicePath = filepath.Join("/dev", dev.Device())
 			}
 
-			deviceInfo, err := os.Stat(devicePath)
-			if err != nil {
-				return errors.Join(snapshotter.ErrCouldNotGetDeviceStat, err)
-			}
+			return exposedCb(index, input.Name, devicePath)
 
-			deviceStat, ok := deviceInfo.Sys().(*syscall.Stat_t)
-			if !ok {
-				return ErrCouldNotGetNBDDeviceStat
-			}
-
-			deviceMajor := uint64(deviceStat.Rdev / 256)
-			deviceMinor := uint64(deviceStat.Rdev % 256)
-
-			deviceID := int((deviceMajor << 8) | deviceMinor)
-
-			select {
-			case <-goroutineManager.Context().Done():
-				if err := goroutineManager.Context().Err(); err != nil {
-					return errors.Join(ErrPeerContextCancelled, err)
-				}
-
-				return nil
-
-			default:
-				if err := unix.Mknod(filepath.Join(vmPath, input.Name), unix.S_IFBLK|0666, deviceID); err != nil {
-					return errors.Join(ErrCouldNotCreateDeviceNode, err)
-				}
-			}
-
-			if hook := hooks.OnLocalDeviceExposed; hook != nil {
-				hook(uint32(index), devicePath)
-			}
-
-			return nil
 		},
 	)
 
