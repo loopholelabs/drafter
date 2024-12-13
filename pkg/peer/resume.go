@@ -12,11 +12,14 @@ import (
 	"github.com/loopholelabs/drafter/pkg/packager"
 	"github.com/loopholelabs/drafter/pkg/runner"
 	"github.com/loopholelabs/drafter/pkg/snapshotter"
+	"github.com/loopholelabs/silo/pkg/storage/devicegroup"
 )
 
 type MigratedPeer[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] struct {
 	Wait  func() error
 	Close func() error
+
+	dg *devicegroup.DeviceGroup
 
 	devices []MigrateFromDevice[L, R, G]
 	runner  *runner.Runner[L, R, G]

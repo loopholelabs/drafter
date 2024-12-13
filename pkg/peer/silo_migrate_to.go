@@ -38,14 +38,28 @@ type MigrateToStage struct {
 	CycleThrottle    time.Duration          // input.migrateToDevice.CycleThrottle
 }
 
-func SiloMigrateTo(devices []*MigrateToStage, concurrency int, goroutineManager *manager.GoroutineManager, pro protocol.Protocol, hooks MigrateToHooks,
-	checkSuspendedVM func() bool, suspendAndMsyncVM func() error, suspendedVMCh chan struct{},
-	Msync func(context.Context) error,
+// This deals with VM stuff
+type VMStateManager struct {
+	checkSuspendedVM  func() bool
+	suspendAndMsyncVM func() error
+	suspendedVMCh     chan struct{}
+	MSync             func(context.Context) error
+}
+
+func SiloMigrateTo(devices []*MigrateToStage,
+	concurrency int,
+	goroutineManager *manager.GoroutineManager,
+	pro protocol.Protocol,
+	hooks MigrateToHooks,
+	vmState *VMStateManager,
 ) error {
 	var devicesLeftToSend atomic.Int32
 	var devicesLeftToTransferAuthorityFor atomic.Int32
 
 	errs := make(chan error, len(devices))
+
+	migrators := make([]*migrator.Migrator, len(devices))
+	tos := make([]*protocol.ToProtocol, len(devices))
 
 	for forIndex, forInput := range devices {
 		go func(index int, input *MigrateToStage) {
@@ -178,131 +192,9 @@ func SiloMigrateTo(devices []*MigrateToStage, concurrency int, goroutineManager 
 					return errors.Join(registry.ErrCouldNotWaitForMigrationCompletion, err)
 				}
 
-				markDeviceAsReadyForAuthorityTransfer := sync.OnceFunc(func() {
-					devicesLeftToTransferAuthorityFor.Add(1)
-				})
+				migrators[index] = mig
+				tos[index] = to
 
-				var (
-					cyclesBelowDirtyBlockTreshold = 0
-					totalCycles                   = 0
-					ongoingMigrationsWg           sync.WaitGroup
-				)
-				for {
-					suspendedVM := checkSuspendedVM()
-					// We only need to `msync` for the memory because `msync` only affects the memory
-					if !suspendedVM && input.Name == packager.MemoryName {
-						if err := Msync(goroutineManager.Context()); err != nil {
-
-							return errors.Join(ErrCouldNotMsyncRunner, err)
-						}
-					}
-
-					ongoingMigrationsWg.Wait()
-
-					if hook := hooks.OnBeforeGetDirtyBlocks; hook != nil {
-						hook(uint32(index), input.Remote)
-					}
-
-					blocks := mig.GetLatestDirty()
-					if blocks == nil {
-						mig.Unlock()
-
-						if checkSuspendedVM() {
-							break
-						}
-					}
-
-					if blocks != nil {
-						if err := to.DirtyList(int(input.BlockSize), blocks); err != nil {
-							return errors.Join(mounter.ErrCouldNotSendDirtyList, err)
-						}
-
-						ongoingMigrationsWg.Add(1)
-						goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
-							defer ongoingMigrationsWg.Done()
-
-							if err := mig.MigrateDirty(blocks); err != nil {
-								panic(errors.Join(mounter.ErrCouldNotMigrateDirtyBlocks, err))
-							}
-
-							if checkSuspendedVM() {
-								if hook := hooks.OnDeviceFinalMigrationProgress; hook != nil {
-									hook(uint32(index), input.Remote, len(blocks))
-								}
-							} else {
-								if hook := hooks.OnDeviceContinousMigrationProgress; hook != nil {
-									hook(uint32(index), input.Remote, len(blocks))
-								}
-							}
-						})
-					}
-
-					if !checkSuspendedVM() && !(devicesLeftToTransferAuthorityFor.Load() >= int32(len(devices))) {
-
-						// We use the background context here instead of the internal context because we want to distinguish
-						// between a context cancellation from the outside and getting a response
-						cycleThrottleCtx, cancelCycleThrottleCtx := context.WithTimeout(context.Background(), input.CycleThrottle)
-						defer cancelCycleThrottleCtx()
-
-						select {
-						case <-cycleThrottleCtx.Done():
-							break
-
-						case <-suspendedVMCh:
-							break
-
-						case <-goroutineManager.Context().Done(): // ctx is the goroutineManager.goroutineManager.Context() here
-							if err := goroutineManager.Context().Err(); err != nil {
-								return errors.Join(ErrPeerContextCancelled, err)
-							}
-
-							return nil
-						}
-					}
-
-					totalCycles++
-					if len(blocks) < input.MaxDirtyBlocks {
-						cyclesBelowDirtyBlockTreshold++
-						if cyclesBelowDirtyBlockTreshold > input.MinCycles {
-							markDeviceAsReadyForAuthorityTransfer()
-						}
-					} else if totalCycles > input.MaxCycles {
-						markDeviceAsReadyForAuthorityTransfer()
-					} else {
-						cyclesBelowDirtyBlockTreshold = 0
-					}
-
-					if devicesLeftToTransferAuthorityFor.Load() >= int32(len(devices)) {
-						if err := suspendAndMsyncVM(); err != nil {
-							return errors.Join(mounter.ErrCouldNotSuspendAndMsyncVM, err)
-						}
-					}
-				}
-
-				if err := to.SendEvent(&packets.Event{
-					Type:       packets.EventCustom,
-					CustomType: byte(registry.EventCustomTransferAuthority),
-				}); err != nil {
-					panic(errors.Join(mounter.ErrCouldNotSendTransferAuthorityEvent, err))
-				}
-
-				if hook := hooks.OnDeviceAuthoritySent; hook != nil {
-					hook(uint32(index), input.Remote)
-				}
-
-				if err := mig.WaitForCompletion(); err != nil {
-					return errors.Join(registry.ErrCouldNotWaitForMigrationCompletion, err)
-				}
-
-				if err := to.SendEvent(&packets.Event{
-					Type: packets.EventCompleted,
-				}); err != nil {
-					return errors.Join(mounter.ErrCouldNotSendCompletedEvent, err)
-				}
-
-				if hook := hooks.OnDeviceMigrationCompleted; hook != nil {
-					hook(uint32(index), input.Remote)
-				}
 				return nil
 			}()
 		}(forIndex, forInput)
@@ -314,6 +206,167 @@ func SiloMigrateTo(devices []*MigrateToStage, concurrency int, goroutineManager 
 		if err != nil {
 			return err
 		}
+	}
+
+	// And now do the dirty migration phase...
+	for forIndex, forInput := range devices {
+		go func(index int, input *MigrateToStage) {
+			errs <- func() error {
+				mig := migrators[index]
+				to := tos[index]
+				return doDirtyMigration(goroutineManager, input, hooks, vmState, mig, index, to,
+					&devicesLeftToTransferAuthorityFor, len(devices),
+				)
+			}()
+		}(forIndex, forInput)
+	}
+
+	// Wait for all of these to complete...
+	for range devices {
+		err := <-errs
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// Handle dirtyMigrationBlocks separately here...
+func doDirtyMigration(goroutineManager *manager.GoroutineManager,
+	input *MigrateToStage,
+	hooks MigrateToHooks,
+	vmState *VMStateManager,
+	mig *migrator.Migrator,
+	index int,
+	to *protocol.ToProtocol,
+	devicesLeftToTransferAuthorityFor *atomic.Int32,
+	numDevices int,
+) error {
+	markDeviceAsReadyForAuthorityTransfer := sync.OnceFunc(func() {
+		devicesLeftToTransferAuthorityFor.Add(1)
+	})
+
+	var (
+		cyclesBelowDirtyBlockTreshold = 0
+		totalCycles                   = 0
+		ongoingMigrationsWg           sync.WaitGroup
+	)
+	for {
+		suspendedVM := vmState.checkSuspendedVM()
+		// We only need to `msync` for the memory because `msync` only affects the memory
+		if !suspendedVM && input.Name == packager.MemoryName {
+			if err := vmState.MSync(goroutineManager.Context()); err != nil {
+
+				return errors.Join(ErrCouldNotMsyncRunner, err)
+			}
+		}
+
+		ongoingMigrationsWg.Wait()
+
+		if hook := hooks.OnBeforeGetDirtyBlocks; hook != nil {
+			hook(uint32(index), input.Remote)
+		}
+
+		blocks := mig.GetLatestDirty()
+		if blocks == nil {
+			mig.Unlock()
+
+			if vmState.checkSuspendedVM() {
+				break
+			}
+		}
+
+		if blocks != nil {
+			if err := to.DirtyList(int(input.BlockSize), blocks); err != nil {
+				return errors.Join(mounter.ErrCouldNotSendDirtyList, err)
+			}
+
+			ongoingMigrationsWg.Add(1)
+			goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
+				defer ongoingMigrationsWg.Done()
+
+				if err := mig.MigrateDirty(blocks); err != nil {
+					panic(errors.Join(mounter.ErrCouldNotMigrateDirtyBlocks, err))
+				}
+
+				if vmState.checkSuspendedVM() {
+					if hook := hooks.OnDeviceFinalMigrationProgress; hook != nil {
+						hook(uint32(index), input.Remote, len(blocks))
+					}
+				} else {
+					if hook := hooks.OnDeviceContinousMigrationProgress; hook != nil {
+						hook(uint32(index), input.Remote, len(blocks))
+					}
+				}
+			})
+		}
+
+		if !vmState.checkSuspendedVM() && !(devicesLeftToTransferAuthorityFor.Load() >= int32(numDevices)) {
+
+			// We use the background context here instead of the internal context because we want to distinguish
+			// between a context cancellation from the outside and getting a response
+			cycleThrottleCtx, cancelCycleThrottleCtx := context.WithTimeout(context.Background(), input.CycleThrottle)
+			defer cancelCycleThrottleCtx()
+
+			select {
+			case <-cycleThrottleCtx.Done():
+				break
+
+			case <-vmState.suspendedVMCh:
+				break
+
+			case <-goroutineManager.Context().Done(): // ctx is the goroutineManager.goroutineManager.Context() here
+				if err := goroutineManager.Context().Err(); err != nil {
+					return errors.Join(ErrPeerContextCancelled, err)
+				}
+
+				return nil
+			}
+		}
+
+		totalCycles++
+		if len(blocks) < input.MaxDirtyBlocks {
+			cyclesBelowDirtyBlockTreshold++
+			if cyclesBelowDirtyBlockTreshold > input.MinCycles {
+				markDeviceAsReadyForAuthorityTransfer()
+			}
+		} else if totalCycles > input.MaxCycles {
+			markDeviceAsReadyForAuthorityTransfer()
+		} else {
+			cyclesBelowDirtyBlockTreshold = 0
+		}
+
+		if devicesLeftToTransferAuthorityFor.Load() >= int32(numDevices) {
+			if err := vmState.suspendAndMsyncVM(); err != nil {
+				return errors.Join(mounter.ErrCouldNotSuspendAndMsyncVM, err)
+			}
+		}
+	}
+
+	if err := to.SendEvent(&packets.Event{
+		Type:       packets.EventCustom,
+		CustomType: byte(registry.EventCustomTransferAuthority),
+	}); err != nil {
+		panic(errors.Join(mounter.ErrCouldNotSendTransferAuthorityEvent, err))
+	}
+
+	if hook := hooks.OnDeviceAuthoritySent; hook != nil {
+		hook(uint32(index), input.Remote)
+	}
+
+	if err := mig.WaitForCompletion(); err != nil {
+		return errors.Join(registry.ErrCouldNotWaitForMigrationCompletion, err)
+	}
+
+	if err := to.SendEvent(&packets.Event{
+		Type: packets.EventCompleted,
+	}); err != nil {
+		return errors.Join(mounter.ErrCouldNotSendCompletedEvent, err)
+	}
+
+	if hook := hooks.OnDeviceMigrationCompleted; hook != nil {
+		hook(uint32(index), input.Remote)
 	}
 
 	return nil

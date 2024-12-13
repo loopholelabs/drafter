@@ -158,7 +158,14 @@ func (migratablePeer *MigratablePeer[L, R, G]) MigrateTo(
 		})
 	}
 
-	SiloMigrateTo(siloDevices, concurrency, goroutineManager, pro, hooks, checkSuspendedVM, suspendAndMsyncVM, suspendedVMCh, migratablePeer.resumedRunner.Msync)
+	vmState := &VMStateManager{
+		checkSuspendedVM:  checkSuspendedVM,
+		suspendAndMsyncVM: suspendAndMsyncVM,
+		suspendedVMCh:     suspendedVMCh,
+		MSync:             migratablePeer.resumedRunner.Msync,
+	}
+
+	SiloMigrateTo(siloDevices, concurrency, goroutineManager, pro, hooks, vmState)
 
 	if hook := hooks.OnAllMigrationsCompleted; hook != nil {
 		hook()

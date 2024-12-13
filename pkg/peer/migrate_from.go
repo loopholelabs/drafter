@@ -313,7 +313,8 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 		panic(errors.Join(mounter.ErrCouldNotSetupDevices, err))
 	}
 
-	// TODO: dg should get saved for migrate_to
+	// Save dg for later usage...
+	migratedPeer.dg = dg
 
 	// Single shutdown function for deviceGroup
 	deviceCloseFuncsLock.Lock()
