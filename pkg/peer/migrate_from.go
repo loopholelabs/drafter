@@ -18,14 +18,11 @@ import (
 	"github.com/loopholelabs/drafter/pkg/mounter"
 	"github.com/loopholelabs/drafter/pkg/registry"
 	"github.com/loopholelabs/drafter/pkg/snapshotter"
-	"github.com/loopholelabs/drafter/pkg/terminator"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 	"github.com/loopholelabs/silo/pkg/storage"
 	"github.com/loopholelabs/silo/pkg/storage/config"
 	"github.com/loopholelabs/silo/pkg/storage/device"
 	"github.com/loopholelabs/silo/pkg/storage/protocol"
-	"github.com/loopholelabs/silo/pkg/storage/protocol/packets"
-	"github.com/loopholelabs/silo/pkg/storage/waitingcache"
 	"golang.org/x/sys/unix"
 )
 
@@ -111,207 +108,42 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 
 		pro *protocol.RW
 	)
+
+	di := make([]*SiloFromDeviceInfo, 0)
+	for _, dev := range devices {
+		di = append(di, &SiloFromDeviceInfo{
+			Name: dev.Name,
+			Base: dev.Base,
+		})
+	}
+
+	addDeviceCloseFunc := func(f func() error) {
+		deviceCloseFuncsLock.Lock()
+		deviceCloseFuncs = append(deviceCloseFuncs, f)
+		deviceCloseFuncs = append(deviceCloseFuncs, peer.runner.Close) // defer runner.Close()
+		deviceCloseFuncsLock.Unlock()
+	}
+
+	stageOutputCb := func(mfs migrateFromStage) {
+		stage2InputsLock.Lock()
+		migratedPeer.stage2Inputs = append(migratedPeer.stage2Inputs, mfs)
+		stage2InputsLock.Unlock()
+	}
+
+	initDev := SiloMigrateFromGetInitDev(di, goroutineManager, hooks, &receivedButNotReadyRemoteDevices, protocolCtx,
+		signalAllRemoteDevicesReady,
+		signalAllRemoteDevicesReceived,
+		peer.runner.VMPath,
+		addDeviceCloseFunc,
+		stageOutputCb,
+	)
+
 	if len(readers) > 0 && len(writers) > 0 { // Only open the protocol if we want passed in readers and writers
 		pro = protocol.NewRW(
 			protocolCtx, // We don't track this because we return the wait function
 			readers,
 			writers,
-			func(ctx context.Context, p protocol.Protocol, index uint32) {
-				var (
-					from  *protocol.FromProtocol
-					local *waitingcache.Local
-				)
-				from = protocol.NewFromProtocol(
-					ctx,
-					index,
-					func(di *packets.DevInfo) storage.Provider {
-						// No need to `defer goroutineManager.HandlePanics` here - panics bubble upwards
-
-						base := ""
-						for _, device := range devices {
-							if di.Name == device.Name {
-								base = device.Base
-
-								break
-							}
-						}
-
-						if strings.TrimSpace(base) == "" {
-							panic(terminator.ErrUnknownDeviceName)
-						}
-
-						receivedButNotReadyRemoteDevices.Add(1)
-
-						if hook := hooks.OnRemoteDeviceReceived; hook != nil {
-							hook(index, di.Name)
-						}
-
-						if err := os.MkdirAll(filepath.Dir(base), os.ModePerm); err != nil {
-							panic(errors.Join(mounter.ErrCouldNotCreateDeviceDirectory, err))
-						}
-
-						src, dev, err := device.NewDevice(&config.DeviceSchema{
-							Name:      di.Name,
-							System:    "file",
-							Location:  base,
-							Size:      fmt.Sprintf("%v", di.Size),
-							BlockSize: fmt.Sprintf("%v", di.BlockSize),
-							Expose:    true,
-						})
-						if err != nil {
-							panic(errors.Join(terminator.ErrCouldNotCreateDevice, err))
-						}
-						deviceCloseFuncsLock.Lock()
-						deviceCloseFuncs = append(deviceCloseFuncs, dev.Shutdown) // defer device.Shutdown()
-						// We have to close the runner before we close the devices
-						deviceCloseFuncs = append(deviceCloseFuncs, peer.runner.Close) // defer runner.Close()
-						deviceCloseFuncsLock.Unlock()
-
-						var remote *waitingcache.Remote
-						local, remote = waitingcache.NewWaitingCache(src, int(di.BlockSize))
-						local.NeedAt = func(offset int64, length int32) {
-							// Only access the `from` protocol if it's not already closed
-							select {
-							case <-protocolCtx.Done():
-								return
-
-							default:
-							}
-
-							if err := from.NeedAt(offset, length); err != nil {
-								panic(errors.Join(mounter.ErrCouldNotRequestBlock, err))
-							}
-						}
-						local.DontNeedAt = func(offset int64, length int32) {
-							// Only access the `from` protocol if it's not already closed
-							select {
-							case <-protocolCtx.Done():
-								return
-
-							default:
-							}
-
-							if err := from.DontNeedAt(offset, length); err != nil {
-								panic(errors.Join(mounter.ErrCouldNotReleaseBlock, err))
-							}
-						}
-
-						dev.SetProvider(local)
-
-						stage2InputsLock.Lock()
-						migratedPeer.stage2Inputs = append(migratedPeer.stage2Inputs, migrateFromStage{
-							name: di.Name,
-
-							blockSize: di.BlockSize,
-
-							id:     index,
-							remote: true,
-
-							storage: local,
-							device:  dev,
-						})
-						stage2InputsLock.Unlock()
-
-						devicePath := filepath.Join("/dev", dev.Device())
-
-						deviceInfo, err := os.Stat(devicePath)
-						if err != nil {
-							panic(errors.Join(snapshotter.ErrCouldNotGetDeviceStat, err))
-						}
-
-						deviceStat, ok := deviceInfo.Sys().(*syscall.Stat_t)
-						if !ok {
-							panic(ErrCouldNotGetNBDDeviceStat)
-						}
-
-						deviceMajor := uint64(deviceStat.Rdev / 256)
-						deviceMinor := uint64(deviceStat.Rdev % 256)
-
-						deviceID := int((deviceMajor << 8) | deviceMinor)
-
-						select {
-						case <-goroutineManager.Context().Done():
-							if err := goroutineManager.Context().Err(); err != nil {
-								panic(errors.Join(ErrPeerContextCancelled, err))
-							}
-
-							return nil
-
-						default:
-							if err := unix.Mknod(filepath.Join(peer.runner.VMPath, di.Name), unix.S_IFBLK|0666, deviceID); err != nil {
-								panic(errors.Join(ErrCouldNotCreateDeviceNode, err))
-							}
-						}
-
-						if hook := hooks.OnRemoteDeviceExposed; hook != nil {
-							hook(index, devicePath)
-						}
-
-						return remote
-					},
-					p,
-				)
-
-				goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
-					if err := from.HandleReadAt(); err != nil {
-						panic(errors.Join(terminator.ErrCouldNotHandleReadAt, err))
-					}
-				})
-
-				goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
-					if err := from.HandleWriteAt(); err != nil {
-						panic(errors.Join(terminator.ErrCouldNotHandleWriteAt, err))
-					}
-				})
-
-				goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
-					if err := from.HandleDevInfo(); err != nil {
-						panic(errors.Join(terminator.ErrCouldNotHandleDevInfo, err))
-					}
-				})
-
-				goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
-					if err := from.HandleEvent(func(e *packets.Event) {
-						switch e.Type {
-						case packets.EventCustom:
-							switch e.CustomType {
-							case byte(registry.EventCustomAllDevicesSent):
-								signalAllRemoteDevicesReceived()
-
-								if hook := hooks.OnRemoteAllDevicesReceived; hook != nil {
-									hook()
-								}
-
-							case byte(registry.EventCustomTransferAuthority):
-								if receivedButNotReadyRemoteDevices.Add(-1) <= 0 {
-									signalAllRemoteDevicesReady()
-								}
-
-								if hook := hooks.OnRemoteDeviceAuthorityReceived; hook != nil {
-									hook(index)
-								}
-							}
-
-						case packets.EventCompleted:
-							if hook := hooks.OnRemoteDeviceMigrationCompleted; hook != nil {
-								hook(index)
-							}
-						}
-					}); err != nil {
-						panic(errors.Join(terminator.ErrCouldNotHandleEvent, err))
-					}
-				})
-
-				goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
-					if err := from.HandleDirtyList(func(blocks []uint) {
-						if local != nil {
-							local.DirtyBlocks(blocks)
-						}
-					}); err != nil {
-						panic(errors.Join(terminator.ErrCouldNotHandleDirtyList, err))
-					}
-				})
-			})
+			initDev)
 	}
 
 	migratedPeer.Wait = sync.OnceValue(func() error {
