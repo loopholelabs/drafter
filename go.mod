@@ -4,6 +4,8 @@ go 1.23
 
 toolchain go1.23.2
 
+replace github.com/loopholelabs/silo => ../silo
+
 require (
 	github.com/coreos/go-iptables v0.8.0
 	github.com/freddierice/go-losetup/v2 v2.0.1
