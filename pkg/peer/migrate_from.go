@@ -3,27 +3,16 @@ package peer
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
-	"os"
-	"path/filepath"
 	"slices"
-	"strings"
 	"sync"
 	"sync/atomic"
-	"syscall"
 
-	"github.com/loopholelabs/drafter/internal/utils"
 	"github.com/loopholelabs/drafter/pkg/ipc"
 	"github.com/loopholelabs/drafter/pkg/mounter"
 	"github.com/loopholelabs/drafter/pkg/registry"
-	"github.com/loopholelabs/drafter/pkg/snapshotter"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
-	"github.com/loopholelabs/silo/pkg/storage"
-	"github.com/loopholelabs/silo/pkg/storage/config"
-	"github.com/loopholelabs/silo/pkg/storage/device"
 	"github.com/loopholelabs/silo/pkg/storage/protocol"
-	"golang.org/x/sys/unix"
 )
 
 type MigrateFromDevice[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] struct {
@@ -261,135 +250,28 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 	var remainingRequestedLocalDevices atomic.Int32
 	remainingRequestedLocalDevices.Add(int32(len(stage1Inputs)))
 
-	_, deferFuncs, err := utils.ConcurrentMap(
-		stage1Inputs,
-		func(index int, input MigrateFromDevice[L, R, G], _ *struct{}, addDefer func(deferFunc func() error)) error {
-			if hook := hooks.OnLocalDeviceRequested; hook != nil {
-				hook(uint32(index), input.Name)
-			}
-
-			if remainingRequestedLocalDevices.Add(-1) <= 0 {
-				if hook := hooks.OnLocalAllDevicesRequested; hook != nil {
-					hook()
-				}
-			}
-
-			devicePath := ""
-			if input.Shared {
-				devicePath = input.Base
-			} else {
-				stat, err := os.Stat(input.Base)
-				if err != nil {
-					return errors.Join(mounter.ErrCouldNotGetBaseDeviceStat, err)
-				}
-
-				var (
-					local storage.Provider
-					dev   storage.ExposedStorage
-				)
-				if strings.TrimSpace(input.Overlay) == "" || strings.TrimSpace(input.State) == "" {
-					local, dev, err = device.NewDevice(&config.DeviceSchema{
-						Name:      input.Name,
-						System:    "file",
-						Location:  input.Base,
-						Size:      fmt.Sprintf("%v", stat.Size()),
-						BlockSize: fmt.Sprintf("%v", input.BlockSize),
-						Expose:    true,
-					})
-				} else {
-					if err := os.MkdirAll(filepath.Dir(input.Overlay), os.ModePerm); err != nil {
-						return errors.Join(mounter.ErrCouldNotCreateOverlayDirectory, err)
-					}
-
-					if err := os.MkdirAll(filepath.Dir(input.State), os.ModePerm); err != nil {
-						return errors.Join(mounter.ErrCouldNotCreateStateDirectory, err)
-					}
-
-					local, dev, err = device.NewDevice(&config.DeviceSchema{
-						Name:      input.Name,
-						System:    "sparsefile",
-						Location:  input.Overlay,
-						Size:      fmt.Sprintf("%v", stat.Size()),
-						BlockSize: fmt.Sprintf("%v", input.BlockSize),
-						Expose:    true,
-						ROSource: &config.DeviceSchema{
-							Name:     input.State,
-							System:   "file",
-							Location: input.Base,
-							Size:     fmt.Sprintf("%v", stat.Size()),
-						},
-					})
-				}
-				if err != nil {
-					return errors.Join(mounter.ErrCouldNotCreateLocalDevice, err)
-				}
-				addDefer(local.Close)
-				addDefer(dev.Shutdown)
-
-				dev.SetProvider(local)
-
-				stage2InputsLock.Lock()
-				migratedPeer.stage2Inputs = append(migratedPeer.stage2Inputs, migrateFromStage{
-					name: input.Name,
-
-					blockSize: input.BlockSize,
-
-					id:     uint32(index),
-					remote: false,
-
-					storage: local,
-					device:  dev,
-				})
-				stage2InputsLock.Unlock()
-
-				devicePath = filepath.Join("/dev", dev.Device())
-			}
-
-			deviceInfo, err := os.Stat(devicePath)
-			if err != nil {
-				return errors.Join(snapshotter.ErrCouldNotGetDeviceStat, err)
-			}
-
-			deviceStat, ok := deviceInfo.Sys().(*syscall.Stat_t)
-			if !ok {
-				return ErrCouldNotGetNBDDeviceStat
-			}
-
-			deviceMajor := uint64(deviceStat.Rdev / 256)
-			deviceMinor := uint64(deviceStat.Rdev % 256)
-
-			deviceID := int((deviceMajor << 8) | deviceMinor)
-
-			select {
-			case <-goroutineManager.Context().Done():
-				if err := goroutineManager.Context().Err(); err != nil {
-					return errors.Join(ErrPeerContextCancelled, err)
-				}
-
-				return nil
-
-			default:
-				if err := unix.Mknod(filepath.Join(peer.runner.VMPath, input.Name), unix.S_IFBLK|0666, deviceID); err != nil {
-					return errors.Join(ErrCouldNotCreateDeviceNode, err)
-				}
-			}
-
-			if hook := hooks.OnLocalDeviceExposed; hook != nil {
-				hook(uint32(index), devicePath)
-			}
-
-			return nil
-		},
-	)
-
-	// Make sure that we schedule the `deferFuncs` even if we get an error during device setup
-	for _, deferFuncs := range deferFuncs {
-		for _, deferFunc := range deferFuncs {
-			deviceCloseFuncsLock.Lock()
-			deviceCloseFuncs = append(deviceCloseFuncs, deferFunc) // defer deferFunc()
-			deviceCloseFuncsLock.Unlock()
-		}
+	addDeviceCloseFuncSingle := func(f func() error) {
+		deviceCloseFuncsLock.Lock()
+		deviceCloseFuncs = append(deviceCloseFuncs, f)
+		deviceCloseFuncsLock.Unlock()
 	}
+
+	siloDevices := make([]*MigrateFromStage, 0)
+	for _, input := range stage1Inputs {
+		siloDevices = append(siloDevices, &MigrateFromStage{
+			Name:      input.Name,
+			Shared:    input.Shared,
+			Base:      input.Base,
+			Overlay:   input.Overlay,
+			State:     input.State,
+			BlockSize: input.BlockSize,
+		})
+	}
+
+	err := SiloMigrateFromLocal(siloDevices, goroutineManager, hooks, stageOutputCb, peer.runner.VMPath,
+		addDeviceCloseFuncSingle,
+		&remainingRequestedLocalDevices,
+	)
 
 	if err != nil {
 		panic(errors.Join(mounter.ErrCouldNotSetupDevices, err))
