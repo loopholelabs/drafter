@@ -8,9 +8,8 @@ import (
 	"strings"
 
 	"github.com/loopholelabs/drafter/pkg/mounter"
-	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 	"github.com/loopholelabs/silo/pkg/storage/config"
-	"github.com/loopholelabs/silo/pkg/storage/device"
+	"github.com/loopholelabs/silo/pkg/storage/devicegroup"
 )
 
 type MigrateFromStage struct {
@@ -61,56 +60,24 @@ func SiloCreateDevSchema(i *MigrateFromStage) (*config.DeviceSchema, error) {
 	return ds, nil
 }
 
-func SiloMigrateFromLocal(devices []*MigrateFromStage, goroutineManager *manager.GoroutineManager, hooks mounter.MigrateFromHooks,
-	stageOutputCb func(mfs migrateFromStage),
-	addDeviceCloseFuncSingle func(f func() error),
-	exposedCb func(index int, name string, devicePath string) error,
-) error {
+func SiloMigrateFromLocal(devices []*MigrateFromStage) (*devicegroup.DeviceGroup, error) {
 
 	// First create a set of schema for the devices...
 	siloDevices := make([]*config.DeviceSchema, 0)
 	for _, i := range devices {
 		ds, err := SiloCreateDevSchema(i)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		siloDevices = append(siloDevices, ds)
 		fmt.Printf("%s\n", ds.EncodeAsBlock())
 	}
 
-	// Create the devices...
-	for index, input := range devices {
-		if hook := hooks.OnLocalDeviceRequested; hook != nil {
-			hook(uint32(input.Id), input.Name)
-		}
-
-		ds := siloDevices[index]
-		local, dev, err := device.NewDevice(ds)
-
-		if err != nil {
-			return errors.Join(mounter.ErrCouldNotCreateLocalDevice, err)
-		}
-		addDeviceCloseFuncSingle(local.Close)
-		addDeviceCloseFuncSingle(dev.Shutdown)
-
-		stageOutputCb(migrateFromStage{
-			name:      input.Name,
-			blockSize: input.BlockSize,
-			id:        uint32(input.Id),
-			remote:    false,
-			storage:   local,
-			device:    dev,
-		})
-
-		err = exposedCb(input.Id, input.Name, filepath.Join("/dev", dev.Device()))
-		if err != nil {
-			return err
-		}
+	// Create a deviceGroup from all the schemas
+	dg, err := devicegroup.NewFromSchema(siloDevices, nil, nil)
+	if err != nil {
+		return nil, errors.Join(mounter.ErrCouldNotCreateLocalDevice, err)
 	}
 
-	if hook := hooks.OnLocalAllDevicesRequested; hook != nil {
-		hook()
-	}
-
-	return nil
+	return dg, nil
 }

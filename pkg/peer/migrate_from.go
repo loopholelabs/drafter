@@ -291,12 +291,6 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 		stage1Inputs = append(stage1Inputs, input)
 	}
 
-	addDeviceCloseFuncSingle := func(f func() error) {
-		deviceCloseFuncsLock.Lock()
-		deviceCloseFuncs = append(deviceCloseFuncs, f)
-		deviceCloseFuncsLock.Unlock()
-	}
-
 	siloDevices := make([]*MigrateFromStage, 0)
 	for index, input := range stage1Inputs {
 		if input.Shared {
@@ -314,13 +308,40 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 		}
 	}
 
-	err := SiloMigrateFromLocal(siloDevices, goroutineManager, hooks, stageOutputCb,
-		addDeviceCloseFuncSingle,
-		exposedCb,
-	)
-
+	dg, err := SiloMigrateFromLocal(siloDevices)
 	if err != nil {
 		panic(errors.Join(mounter.ErrCouldNotSetupDevices, err))
+	}
+
+	// TODO: dg should get saved for migrate_to
+
+	// Single shutdown function for deviceGroup
+	deviceCloseFuncsLock.Lock()
+	deviceCloseFuncs = append(deviceCloseFuncs, dg.CloseAll)
+	deviceCloseFuncsLock.Unlock()
+
+	// Go through dg and add inputs for next phases...
+	for _, input := range siloDevices {
+		local := dg.GetProviderByName(input.Name)
+		dev := dg.GetExposedDeviceByName(input.Name)
+
+		stageOutputCb(migrateFromStage{
+			name:      input.Name,
+			blockSize: input.BlockSize,
+			id:        uint32(input.Id),
+			remote:    false,
+			storage:   local,
+			device:    dev,
+		})
+
+		err = exposedCb(input.Id, input.Name, filepath.Join("/dev", dev.Device()))
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if hook := hooks.OnLocalAllDevicesRequested; hook != nil {
+		hook()
 	}
 
 	select {
