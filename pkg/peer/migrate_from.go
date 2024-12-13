@@ -124,10 +124,46 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 		stage2InputsLock.Unlock()
 	}
 
+	exposedCb := func(index int, name string, devicePath string) error {
+		deviceInfo, err := os.Stat(devicePath)
+		if err != nil {
+			return errors.Join(snapshotter.ErrCouldNotGetDeviceStat, err)
+		}
+
+		deviceStat, ok := deviceInfo.Sys().(*syscall.Stat_t)
+		if !ok {
+			return ErrCouldNotGetNBDDeviceStat
+		}
+
+		deviceMajor := uint64(deviceStat.Rdev / 256)
+		deviceMinor := uint64(deviceStat.Rdev % 256)
+
+		deviceID := int((deviceMajor << 8) | deviceMinor)
+
+		select {
+		case <-goroutineManager.Context().Done():
+			if err := goroutineManager.Context().Err(); err != nil {
+				return errors.Join(ErrPeerContextCancelled, err)
+			}
+
+			return nil
+
+		default:
+			if err := unix.Mknod(filepath.Join(peer.runner.VMPath, name), unix.S_IFBLK|0666, deviceID); err != nil {
+				return errors.Join(ErrCouldNotCreateDeviceNode, err)
+			}
+		}
+
+		if hook := hooks.OnLocalDeviceExposed; hook != nil {
+			hook(uint32(index), devicePath)
+		}
+		return nil
+	}
+
 	initDev := SiloMigrateFromGetInitDev(di, goroutineManager, hooks, &receivedButNotReadyRemoteDevices, protocolCtx,
 		signalAllRemoteDevicesReady,
 		signalAllRemoteDevicesReceived,
-		peer.runner.VMPath,
+		exposedCb,
 		addDeviceCloseFunc,
 		stageOutputCb,
 	)
@@ -262,51 +298,20 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 	}
 
 	siloDevices := make([]*MigrateFromStage, 0)
-	for _, input := range stage1Inputs {
-		siloDevices = append(siloDevices, &MigrateFromStage{
-			Name:      input.Name,
-			Shared:    input.Shared,
-			Base:      input.Base,
-			Overlay:   input.Overlay,
-			State:     input.State,
-			BlockSize: input.BlockSize,
-		})
-	}
-
-	exposedCb := func(index int, name string, devicePath string) error {
-		deviceInfo, err := os.Stat(devicePath)
-		if err != nil {
-			return errors.Join(snapshotter.ErrCouldNotGetDeviceStat, err)
+	for index, input := range stage1Inputs {
+		if input.Shared {
+			// Deal with shared devices here...
+			exposedCb(index, input.Name, input.Base)
+		} else {
+			siloDevices = append(siloDevices, &MigrateFromStage{
+				Id:        index,
+				Name:      input.Name,
+				Base:      input.Base,
+				Overlay:   input.Overlay,
+				State:     input.State,
+				BlockSize: input.BlockSize,
+			})
 		}
-
-		deviceStat, ok := deviceInfo.Sys().(*syscall.Stat_t)
-		if !ok {
-			return ErrCouldNotGetNBDDeviceStat
-		}
-
-		deviceMajor := uint64(deviceStat.Rdev / 256)
-		deviceMinor := uint64(deviceStat.Rdev % 256)
-
-		deviceID := int((deviceMajor << 8) | deviceMinor)
-
-		select {
-		case <-goroutineManager.Context().Done():
-			if err := goroutineManager.Context().Err(); err != nil {
-				return errors.Join(ErrPeerContextCancelled, err)
-			}
-
-			return nil
-
-		default:
-			if err := unix.Mknod(filepath.Join(peer.runner.VMPath, name), unix.S_IFBLK|0666, deviceID); err != nil {
-				return errors.Join(ErrCouldNotCreateDeviceNode, err)
-			}
-		}
-
-		if hook := hooks.OnLocalDeviceExposed; hook != nil {
-			hook(uint32(index), devicePath)
-		}
-		return nil
 	}
 
 	err := SiloMigrateFromLocal(siloDevices, goroutineManager, hooks, stageOutputCb,

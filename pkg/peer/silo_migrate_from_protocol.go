@@ -8,11 +8,9 @@ import (
 	"path/filepath"
 	"strings"
 	"sync/atomic"
-	"syscall"
 
 	"github.com/loopholelabs/drafter/pkg/mounter"
 	"github.com/loopholelabs/drafter/pkg/registry"
-	"github.com/loopholelabs/drafter/pkg/snapshotter"
 	"github.com/loopholelabs/drafter/pkg/terminator"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 	"github.com/loopholelabs/silo/pkg/storage"
@@ -21,7 +19,6 @@ import (
 	"github.com/loopholelabs/silo/pkg/storage/protocol"
 	"github.com/loopholelabs/silo/pkg/storage/protocol/packets"
 	"github.com/loopholelabs/silo/pkg/storage/waitingcache"
-	"golang.org/x/sys/unix"
 )
 
 type SiloFromDeviceInfo struct {
@@ -34,7 +31,7 @@ func SiloMigrateFromGetInitDev(devices []*SiloFromDeviceInfo, goroutineManager *
 	protocolCtx context.Context,
 	signalAllRemoteDevicesReady func(),
 	signalAllRemoteDevicesReceived func(),
-	vmPath string,
+	exposedCb func(index int, name string, devicePath string) error,
 	addDeviceCloseFn func(f func() error),
 	stageOutputCb func(migrateFromStage),
 ) func(ctx context.Context, p protocol.Protocol, index uint32) {
@@ -129,37 +126,9 @@ func SiloMigrateFromGetInitDev(devices []*SiloFromDeviceInfo, goroutineManager *
 
 				devicePath := filepath.Join("/dev", dev.Device())
 
-				deviceInfo, err := os.Stat(devicePath)
+				err = exposedCb(int(index), di.Name, devicePath)
 				if err != nil {
-					panic(errors.Join(snapshotter.ErrCouldNotGetDeviceStat, err))
-				}
-
-				deviceStat, ok := deviceInfo.Sys().(*syscall.Stat_t)
-				if !ok {
-					panic(ErrCouldNotGetNBDDeviceStat)
-				}
-
-				deviceMajor := uint64(deviceStat.Rdev / 256)
-				deviceMinor := uint64(deviceStat.Rdev % 256)
-
-				deviceID := int((deviceMajor << 8) | deviceMinor)
-
-				select {
-				case <-goroutineManager.Context().Done():
-					if err := goroutineManager.Context().Err(); err != nil {
-						panic(errors.Join(ErrPeerContextCancelled, err))
-					}
-
-					return nil
-
-				default:
-					if err := unix.Mknod(filepath.Join(vmPath, di.Name), unix.S_IFBLK|0666, deviceID); err != nil {
-						panic(errors.Join(ErrCouldNotCreateDeviceNode, err))
-					}
-				}
-
-				if hook := hooks.OnRemoteDeviceExposed; hook != nil {
-					hook(index, devicePath)
+					panic(err)
 				}
 
 				return remote

@@ -17,8 +17,8 @@ import (
 )
 
 type MigrateFromStage struct {
+	Id        int
 	Name      string
-	Shared    bool
 	Base      string
 	Overlay   string
 	State     string
@@ -36,9 +36,9 @@ func SiloMigrateFromLocal(devices []*MigrateFromStage, goroutineManager *manager
 
 	_, deferFuncs, err := utils.ConcurrentMap(
 		devices,
-		func(index int, input *MigrateFromStage, _ *struct{}, addDefer func(deferFunc func() error)) error {
+		func(_ int, input *MigrateFromStage, _ *struct{}, addDefer func(deferFunc func() error)) error {
 			if hook := hooks.OnLocalDeviceRequested; hook != nil {
-				hook(uint32(index), input.Name)
+				hook(uint32(input.Id), input.Name)
 			}
 
 			if remainingRequestedLocalDevices.Add(-1) <= 0 {
@@ -47,73 +47,68 @@ func SiloMigrateFromLocal(devices []*MigrateFromStage, goroutineManager *manager
 				}
 			}
 
-			devicePath := ""
-			if input.Shared {
-				devicePath = input.Base
-			} else {
-				stat, err := os.Stat(input.Base)
-				if err != nil {
-					return errors.Join(mounter.ErrCouldNotGetBaseDeviceStat, err)
-				}
-
-				var (
-					local storage.Provider
-					dev   storage.ExposedStorage
-				)
-				if strings.TrimSpace(input.Overlay) == "" || strings.TrimSpace(input.State) == "" {
-					local, dev, err = device.NewDevice(&config.DeviceSchema{
-						Name:      input.Name,
-						System:    "file",
-						Location:  input.Base,
-						Size:      fmt.Sprintf("%v", stat.Size()),
-						BlockSize: fmt.Sprintf("%v", input.BlockSize),
-						Expose:    true,
-					})
-				} else {
-					if err := os.MkdirAll(filepath.Dir(input.Overlay), os.ModePerm); err != nil {
-						return errors.Join(mounter.ErrCouldNotCreateOverlayDirectory, err)
-					}
-
-					if err := os.MkdirAll(filepath.Dir(input.State), os.ModePerm); err != nil {
-						return errors.Join(mounter.ErrCouldNotCreateStateDirectory, err)
-					}
-
-					local, dev, err = device.NewDevice(&config.DeviceSchema{
-						Name:      input.Name,
-						System:    "sparsefile",
-						Location:  input.Overlay,
-						Size:      fmt.Sprintf("%v", stat.Size()),
-						BlockSize: fmt.Sprintf("%v", input.BlockSize),
-						Expose:    true,
-						ROSource: &config.DeviceSchema{
-							Name:     input.State,
-							System:   "file",
-							Location: input.Base,
-							Size:     fmt.Sprintf("%v", stat.Size()),
-						},
-					})
-				}
-				if err != nil {
-					return errors.Join(mounter.ErrCouldNotCreateLocalDevice, err)
-				}
-				addDefer(local.Close)
-				addDefer(dev.Shutdown)
-
-				dev.SetProvider(local)
-
-				stageOutputCb(migrateFromStage{
-					name:      input.Name,
-					blockSize: input.BlockSize,
-					id:        uint32(index),
-					remote:    false,
-					storage:   local,
-					device:    dev,
-				})
-
-				devicePath = filepath.Join("/dev", dev.Device())
+			stat, err := os.Stat(input.Base)
+			if err != nil {
+				return errors.Join(mounter.ErrCouldNotGetBaseDeviceStat, err)
 			}
 
-			return exposedCb(index, input.Name, devicePath)
+			var (
+				local storage.Provider
+				dev   storage.ExposedStorage
+			)
+			if strings.TrimSpace(input.Overlay) == "" || strings.TrimSpace(input.State) == "" {
+				local, dev, err = device.NewDevice(&config.DeviceSchema{
+					Name:      input.Name,
+					System:    "file",
+					Location:  input.Base,
+					Size:      fmt.Sprintf("%v", stat.Size()),
+					BlockSize: fmt.Sprintf("%v", input.BlockSize),
+					Expose:    true,
+				})
+			} else {
+				if err := os.MkdirAll(filepath.Dir(input.Overlay), os.ModePerm); err != nil {
+					return errors.Join(mounter.ErrCouldNotCreateOverlayDirectory, err)
+				}
+
+				if err := os.MkdirAll(filepath.Dir(input.State), os.ModePerm); err != nil {
+					return errors.Join(mounter.ErrCouldNotCreateStateDirectory, err)
+				}
+
+				local, dev, err = device.NewDevice(&config.DeviceSchema{
+					Name:      input.Name,
+					System:    "sparsefile",
+					Location:  input.Overlay,
+					Size:      fmt.Sprintf("%v", stat.Size()),
+					BlockSize: fmt.Sprintf("%v", input.BlockSize),
+					Expose:    true,
+					ROSource: &config.DeviceSchema{
+						Name:     input.State,
+						System:   "file",
+						Location: input.Base,
+						Size:     fmt.Sprintf("%v", stat.Size()),
+					},
+				})
+			}
+			if err != nil {
+				return errors.Join(mounter.ErrCouldNotCreateLocalDevice, err)
+			}
+			addDefer(local.Close)
+			addDefer(dev.Shutdown)
+
+			dev.SetProvider(local)
+
+			stageOutputCb(migrateFromStage{
+				name:      input.Name,
+				blockSize: input.BlockSize,
+				id:        uint32(input.Id),
+				remote:    false,
+				storage:   local,
+				device:    dev,
+			})
+
+			devicePath := filepath.Join("/dev", dev.Device())
+
+			return exposedCb(input.Id, input.Name, devicePath)
 
 		},
 	)
