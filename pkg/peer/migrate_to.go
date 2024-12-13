@@ -150,7 +150,6 @@ func (migratablePeer *MigratablePeer[L, R, G]) MigrateTo(
 			Storage:     input.prev.storage,
 			Remote:      input.prev.prev.prev.remote,
 			DirtyRemote: input.prev.dirtyRemote,
-			Msync:       migratablePeer.resumedRunner.Msync,
 
 			MaxDirtyBlocks: input.migrateToDevice.MaxDirtyBlocks,
 			MinCycles:      input.migrateToDevice.MinCycles,
@@ -159,7 +158,7 @@ func (migratablePeer *MigratablePeer[L, R, G]) MigrateTo(
 		})
 	}
 
-	SiloMigrateTo(siloDevices, concurrency, goroutineManager, pro, hooks, checkSuspendedVM, suspendAndMsyncVM, suspendedVMCh)
+	SiloMigrateTo(siloDevices, concurrency, goroutineManager, pro, hooks, checkSuspendedVM, suspendAndMsyncVM, suspendedVMCh, migratablePeer.resumedRunner.Msync)
 
 	if hook := hooks.OnAllMigrationsCompleted; hook != nil {
 		hook()

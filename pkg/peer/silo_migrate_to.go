@@ -21,24 +21,26 @@ import (
 )
 
 type MigrateToStage struct {
-	Size        uint64                      // input.prev.storage.Size()
-	Name        string                      // input.prev.prev.prev.name
-	BlockSize   uint32                      // input.prev.prev.prev.blockSize
-	TotalBlocks int                         // input.prev.totalBlocks
-	Orderer     *blocks.PriorityBlockOrder  // input.prev.orderer
-	Storage     *modules.Lockable           // input.prev.storage
-	Remote      bool                        // input.prev.prev.prev.remote
-	DirtyRemote *dirtytracker.Remote        // input.prev.dirtyRemote
-	Msync       func(context.Context) error // migratablePeer.resumedRunner.Msync
-
-	MaxDirtyBlocks int           // input.migrateToDevice.MaxDirtyBlocks
-	MinCycles      int           // input.migrateToDevice.MinCycles
-	MaxCycles      int           // input.migrateToDevice.MaxCycles
-	CycleThrottle  time.Duration // input.migrateToDevice.CycleThrottle
+	Size             uint64                     // input.prev.storage.Size()
+	Name             string                     // input.prev.prev.prev.name
+	BlockSize        uint32                     // input.prev.prev.prev.blockSize
+	TotalBlocks      int                        // input.prev.totalBlocks
+	Orderer          *blocks.PriorityBlockOrder // input.prev.orderer
+	Provider         storage.Provider
+	Storage          *modules.Lockable      // input.prev.storage
+	Device           storage.ExposedStorage // input.prev.device
+	VolatilityExpiry time.Duration          // input.makeMigratableDevice.Expiry
+	Remote           bool                   // input.prev.prev.prev.remote
+	DirtyRemote      *dirtytracker.Remote   // input.prev.dirtyRemote
+	MaxDirtyBlocks   int                    // input.migrateToDevice.MaxDirtyBlocks
+	MinCycles        int                    // input.migrateToDevice.MinCycles
+	MaxCycles        int                    // input.migrateToDevice.MaxCycles
+	CycleThrottle    time.Duration          // input.migrateToDevice.CycleThrottle
 }
 
 func SiloMigrateTo(devices []*MigrateToStage, concurrency int, goroutineManager *manager.GoroutineManager, pro protocol.Protocol, hooks MigrateToHooks,
 	checkSuspendedVM func() bool, suspendAndMsyncVM func() error, suspendedVMCh chan struct{},
+	Msync func(context.Context) error,
 ) error {
 	var devicesLeftToSend atomic.Int32
 	var devicesLeftToTransferAuthorityFor atomic.Int32
@@ -189,7 +191,7 @@ func SiloMigrateTo(devices []*MigrateToStage, concurrency int, goroutineManager 
 					suspendedVM := checkSuspendedVM()
 					// We only need to `msync` for the memory because `msync` only affects the memory
 					if !suspendedVM && input.Name == packager.MemoryName {
-						if err := input.Msync(goroutineManager.Context()); err != nil {
+						if err := Msync(goroutineManager.Context()); err != nil {
 
 							return errors.Join(ErrCouldNotMsyncRunner, err)
 						}
