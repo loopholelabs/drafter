@@ -3,9 +3,6 @@ package peer
 import (
 	"github.com/loopholelabs/drafter/pkg/mounter"
 	"github.com/loopholelabs/silo/pkg/storage"
-	"github.com/loopholelabs/silo/pkg/storage/blocks"
-	"github.com/loopholelabs/silo/pkg/storage/dirtytracker"
-	"github.com/loopholelabs/silo/pkg/storage/modules"
 )
 
 type migrateFromStage struct {
@@ -29,10 +26,10 @@ type makeMigratableFilterStage struct {
 type makeMigratableDeviceStage struct {
 	prev makeMigratableFilterStage
 
-	storage     *modules.Lockable
-	orderer     *blocks.PriorityBlockOrder
-	totalBlocks int
-	dirtyRemote *dirtytracker.Remote
+	storage storage.Provider //*modules.Lockable
+	// volatilitymonitor *volatilitymonitor.VolatilityMonitor
+	// orderer           *blocks.PriorityBlockOrder
+	// dirtyRemote       *dirtytracker.Remote
 }
 
 type migrateToStage struct {

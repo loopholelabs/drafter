@@ -18,23 +18,24 @@ import (
 	"github.com/loopholelabs/silo/pkg/storage/modules"
 	"github.com/loopholelabs/silo/pkg/storage/protocol"
 	"github.com/loopholelabs/silo/pkg/storage/protocol/packets"
+	"github.com/loopholelabs/silo/pkg/storage/volatilitymonitor"
 )
 
 type MigrateToStage struct {
-	Size             uint64                     // input.prev.storage.Size()
-	Name             string                     // input.prev.prev.prev.name
-	BlockSize        uint32                     // input.prev.prev.prev.blockSize
-	Orderer          *blocks.PriorityBlockOrder // input.prev.orderer
-	Provider         storage.Provider
-	Storage          *modules.Lockable      // input.prev.storage
-	Device           storage.ExposedStorage // input.prev.device
-	VolatilityExpiry time.Duration          // input.makeMigratableDevice.Expiry
-	Remote           bool                   // input.prev.prev.prev.remote
-	DirtyRemote      *dirtytracker.Remote   // input.prev.dirtyRemote
-	MaxDirtyBlocks   int                    // input.migrateToDevice.MaxDirtyBlocks
-	MinCycles        int                    // input.migrateToDevice.MinCycles
-	MaxCycles        int                    // input.migrateToDevice.MaxCycles
-	CycleThrottle    time.Duration          // input.migrateToDevice.CycleThrottle
+	Size      uint64 // input.prev.storage.Size()
+	Name      string // input.prev.prev.prev.name
+	BlockSize uint32 // input.prev.prev.prev.blockSize
+	Provider  storage.Provider
+	Storage   storage.Provider       // input.prev.storage
+	Device    storage.ExposedStorage // input.prev.device
+	//	VolatilityMonitor *volatilitymonitor.VolatilityMonitor
+	VolatilityExpiry time.Duration // input.makeMigratableDevice.Expiry
+	Remote           bool          // input.prev.prev.prev.remote
+	//	DirtyRemote       *dirtytracker.Remote // input.prev.dirtyRemote
+	MaxDirtyBlocks int           // input.migrateToDevice.MaxDirtyBlocks
+	MinCycles      int           // input.migrateToDevice.MinCycles
+	MaxCycles      int           // input.migrateToDevice.MaxCycles
+	CycleThrottle  time.Duration // input.migrateToDevice.CycleThrottle
 }
 
 // This deals with VM stuff
@@ -64,6 +65,18 @@ func SiloMigrateTo(devices []*MigrateToStage,
 		go func(index int, input *MigrateToStage) {
 			errs <- func() error {
 				// Right now, we are doing devices in series here...
+
+				//
+				dirtyLocal, dirtyRemote := dirtytracker.NewDirtyTracker(input.Storage, int(input.BlockSize))
+				volatilityMonitor := volatilitymonitor.NewVolatilityMonitor(dirtyLocal, int(input.BlockSize), input.VolatilityExpiry)
+
+				local := modules.NewLockable(volatilityMonitor)
+				input.Device.SetProvider(local)
+				//
+
+				totalBlocks := (int(input.Size) + int(input.BlockSize) - 1) / int(input.BlockSize)
+				orderer := blocks.NewPriorityBlockOrder(totalBlocks, volatilityMonitor)
+				orderer.AddAll()
 
 				to := protocol.NewToProtocol(input.Size, uint32(index), pro)
 
@@ -102,7 +115,7 @@ func SiloMigrateTo(devices []*MigrateToStage,
 						startBlock := int(offset / int64(input.BlockSize))
 						endBlock := int((endOffset-1)/uint64(input.BlockSize)) + 1
 						for b := startBlock; b < endBlock; b++ {
-							input.Orderer.PrioritiseBlock(b)
+							orderer.PrioritiseBlock(b)
 						}
 					}); err != nil {
 						panic(errors.Join(registry.ErrCouldNotHandleNeedAt, err))
@@ -120,7 +133,7 @@ func SiloMigrateTo(devices []*MigrateToStage,
 						startBlock := int(offset / int64(input.Size))
 						endBlock := int((endOffset-1)/uint64(input.Size)) + 1
 						for b := startBlock; b < endBlock; b++ {
-							input.Orderer.Remove(b)
+							orderer.Remove(b)
 						}
 					}); err != nil {
 						panic(errors.Join(registry.ErrCouldNotHandleDontNeedAt, err))
@@ -140,7 +153,7 @@ func SiloMigrateTo(devices []*MigrateToStage,
 						panic(errors.Join(mounter.ErrCouldNotSendPreLockEvent, err))
 					}
 
-					input.Storage.Lock()
+					local.Lock()
 
 					if err := to.SendEvent(&packets.Event{
 						Type: packets.EventPostLock,
@@ -157,7 +170,7 @@ func SiloMigrateTo(devices []*MigrateToStage,
 						panic(errors.Join(mounter.ErrCouldNotSendPreUnlockEvent, err))
 					}
 
-					input.Storage.Unlock()
+					local.Unlock()
 
 					if err := to.SendEvent(&packets.Event{
 						Type: packets.EventPostUnlock,
@@ -178,12 +191,10 @@ func SiloMigrateTo(devices []*MigrateToStage,
 					}
 				}
 
-				mig, err := migrator.NewMigrator(input.DirtyRemote, to, input.Orderer, cfg)
+				mig, err := migrator.NewMigrator(dirtyRemote, to, orderer, cfg)
 				if err != nil {
 					return errors.Join(registry.ErrCouldNotCreateMigrator, err)
 				}
-
-				totalBlocks := (int(input.Size) + int(input.BlockSize) - 1) / int(input.BlockSize)
 
 				if err := mig.Migrate(totalBlocks); err != nil {
 					return errors.Join(mounter.ErrCouldNotMigrateBlocks, err)

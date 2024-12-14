@@ -144,13 +144,14 @@ func (migratablePeer *MigratablePeer[L, R, G]) MigrateTo(
 
 	for _, input := range stage5Inputs {
 		siloDevices = append(siloDevices, &MigrateToStage{
-			Size:        input.prev.storage.Size(),
-			Name:        input.prev.prev.prev.name,
-			BlockSize:   input.prev.prev.prev.blockSize,
-			Orderer:     input.prev.orderer,
-			Storage:     input.prev.storage,
-			Remote:      input.prev.prev.prev.remote,
-			DirtyRemote: input.prev.dirtyRemote,
+			Size:      input.prev.storage.Size(),
+			Device:    input.prev.prev.prev.device,
+			Name:      input.prev.prev.prev.name,
+			BlockSize: input.prev.prev.prev.blockSize,
+			//			VolatilityMonitor: input.prev.volatilitymonitor,
+			Storage: input.prev.storage,
+			Remote:  input.prev.prev.prev.remote,
+			//			DirtyRemote:       input.prev.dirtyRemote,
 
 			MaxDirtyBlocks: input.migrateToDevice.MaxDirtyBlocks,
 			MinCycles:      input.migrateToDevice.MinCycles,
