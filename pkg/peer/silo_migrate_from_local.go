@@ -12,7 +12,7 @@ import (
 	"github.com/loopholelabs/silo/pkg/storage/devicegroup"
 )
 
-type MigrateFromStage struct {
+type SiloDeviceConfig struct {
 	Id        int
 	Name      string
 	Base      string
@@ -21,7 +21,7 @@ type MigrateFromStage struct {
 	BlockSize uint32
 }
 
-func SiloCreateDevSchema(i *MigrateFromStage) (*config.DeviceSchema, error) {
+func SiloCreateDevSchema(i *SiloDeviceConfig) (*config.DeviceSchema, error) {
 	stat, err := os.Stat(i.Base)
 	if err != nil {
 		return nil, errors.Join(mounter.ErrCouldNotGetBaseDeviceStat, err)
@@ -60,7 +60,7 @@ func SiloCreateDevSchema(i *MigrateFromStage) (*config.DeviceSchema, error) {
 	return ds, nil
 }
 
-func SiloMigrateFromLocal(devices []*MigrateFromStage) (*devicegroup.DeviceGroup, error) {
+func SiloMigrateFromLocal(devices []*SiloDeviceConfig) (*devicegroup.DeviceGroup, error) {
 
 	// First create a set of schema for the devices...
 	siloDevices := make([]*config.DeviceSchema, 0)

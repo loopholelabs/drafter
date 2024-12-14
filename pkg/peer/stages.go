@@ -6,34 +6,25 @@ import (
 )
 
 type migrateFromStage struct {
-	name string
-
+	name      string
 	blockSize uint32
-
-	id     uint32
-	remote bool
-
-	storage storage.Provider
-	device  storage.ExposedStorage
+	id        uint32
+	remote    bool
+	storage   storage.Provider
+	device    storage.ExposedStorage
 }
 
 type makeMigratableFilterStage struct {
-	prev migrateFromStage
-
+	prev                 migrateFromStage
 	makeMigratableDevice mounter.MakeMigratableDevice
 }
 
 type makeMigratableDeviceStage struct {
-	prev makeMigratableFilterStage
-
-	storage storage.Provider //*modules.Lockable
-	// volatilitymonitor *volatilitymonitor.VolatilityMonitor
-	// orderer           *blocks.PriorityBlockOrder
-	// dirtyRemote       *dirtytracker.Remote
+	prev    makeMigratableFilterStage
+	storage storage.Provider
 }
 
 type migrateToStage struct {
-	prev makeMigratableDeviceStage
-
+	prev            makeMigratableDeviceStage
 	migrateToDevice mounter.MigrateToDevice
 }

@@ -291,13 +291,13 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 		stage1Inputs = append(stage1Inputs, input)
 	}
 
-	siloDevices := make([]*MigrateFromStage, 0)
+	siloDevices := make([]*SiloDeviceConfig, 0)
 	for index, input := range stage1Inputs {
 		if input.Shared {
 			// Deal with shared devices here...
 			exposedCb(index, input.Name, input.Base)
 		} else {
-			siloDevices = append(siloDevices, &MigrateFromStage{
+			siloDevices = append(siloDevices, &SiloDeviceConfig{
 				Id:        index,
 				Name:      input.Name,
 				Base:      input.Base,
