@@ -116,48 +116,29 @@ func (migratablePeer *MigratablePeer[L, R, G]) MigrateTo(
 		return nil
 	})
 
-	stage5Inputs := []migrateToStage{}
-	for _, input := range migratablePeer.stage4Inputs {
-		var migrateToDevice *mounter.MigrateToDevice
-		for _, device := range devices {
-			if device.Name == input.prev.prev.name {
-				migrateToDevice = &device
-
-				break
-			}
-		}
-
-		// We don't want to serve this device
-		if migrateToDevice == nil {
-			continue
-		}
-
-		stage5Inputs = append(stage5Inputs, migrateToStage{
-			prev: input,
-
-			migrateToDevice: *migrateToDevice,
-		})
-	}
-
 	// We need to collect anything we need from stage5Inputs now, to pass to Silo...
 	siloDevices := make([]*MigrateToStage, 0)
 
-	for _, input := range stage5Inputs {
-		siloDevices = append(siloDevices, &MigrateToStage{
-			Size:      input.prev.storage.Size(),
-			Device:    input.prev.prev.prev.device,
-			Name:      input.prev.prev.prev.name,
-			BlockSize: input.prev.prev.prev.blockSize,
-			//			VolatilityMonitor: input.prev.volatilitymonitor,
-			Storage: input.prev.storage,
-			Remote:  input.prev.prev.prev.remote,
-			//			DirtyRemote:       input.prev.dirtyRemote,
+	for _, input := range migratablePeer.stage4Inputs {
+		for _, device := range devices {
+			if device.Name == input.prev.prev.name {
+				siloDevices = append(siloDevices, &MigrateToStage{
+					Size:             input.storage.Size(),
+					Device:           input.prev.prev.device,
+					Name:             input.prev.prev.name,
+					BlockSize:        input.prev.prev.blockSize,
+					Storage:          input.storage,
+					Remote:           input.prev.prev.remote,
+					VolatilityExpiry: input.prev.makeMigratableDevice.Expiry,
 
-			MaxDirtyBlocks: input.migrateToDevice.MaxDirtyBlocks,
-			MinCycles:      input.migrateToDevice.MinCycles,
-			MaxCycles:      input.migrateToDevice.MaxCycles,
-			CycleThrottle:  input.migrateToDevice.CycleThrottle,
-		})
+					MaxDirtyBlocks: device.MaxDirtyBlocks,
+					MinCycles:      device.MinCycles,
+					MaxCycles:      device.MaxCycles,
+					CycleThrottle:  device.CycleThrottle,
+				})
+				break
+			}
+		}
 	}
 
 	vmState := &VMStateManager{

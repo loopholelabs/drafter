@@ -22,20 +22,17 @@ import (
 )
 
 type MigrateToStage struct {
-	Size      uint64 // input.prev.storage.Size()
-	Name      string // input.prev.prev.prev.name
-	BlockSize uint32 // input.prev.prev.prev.blockSize
-	Provider  storage.Provider
-	Storage   storage.Provider       // input.prev.storage
-	Device    storage.ExposedStorage // input.prev.device
-	//	VolatilityMonitor *volatilitymonitor.VolatilityMonitor
-	VolatilityExpiry time.Duration // input.makeMigratableDevice.Expiry
-	Remote           bool          // input.prev.prev.prev.remote
-	//	DirtyRemote       *dirtytracker.Remote // input.prev.dirtyRemote
-	MaxDirtyBlocks int           // input.migrateToDevice.MaxDirtyBlocks
-	MinCycles      int           // input.migrateToDevice.MinCycles
-	MaxCycles      int           // input.migrateToDevice.MaxCycles
-	CycleThrottle  time.Duration // input.migrateToDevice.CycleThrottle
+	Size             uint64                 // input.prev.storage.Size()
+	Name             string                 // input.prev.prev.prev.name
+	BlockSize        uint32                 // input.prev.prev.prev.blockSize
+	Storage          storage.Provider       // input.prev.storage
+	Device           storage.ExposedStorage // input.prev.device
+	VolatilityExpiry time.Duration          // input.makeMigratableDevice.Expiry
+	Remote           bool                   // input.prev.prev.prev.remote
+	MaxDirtyBlocks   int                    // input.migrateToDevice.MaxDirtyBlocks
+	MinCycles        int                    // input.migrateToDevice.MinCycles
+	MaxCycles        int                    // input.migrateToDevice.MaxCycles
+	CycleThrottle    time.Duration          // input.migrateToDevice.CycleThrottle
 }
 
 // This deals with VM stuff
