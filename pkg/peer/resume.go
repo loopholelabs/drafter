@@ -19,7 +19,7 @@ type MigratedPeer[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] str
 	Wait  func() error
 	Close func() error
 
-	dg *devicegroup.DeviceGroup
+	Dg *devicegroup.DeviceGroup
 
 	devices []MigrateFromDevice[L, R, G]
 	runner  *runner.Runner[L, R, G]
@@ -39,6 +39,7 @@ func (migratedPeer *MigratedPeer[L, R, G]) Resume(
 	snapshotLoadConfiguration runner.SnapshotLoadConfiguration,
 ) (resumedPeer *ResumedPeer[L, R, G], errs error) {
 	resumedPeer = &ResumedPeer[L, R, G]{
+		Dg: migratedPeer.Dg,
 		Wait: func() error {
 			return nil
 		},

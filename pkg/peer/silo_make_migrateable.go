@@ -16,16 +16,13 @@ func SiloMakeMigratable(input *MigrateToStage, addDefer func(func() error)) {
 	input.Storage = local
 	addDefer(func() error {
 		local.Unlock()
-
 		return nil
 	})
-
 	input.Device.SetProvider(local)
 
 	totalBlocks := (int(local.Size()) + int(input.BlockSize) - 1) / int(input.BlockSize)
-	input.TotalBlocks = totalBlocks
 
 	orderer := blocks.NewPriorityBlockOrder(totalBlocks, monitor)
-	input.Orderer = orderer
 	orderer.AddAll()
+	input.Orderer = orderer
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/loopholelabs/drafter/pkg/registry"
 	"github.com/loopholelabs/drafter/pkg/runner"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
+	"github.com/loopholelabs/silo/pkg/storage/devicegroup"
 	"github.com/loopholelabs/silo/pkg/storage/protocol"
 )
 
@@ -33,6 +34,7 @@ type MigrateToHooks struct {
 }
 
 type MigratablePeer[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] struct {
+	Dg    *devicegroup.DeviceGroup
 	Close func()
 
 	resumedPeer   *ResumedPeer[L, R, G]
@@ -145,7 +147,6 @@ func (migratablePeer *MigratablePeer[L, R, G]) MigrateTo(
 			Size:        input.prev.storage.Size(),
 			Name:        input.prev.prev.prev.name,
 			BlockSize:   input.prev.prev.prev.blockSize,
-			TotalBlocks: input.prev.totalBlocks,
 			Orderer:     input.prev.orderer,
 			Storage:     input.prev.storage,
 			Remote:      input.prev.prev.prev.remote,

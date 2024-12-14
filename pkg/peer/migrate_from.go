@@ -314,7 +314,7 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 	}
 
 	// Save dg for later usage...
-	migratedPeer.dg = dg
+	migratedPeer.Dg = dg
 
 	// Single shutdown function for deviceGroup
 	deviceCloseFuncsLock.Lock()

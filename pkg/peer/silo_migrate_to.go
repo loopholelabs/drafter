@@ -24,7 +24,6 @@ type MigrateToStage struct {
 	Size             uint64                     // input.prev.storage.Size()
 	Name             string                     // input.prev.prev.prev.name
 	BlockSize        uint32                     // input.prev.prev.prev.blockSize
-	TotalBlocks      int                        // input.prev.totalBlocks
 	Orderer          *blocks.PriorityBlockOrder // input.prev.orderer
 	Provider         storage.Provider
 	Storage          *modules.Lockable      // input.prev.storage
@@ -184,7 +183,9 @@ func SiloMigrateTo(devices []*MigrateToStage,
 					return errors.Join(registry.ErrCouldNotCreateMigrator, err)
 				}
 
-				if err := mig.Migrate(input.TotalBlocks); err != nil {
+				totalBlocks := (int(input.Size) + int(input.BlockSize) - 1) / int(input.BlockSize)
+
+				if err := mig.Migrate(totalBlocks); err != nil {
 					return errors.Join(mounter.ErrCouldNotMigrateBlocks, err)
 				}
 

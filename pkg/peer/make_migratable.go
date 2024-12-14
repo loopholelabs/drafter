@@ -9,9 +9,12 @@ import (
 	"github.com/loopholelabs/drafter/pkg/mounter"
 	"github.com/loopholelabs/drafter/pkg/runner"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
+	"github.com/loopholelabs/silo/pkg/storage/devicegroup"
 )
 
 type ResumedPeer[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] struct {
+	Dg *devicegroup.DeviceGroup
+
 	Remote R
 
 	Wait  func() error
@@ -28,6 +31,8 @@ func (resumedPeer *ResumedPeer[L, R, G]) MakeMigratable(
 	devices []mounter.MakeMigratableDevice,
 ) (migratablePeer *MigratablePeer[L, R, G], errs error) {
 	migratablePeer = &MigratablePeer[L, R, G]{
+		Dg: resumedPeer.Dg,
+
 		Close: func() {},
 
 		resumedPeer:   resumedPeer,
@@ -46,25 +51,15 @@ func (resumedPeer *ResumedPeer[L, R, G]) MakeMigratable(
 
 	stage3Inputs := []makeMigratableFilterStage{}
 	for _, input := range resumedPeer.stage2Inputs {
-		var makeMigratableDevice *mounter.MakeMigratableDevice
 		for _, device := range devices {
 			if device.Name == input.name {
-				makeMigratableDevice = &device
-
+				stage3Inputs = append(stage3Inputs, makeMigratableFilterStage{
+					prev:                 input,
+					makeMigratableDevice: device,
+				})
 				break
 			}
 		}
-
-		// We don't want to make this device migratable
-		if makeMigratableDevice == nil {
-			continue
-		}
-
-		stage3Inputs = append(stage3Inputs, makeMigratableFilterStage{
-			prev: input,
-
-			makeMigratableDevice: *makeMigratableDevice,
-		})
 	}
 
 	var (
@@ -85,7 +80,6 @@ func (resumedPeer *ResumedPeer[L, R, G]) MakeMigratable(
 			SiloMakeMigratable(device, addDefer)
 			output.dirtyRemote = device.DirtyRemote
 			output.storage = device.Storage
-			output.totalBlocks = device.TotalBlocks
 			output.orderer = device.Orderer
 
 			return nil
