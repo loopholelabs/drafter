@@ -323,18 +323,13 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 
 	// Go through dg and add inputs for next phases...
 	for _, input := range siloDevices {
-		local := dg.GetProviderByName(input.Name)
-		dev := dg.GetExposedDeviceByName(input.Name)
-
 		stageOutputCb(migrateFromStage{
-			name:      input.Name,
-			blockSize: input.BlockSize,
-			id:        uint32(input.Id),
-			remote:    false,
-			storage:   local,
-			device:    dev,
+			name:   input.Name,
+			id:     uint32(input.Id),
+			remote: false,
 		})
 
+		dev := dg.GetExposedDeviceByName(input.Name)
 		err = exposedCb(input.Id, input.Name, filepath.Join("/dev", dev.Device()))
 		if err != nil {
 			return nil, err

@@ -116,12 +116,11 @@ func SiloMigrateFromGetInitDev(devices []*SiloFromDeviceInfo, goroutineManager *
 				dev.SetProvider(local)
 
 				stageOutputCb(migrateFromStage{
-					name:      di.Name,
-					blockSize: di.BlockSize,
-					id:        index,
-					remote:    true,
-					storage:   local,
-					device:    dev,
+					name:    di.Name,
+					id:      index,
+					remote:  true,
+					storage: local,
+					device:  dev,
 				})
 
 				devicePath := filepath.Join("/dev", dev.Device())

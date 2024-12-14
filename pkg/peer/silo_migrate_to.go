@@ -13,6 +13,7 @@ import (
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 	"github.com/loopholelabs/silo/pkg/storage"
 	"github.com/loopholelabs/silo/pkg/storage/blocks"
+	"github.com/loopholelabs/silo/pkg/storage/devicegroup"
 	"github.com/loopholelabs/silo/pkg/storage/dirtytracker"
 	"github.com/loopholelabs/silo/pkg/storage/migrator"
 	"github.com/loopholelabs/silo/pkg/storage/modules"
@@ -22,17 +23,13 @@ import (
 )
 
 type MigrateToStage struct {
-	Size             uint64                 // input.prev.storage.Size()
-	Name             string                 // input.prev.prev.prev.name
-	BlockSize        uint32                 // input.prev.prev.prev.blockSize
-	Storage          storage.Provider       // input.prev.storage
-	Device           storage.ExposedStorage // input.prev.device
-	VolatilityExpiry time.Duration          // input.makeMigratableDevice.Expiry
-	Remote           bool                   // input.prev.prev.prev.remote
-	MaxDirtyBlocks   int                    // input.migrateToDevice.MaxDirtyBlocks
-	MinCycles        int                    // input.migrateToDevice.MinCycles
-	MaxCycles        int                    // input.migrateToDevice.MaxCycles
-	CycleThrottle    time.Duration          // input.migrateToDevice.CycleThrottle
+	Name             string        // input.prev.prev.prev.name
+	VolatilityExpiry time.Duration // input.makeMigratableDevice.Expiry
+	Remote           bool          // input.prev.prev.prev.remote
+	MaxDirtyBlocks   int           // input.migrateToDevice.MaxDirtyBlocks
+	MinCycles        int           // input.migrateToDevice.MinCycles
+	MaxCycles        int           // input.migrateToDevice.MaxCycles
+	CycleThrottle    time.Duration // input.migrateToDevice.CycleThrottle
 }
 
 // This deals with VM stuff
@@ -43,7 +40,8 @@ type VMStateManager struct {
 	MSync             func(context.Context) error
 }
 
-func SiloMigrateTo(devices []*MigrateToStage,
+func SiloMigrateTo(dg *devicegroup.DeviceGroup,
+	devices []*MigrateToStage,
 	concurrency int,
 	goroutineManager *manager.GoroutineManager,
 	pro protocol.Protocol,
@@ -61,23 +59,27 @@ func SiloMigrateTo(devices []*MigrateToStage,
 	for forIndex, forInput := range devices {
 		go func(index int, input *MigrateToStage) {
 			errs <- func() error {
+				store := dg.GetProviderByName(input.Name)
+				device := dg.GetExposedDeviceByName(input.Name)
+				blockSize := dg.GetBlockSizeByName(input.Name)
+
 				// Right now, we are doing devices in series here...
 
 				//
-				dirtyLocal, dirtyRemote := dirtytracker.NewDirtyTracker(input.Storage, int(input.BlockSize))
-				volatilityMonitor := volatilitymonitor.NewVolatilityMonitor(dirtyLocal, int(input.BlockSize), input.VolatilityExpiry)
+				dirtyLocal, dirtyRemote := dirtytracker.NewDirtyTracker(store, blockSize)
+				volatilityMonitor := volatilitymonitor.NewVolatilityMonitor(dirtyLocal, blockSize, input.VolatilityExpiry)
 
 				local := modules.NewLockable(volatilityMonitor)
-				input.Device.SetProvider(local)
+				device.SetProvider(local)
 				//
 
-				totalBlocks := (int(input.Size) + int(input.BlockSize) - 1) / int(input.BlockSize)
+				totalBlocks := (int(store.Size()) + blockSize - 1) / blockSize
 				orderer := blocks.NewPriorityBlockOrder(totalBlocks, volatilityMonitor)
 				orderer.AddAll()
 
-				to := protocol.NewToProtocol(input.Size, uint32(index), pro)
+				to := protocol.NewToProtocol(store.Size(), uint32(index), pro)
 
-				if err := to.SendDevInfo(input.Name, input.BlockSize, ""); err != nil {
+				if err := to.SendDevInfo(input.Name, uint32(blockSize), ""); err != nil {
 					return errors.Join(mounter.ErrCouldNotSendDevInfo, err)
 				}
 
@@ -105,12 +107,12 @@ func SiloMigrateTo(devices []*MigrateToStage,
 					if err := to.HandleNeedAt(func(offset int64, length int32) {
 						// Prioritize blocks
 						endOffset := uint64(offset + int64(length))
-						if endOffset > uint64(input.Size) {
-							endOffset = uint64(input.Size)
+						if endOffset > uint64(store.Size()) {
+							endOffset = uint64(store.Size())
 						}
 
-						startBlock := int(offset / int64(input.BlockSize))
-						endBlock := int((endOffset-1)/uint64(input.BlockSize)) + 1
+						startBlock := int(offset / int64(blockSize))
+						endBlock := int((endOffset-1)/uint64(blockSize)) + 1
 						for b := startBlock; b < endBlock; b++ {
 							orderer.PrioritiseBlock(b)
 						}
@@ -123,12 +125,12 @@ func SiloMigrateTo(devices []*MigrateToStage,
 					if err := to.HandleDontNeedAt(func(offset int64, length int32) {
 						// Deprioritize blocks
 						endOffset := uint64(offset + int64(length))
-						if endOffset > uint64(input.Size) {
-							endOffset = uint64(input.Size)
+						if endOffset > uint64(store.Size()) {
+							endOffset = uint64(store.Size())
 						}
 
-						startBlock := int(offset / int64(input.Size))
-						endBlock := int((endOffset-1)/uint64(input.Size)) + 1
+						startBlock := int(offset / int64(blockSize))
+						endBlock := int((endOffset-1)/uint64(blockSize)) + 1
 						for b := startBlock; b < endBlock; b++ {
 							orderer.Remove(b)
 						}
@@ -137,7 +139,7 @@ func SiloMigrateTo(devices []*MigrateToStage,
 					}
 				})
 
-				cfg := migrator.NewConfig().WithBlockSize(int(input.BlockSize))
+				cfg := migrator.NewConfig().WithBlockSize(blockSize)
 				cfg.Concurrency = map[int]int{
 					storage.BlockTypeAny: concurrency,
 				}
@@ -221,10 +223,11 @@ func SiloMigrateTo(devices []*MigrateToStage,
 	for forIndex, forInput := range devices {
 		go func(index int, input *MigrateToStage) {
 			errs <- func() error {
+				blockSize := dg.GetBlockSizeByName(input.Name)
 				mig := migrators[index]
 				to := tos[index]
 				return doDirtyMigration(goroutineManager, input, hooks, vmState, mig, index, to,
-					&devicesLeftToTransferAuthorityFor, len(devices),
+					&devicesLeftToTransferAuthorityFor, len(devices), blockSize,
 				)
 			}()
 		}(forIndex, forInput)
@@ -251,6 +254,7 @@ func doDirtyMigration(goroutineManager *manager.GoroutineManager,
 	to *protocol.ToProtocol,
 	devicesLeftToTransferAuthorityFor *atomic.Int32,
 	numDevices int,
+	blockSize int,
 ) error {
 	markDeviceAsReadyForAuthorityTransfer := sync.OnceFunc(func() {
 		devicesLeftToTransferAuthorityFor.Add(1)
@@ -287,7 +291,7 @@ func doDirtyMigration(goroutineManager *manager.GoroutineManager,
 		}
 
 		if blocks != nil {
-			if err := to.DirtyList(int(input.BlockSize), blocks); err != nil {
+			if err := to.DirtyList(blockSize, blocks); err != nil {
 				return errors.Join(mounter.ErrCouldNotSendDirtyList, err)
 			}
 

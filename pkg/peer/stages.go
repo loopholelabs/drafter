@@ -6,12 +6,11 @@ import (
 )
 
 type migrateFromStage struct {
-	name      string
-	blockSize uint32
-	id        uint32
-	remote    bool
-	storage   storage.Provider
-	device    storage.ExposedStorage
+	name    string
+	id      uint32
+	remote  bool
+	storage storage.Provider
+	device  storage.ExposedStorage
 }
 
 type makeMigratableFilterStage struct {

@@ -123,11 +123,7 @@ func (migratablePeer *MigratablePeer[L, R, G]) MigrateTo(
 		for _, device := range devices {
 			if device.Name == input.prev.prev.name {
 				siloDevices = append(siloDevices, &MigrateToStage{
-					Size:             input.storage.Size(),
-					Device:           input.prev.prev.device,
 					Name:             input.prev.prev.name,
-					BlockSize:        input.prev.prev.blockSize,
-					Storage:          input.storage,
 					Remote:           input.prev.prev.remote,
 					VolatilityExpiry: input.prev.makeMigratableDevice.Expiry,
 
@@ -148,7 +144,7 @@ func (migratablePeer *MigratablePeer[L, R, G]) MigrateTo(
 		MSync:             migratablePeer.resumedRunner.Msync,
 	}
 
-	SiloMigrateTo(siloDevices, concurrency, goroutineManager, pro, hooks, vmState)
+	SiloMigrateTo(migratablePeer.Dg, siloDevices, concurrency, goroutineManager, pro, hooks, vmState)
 
 	if hook := hooks.OnAllMigrationsCompleted; hook != nil {
 		hook()
