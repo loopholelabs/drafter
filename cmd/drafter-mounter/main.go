@@ -262,8 +262,8 @@ func main() {
 			OnRemoteDeviceExposed: func(remoteDeviceID uint32, path string) {
 				log.Println("Exposed remote device", remoteDeviceID, "at", path)
 			},
-			OnRemoteDeviceAuthorityReceived: func(remoteDeviceID uint32) {
-				log.Println("Received authority for remote device", remoteDeviceID)
+			OnRemoteDeviceAuthorityReceived: func(remoteDeviceID uint32, customPayload []byte) {
+				log.Println("Received authority for remote device", remoteDeviceID, "with custom payload", customPayload)
 			},
 			OnRemoteDeviceMigrationCompleted: func(remoteDeviceID uint32) {
 				log.Println("Completed migration of remote device", remoteDeviceID)
@@ -479,6 +479,18 @@ l:
 						} else {
 							log.Println("Getting dirty blocks for local device", deviceID)
 						}
+					},
+
+					OnBeforeSendDeviceAuthority: func(deviceID uint32, remote bool) []byte {
+						var customPayload []byte
+
+						if remote {
+							log.Println("Sending authority for remote device", deviceID, "with custom payload", customPayload)
+						} else {
+							log.Println("Sending authority for local device", deviceID, "with custom payload", customPayload)
+						}
+
+						return customPayload
 					},
 
 					OnDeviceSent: func(deviceID uint32, remote bool) {

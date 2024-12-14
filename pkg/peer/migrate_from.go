@@ -283,12 +283,12 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 								}
 
 							case byte(registry.EventCustomTransferAuthority):
-								if receivedButNotReadyRemoteDevices.Add(-1) <= 0 {
-									signalAllRemoteDevicesReady()
+								if hook := hooks.OnRemoteDeviceAuthorityReceived; hook != nil {
+									hook(index, e.CustomPayload)
 								}
 
-								if hook := hooks.OnRemoteDeviceAuthorityReceived; hook != nil {
-									hook(index)
+								if receivedButNotReadyRemoteDevices.Add(-1) <= 0 {
+									signalAllRemoteDevicesReady()
 								}
 							}
 
