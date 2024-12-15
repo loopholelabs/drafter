@@ -3,6 +3,7 @@ package peer
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -11,15 +12,10 @@ import (
 	"github.com/loopholelabs/drafter/pkg/packager"
 	"github.com/loopholelabs/drafter/pkg/registry"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
-	"github.com/loopholelabs/silo/pkg/storage"
-	"github.com/loopholelabs/silo/pkg/storage/blocks"
 	"github.com/loopholelabs/silo/pkg/storage/devicegroup"
-	"github.com/loopholelabs/silo/pkg/storage/dirtytracker"
 	"github.com/loopholelabs/silo/pkg/storage/migrator"
-	"github.com/loopholelabs/silo/pkg/storage/modules"
 	"github.com/loopholelabs/silo/pkg/storage/protocol"
 	"github.com/loopholelabs/silo/pkg/storage/protocol/packets"
-	"github.com/loopholelabs/silo/pkg/storage/volatilitymonitor"
 )
 
 type MigrateToStage struct {
@@ -48,186 +44,39 @@ func SiloMigrateTo(dg *devicegroup.DeviceGroup,
 	hooks MigrateToHooks,
 	vmState *VMStateManager,
 ) error {
-	var devicesLeftToSend atomic.Int32
-	var devicesLeftToTransferAuthorityFor atomic.Int32
 
-	errs := make(chan error, len(devices))
-
-	migrators := make([]*migrator.Migrator, len(devices))
-	tos := make([]*protocol.ToProtocol, len(devices))
-
-	for forIndex, forInput := range devices {
-		go func(index int, input *MigrateToStage) {
-			errs <- func() error {
-				store := dg.GetProviderByName(input.Name)
-				device := dg.GetExposedDeviceByName(input.Name)
-				blockSize := dg.GetBlockSizeByName(input.Name)
-
-				// Right now, we are doing devices in series here...
-
-				//
-				dirtyLocal, dirtyRemote := dirtytracker.NewDirtyTracker(store, blockSize)
-				volatilityMonitor := volatilitymonitor.NewVolatilityMonitor(dirtyLocal, blockSize, input.VolatilityExpiry)
-
-				local := modules.NewLockable(volatilityMonitor)
-				device.SetProvider(local)
-				//
-
-				totalBlocks := (int(store.Size()) + blockSize - 1) / blockSize
-				orderer := blocks.NewPriorityBlockOrder(totalBlocks, volatilityMonitor)
-				orderer.AddAll()
-
-				to := protocol.NewToProtocol(store.Size(), uint32(index), pro)
-
-				if err := to.SendDevInfo(input.Name, uint32(blockSize), ""); err != nil {
-					return errors.Join(mounter.ErrCouldNotSendDevInfo, err)
-				}
-
-				if hook := hooks.OnDeviceSent; hook != nil {
-					hook(uint32(index), input.Remote)
-				}
-
-				devicesLeftToSend.Add(1)
-				if devicesLeftToSend.Load() >= int32(len(devices)) {
-					goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
-						if err := to.SendEvent(&packets.Event{
-							Type:       packets.EventCustom,
-							CustomType: byte(registry.EventCustomAllDevicesSent),
-						}); err != nil {
-							panic(errors.Join(mounter.ErrCouldNotSendAllDevicesSentEvent, err))
-						}
-
-						if hook := hooks.OnAllDevicesSent; hook != nil {
-							hook()
-						}
-					})
-				}
-
-				goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
-					if err := to.HandleNeedAt(func(offset int64, length int32) {
-						// Prioritize blocks
-						endOffset := uint64(offset + int64(length))
-						if endOffset > uint64(store.Size()) {
-							endOffset = uint64(store.Size())
-						}
-
-						startBlock := int(offset / int64(blockSize))
-						endBlock := int((endOffset-1)/uint64(blockSize)) + 1
-						for b := startBlock; b < endBlock; b++ {
-							orderer.PrioritiseBlock(b)
-						}
-					}); err != nil {
-						panic(errors.Join(registry.ErrCouldNotHandleNeedAt, err))
-					}
-				})
-
-				goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
-					if err := to.HandleDontNeedAt(func(offset int64, length int32) {
-						// Deprioritize blocks
-						endOffset := uint64(offset + int64(length))
-						if endOffset > uint64(store.Size()) {
-							endOffset = uint64(store.Size())
-						}
-
-						startBlock := int(offset / int64(blockSize))
-						endBlock := int((endOffset-1)/uint64(blockSize)) + 1
-						for b := startBlock; b < endBlock; b++ {
-							orderer.Remove(b)
-						}
-					}); err != nil {
-						panic(errors.Join(registry.ErrCouldNotHandleDontNeedAt, err))
-					}
-				})
-
-				cfg := migrator.NewConfig().WithBlockSize(blockSize)
-				cfg.Concurrency = map[int]int{
-					storage.BlockTypeAny: concurrency,
-				}
-				cfg.LockerHandler = func() {
-					defer goroutineManager.CreateBackgroundPanicCollector()()
-
-					if err := to.SendEvent(&packets.Event{
-						Type: packets.EventPreLock,
-					}); err != nil {
-						panic(errors.Join(mounter.ErrCouldNotSendPreLockEvent, err))
-					}
-
-					local.Lock()
-
-					if err := to.SendEvent(&packets.Event{
-						Type: packets.EventPostLock,
-					}); err != nil {
-						panic(errors.Join(mounter.ErrCouldNotSendPostLockEvent, err))
-					}
-				}
-				cfg.UnlockerHandler = func() {
-					defer goroutineManager.CreateBackgroundPanicCollector()()
-
-					if err := to.SendEvent(&packets.Event{
-						Type: packets.EventPreUnlock,
-					}); err != nil {
-						panic(errors.Join(mounter.ErrCouldNotSendPreUnlockEvent, err))
-					}
-
-					local.Unlock()
-
-					if err := to.SendEvent(&packets.Event{
-						Type: packets.EventPostUnlock,
-					}); err != nil {
-						panic(errors.Join(mounter.ErrCouldNotSendPostUnlockEvent, err))
-					}
-				}
-				cfg.ErrorHandler = func(b *storage.BlockInfo, err error) {
-					defer goroutineManager.CreateBackgroundPanicCollector()()
-
-					if err != nil {
-						panic(errors.Join(registry.ErrCouldNotContinueWithMigration, err))
-					}
-				}
-				cfg.ProgressHandler = func(p *migrator.MigrationProgress) {
-					if hook := hooks.OnDeviceInitialMigrationProgress; hook != nil {
-						hook(uint32(index), input.Remote, p.ReadyBlocks, p.TotalBlocks)
-					}
-				}
-
-				mig, err := migrator.NewMigrator(dirtyRemote, to, orderer, cfg)
-				if err != nil {
-					return errors.Join(registry.ErrCouldNotCreateMigrator, err)
-				}
-
-				if err := mig.Migrate(totalBlocks); err != nil {
-					return errors.Join(mounter.ErrCouldNotMigrateBlocks, err)
-				}
-
-				if err := mig.WaitForCompletion(); err != nil {
-					return errors.Join(registry.ErrCouldNotWaitForMigrationCompletion, err)
-				}
-
-				migrators[index] = mig
-				tos[index] = to
-
-				return nil
-			}()
-		}(forIndex, forInput)
+	// Start a migration to the protocol...
+	err := dg.StartMigrationTo(pro)
+	if err != nil {
+		return err
 	}
 
-	// Wait for all of these to complete...
-	for range devices {
-		err := <-errs
-		if err != nil {
-			return err
+	// TODO: Get this to call hooks
+	pHandler := func(p []*migrator.MigrationProgress) {
+		for index, prog := range p {
+			fmt.Printf("[%d] Progress (%d/%d)\n", index, prog.ReadyBlocks, prog.TotalBlocks)
 		}
 	}
+
+	fmt.Printf("Starting MigrateAll...\n")
+
+	err = dg.MigrateAll(concurrency, pHandler)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("MigrateAll done...\n")
+
+	var devicesLeftToTransferAuthorityFor atomic.Int32
+	errs := make(chan error, len(devices))
 
 	// And now do the dirty migration phase...
 	for forIndex, forInput := range devices {
 		go func(index int, input *MigrateToStage) {
 			errs <- func() error {
-				blockSize := dg.GetBlockSizeByName(input.Name)
-				mig := migrators[index]
-				to := tos[index]
-				return doDirtyMigration(goroutineManager, input, hooks, vmState, mig, index, to,
-					&devicesLeftToTransferAuthorityFor, len(devices), blockSize,
+				info := dg.GetDeviceInformationByName(input.Name)
+				return doDirtyMigration(goroutineManager, input, hooks, vmState, info.Migrator, index, info.To,
+					&devicesLeftToTransferAuthorityFor, len(devices), int(info.BlockSize),
 				)
 			}()
 		}(forIndex, forInput)

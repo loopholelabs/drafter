@@ -3,6 +3,7 @@ package peer
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -17,6 +18,7 @@ import (
 	"github.com/loopholelabs/drafter/pkg/snapshotter"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 	"github.com/loopholelabs/silo/pkg/storage/protocol"
+	"github.com/loopholelabs/silo/pkg/storage/protocol/packets"
 	"golang.org/x/sys/unix"
 )
 
@@ -110,14 +112,14 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 			Base: dev.Base,
 		})
 	}
-
-	addDeviceCloseFunc := func(f func() error) {
-		deviceCloseFuncsLock.Lock()
-		deviceCloseFuncs = append(deviceCloseFuncs, f)
-		deviceCloseFuncs = append(deviceCloseFuncs, peer.runner.Close) // defer runner.Close()
-		deviceCloseFuncsLock.Unlock()
-	}
-
+	/*
+		addDeviceCloseFunc := func(f func() error) {
+			deviceCloseFuncsLock.Lock()
+			deviceCloseFuncs = append(deviceCloseFuncs, f)
+			deviceCloseFuncs = append(deviceCloseFuncs, peer.runner.Close) // defer runner.Close()
+			deviceCloseFuncsLock.Unlock()
+		}
+	*/
 	stageOutputCb := func(mfs migrateFromStage) {
 		stage2InputsLock.Lock()
 		migratedPeer.stage2Inputs = append(migratedPeer.stage2Inputs, mfs)
@@ -160,20 +162,63 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 		return nil
 	}
 
-	initDev := SiloMigrateFromGetInitDev(di, goroutineManager, hooks, &receivedButNotReadyRemoteDevices, protocolCtx,
-		signalAllRemoteDevicesReady,
-		signalAllRemoteDevicesReceived,
-		exposedCb,
-		addDeviceCloseFunc,
-		stageOutputCb,
-	)
+	// Silo event handler
+	eventHandler := func(e *packets.Event) {
+		index := uint32(0)
+		switch e.Type {
+		case packets.EventCustom:
+			switch e.CustomType {
+			case byte(registry.EventCustomAllDevicesSent):
+				signalAllRemoteDevicesReceived()
 
+				if hook := hooks.OnRemoteAllDevicesReceived; hook != nil {
+					hook()
+				}
+
+			case byte(registry.EventCustomTransferAuthority):
+				if receivedButNotReadyRemoteDevices.Add(-1) <= 0 {
+					signalAllRemoteDevicesReady()
+				}
+
+				if hook := hooks.OnRemoteDeviceAuthorityReceived; hook != nil {
+					hook(index)
+				}
+			}
+
+		case packets.EventCompleted:
+			if hook := hooks.OnRemoteDeviceMigrationCompleted; hook != nil {
+				hook(index)
+			}
+		}
+	}
+
+	/*
+		initDev := SiloMigrateFromGetInitDev(di,
+			goroutineManager,
+			hooks,
+			&receivedButNotReadyRemoteDevices,
+			protocolCtx,
+			exposedCb,
+			addDeviceCloseFunc,
+			stageOutputCb,
+			eventHandler,
+		)
+	*/
 	if len(readers) > 0 && len(writers) > 0 { // Only open the protocol if we want passed in readers and writers
 		pro = protocol.NewRW(
 			protocolCtx, // We don't track this because we return the wait function
 			readers,
 			writers,
-			initDev)
+			nil)
+
+		// Do this in a goroutine for now...
+		go func() {
+			_, err := SiloMigrateFrom(pro, eventHandler)
+			if err != nil {
+				fmt.Printf("Error migrating %v\n", err)
+			}
+
+		}()
 	}
 
 	migratedPeer.Wait = sync.OnceValue(func() error {
@@ -277,34 +322,27 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 	// Now deal with any local devices we want...
 	//
 
-	stage1Inputs := []MigrateFromDevice[L, R, G]{}
+	siloDevices := make([]*SiloDeviceConfig, 0)
+	index := 0
 	for _, input := range devices {
-		if slices.ContainsFunc(
-			migratedPeer.stage2Inputs,
+		if !slices.ContainsFunc(migratedPeer.stage2Inputs,
 			func(r migrateFromStage) bool {
 				return input.Name == r.name
-			},
-		) {
-			continue
-		}
-
-		stage1Inputs = append(stage1Inputs, input)
-	}
-
-	siloDevices := make([]*SiloDeviceConfig, 0)
-	for index, input := range stage1Inputs {
-		if input.Shared {
-			// Deal with shared devices here...
-			exposedCb(index, input.Name, input.Base)
-		} else {
-			siloDevices = append(siloDevices, &SiloDeviceConfig{
-				Id:        index,
-				Name:      input.Name,
-				Base:      input.Base,
-				Overlay:   input.Overlay,
-				State:     input.State,
-				BlockSize: input.BlockSize,
-			})
+			}) {
+			if input.Shared {
+				// Deal with shared devices here...
+				exposedCb(index, input.Name, input.Base)
+			} else {
+				siloDevices = append(siloDevices, &SiloDeviceConfig{
+					Id:        index,
+					Name:      input.Name,
+					Base:      input.Base,
+					Overlay:   input.Overlay,
+					State:     input.State,
+					BlockSize: input.BlockSize,
+				})
+			}
+			index++
 		}
 	}
 

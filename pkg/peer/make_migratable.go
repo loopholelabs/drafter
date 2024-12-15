@@ -18,6 +18,8 @@ type ResumedPeer[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] stru
 	stage2Inputs  []migrateFromStage
 }
 
+// FIXME: This can go, it does nothing...
+
 func (resumedPeer *ResumedPeer[L, R, G]) MakeMigratable(ctx context.Context, devices []mounter.MakeMigratableDevice) (*MigratablePeer[L, R, G], error) {
 
 	migratablePeer := &MigratablePeer[L, R, G]{

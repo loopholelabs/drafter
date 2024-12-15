@@ -10,12 +10,12 @@ import (
 	"sync/atomic"
 
 	"github.com/loopholelabs/drafter/pkg/mounter"
-	"github.com/loopholelabs/drafter/pkg/registry"
 	"github.com/loopholelabs/drafter/pkg/terminator"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 	"github.com/loopholelabs/silo/pkg/storage"
 	"github.com/loopholelabs/silo/pkg/storage/config"
 	"github.com/loopholelabs/silo/pkg/storage/device"
+	"github.com/loopholelabs/silo/pkg/storage/devicegroup"
 	"github.com/loopholelabs/silo/pkg/storage/protocol"
 	"github.com/loopholelabs/silo/pkg/storage/protocol/packets"
 	"github.com/loopholelabs/silo/pkg/storage/waitingcache"
@@ -26,14 +26,32 @@ type SiloFromDeviceInfo struct {
 	Base string
 }
 
+func SiloMigrateFrom(pro protocol.Protocol, eventHandler func(e *packets.Event)) (*devicegroup.DeviceGroup, error) {
+	fmt.Printf("MigrateFrom...\n")
+	tweak := func(index int, name string, schema string) string {
+		s := strings.ReplaceAll(schema, "instance-0", "instance-1")
+		fmt.Printf("Tweaked schema for %s...\n%s\n\n", name, s)
+		return s
+	}
+	events := func(e *packets.Event) {
+		fmt.Printf("Event received %v\n", e)
+		eventHandler(e)
+	}
+	dg, err := devicegroup.NewFromProtocol(context.TODO(), pro, tweak, events, nil, nil)
+	fmt.Printf("NewFromProtocol returned %v\n", err)
+
+	dg.WaitForCompletion()
+
+	return dg, err
+}
+
 func SiloMigrateFromGetInitDev(devices []*SiloFromDeviceInfo, goroutineManager *manager.GoroutineManager, hooks mounter.MigrateFromHooks,
 	receivedButNotReadyRemoteDevices *atomic.Int32,
 	protocolCtx context.Context,
-	signalAllRemoteDevicesReady func(),
-	signalAllRemoteDevicesReceived func(),
 	exposedCb func(index int, name string, devicePath string) error,
 	addDeviceCloseFn func(f func() error),
 	stageOutputCb func(migrateFromStage),
+	eventHandler func(index uint32, e *packets.Event),
 ) func(ctx context.Context, p protocol.Protocol, index uint32) {
 
 	return func(ctx context.Context, p protocol.Protocol, index uint32) {
@@ -155,31 +173,7 @@ func SiloMigrateFromGetInitDev(devices []*SiloFromDeviceInfo, goroutineManager *
 
 		goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
 			if err := from.HandleEvent(func(e *packets.Event) {
-				switch e.Type {
-				case packets.EventCustom:
-					switch e.CustomType {
-					case byte(registry.EventCustomAllDevicesSent):
-						signalAllRemoteDevicesReceived()
-
-						if hook := hooks.OnRemoteAllDevicesReceived; hook != nil {
-							hook()
-						}
-
-					case byte(registry.EventCustomTransferAuthority):
-						if receivedButNotReadyRemoteDevices.Add(-1) <= 0 {
-							signalAllRemoteDevicesReady()
-						}
-
-						if hook := hooks.OnRemoteDeviceAuthorityReceived; hook != nil {
-							hook(index)
-						}
-					}
-
-				case packets.EventCompleted:
-					if hook := hooks.OnRemoteDeviceMigrationCompleted; hook != nil {
-						hook(index)
-					}
-				}
+				eventHandler(index, e)
 			}); err != nil {
 				panic(errors.Join(terminator.ErrCouldNotHandleEvent, err))
 			}
