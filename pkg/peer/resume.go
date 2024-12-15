@@ -15,6 +15,21 @@ import (
 	"github.com/loopholelabs/silo/pkg/storage/devicegroup"
 )
 
+type migrateFromStage struct {
+	name   string
+	id     uint32
+	remote bool
+}
+
+type ResumedPeer[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] struct {
+	Dg            *devicegroup.DeviceGroup
+	Remote        R
+	Wait          func() error
+	Close         func() error
+	resumedRunner *runner.ResumedRunner[L, R, G]
+	stage2Inputs  []migrateFromStage
+}
+
 type MigratedPeer[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] struct {
 	Wait  func() error
 	Close func() error

@@ -569,18 +569,6 @@ func main() {
 		})
 	}
 
-	migratablePeer, err := resumedPeer.MakeMigratable(
-		goroutineManager.Context(),
-
-		makeMigratableDevices,
-	)
-
-	if err != nil {
-		panic(err)
-	}
-
-	defer migratablePeer.Close()
-
 	migrateToDevices := []mounter.MigrateToDevice{}
 	for _, device := range devices {
 		if !device.MakeMigratable || device.Shared {
@@ -599,7 +587,7 @@ func main() {
 	}
 
 	before = time.Now()
-	if err := migratablePeer.MigrateTo(
+	if err := resumedPeer.MigrateTo(
 		goroutineManager.Context(),
 
 		migrateToDevices,

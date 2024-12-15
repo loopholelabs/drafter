@@ -7,12 +7,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/loopholelabs/drafter/pkg/ipc"
 	"github.com/loopholelabs/drafter/pkg/mounter"
 	"github.com/loopholelabs/drafter/pkg/registry"
-	"github.com/loopholelabs/drafter/pkg/runner"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
-	"github.com/loopholelabs/silo/pkg/storage/devicegroup"
 	"github.com/loopholelabs/silo/pkg/storage/protocol"
 )
 
@@ -33,15 +30,7 @@ type MigrateToHooks struct {
 	OnAllMigrationsCompleted func()
 }
 
-type MigratablePeer[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] struct {
-	Dg    *devicegroup.DeviceGroup
-	Close func()
-
-	resumedPeer   *ResumedPeer[L, R, G]
-	resumedRunner *runner.ResumedRunner[L, R, G]
-}
-
-func (migratablePeer *MigratablePeer[L, R, G]) MigrateTo(
+func (migratablePeer *ResumedPeer[L, R, G]) MigrateTo(
 	ctx context.Context,
 
 	devices []mounter.MigrateToDevice,
@@ -94,11 +83,11 @@ func (migratablePeer *MigratablePeer[L, R, G]) MigrateTo(
 			hook()
 		}
 
-		if err := migratablePeer.resumedPeer.SuspendAndCloseAgentServer(goroutineManager.Context(), suspendTimeout); err != nil {
+		if err := migratablePeer.SuspendAndCloseAgentServer(goroutineManager.Context(), suspendTimeout); err != nil {
 			return errors.Join(ErrCouldNotSuspendAndCloseAgentServer, err)
 		}
 
-		if err := migratablePeer.resumedPeer.resumedRunner.Msync(goroutineManager.Context()); err != nil {
+		if err := migratablePeer.resumedRunner.Msync(goroutineManager.Context()); err != nil {
 			return errors.Join(ErrCouldNotMsyncRunner, err)
 		}
 
@@ -118,7 +107,7 @@ func (migratablePeer *MigratablePeer[L, R, G]) MigrateTo(
 	// We need to collect anything we need from stage5Inputs now, to pass to Silo...
 	siloDevices := make([]*MigrateToStage, 0)
 
-	for _, input := range migratablePeer.resumedPeer.stage2Inputs {
+	for _, input := range migratablePeer.stage2Inputs {
 		for _, device := range devices {
 			if device.Name == input.name {
 				siloDevices = append(siloDevices, &MigrateToStage{
