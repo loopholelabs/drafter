@@ -24,6 +24,26 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+// expose a Silo Device as a file within the vm directory
+func exposeSiloDeviceAsFile(vmpath string, name string, devicePath string) error {
+	deviceInfo, err := os.Stat(devicePath)
+	if err != nil {
+		return errors.Join(snapshotter.ErrCouldNotGetDeviceStat, err)
+	}
+
+	deviceStat, ok := deviceInfo.Sys().(*syscall.Stat_t)
+	if !ok {
+		return ErrCouldNotGetNBDDeviceStat
+	}
+
+	err = unix.Mknod(filepath.Join(vmpath, name), unix.S_IFBLK|0666, int(deviceStat.Rdev))
+	if err != nil {
+		return errors.Join(ErrCouldNotCreateDeviceNode, err)
+	}
+
+	return nil
+}
+
 type MigrateFromDevice[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] struct {
 	Name      string `json:"name"`
 	Base      string `json:"base"`
@@ -112,40 +132,6 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 		stage2InputsLock.Unlock()
 	}
 
-	// When a device is received and exposed, we call this...
-	exposedCb := func(index int, name string, devicePath string) error {
-		fmt.Printf("Expose dev %s %s\n", name, devicePath)
-		deviceInfo, err := os.Stat(devicePath)
-		if err != nil {
-			return errors.Join(snapshotter.ErrCouldNotGetDeviceStat, err)
-		}
-
-		deviceStat, ok := deviceInfo.Sys().(*syscall.Stat_t)
-		if !ok {
-			return ErrCouldNotGetNBDDeviceStat
-		}
-
-		deviceMajor := uint64(deviceStat.Rdev / 256)
-		deviceMinor := uint64(deviceStat.Rdev % 256)
-		deviceID := int((deviceMajor << 8) | deviceMinor)
-
-		select {
-		case <-goroutineManager.Context().Done():
-			if err := goroutineManager.Context().Err(); err != nil {
-				return errors.Join(ErrPeerContextCancelled, err)
-			}
-			return nil
-		default:
-			if err := unix.Mknod(filepath.Join(peer.runner.VMPath, name), unix.S_IFBLK|0666, deviceID); err != nil {
-				return errors.Join(ErrCouldNotCreateDeviceNode, err)
-			}
-		}
-		if hook := hooks.OnLocalDeviceExposed; hook != nil {
-			hook(uint32(index), devicePath)
-		}
-		return nil
-	}
-
 	// Silo event handler
 	eventHandler := func(e *packets.Event) {
 		index := uint32(0)
@@ -201,21 +187,7 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 				names = append(names, name)
 				namesLock.Unlock()
 
-				/*
-					// Modify the schema here...
-					devschema := config.SiloSchema{}
-					err := devschema.Decode([]byte(schema))
-					if err != nil || len(devschema.Device) != 1 {
-						panic(err)
-					}
-					d := devschema.Device[0]
-					d.ROSource = nil
-					d.System = "file"
-					filename := filepath.Base(d.Location)
-					d.Location = path.Join("image", "instance-1", filename)
-				*/
 				s := strings.ReplaceAll(schema, "instance-0", "instance-1")
-				//s := d.EncodeAsBlock()
 				fmt.Printf("Tweaked schema for %s...\n%s\n\n", name, s)
 				return string(s)
 			}
@@ -231,9 +203,10 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 			for _, n := range names {
 				dev := dg.GetExposedDeviceByName(n)
 				if dev != nil {
-					fmt.Printf("GOT Device %s %v\n", n, dev.Device())
-					err := exposedCb(0, n, filepath.Join("/dev", dev.Device()))
-					fmt.Printf("ExposedCb err %v\n", err)
+					err := exposeSiloDeviceAsFile(migratedPeer.runner.VMPath, n, filepath.Join("/dev", dev.Device()))
+					if err != nil {
+						fmt.Printf("Error migrating %v\n", err)
+					}
 				}
 			}
 
@@ -354,7 +327,10 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 			}) {
 			if input.Shared {
 				// Deal with shared devices here...
-				exposedCb(index, input.Name, input.Base)
+				err := exposeSiloDeviceAsFile(migratedPeer.runner.VMPath, input.Name, input.Base)
+				if err != nil {
+					panic(errors.Join(mounter.ErrCouldNotSetupDevices, err))
+				}
 			} else {
 				siloDevices = append(siloDevices, &SiloDeviceConfig{
 					Id:        index,
@@ -393,7 +369,7 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 		})
 
 		dev := dg.GetExposedDeviceByName(input.Name)
-		err = exposedCb(input.Id, input.Name, filepath.Join("/dev", dev.Device()))
+		err = exposeSiloDeviceAsFile(migratedPeer.runner.VMPath, input.Name, filepath.Join("/dev", dev.Device()))
 		if err != nil {
 			return nil, err
 		}
