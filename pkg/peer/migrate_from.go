@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -17,37 +18,32 @@ import (
 	"github.com/loopholelabs/drafter/pkg/registry"
 	"github.com/loopholelabs/drafter/pkg/snapshotter"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
+	"github.com/loopholelabs/silo/pkg/storage/devicegroup"
 	"github.com/loopholelabs/silo/pkg/storage/protocol"
 	"github.com/loopholelabs/silo/pkg/storage/protocol/packets"
 	"golang.org/x/sys/unix"
 )
 
 type MigrateFromDevice[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] struct {
-	Name string `json:"name"`
-
-	Base    string `json:"base"`
-	Overlay string `json:"overlay"`
-	State   string `json:"state"`
-
+	Name      string `json:"name"`
+	Base      string `json:"base"`
+	Overlay   string `json:"overlay"`
+	State     string `json:"state"`
 	BlockSize uint32 `json:"blockSize"`
-
-	Shared bool `json:"shared"`
+	Shared    bool   `json:"shared"`
 }
 
 func (peer *Peer[L, R, G]) MigrateFrom(
 	ctx context.Context,
-
 	devices []MigrateFromDevice[L, R, G],
-
 	readers []io.Reader,
 	writers []io.Writer,
-
 	hooks mounter.MigrateFromHooks,
 ) (
 	migratedPeer *MigratedPeer[L, R, G],
-
 	errs error,
 ) {
+
 	migratedPeer = &MigratedPeer[L, R, G]{
 		Wait: func() error {
 			return nil
@@ -55,10 +51,8 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 		Close: func() error {
 			return nil
 		},
-
-		devices: devices,
-		runner:  peer.runner,
-
+		devices:      devices,
+		runner:       peer.runner,
 		stage2Inputs: []migrateFromStage{},
 	}
 
@@ -118,7 +112,9 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 		stage2InputsLock.Unlock()
 	}
 
+	// When a device is received and exposed, we call this...
 	exposedCb := func(index int, name string, devicePath string) error {
+		fmt.Printf("Expose dev %s %s\n", name, devicePath)
 		deviceInfo, err := os.Stat(devicePath)
 		if err != nil {
 			return errors.Join(snapshotter.ErrCouldNotGetDeviceStat, err)
@@ -131,7 +127,6 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 
 		deviceMajor := uint64(deviceStat.Rdev / 256)
 		deviceMinor := uint64(deviceStat.Rdev % 256)
-
 		deviceID := int((deviceMajor << 8) | deviceMinor)
 
 		select {
@@ -139,15 +134,12 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 			if err := goroutineManager.Context().Err(); err != nil {
 				return errors.Join(ErrPeerContextCancelled, err)
 			}
-
 			return nil
-
 		default:
 			if err := unix.Mknod(filepath.Join(peer.runner.VMPath, name), unix.S_IFBLK|0666, deviceID); err != nil {
 				return errors.Join(ErrCouldNotCreateDeviceNode, err)
 			}
 		}
-
 		if hook := hooks.OnLocalDeviceExposed; hook != nil {
 			hook(uint32(index), devicePath)
 		}
@@ -193,12 +185,61 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 
 		// Do this in a goroutine for now...
 		go func() {
-			dg, err := SiloMigrateFrom(pro, eventHandler)
+			fmt.Printf("MigrateFrom...\n")
+			// For now...
+			names := make([]string, 0)
+			var namesLock sync.Mutex
+			tweak := func(index int, name string, schema string) string {
+				// Add it to stage2Inputs so we don't request it locally...
+				stageOutputCb(migrateFromStage{
+					name:   name,
+					id:     uint32(index),
+					remote: true,
+				})
+
+				namesLock.Lock()
+				names = append(names, name)
+				namesLock.Unlock()
+
+				/*
+					// Modify the schema here...
+					devschema := config.SiloSchema{}
+					err := devschema.Decode([]byte(schema))
+					if err != nil || len(devschema.Device) != 1 {
+						panic(err)
+					}
+					d := devschema.Device[0]
+					d.ROSource = nil
+					d.System = "file"
+					filename := filepath.Base(d.Location)
+					d.Location = path.Join("image", "instance-1", filename)
+				*/
+				s := strings.ReplaceAll(schema, "instance-0", "instance-1")
+				//s := d.EncodeAsBlock()
+				fmt.Printf("Tweaked schema for %s...\n%s\n\n", name, s)
+				return string(s)
+			}
+			events := func(e *packets.Event) {
+				fmt.Printf("Event received %v, pass it on to the handler...\n", e)
+				eventHandler(e)
+			}
+			dg, err := devicegroup.NewFromProtocol(context.TODO(), pro, tweak, events, nil, nil)
 			if err != nil {
 				fmt.Printf("Error migrating %v\n", err)
 			}
 
-			// FIXME: Save dg
+			for _, n := range names {
+				dev := dg.GetExposedDeviceByName(n)
+				if dev != nil {
+					fmt.Printf("GOT Device %s %v\n", n, dev.Device())
+					err := exposedCb(0, n, filepath.Join("/dev", dev.Device()))
+					fmt.Printf("ExposedCb err %v\n", err)
+				}
+			}
+
+			dg.WaitForCompletion()
+
+			// FIXME: Save dg for future migrations.
 			addDeviceCloseFunc(dg.CloseAll)
 		}()
 	}
@@ -328,6 +369,8 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 		}
 	}
 
+	fmt.Printf("\n\nMigrateFromLocal %d devices\n\n", len(siloDevices))
+
 	dg, err := SiloMigrateFromLocal(siloDevices)
 	if err != nil {
 		panic(errors.Join(mounter.ErrCouldNotSetupDevices, err))
@@ -370,6 +413,15 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 	case <-allRemoteDevicesReady:
 		break
 	}
+
+	fmt.Printf("FINISHED MIGRATE FROM\n\n")
+	for i, d := range migratedPeer.devices {
+		fmt.Printf("migratedPeer.devices[%d] %v\n", i, d)
+	}
+	for i, d := range migratedPeer.stage2Inputs {
+		fmt.Printf("migratedPeer.stage2Inputs[%d] %v\n", i, d)
+	}
+	fmt.Printf("VMPath %s\n", migratedPeer.runner.VMPath)
 
 	return
 }

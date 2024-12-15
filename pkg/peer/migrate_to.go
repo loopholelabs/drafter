@@ -121,11 +121,11 @@ func (migratablePeer *MigratablePeer[L, R, G]) MigrateTo(
 
 	for _, input := range migratablePeer.stage4Inputs {
 		for _, device := range devices {
-			if device.Name == input.prev.prev.name {
+			if device.Name == input.prev.name {
 				siloDevices = append(siloDevices, &MigrateToStage{
-					Name:             input.prev.prev.name,
-					Remote:           input.prev.prev.remote,
-					VolatilityExpiry: input.prev.makeMigratableDevice.Expiry,
+					Name:             input.prev.name,
+					Remote:           input.prev.remote,
+					VolatilityExpiry: input.makeMigratableDevice.Expiry,
 
 					MaxDirtyBlocks: device.MaxDirtyBlocks,
 					MinCycles:      device.MinCycles,

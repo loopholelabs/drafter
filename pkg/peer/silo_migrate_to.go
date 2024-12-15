@@ -70,7 +70,7 @@ func SiloMigrateTo(dg *devicegroup.DeviceGroup,
 	var devicesLeftToTransferAuthorityFor atomic.Int32
 	errs := make(chan error, len(devices))
 
-	// And now do the dirty migration phase...
+	// And now do the dirty migration phase for each device...
 	for forIndex, forInput := range devices {
 		go func(index int, input *MigrateToStage) {
 			errs <- func() error {
@@ -119,7 +119,6 @@ func doDirtyMigration(goroutineManager *manager.GoroutineManager,
 		// We only need to `msync` for the memory because `msync` only affects the memory
 		if !suspendedVM && input.Name == packager.MemoryName {
 			if err := vmState.MSync(goroutineManager.Context()); err != nil {
-
 				return errors.Join(ErrCouldNotMsyncRunner, err)
 			}
 		}

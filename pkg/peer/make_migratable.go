@@ -35,11 +35,8 @@ func (resumedPeer *ResumedPeer[L, R, G]) MakeMigratable(ctx context.Context, dev
 		for _, device := range devices {
 			if device.Name == input.name {
 				migratablePeer.stage4Inputs = append(migratablePeer.stage4Inputs, makeMigratableDeviceStage{
-					prev: makeMigratableFilterStage{
-						prev:                 input,
-						makeMigratableDevice: device,
-					},
-					storage: input.storage,
+					prev:                 input,
+					makeMigratableDevice: device,
 				})
 				break
 			}
