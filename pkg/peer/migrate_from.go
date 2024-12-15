@@ -13,11 +13,11 @@ import (
 	"sync/atomic"
 	"syscall"
 
-	"github.com/loopholelabs/drafter/pkg/ipc"
 	"github.com/loopholelabs/drafter/pkg/mounter"
 	"github.com/loopholelabs/drafter/pkg/registry"
 	"github.com/loopholelabs/drafter/pkg/snapshotter"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
+	"github.com/loopholelabs/silo/pkg/storage/config"
 	"github.com/loopholelabs/silo/pkg/storage/devicegroup"
 	"github.com/loopholelabs/silo/pkg/storage/protocol"
 	"github.com/loopholelabs/silo/pkg/storage/protocol/packets"
@@ -44,7 +44,79 @@ func exposeSiloDeviceAsFile(vmpath string, name string, devicePath string) error
 	return nil
 }
 
-type MigrateFromDevice[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] struct {
+/**
+ * This creates a Silo Dev Schema given a MigrateFromDevice
+ *
+ */
+func createSiloDevSchema(i *MigrateFromDevice) (*config.DeviceSchema, error) {
+	stat, err := os.Stat(i.Base)
+	if err != nil {
+		return nil, errors.Join(mounter.ErrCouldNotGetBaseDeviceStat, err)
+	}
+
+	ds := &config.DeviceSchema{
+		Name:      i.Name,
+		BlockSize: fmt.Sprintf("%v", i.BlockSize),
+		Expose:    true,
+		Size:      fmt.Sprintf("%v", stat.Size()),
+	}
+	if strings.TrimSpace(i.Overlay) == "" || strings.TrimSpace(i.State) == "" {
+		ds.System = "file"
+		ds.Location = i.Base
+	} else {
+		err := os.MkdirAll(filepath.Dir(i.Overlay), os.ModePerm)
+		if err != nil {
+			return nil, errors.Join(mounter.ErrCouldNotCreateOverlayDirectory, err)
+		}
+
+		err = os.MkdirAll(filepath.Dir(i.State), os.ModePerm)
+		if err != nil {
+			return nil, errors.Join(mounter.ErrCouldNotCreateStateDirectory, err)
+		}
+
+		ds.System = "sparsefile"
+		ds.Location = i.Overlay
+
+		ds.ROSource = &config.DeviceSchema{
+			Name:     i.State,
+			System:   "file",
+			Location: i.Base,
+			Size:     fmt.Sprintf("%v", stat.Size()),
+		}
+	}
+	return ds, nil
+}
+
+/**
+ * This creates silo devices from local filesystem.
+ *
+ *
+ */
+func createDGFromFilesystem(devices []*MigrateFromDevice) (*devicegroup.DeviceGroup, error) {
+
+	// First create a set of schema for the devices...
+	siloDevices := make([]*config.DeviceSchema, 0)
+	for _, i := range devices {
+		ds, err := createSiloDevSchema(i)
+		if err != nil {
+			return nil, err
+		}
+		siloDevices = append(siloDevices, ds)
+	}
+
+	// Create a deviceGroup from all the schemas
+	dg, err := devicegroup.NewFromSchema(siloDevices, nil, nil)
+	if err != nil {
+		return nil, errors.Join(mounter.ErrCouldNotCreateLocalDevice, err)
+	}
+
+	return dg, nil
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// Under here is still WIP
+
+type MigrateFromDevice struct {
 	Name      string `json:"name"`
 	Base      string `json:"base"`
 	Overlay   string `json:"overlay"`
@@ -55,7 +127,7 @@ type MigrateFromDevice[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any
 
 func (peer *Peer[L, R, G]) MigrateFrom(
 	ctx context.Context,
-	devices []MigrateFromDevice[L, R, G],
+	devices []MigrateFromDevice,
 	readers []io.Reader,
 	writers []io.Writer,
 	hooks mounter.MigrateFromHooks,
@@ -318,7 +390,7 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 	// Now deal with any local devices we want...
 	//
 
-	siloDevices := make([]*SiloDeviceConfig, 0)
+	siloDevices := make([]*MigrateFromDevice, 0)
 	index := 0
 	for _, input := range devices {
 		if !slices.ContainsFunc(migratedPeer.stage2Inputs,
@@ -332,14 +404,7 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 					panic(errors.Join(mounter.ErrCouldNotSetupDevices, err))
 				}
 			} else {
-				siloDevices = append(siloDevices, &SiloDeviceConfig{
-					Id:        index,
-					Name:      input.Name,
-					Base:      input.Base,
-					Overlay:   input.Overlay,
-					State:     input.State,
-					BlockSize: input.BlockSize,
-				})
+				siloDevices = append(siloDevices, &input)
 			}
 			index++
 		}
@@ -347,31 +412,33 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 
 	fmt.Printf("\n\nMigrateFromLocal %d devices\n\n", len(siloDevices))
 
-	dg, err := SiloMigrateFromLocal(siloDevices)
-	if err != nil {
-		panic(errors.Join(mounter.ErrCouldNotSetupDevices, err))
-	}
-
-	// Save dg for later usage...
-	migratedPeer.Dg = dg
-
-	// Single shutdown function for deviceGroup
-	deviceCloseFuncsLock.Lock()
-	deviceCloseFuncs = append(deviceCloseFuncs, dg.CloseAll)
-	deviceCloseFuncsLock.Unlock()
-
-	// Go through dg and add inputs for next phases...
-	for _, input := range siloDevices {
-		stageOutputCb(migrateFromStage{
-			name:   input.Name,
-			id:     uint32(input.Id),
-			remote: false,
-		})
-
-		dev := dg.GetExposedDeviceByName(input.Name)
-		err = exposeSiloDeviceAsFile(migratedPeer.runner.VMPath, input.Name, filepath.Join("/dev", dev.Device()))
+	if len(siloDevices) > 0 {
+		dg, err := createDGFromFilesystem(siloDevices)
 		if err != nil {
-			return nil, err
+			panic(errors.Join(mounter.ErrCouldNotSetupDevices, err))
+		}
+
+		// Save dg for later usage...
+		migratedPeer.Dg = dg
+
+		// Single shutdown function for deviceGroup
+		deviceCloseFuncsLock.Lock()
+		deviceCloseFuncs = append(deviceCloseFuncs, dg.CloseAll)
+		deviceCloseFuncsLock.Unlock()
+
+		// Go through dg and add inputs for next phases...
+		for _, input := range siloDevices {
+			stageOutputCb(migrateFromStage{
+				name:   input.Name,
+				id:     0,
+				remote: false,
+			})
+
+			dev := dg.GetExposedDeviceByName(input.Name)
+			err = exposeSiloDeviceAsFile(migratedPeer.runner.VMPath, input.Name, filepath.Join("/dev", dev.Device()))
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 
@@ -389,15 +456,6 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 	case <-allRemoteDevicesReady:
 		break
 	}
-
-	fmt.Printf("FINISHED MIGRATE FROM\n\n")
-	for i, d := range migratedPeer.devices {
-		fmt.Printf("migratedPeer.devices[%d] %v\n", i, d)
-	}
-	for i, d := range migratedPeer.stage2Inputs {
-		fmt.Printf("migratedPeer.stage2Inputs[%d] %v\n", i, d)
-	}
-	fmt.Printf("VMPath %s\n", migratedPeer.runner.VMPath)
 
 	return
 }

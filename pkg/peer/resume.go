@@ -36,7 +36,7 @@ type MigratedPeer[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] str
 
 	Dg *devicegroup.DeviceGroup
 
-	devices []MigrateFromDevice[L, R, G]
+	devices []MigrateFromDevice
 	runner  *runner.Runner[L, R, G]
 
 	stage2Inputs []migrateFromStage

@@ -329,9 +329,9 @@ func main() {
 		}
 	})
 
-	migrateFromDevices := []peer.MigrateFromDevice[struct{}, ipc.AgentServerRemote[struct{}], struct{}]{}
+	migrateFromDevices := []peer.MigrateFromDevice{}
 	for _, device := range devices {
-		migrateFromDevices = append(migrateFromDevices, peer.MigrateFromDevice[struct{}, ipc.AgentServerRemote[struct{}], struct{}]{
+		migrateFromDevices = append(migrateFromDevices, peer.MigrateFromDevice{
 			Name: device.Name,
 
 			Base:    device.Base,
