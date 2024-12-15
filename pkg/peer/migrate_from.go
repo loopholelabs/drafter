@@ -105,21 +105,13 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 		pro *protocol.RW
 	)
 
-	di := make([]*SiloFromDeviceInfo, 0)
-	for _, dev := range devices {
-		di = append(di, &SiloFromDeviceInfo{
-			Name: dev.Name,
-			Base: dev.Base,
-		})
+	addDeviceCloseFunc := func(f func() error) {
+		deviceCloseFuncsLock.Lock()
+		deviceCloseFuncs = append(deviceCloseFuncs, f)
+		deviceCloseFuncs = append(deviceCloseFuncs, peer.runner.Close) // defer runner.Close()
+		deviceCloseFuncsLock.Unlock()
 	}
-	/*
-		addDeviceCloseFunc := func(f func() error) {
-			deviceCloseFuncsLock.Lock()
-			deviceCloseFuncs = append(deviceCloseFuncs, f)
-			deviceCloseFuncs = append(deviceCloseFuncs, peer.runner.Close) // defer runner.Close()
-			deviceCloseFuncsLock.Unlock()
-		}
-	*/
+
 	stageOutputCb := func(mfs migrateFromStage) {
 		stage2InputsLock.Lock()
 		migratedPeer.stage2Inputs = append(migratedPeer.stage2Inputs, mfs)
@@ -192,18 +184,6 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 		}
 	}
 
-	/*
-		initDev := SiloMigrateFromGetInitDev(di,
-			goroutineManager,
-			hooks,
-			&receivedButNotReadyRemoteDevices,
-			protocolCtx,
-			exposedCb,
-			addDeviceCloseFunc,
-			stageOutputCb,
-			eventHandler,
-		)
-	*/
 	if len(readers) > 0 && len(writers) > 0 { // Only open the protocol if we want passed in readers and writers
 		pro = protocol.NewRW(
 			protocolCtx, // We don't track this because we return the wait function
@@ -213,11 +193,13 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 
 		// Do this in a goroutine for now...
 		go func() {
-			_, err := SiloMigrateFrom(pro, eventHandler)
+			dg, err := SiloMigrateFrom(pro, eventHandler)
 			if err != nil {
 				fmt.Printf("Error migrating %v\n", err)
 			}
 
+			// FIXME: Save dg
+			addDeviceCloseFunc(dg.CloseAll)
 		}()
 	}
 
