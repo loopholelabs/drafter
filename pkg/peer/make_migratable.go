@@ -27,20 +27,7 @@ func (resumedPeer *ResumedPeer[L, R, G]) MakeMigratable(ctx context.Context, dev
 
 		Close:         func() {},
 		resumedPeer:   resumedPeer,
-		stage4Inputs:  []makeMigratableDeviceStage{},
 		resumedRunner: resumedPeer.resumedRunner,
-	}
-
-	for _, input := range resumedPeer.stage2Inputs {
-		for _, device := range devices {
-			if device.Name == input.name {
-				migratablePeer.stage4Inputs = append(migratablePeer.stage4Inputs, makeMigratableDeviceStage{
-					prev:                 input,
-					makeMigratableDevice: device,
-				})
-				break
-			}
-		}
 	}
 
 	return migratablePeer, nil

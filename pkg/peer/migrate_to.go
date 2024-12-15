@@ -38,7 +38,6 @@ type MigratablePeer[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] s
 	Close func()
 
 	resumedPeer   *ResumedPeer[L, R, G]
-	stage4Inputs  []makeMigratableDeviceStage
 	resumedRunner *runner.ResumedRunner[L, R, G]
 }
 
@@ -119,13 +118,13 @@ func (migratablePeer *MigratablePeer[L, R, G]) MigrateTo(
 	// We need to collect anything we need from stage5Inputs now, to pass to Silo...
 	siloDevices := make([]*MigrateToStage, 0)
 
-	for _, input := range migratablePeer.stage4Inputs {
+	for _, input := range migratablePeer.resumedPeer.stage2Inputs {
 		for _, device := range devices {
-			if device.Name == input.prev.name {
+			if device.Name == input.name {
 				siloDevices = append(siloDevices, &MigrateToStage{
-					Name:             input.prev.name,
-					Remote:           input.prev.remote,
-					VolatilityExpiry: input.makeMigratableDevice.Expiry,
+					Name:             input.name,
+					Remote:           input.remote,
+					VolatilityExpiry: 30 * time.Minute, // TODO...
 
 					MaxDirtyBlocks: device.MaxDirtyBlocks,
 					MinCycles:      device.MinCycles,
