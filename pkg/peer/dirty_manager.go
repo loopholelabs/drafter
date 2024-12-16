@@ -2,6 +2,7 @@ package peer
 
 import (
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -39,6 +40,7 @@ func NewDirtyManager(vmState *VMStateMgr, devices map[string]*DeviceStatus, auth
 }
 
 func (dm *DirtyManager) PreGetDirty(name string) error {
+	fmt.Printf(" = PreGetDirty %s\n", name)
 	// If the VM is still running, do an Msync for the memory...
 	if !dm.VMState.CheckSuspendedVM() && name == packager.MemoryName {
 		err := dm.VMState.Msync()
@@ -50,6 +52,7 @@ func (dm *DirtyManager) PreGetDirty(name string) error {
 }
 
 func (dm *DirtyManager) PostGetDirty(name string, blocks []uint) (bool, error) {
+	fmt.Printf(" = PostGetDirty %s %d\n", name, len(blocks))
 	// If there were no dirty blocks, and the VM is stopped, return false (finish doing dirty sync)
 	if len(blocks) == 0 && dm.VMState.CheckSuspendedVM() {
 		return false, nil
@@ -58,6 +61,7 @@ func (dm *DirtyManager) PostGetDirty(name string, blocks []uint) (bool, error) {
 }
 
 func (dm *DirtyManager) PostMigrateDirty(name string, blocks []uint) (bool, error) {
+	fmt.Printf(" = PostMigrateDirty %s %d\n", name, len(blocks))
 	di := dm.Devices[name]
 	time.Sleep(di.CycleThrottle)
 	if dm.VMState.CheckSuspendedVM() {

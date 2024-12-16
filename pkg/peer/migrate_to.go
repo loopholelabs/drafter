@@ -10,8 +10,10 @@ import (
 	"github.com/loopholelabs/drafter/pkg/mounter"
 	"github.com/loopholelabs/drafter/pkg/registry"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
+	"github.com/loopholelabs/silo/pkg/storage/devicegroup"
 	"github.com/loopholelabs/silo/pkg/storage/migrator"
 	"github.com/loopholelabs/silo/pkg/storage/protocol"
+	"github.com/loopholelabs/silo/pkg/storage/protocol/packets"
 )
 
 type MigrateToHooks struct {
@@ -59,7 +61,7 @@ func (migratablePeer *ResumedPeer[L, R, G]) MigrateTo(
 	}
 
 	// TODO: Get this to call hooks
-	pHandler := func(p []*migrator.MigrationProgress) {
+	pHandler := func(p map[string]*migrator.MigrationProgress) {
 		totalSize := 0
 		totalDone := 0
 		for _, prog := range p {
@@ -73,8 +75,8 @@ func (migratablePeer *ResumedPeer[L, R, G]) MigrateTo(
 		}
 		fmt.Printf("# Migration Progress # (%d / %d) %d%%\n", totalDone, totalSize, perc)
 
-		for index, prog := range p {
-			fmt.Printf(" [%d] Progress (%d/%d)\n", index, prog.ReadyBlocks, prog.TotalBlocks)
+		for name, prog := range p {
+			fmt.Printf(" [%s] Progress (%d/%d)\n", name, prog.ReadyBlocks, prog.TotalBlocks)
 		}
 	}
 
@@ -93,11 +95,50 @@ func (migratablePeer *ResumedPeer[L, R, G]) MigrateTo(
 		hooks.OnAfterSuspend,
 	)
 
-	err = SiloMigrateDirtyTo(migratablePeer.Dg, devices, concurrency, goroutineManager, pro, hooks, vmState)
-	if err != nil {
-		return err
+	// Try new way...
+	dirtyDevices := make(map[string]*DeviceStatus, 0)
+	for _, d := range devices {
+		dirtyDevices[d.Name] = &DeviceStatus{
+			CycleThrottle:  d.CycleThrottle,
+			MinCycles:      d.MinCycles,
+			MaxCycles:      d.MaxCycles,
+			MaxDirtyBlocks: d.MaxDirtyBlocks,
+		}
 	}
 
+	authTransfer := func() {
+		fmt.Printf("# auth transfer\n")
+		// For now, do it as usual...
+		names := migratablePeer.Dg.GetAllNames()
+		for _, n := range names {
+			di := migratablePeer.Dg.GetDeviceInformationByName(n)
+			err := di.To.SendEvent(&packets.Event{
+				Type:       packets.EventCustom,
+				CustomType: byte(registry.EventCustomTransferAuthority),
+			})
+			if err != nil {
+				panic(errors.Join(mounter.ErrCouldNotSendTransferAuthorityEvent, err))
+			}
+		}
+		//		migratablePeer.Dg.SendCustomData([]byte("auth transfer"))
+	}
+
+	dm := NewDirtyManager(vmState, dirtyDevices, authTransfer)
+
+	err = migratablePeer.Dg.MigrateDirty(&devicegroup.MigrateDirtyHooks{
+		PreGetDirty:      dm.PreGetDirty,
+		PostGetDirty:     dm.PostGetDirty,
+		PostMigrateDirty: dm.PostMigrateDirty,
+		Completed: func(name string) {
+			fmt.Printf("MigrateDirty done %s\n", name)
+		},
+	})
+	/*
+		err = SiloMigrateDirtyTo(migratablePeer.Dg, devices, concurrency, goroutineManager, pro, hooks, vmState)
+		if err != nil {
+			return err
+		}
+	*/
 	err = migratablePeer.Dg.Completed()
 	if err != nil {
 		return err
