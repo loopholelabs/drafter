@@ -3,13 +3,14 @@ package peer
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
-	"sync"
 	"time"
 
 	"github.com/loopholelabs/drafter/pkg/mounter"
 	"github.com/loopholelabs/drafter/pkg/registry"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
+	"github.com/loopholelabs/silo/pkg/storage/migrator"
 	"github.com/loopholelabs/silo/pkg/storage/protocol"
 )
 
@@ -51,46 +52,56 @@ func (migratablePeer *ResumedPeer[L, R, G]) MigrateTo(
 		}
 	})
 
-	// This lot manages vmState. Should probabloy pull it out
-	var suspendedVMLock sync.Mutex
-	var suspendedVM bool
-	suspendedVMCh := make(chan struct{})
-
-	vmState := &VMStateManager{
-		checkSuspendedVM: func() bool {
-			suspendedVMLock.Lock()
-			defer suspendedVMLock.Unlock()
-			return suspendedVM
-		},
-		suspendAndMsyncVM: sync.OnceValue(func() error {
-			if hook := hooks.OnBeforeSuspend; hook != nil {
-				hook()
-			}
-
-			if err := migratablePeer.SuspendAndCloseAgentServer(goroutineManager.Context(), suspendTimeout); err != nil {
-				return errors.Join(ErrCouldNotSuspendAndCloseAgentServer, err)
-			}
-
-			if err := migratablePeer.resumedRunner.Msync(goroutineManager.Context()); err != nil {
-				return errors.Join(ErrCouldNotMsyncRunner, err)
-			}
-
-			if hook := hooks.OnAfterSuspend; hook != nil {
-				hook()
-			}
-
-			suspendedVMLock.Lock()
-			suspendedVM = true
-			suspendedVMLock.Unlock()
-
-			close(suspendedVMCh) // We can safely close() this channel since the caller only runs once/is `sync.OnceValue`d
-			return nil
-		}),
-		suspendedVMCh: suspendedVMCh,
-		MSync:         migratablePeer.resumedRunner.Msync,
+	// Start a migration to the protocol...
+	err := migratablePeer.Dg.StartMigrationTo(pro)
+	if err != nil {
+		return err
 	}
 
-	SiloMigrateTo(migratablePeer.Dg, devices, concurrency, goroutineManager, pro, hooks, vmState)
+	// TODO: Get this to call hooks
+	pHandler := func(p []*migrator.MigrationProgress) {
+		totalSize := 0
+		totalDone := 0
+		for _, prog := range p {
+			totalSize += (prog.TotalBlocks * prog.BlockSize)
+			totalDone += (prog.ReadyBlocks * prog.BlockSize)
+		}
+
+		perc := float64(0.0)
+		if totalSize > 0 {
+			perc = float64(totalDone) * 100 / float64(totalSize)
+		}
+		fmt.Printf("# Migration Progress # (%d / %d) %d%%\n", totalDone, totalSize, perc)
+
+		for index, prog := range p {
+			fmt.Printf(" [%d] Progress (%d/%d)\n", index, prog.ReadyBlocks, prog.TotalBlocks)
+		}
+	}
+
+	// Do the main migration of the data...
+	err = migratablePeer.Dg.MigrateAll(concurrency, pHandler)
+	if err != nil {
+		return err
+	}
+
+	// This manages the status of the VM - if it's suspended or not.
+	vmState := NewVMStateMgr(goroutineManager.Context(),
+		migratablePeer.SuspendAndCloseAgentServer,
+		suspendTimeout,
+		migratablePeer.resumedRunner.Msync,
+		hooks.OnBeforeSuspend,
+		hooks.OnAfterSuspend,
+	)
+
+	err = SiloMigrateDirtyTo(migratablePeer.Dg, devices, concurrency, goroutineManager, pro, hooks, vmState)
+	if err != nil {
+		return err
+	}
+
+	err = migratablePeer.Dg.Completed()
+	if err != nil {
+		return err
+	}
 
 	if hook := hooks.OnAllMigrationsCompleted; hook != nil {
 		hook()

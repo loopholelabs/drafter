@@ -164,7 +164,6 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 	// We overwrite this further down, but this is so that we don't leak the `protocolCtx` if we `panic()` before we set `WaitForMigrationsToComplete`
 	migratedPeer.Wait = func() error {
 		cancelProtocolCtx()
-
 		return nil
 	}
 
@@ -180,11 +179,9 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 	// Use an atomic counter and `allDevicesReady` and instead of a WaitGroup so that we can `select {}` without leaking a goroutine
 	var (
 		receivedButNotReadyRemoteDevices atomic.Int32
-
-		deviceCloseFuncsLock sync.Mutex
-		deviceCloseFuncs     []func() error
-
-		pro *protocol.RW
+		deviceCloseFuncsLock             sync.Mutex
+		deviceCloseFuncs                 []func() error
+		pro                              *protocol.RW
 	)
 
 	addDeviceCloseFunc := func(f func() error) {
@@ -202,21 +199,17 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 			switch e.CustomType {
 			case byte(registry.EventCustomAllDevicesSent):
 				signalAllRemoteDevicesReceived()
-
 				if hook := hooks.OnRemoteAllDevicesReceived; hook != nil {
 					hook()
 				}
-
 			case byte(registry.EventCustomTransferAuthority):
 				if receivedButNotReadyRemoteDevices.Add(-1) <= 0 {
 					signalAllRemoteDevicesReady()
 				}
-
 				if hook := hooks.OnRemoteDeviceAuthorityReceived; hook != nil {
 					hook(index)
 				}
 			}
-
 		case packets.EventCompleted:
 			if hook := hooks.OnRemoteDeviceMigrationCompleted; hook != nil {
 				hook(index)
@@ -225,11 +218,7 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 	}
 
 	if len(readers) > 0 && len(writers) > 0 { // Only open the protocol if we want passed in readers and writers
-		pro = protocol.NewRW(
-			protocolCtx, // We don't track this because we return the wait function
-			readers,
-			writers,
-			nil)
+		pro = protocol.NewRW(protocolCtx, readers, writers, nil)
 
 		// Do this in a goroutine for now...
 		go func() {
@@ -370,6 +359,17 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 		break
 	}
 
+	select {
+	case <-goroutineManager.Context().Done():
+		if err := goroutineManager.Context().Err(); err != nil {
+			panic(errors.Join(ErrPeerContextCancelled, err))
+		}
+
+		return
+	case <-allRemoteDevicesReady:
+		break
+	}
+
 	//
 	// IF all devices are local
 	//
@@ -390,8 +390,6 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 			}
 			index++
 		}
-
-		fmt.Printf("\n\nMigrateFromLocal %d devices\n\n", len(siloDevices))
 
 		if len(siloDevices) > 0 {
 			dg, err := createDGFromFilesystem(siloDevices)
@@ -420,17 +418,6 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 		if hook := hooks.OnLocalAllDevicesRequested; hook != nil {
 			hook()
 		}
-	}
-
-	select {
-	case <-goroutineManager.Context().Done():
-		if err := goroutineManager.Context().Err(); err != nil {
-			panic(errors.Join(ErrPeerContextCancelled, err))
-		}
-
-		return
-	case <-allRemoteDevicesReady:
-		break
 	}
 
 	return
