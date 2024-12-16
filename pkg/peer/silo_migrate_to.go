@@ -128,10 +128,6 @@ func doDirtyMigration(goroutineManager *manager.GoroutineManager,
 
 		ongoingMigrationsWg.Wait()
 
-		if hook := hooks.OnBeforeGetDirtyBlocks; hook != nil {
-			hook(uint32(index), input.Remote)
-		}
-
 		blocks := mig.GetLatestDirty()
 		if blocks == nil {
 			mig.Unlock()
@@ -152,16 +148,6 @@ func doDirtyMigration(goroutineManager *manager.GoroutineManager,
 
 				if err := mig.MigrateDirty(blocks); err != nil {
 					panic(errors.Join(mounter.ErrCouldNotMigrateDirtyBlocks, err))
-				}
-
-				if vmState.checkSuspendedVM() {
-					if hook := hooks.OnDeviceFinalMigrationProgress; hook != nil {
-						hook(uint32(index), input.Remote, len(blocks))
-					}
-				} else {
-					if hook := hooks.OnDeviceContinousMigrationProgress; hook != nil {
-						hook(uint32(index), input.Remote, len(blocks))
-					}
 				}
 			})
 		}
@@ -213,10 +199,6 @@ func doDirtyMigration(goroutineManager *manager.GoroutineManager,
 		CustomType: byte(registry.EventCustomTransferAuthority),
 	}); err != nil {
 		panic(errors.Join(mounter.ErrCouldNotSendTransferAuthorityEvent, err))
-	}
-
-	if hook := hooks.OnDeviceAuthoritySent; hook != nil {
-		hook(uint32(index), input.Remote)
 	}
 
 	if err := mig.WaitForCompletion(); err != nil {

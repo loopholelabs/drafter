@@ -599,13 +599,6 @@ func main() {
 		[]io.Writer{conn},
 
 		peer.MigrateToHooks{
-			OnBeforeGetDirtyBlocks: func(deviceID uint32, remote bool) {
-				if remote {
-					log.Println("Getting dirty blocks for remote device", deviceID)
-				} else {
-					log.Println("Getting dirty blocks for local device", deviceID)
-				}
-			},
 
 			OnBeforeSuspend: func() {
 				before = time.Now()
@@ -613,50 +606,6 @@ func main() {
 			OnAfterSuspend: func() {
 				log.Println("Suspend:", time.Since(before))
 			},
-
-			OnDeviceSent: func(deviceID uint32, remote bool) {
-				if remote {
-					log.Println("Sent remote device", deviceID)
-				} else {
-					log.Println("Sent local device", deviceID)
-				}
-			},
-			OnDeviceAuthoritySent: func(deviceID uint32, remote bool) {
-				if remote {
-					log.Println("Sent authority for remote device", deviceID)
-				} else {
-					log.Println("Sent authority for local device", deviceID)
-				}
-			},
-			OnDeviceInitialMigrationProgress: func(deviceID uint32, remote bool, ready, total int) {
-				if remote {
-					log.Println("Migrated", ready, "of", total, "initial blocks for remote device", deviceID)
-				} else {
-					log.Println("Migrated", ready, "of", total, "initial blocks for local device", deviceID)
-				}
-			},
-			OnDeviceContinousMigrationProgress: func(deviceID uint32, remote bool, delta int) {
-				if remote {
-					log.Println("Migrated", delta, "continous blocks for remote device", deviceID)
-				} else {
-					log.Println("Migrated", delta, "continous blocks for local device", deviceID)
-				}
-			},
-			OnDeviceFinalMigrationProgress: func(deviceID uint32, remote bool, delta int) {
-				if remote {
-					log.Println("Migrated", delta, "final blocks for remote device", deviceID)
-				} else {
-					log.Println("Migrated", delta, "final blocks for local device", deviceID)
-				}
-			},
-			OnDeviceMigrationCompleted: func(deviceID uint32, remote bool) {
-				if remote {
-					log.Println("Completed migration of remote device", deviceID)
-				} else {
-					log.Println("Completed migration of local device", deviceID)
-				}
-			},
-
 			OnAllDevicesSent: func() {
 				log.Println("Sent all devices")
 			},

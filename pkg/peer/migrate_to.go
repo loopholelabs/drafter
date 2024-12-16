@@ -15,17 +15,8 @@ import (
 )
 
 type MigrateToHooks struct {
-	OnBeforeGetDirtyBlocks func(deviceID uint32, remote bool)
-
 	OnBeforeSuspend func()
 	OnAfterSuspend  func()
-
-	OnDeviceSent                       func(deviceID uint32, remote bool)
-	OnDeviceAuthoritySent              func(deviceID uint32, remote bool)
-	OnDeviceInitialMigrationProgress   func(deviceID uint32, remote bool, ready int, total int)
-	OnDeviceContinousMigrationProgress func(deviceID uint32, remote bool, delta int)
-	OnDeviceFinalMigrationProgress     func(deviceID uint32, remote bool, delta int)
-	OnDeviceMigrationCompleted         func(deviceID uint32, remote bool)
 
 	OnAllDevicesSent         func()
 	OnAllMigrationsCompleted func()
