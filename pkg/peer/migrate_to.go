@@ -73,10 +73,10 @@ func (migratablePeer *ResumedPeer[L, R, G]) MigrateTo(
 		if totalSize > 0 {
 			perc = float64(totalDone) * 100 / float64(totalSize)
 		}
-		fmt.Printf("# Migration Progress # (%d / %d) %d%%\n", totalDone, totalSize, perc)
+		fmt.Printf("# Overall migration Progress # (%d / %d) %.1f%%\n", totalDone, totalSize, perc)
 
 		for name, prog := range p {
-			fmt.Printf(" [%s] Progress (%d/%d)\n", name, prog.ReadyBlocks, prog.TotalBlocks)
+			fmt.Printf(" [%s] Progress Migrated Blocks (%d/%d) %d ready\n", name, prog.MigratedBlocks, prog.TotalBlocks, prog.ReadyBlocks)
 		}
 	}
 
@@ -95,7 +95,6 @@ func (migratablePeer *ResumedPeer[L, R, G]) MigrateTo(
 		hooks.OnAfterSuspend,
 	)
 
-	// Try new way...
 	dirtyDevices := make(map[string]*DeviceStatus, 0)
 	for _, d := range devices {
 		dirtyDevices[d.Name] = &DeviceStatus{
@@ -106,9 +105,9 @@ func (migratablePeer *ResumedPeer[L, R, G]) MigrateTo(
 		}
 	}
 
-	authTransfer := func() {
-		fmt.Printf("# auth transfer\n")
-		// For now, do it as usual...
+	authTransfer := func() error {
+		// For now, do it as usual, 1 packet per device.
+		// TODO: Do a single event.
 		names := migratablePeer.Dg.GetAllNames()
 		for _, n := range names {
 			di := migratablePeer.Dg.GetDeviceInformationByName(n)
@@ -117,10 +116,10 @@ func (migratablePeer *ResumedPeer[L, R, G]) MigrateTo(
 				CustomType: byte(registry.EventCustomTransferAuthority),
 			})
 			if err != nil {
-				panic(errors.Join(mounter.ErrCouldNotSendTransferAuthorityEvent, err))
+				return errors.Join(mounter.ErrCouldNotSendTransferAuthorityEvent, err)
 			}
 		}
-		//		migratablePeer.Dg.SendCustomData([]byte("auth transfer"))
+		return nil
 	}
 
 	dm := NewDirtyManager(vmState, dirtyDevices, authTransfer)
@@ -129,16 +128,12 @@ func (migratablePeer *ResumedPeer[L, R, G]) MigrateTo(
 		PreGetDirty:      dm.PreGetDirty,
 		PostGetDirty:     dm.PostGetDirty,
 		PostMigrateDirty: dm.PostMigrateDirty,
-		Completed: func(name string) {
-			fmt.Printf("MigrateDirty done %s\n", name)
-		},
+		Completed:        func(name string) {},
 	})
-	/*
-		err = SiloMigrateDirtyTo(migratablePeer.Dg, devices, concurrency, goroutineManager, pro, hooks, vmState)
-		if err != nil {
-			return err
-		}
-	*/
+	if err != nil {
+		return err
+	}
+
 	err = migratablePeer.Dg.Completed()
 	if err != nil {
 		return err
@@ -147,6 +142,5 @@ func (migratablePeer *ResumedPeer[L, R, G]) MigrateTo(
 	if hook := hooks.OnAllMigrationsCompleted; hook != nil {
 		hook()
 	}
-
 	return
 }

@@ -25,12 +25,12 @@ type DirtyManager struct {
 	Devices                    map[string]*DeviceStatus
 	ReadyDevices               map[string]*DeviceStatus
 	ReadyDevicesLock           sync.Mutex
-	AuthorityTransfer          func()
+	AuthorityTransfer          func() error
 	AuthorityTransferLock      sync.Mutex
 	AuthorityTransferCompleted bool
 }
 
-func NewDirtyManager(vmState *VMStateMgr, devices map[string]*DeviceStatus, authorityTransfer func()) *DirtyManager {
+func NewDirtyManager(vmState *VMStateMgr, devices map[string]*DeviceStatus, authorityTransfer func() error) *DirtyManager {
 	return &DirtyManager{
 		VMState:           vmState,
 		Devices:           devices,
@@ -40,7 +40,6 @@ func NewDirtyManager(vmState *VMStateMgr, devices map[string]*DeviceStatus, auth
 }
 
 func (dm *DirtyManager) PreGetDirty(name string) error {
-	fmt.Printf(" = PreGetDirty %s\n", name)
 	// If the VM is still running, do an Msync for the memory...
 	if !dm.VMState.CheckSuspendedVM() && name == packager.MemoryName {
 		err := dm.VMState.Msync()
@@ -52,12 +51,20 @@ func (dm *DirtyManager) PreGetDirty(name string) error {
 }
 
 func (dm *DirtyManager) PostGetDirty(name string, blocks []uint) (bool, error) {
-	fmt.Printf(" = PostGetDirty %s %d\n", name, len(blocks))
 	// If there were no dirty blocks, and the VM is stopped, return false (finish doing dirty sync)
 	if len(blocks) == 0 && dm.VMState.CheckSuspendedVM() {
 		return false, nil
 	}
 	return true, nil
+}
+
+func (dm *DirtyManager) markDeviceReady(name string, di *DeviceStatus) {
+	if !di.Ready {
+		di.Ready = true
+		dm.ReadyDevicesLock.Lock()
+		dm.ReadyDevices[name] = di
+		dm.ReadyDevicesLock.Unlock()
+	}
 }
 
 func (dm *DirtyManager) PostMigrateDirty(name string, blocks []uint) (bool, error) {
@@ -72,25 +79,16 @@ func (dm *DirtyManager) PostMigrateDirty(name string, blocks []uint) (bool, erro
 	if len(blocks) < di.MaxDirtyBlocks {
 		di.CyclesBelowDirtyBlockTreshold++
 		if di.CyclesBelowDirtyBlockTreshold > di.MinCycles {
-			if !di.Ready {
-				di.Ready = true
-				dm.ReadyDevicesLock.Lock()
-				dm.ReadyDevices[name] = di
-				dm.ReadyDevicesLock.Unlock()
-			}
+			dm.markDeviceReady(name, di)
 		}
 	} else if di.TotalCycles > di.MaxCycles {
-		if !di.Ready {
-			di.Ready = true
-			dm.ReadyDevicesLock.Lock()
-			dm.ReadyDevices[name] = di
-			dm.ReadyDevicesLock.Unlock()
-		}
+		dm.markDeviceReady(name, di)
 	} else {
 		di.CyclesBelowDirtyBlockTreshold = 0
 	}
 
 	// If all devices are ready, do the authority transfer once...
+	// TODO: Clean this up a bit
 	dm.ReadyDevicesLock.Lock()
 	readyDevices := len(dm.ReadyDevices)
 	dm.ReadyDevicesLock.Unlock()
@@ -107,7 +105,10 @@ func (dm *DirtyManager) PostMigrateDirty(name string, blocks []uint) (bool, erro
 			if err != nil {
 				return true, errors.Join(mounter.ErrCouldNotSuspendAndMsyncVM, err)
 			}
-			dm.AuthorityTransfer()
+			err = dm.AuthorityTransfer()
+			if err != nil {
+				return true, err
+			}
 		} else {
 			dm.AuthorityTransferLock.Unlock()
 		}

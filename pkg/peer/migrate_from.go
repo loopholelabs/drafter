@@ -192,6 +192,8 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 	}
 
 	// Silo event handler
+
+	// FIXME Switch to using a single packet rather than one per device...
 	eventHandler := func(e *packets.Event) {
 		index := uint32(0)
 		switch e.Type {
@@ -236,7 +238,6 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 				return string(s)
 			}
 			events := func(e *packets.Event) {
-				fmt.Printf("Event received %v, pass it on to the handler...\n", e)
 				eventHandler(e)
 			}
 			dg, err := devicegroup.NewFromProtocol(context.TODO(), pro, tweak, events, nil, nil)
