@@ -90,7 +90,10 @@ func SiloMigrateTo(dg *devicegroup.DeviceGroup,
 		}
 	}
 
-	return nil
+	// Send completion events for all devices...
+	err = dg.Completed()
+
+	return err
 }
 
 // Handle dirtyMigrationBlocks separately here...
@@ -218,16 +221,6 @@ func doDirtyMigration(goroutineManager *manager.GoroutineManager,
 
 	if err := mig.WaitForCompletion(); err != nil {
 		return errors.Join(registry.ErrCouldNotWaitForMigrationCompletion, err)
-	}
-
-	if err := to.SendEvent(&packets.Event{
-		Type: packets.EventCompleted,
-	}); err != nil {
-		return errors.Join(mounter.ErrCouldNotSendCompletedEvent, err)
-	}
-
-	if hook := hooks.OnDeviceMigrationCompleted; hook != nil {
-		hook(uint32(index), input.Remote)
 	}
 
 	return nil

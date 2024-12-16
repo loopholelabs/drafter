@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -143,9 +142,8 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 		Close: func() error {
 			return nil
 		},
-		devices:      devices,
-		runner:       peer.runner,
-		stage2Inputs: []migrateFromStage{},
+		devices: devices,
+		runner:  peer.runner,
 	}
 
 	var (
@@ -186,8 +184,6 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 		deviceCloseFuncsLock sync.Mutex
 		deviceCloseFuncs     []func() error
 
-		stage2InputsLock sync.Mutex
-
 		pro *protocol.RW
 	)
 
@@ -196,12 +192,6 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 		deviceCloseFuncs = append(deviceCloseFuncs, f)
 		deviceCloseFuncs = append(deviceCloseFuncs, peer.runner.Close) // defer runner.Close()
 		deviceCloseFuncsLock.Unlock()
-	}
-
-	stageOutputCb := func(mfs migrateFromStage) {
-		stage2InputsLock.Lock()
-		migratedPeer.stage2Inputs = append(migratedPeer.stage2Inputs, mfs)
-		stage2InputsLock.Unlock()
 	}
 
 	// Silo event handler
@@ -248,13 +238,6 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 			names := make([]string, 0)
 			var namesLock sync.Mutex
 			tweak := func(index int, name string, schema string) string {
-				// Add it to stage2Inputs so we don't request it locally...
-				stageOutputCb(migrateFromStage{
-					name:   name,
-					id:     uint32(index),
-					remote: true,
-				})
-
 				namesLock.Lock()
 				names = append(names, name)
 				namesLock.Unlock()
@@ -284,7 +267,8 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 
 			dg.WaitForCompletion()
 
-			// FIXME: Save dg for future migrations.
+			// Save dg for future migrations.
+			migratedPeer.Dg = dg
 			addDeviceCloseFunc(dg.CloseAll)
 		}()
 	}
@@ -387,16 +371,14 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 	}
 
 	//
-	// Now deal with any local devices we want...
+	// IF all devices are local
 	//
 
-	siloDevices := make([]*MigrateFromDevice, 0)
-	index := 0
-	for _, input := range devices {
-		if !slices.ContainsFunc(migratedPeer.stage2Inputs,
-			func(r migrateFromStage) bool {
-				return input.Name == r.name
-			}) {
+	if len(readers) == 0 && len(writers) == 0 {
+
+		siloDevices := make([]*MigrateFromDevice, 0)
+		index := 0
+		for _, input := range devices {
 			if input.Shared {
 				// Deal with shared devices here...
 				err := exposeSiloDeviceAsFile(migratedPeer.runner.VMPath, input.Name, input.Base)
@@ -408,42 +390,36 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 			}
 			index++
 		}
-	}
 
-	fmt.Printf("\n\nMigrateFromLocal %d devices\n\n", len(siloDevices))
+		fmt.Printf("\n\nMigrateFromLocal %d devices\n\n", len(siloDevices))
 
-	if len(siloDevices) > 0 {
-		dg, err := createDGFromFilesystem(siloDevices)
-		if err != nil {
-			panic(errors.Join(mounter.ErrCouldNotSetupDevices, err))
-		}
-
-		// Save dg for later usage...
-		migratedPeer.Dg = dg
-
-		// Single shutdown function for deviceGroup
-		deviceCloseFuncsLock.Lock()
-		deviceCloseFuncs = append(deviceCloseFuncs, dg.CloseAll)
-		deviceCloseFuncsLock.Unlock()
-
-		// Go through dg and add inputs for next phases...
-		for _, input := range siloDevices {
-			stageOutputCb(migrateFromStage{
-				name:   input.Name,
-				id:     0,
-				remote: false,
-			})
-
-			dev := dg.GetExposedDeviceByName(input.Name)
-			err = exposeSiloDeviceAsFile(migratedPeer.runner.VMPath, input.Name, filepath.Join("/dev", dev.Device()))
+		if len(siloDevices) > 0 {
+			dg, err := createDGFromFilesystem(siloDevices)
 			if err != nil {
-				return nil, err
+				panic(errors.Join(mounter.ErrCouldNotSetupDevices, err))
+			}
+
+			// Save dg for later usage...
+			migratedPeer.Dg = dg
+
+			// Single shutdown function for deviceGroup
+			deviceCloseFuncsLock.Lock()
+			deviceCloseFuncs = append(deviceCloseFuncs, dg.CloseAll)
+			deviceCloseFuncsLock.Unlock()
+
+			// Go through dg and add inputs for next phases...
+			for _, input := range siloDevices {
+				dev := dg.GetExposedDeviceByName(input.Name)
+				err = exposeSiloDeviceAsFile(migratedPeer.runner.VMPath, input.Name, filepath.Join("/dev", dev.Device()))
+				if err != nil {
+					return nil, err
+				}
 			}
 		}
-	}
 
-	if hook := hooks.OnLocalAllDevicesRequested; hook != nil {
-		hook()
+		if hook := hooks.OnLocalAllDevicesRequested; hook != nil {
+			hook()
+		}
 	}
 
 	select {

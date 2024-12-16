@@ -3,6 +3,7 @@ package peer
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"sync"
 	"time"
@@ -104,15 +105,17 @@ func (migratablePeer *ResumedPeer[L, R, G]) MigrateTo(
 		return nil
 	})
 
-	// We need to collect anything we need from stage5Inputs now, to pass to Silo...
 	siloDevices := make([]*MigrateToStage, 0)
 
-	for _, input := range migratablePeer.stage2Inputs {
+	names := migratablePeer.Dg.GetAllNames()
+	fmt.Printf("Silo devices are %v\n", names)
+
+	for _, input := range names {
 		for _, device := range devices {
-			if device.Name == input.name {
+			if device.Name == input {
 				siloDevices = append(siloDevices, &MigrateToStage{
-					Name:             input.name,
-					Remote:           input.remote,
+					Name:             device.Name,
+					Remote:           true,
 					VolatilityExpiry: 30 * time.Minute, // TODO...
 
 					MaxDirtyBlocks: device.MaxDirtyBlocks,
