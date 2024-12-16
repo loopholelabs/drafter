@@ -9,7 +9,7 @@ import (
 	"github.com/loopholelabs/drafter/pkg/packager"
 )
 
-type deviceStatus struct {
+type DeviceStatus struct {
 	TotalCycles                   int
 	CycleThrottle                 time.Duration
 	MaxDirtyBlocks                int
@@ -21,12 +21,21 @@ type deviceStatus struct {
 
 type DirtyManager struct {
 	VMState                    *VMStateMgr
-	Devices                    map[string]*deviceStatus
-	ReadyDevices               map[string]*deviceStatus
+	Devices                    map[string]*DeviceStatus
+	ReadyDevices               map[string]*DeviceStatus
 	ReadyDevicesLock           sync.Mutex
 	AuthorityTransfer          func()
 	AuthorityTransferLock      sync.Mutex
 	AuthorityTransferCompleted bool
+}
+
+func NewDirtyManager(vmState *VMStateMgr, devices map[string]*DeviceStatus, authorityTransfer func()) *DirtyManager {
+	return &DirtyManager{
+		VMState:           vmState,
+		Devices:           devices,
+		ReadyDevices:      make(map[string]*DeviceStatus),
+		AuthorityTransfer: authorityTransfer,
+	}
 }
 
 func (dm *DirtyManager) PreGetDirty(name string) error {
