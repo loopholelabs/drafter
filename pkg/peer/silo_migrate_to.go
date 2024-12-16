@@ -37,7 +37,7 @@ type VMStateManager struct {
 }
 
 func SiloMigrateTo(dg *devicegroup.DeviceGroup,
-	devices []*MigrateToStage,
+	devices []mounter.MigrateToDevice,
 	concurrency int,
 	goroutineManager *manager.GoroutineManager,
 	pro protocol.Protocol,
@@ -72,7 +72,7 @@ func SiloMigrateTo(dg *devicegroup.DeviceGroup,
 
 	// And now do the dirty migration phase for each device...
 	for forIndex, forInput := range devices {
-		go func(index int, input *MigrateToStage) {
+		go func(index int, input mounter.MigrateToDevice) {
 			errs <- func() error {
 				info := dg.GetDeviceInformationByName(input.Name)
 				return doDirtyMigration(goroutineManager, input, hooks, vmState, info.Migrator, index, info.To,
@@ -98,7 +98,7 @@ func SiloMigrateTo(dg *devicegroup.DeviceGroup,
 
 // Handle dirtyMigrationBlocks separately here...
 func doDirtyMigration(goroutineManager *manager.GoroutineManager,
-	input *MigrateToStage,
+	input mounter.MigrateToDevice,
 	hooks MigrateToHooks,
 	vmState *VMStateManager,
 	mig *migrator.Migrator,

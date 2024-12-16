@@ -3,7 +3,6 @@ package peer
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"sync"
 	"time"
@@ -15,24 +14,19 @@ import (
 )
 
 type MigrateToHooks struct {
-	OnBeforeSuspend func()
-	OnAfterSuspend  func()
-
+	OnBeforeSuspend          func()
+	OnAfterSuspend           func()
 	OnAllDevicesSent         func()
 	OnAllMigrationsCompleted func()
 }
 
 func (migratablePeer *ResumedPeer[L, R, G]) MigrateTo(
 	ctx context.Context,
-
 	devices []mounter.MigrateToDevice,
-
 	suspendTimeout time.Duration,
 	concurrency int,
-
 	readers []io.Reader,
 	writers []io.Writer,
-
 	hooks MigrateToHooks,
 ) (errs error) {
 	goroutineManager := manager.NewGoroutineManager(
@@ -44,89 +38,59 @@ func (migratablePeer *ResumedPeer[L, R, G]) MigrateTo(
 	defer goroutineManager.StopAllGoroutines()
 	defer goroutineManager.CreateBackgroundPanicCollector()()
 
-	pro := protocol.NewRW(
-		goroutineManager.Context(),
-		readers,
-		writers,
-		nil,
-	)
+	protocolCtx := goroutineManager.Context()
 
+	// Create a protocol for use by Silo
+	pro := protocol.NewRW(protocolCtx, readers, writers, nil)
+
+	// Start a goroutine to do the protocol Handle()
 	goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
-		if err := pro.Handle(); err != nil && !errors.Is(err, io.EOF) {
+		err := pro.Handle()
+		if err != nil && !errors.Is(err, io.EOF) {
 			panic(errors.Join(registry.ErrCouldNotHandleProtocol, err))
 		}
 	})
 
-	var (
-		suspendedVMLock sync.Mutex
-		suspendedVM     bool
-	)
-
+	// This lot manages vmState. Should probabloy pull it out
+	var suspendedVMLock sync.Mutex
+	var suspendedVM bool
 	suspendedVMCh := make(chan struct{})
 
-	checkSuspendedVM := func() bool {
-		suspendedVMLock.Lock()
-		defer suspendedVMLock.Unlock()
-		return suspendedVM
-	}
-
-	suspendAndMsyncVM := sync.OnceValue(func() error {
-		if hook := hooks.OnBeforeSuspend; hook != nil {
-			hook()
-		}
-
-		if err := migratablePeer.SuspendAndCloseAgentServer(goroutineManager.Context(), suspendTimeout); err != nil {
-			return errors.Join(ErrCouldNotSuspendAndCloseAgentServer, err)
-		}
-
-		if err := migratablePeer.resumedRunner.Msync(goroutineManager.Context()); err != nil {
-			return errors.Join(ErrCouldNotMsyncRunner, err)
-		}
-
-		if hook := hooks.OnAfterSuspend; hook != nil {
-			hook()
-		}
-
-		suspendedVMLock.Lock()
-		suspendedVM = true
-		suspendedVMLock.Unlock()
-
-		close(suspendedVMCh) // We can safely close() this channel since the caller only runs once/is `sync.OnceValue`d
-
-		return nil
-	})
-
-	siloDevices := make([]*MigrateToStage, 0)
-
-	names := migratablePeer.Dg.GetAllNames()
-	fmt.Printf("Silo devices are %v\n", names)
-
-	for _, input := range names {
-		for _, device := range devices {
-			if device.Name == input {
-				siloDevices = append(siloDevices, &MigrateToStage{
-					Name:             device.Name,
-					Remote:           true,
-					VolatilityExpiry: 30 * time.Minute, // TODO...
-
-					MaxDirtyBlocks: device.MaxDirtyBlocks,
-					MinCycles:      device.MinCycles,
-					MaxCycles:      device.MaxCycles,
-					CycleThrottle:  device.CycleThrottle,
-				})
-				break
-			}
-		}
-	}
-
 	vmState := &VMStateManager{
-		checkSuspendedVM:  checkSuspendedVM,
-		suspendAndMsyncVM: suspendAndMsyncVM,
-		suspendedVMCh:     suspendedVMCh,
-		MSync:             migratablePeer.resumedRunner.Msync,
+		checkSuspendedVM: func() bool {
+			suspendedVMLock.Lock()
+			defer suspendedVMLock.Unlock()
+			return suspendedVM
+		},
+		suspendAndMsyncVM: sync.OnceValue(func() error {
+			if hook := hooks.OnBeforeSuspend; hook != nil {
+				hook()
+			}
+
+			if err := migratablePeer.SuspendAndCloseAgentServer(goroutineManager.Context(), suspendTimeout); err != nil {
+				return errors.Join(ErrCouldNotSuspendAndCloseAgentServer, err)
+			}
+
+			if err := migratablePeer.resumedRunner.Msync(goroutineManager.Context()); err != nil {
+				return errors.Join(ErrCouldNotMsyncRunner, err)
+			}
+
+			if hook := hooks.OnAfterSuspend; hook != nil {
+				hook()
+			}
+
+			suspendedVMLock.Lock()
+			suspendedVM = true
+			suspendedVMLock.Unlock()
+
+			close(suspendedVMCh) // We can safely close() this channel since the caller only runs once/is `sync.OnceValue`d
+			return nil
+		}),
+		suspendedVMCh: suspendedVMCh,
+		MSync:         migratablePeer.resumedRunner.Msync,
 	}
 
-	SiloMigrateTo(migratablePeer.Dg, siloDevices, concurrency, goroutineManager, pro, hooks, vmState)
+	SiloMigrateTo(migratablePeer.Dg, devices, concurrency, goroutineManager, pro, hooks, vmState)
 
 	if hook := hooks.OnAllMigrationsCompleted; hook != nil {
 		hook()
