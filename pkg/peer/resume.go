@@ -6,22 +6,33 @@ import (
 	"errors"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/loopholelabs/drafter/pkg/ipc"
 	"github.com/loopholelabs/drafter/pkg/packager"
 	"github.com/loopholelabs/drafter/pkg/runner"
 	"github.com/loopholelabs/drafter/pkg/snapshotter"
+	"github.com/loopholelabs/silo/pkg/storage/devicegroup"
 )
+
+type ResumedPeer[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] struct {
+	Dg            *devicegroup.DeviceGroup
+	Remote        R
+	Wait          func() error
+	Close         func() error
+	resumedRunner *runner.ResumedRunner[L, R, G]
+}
 
 type MigratedPeer[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] struct {
 	Wait  func() error
 	Close func() error
 
-	devices []MigrateFromDevice[L, R, G]
-	runner  *runner.Runner[L, R, G]
+	DgLock sync.Mutex
+	Dg     *devicegroup.DeviceGroup
 
-	stage2Inputs []migrateFromStage
+	devices []MigrateFromDevice
+	runner  *runner.Runner[L, R, G]
 }
 
 func (migratedPeer *MigratedPeer[L, R, G]) Resume(
@@ -36,14 +47,13 @@ func (migratedPeer *MigratedPeer[L, R, G]) Resume(
 	snapshotLoadConfiguration runner.SnapshotLoadConfiguration,
 ) (resumedPeer *ResumedPeer[L, R, G], errs error) {
 	resumedPeer = &ResumedPeer[L, R, G]{
+		Dg: migratedPeer.Dg,
 		Wait: func() error {
 			return nil
 		},
 		Close: func() error {
 			return nil
 		},
-
-		stage2Inputs: migratedPeer.stage2Inputs,
 	}
 
 	configBasePath := ""
