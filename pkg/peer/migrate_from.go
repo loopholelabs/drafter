@@ -245,6 +245,19 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 				fmt.Printf("Error migrating %v\n", err)
 			}
 
+			// TODO: Setup goroutine better etc etc
+			go func() {
+				err := dg.HandleCustomData(func(data []byte) {
+					fmt.Printf("\n\nCustomData %v\n\n", data)
+					if len(data) == 1 && data[0] == byte(registry.EventCustomTransferAuthority) {
+						signalAllRemoteDevicesReady()
+					}
+				})
+				if err != nil {
+					fmt.Printf("HandleCustomData returned %v\n", err)
+				}
+			}()
+
 			for _, n := range names {
 				dev := dg.GetExposedDeviceByName(n)
 				if dev != nil {

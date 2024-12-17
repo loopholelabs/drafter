@@ -13,7 +13,6 @@ import (
 	"github.com/loopholelabs/silo/pkg/storage/devicegroup"
 	"github.com/loopholelabs/silo/pkg/storage/migrator"
 	"github.com/loopholelabs/silo/pkg/storage/protocol"
-	"github.com/loopholelabs/silo/pkg/storage/protocol/packets"
 )
 
 type MigrateToHooks struct {
@@ -106,20 +105,23 @@ func (migratablePeer *ResumedPeer[L, R, G]) MigrateTo(
 	}
 
 	authTransfer := func() error {
-		// For now, do it as usual, 1 packet per device.
-		// TODO: Do a single event.
-		names := migratablePeer.Dg.GetAllNames()
-		for _, n := range names {
-			di := migratablePeer.Dg.GetDeviceInformationByName(n)
-			err := di.To.SendEvent(&packets.Event{
-				Type:       packets.EventCustom,
-				CustomType: byte(registry.EventCustomTransferAuthority),
-			})
-			if err != nil {
-				return errors.Join(mounter.ErrCouldNotSendTransferAuthorityEvent, err)
+		return migratablePeer.Dg.SendCustomData([]byte{byte(registry.EventCustomTransferAuthority)})
+		/*
+			// For now, do it as usual, 1 packet per device.
+			// TODO: Do a single event.
+			names := migratablePeer.Dg.GetAllNames()
+			for _, n := range names {
+				di := migratablePeer.Dg.GetDeviceInformationByName(n)
+				err := di.To.SendEvent(&packets.Event{
+					Type:       packets.EventCustom,
+					CustomType: byte(registry.EventCustomTransferAuthority),
+				})
+				if err != nil {
+					return errors.Join(mounter.ErrCouldNotSendTransferAuthorityEvent, err)
+				}
 			}
-		}
-		return nil
+			return nil
+		*/
 	}
 
 	dm := NewDirtyManager(vmState, dirtyDevices, authTransfer)
