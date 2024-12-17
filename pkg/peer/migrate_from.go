@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"syscall"
 
 	"github.com/loopholelabs/drafter/pkg/mounter"
@@ -88,28 +87,40 @@ func createSiloDevSchema(i *MigrateFromDevice) (*config.DeviceSchema, error) {
 }
 
 /**
- * This creates silo devices from local filesystem.
- *
+ * 'migrate' from the local filesystem.
  *
  */
-func createDGFromFilesystem(devices []*MigrateFromDevice) (*devicegroup.DeviceGroup, error) {
+func migrateFromFS(vmpath string, devices []MigrateFromDevice) (*devicegroup.DeviceGroup, error) {
+	siloDeviceSchemas := make([]*config.DeviceSchema, 0)
+	for _, input := range devices {
+		if input.Shared {
+			// Deal with shared devices here...
+			err := exposeSiloDeviceAsFile(vmpath, input.Name, input.Base)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			ds, err := createSiloDevSchema(&input)
+			if err != nil {
+				return nil, err
+			}
+			siloDeviceSchemas = append(siloDeviceSchemas, ds)
+		}
+	}
 
-	// First create a set of schema for the devices...
-	siloDevices := make([]*config.DeviceSchema, 0)
-	for _, i := range devices {
-		ds, err := createSiloDevSchema(i)
+	// Create a silo deviceGroup from all the schemas
+	dg, err := devicegroup.NewFromSchema(siloDeviceSchemas, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, input := range siloDeviceSchemas {
+		dev := dg.GetExposedDeviceByName(input.Name)
+		err = exposeSiloDeviceAsFile(vmpath, input.Name, filepath.Join("/dev", dev.Device()))
 		if err != nil {
 			return nil, err
 		}
-		siloDevices = append(siloDevices, ds)
 	}
-
-	// Create a deviceGroup from all the schemas
-	dg, err := devicegroup.NewFromSchema(siloDevices, nil, nil)
-	if err != nil {
-		return nil, errors.Join(mounter.ErrCouldNotCreateLocalDevice, err)
-	}
-
 	return dg, nil
 }
 
@@ -179,10 +190,9 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 
 	// Use an atomic counter and `allDevicesReady` and instead of a WaitGroup so that we can `select {}` without leaking a goroutine
 	var (
-		receivedButNotReadyRemoteDevices atomic.Int32
-		deviceCloseFuncsLock             sync.Mutex
-		deviceCloseFuncs                 []func() error
-		pro                              *protocol.RW
+		deviceCloseFuncsLock sync.Mutex
+		deviceCloseFuncs     []func() error
+		pro                  *protocol.RW
 	)
 
 	addDeviceCloseFunc := func(f func() error) {
@@ -190,34 +200,6 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 		deviceCloseFuncs = append(deviceCloseFuncs, f)
 		deviceCloseFuncs = append(deviceCloseFuncs, peer.runner.Close) // defer runner.Close()
 		deviceCloseFuncsLock.Unlock()
-	}
-
-	// Silo event handler
-
-	// FIXME Switch to using a single packet rather than one per device...
-	eventHandler := func(e *packets.Event) {
-		index := uint32(0)
-		switch e.Type {
-		case packets.EventCustom:
-			switch e.CustomType {
-			case byte(registry.EventCustomAllDevicesSent):
-				signalAllRemoteDevicesReceived()
-				if hook := hooks.OnRemoteAllDevicesReceived; hook != nil {
-					hook()
-				}
-			case byte(registry.EventCustomTransferAuthority):
-				if receivedButNotReadyRemoteDevices.Add(-1) <= 0 {
-					signalAllRemoteDevicesReady()
-				}
-				if hook := hooks.OnRemoteDeviceAuthorityReceived; hook != nil {
-					hook(index)
-				}
-			}
-		case packets.EventCompleted:
-			if hook := hooks.OnRemoteDeviceMigrationCompleted; hook != nil {
-				hook(index)
-			}
-		}
 	}
 
 	if len(readers) > 0 && len(writers) > 0 { // Only open the protocol if we want passed in readers and writers
@@ -238,9 +220,7 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 				fmt.Printf("Tweaked schema for %s...\n%s\n\n", name, s)
 				return string(s)
 			}
-			events := func(e *packets.Event) {
-				eventHandler(e)
-			}
+			events := func(e *packets.Event) {}
 			dg, err := devicegroup.NewFromProtocol(context.TODO(), pro, tweak, events, nil, nil)
 			if err != nil {
 				fmt.Printf("Error migrating %v\n", err)
@@ -290,6 +270,7 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 		// If it hasn't sent any devices, the remote Silo peer doesn't send `EventCustomAllDevicesSent`
 		// After the protocol has closed without errors, we can safely assume that we won't receive any
 		// additional devices, so we mark all devices as received and ready
+
 		select {
 		case <-allRemoteDevicesReceived:
 		default:
@@ -306,6 +287,8 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 		if hook := hooks.OnRemoteAllMigrationsCompleted; hook != nil {
 			hook()
 		}
+
+		// FIXME: We need to wait until all devices are COMPLETE here...
 
 		return nil
 	})
@@ -390,46 +373,18 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 	//
 
 	if len(readers) == 0 && len(writers) == 0 {
-
-		siloDevices := make([]*MigrateFromDevice, 0)
-		index := 0
-		for _, input := range devices {
-			if input.Shared {
-				// Deal with shared devices here...
-				err := exposeSiloDeviceAsFile(migratedPeer.runner.VMPath, input.Name, input.Base)
-				if err != nil {
-					panic(errors.Join(mounter.ErrCouldNotSetupDevices, err))
-				}
-			} else {
-				siloDevices = append(siloDevices, &input)
-			}
-			index++
+		dg, err := migrateFromFS(migratedPeer.runner.VMPath, devices)
+		if err != nil {
+			panic(err)
 		}
 
-		if len(siloDevices) > 0 {
-			dg, err := createDGFromFilesystem(siloDevices)
-			if err != nil {
-				panic(errors.Join(mounter.ErrCouldNotSetupDevices, err))
-			}
+		// Save dg for later usage, when we want to migrate from here etc
+		migratedPeer.Dg = dg
 
-			// Save dg for later usage...
-			migratedPeer.Dg = dg
-
-			// Single shutdown function for deviceGroup
-			deviceCloseFuncsLock.Lock()
-			deviceCloseFuncs = append(deviceCloseFuncs, dg.CloseAll)
-			deviceCloseFuncsLock.Unlock()
-
-			// Go through dg and add inputs for next phases...
-			for _, input := range siloDevices {
-				dev := dg.GetExposedDeviceByName(input.Name)
-				err = exposeSiloDeviceAsFile(migratedPeer.runner.VMPath, input.Name, filepath.Join("/dev", dev.Device()))
-				if err != nil {
-					return nil, err
-				}
-			}
-		}
-
+		// Single shutdown function for the deviceGroup
+		deviceCloseFuncsLock.Lock()
+		deviceCloseFuncs = append(deviceCloseFuncs, dg.CloseAll)
+		deviceCloseFuncsLock.Unlock()
 		if hook := hooks.OnLocalAllDevicesRequested; hook != nil {
 			hook()
 		}
