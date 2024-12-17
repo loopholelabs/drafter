@@ -188,20 +188,9 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 	defer goroutineManager.StopAllGoroutines()
 	defer goroutineManager.CreateBackgroundPanicCollector()()
 
-	// Use an atomic counter and `allDevicesReady` and instead of a WaitGroup so that we can `select {}` without leaking a goroutine
-	var (
-		deviceCloseFuncsLock sync.Mutex
-		deviceCloseFuncs     []func() error
-		pro                  *protocol.RW
-	)
+	var pro *protocol.RW
 
-	addDeviceCloseFunc := func(f func() error) {
-		deviceCloseFuncsLock.Lock()
-		deviceCloseFuncs = append(deviceCloseFuncs, f)
-		deviceCloseFuncs = append(deviceCloseFuncs, peer.runner.Close) // defer runner.Close()
-		deviceCloseFuncsLock.Unlock()
-	}
-
+	// Migrate the devices from a protocol
 	if len(readers) > 0 && len(writers) > 0 { // Only open the protocol if we want passed in readers and writers
 		pro = protocol.NewRW(protocolCtx, readers, writers, nil)
 
@@ -252,8 +241,9 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 			dg.WaitForCompletion()
 
 			// Save dg for future migrations.
+			migratedPeer.DgLock.Lock()
 			migratedPeer.Dg = dg
-			addDeviceCloseFunc(dg.CloseAll)
+			migratedPeer.DgLock.Unlock()
 		}()
 	}
 
@@ -288,34 +278,28 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 			hook()
 		}
 
-		// FIXME: We need to wait until all devices are COMPLETE here...
-
 		return nil
 	})
+
 	migratedPeer.Close = func() (errs error) {
 		// We have to close the runner before we close the devices
 		if err := peer.runner.Close(); err != nil {
-			errs = errors.Join(errs, err)
+			return err
 		}
 
-		defer func() {
-			if err := migratedPeer.Wait(); err != nil {
-				errs = errors.Join(errs, err)
+		// Close any Silo devices
+		migratedPeer.DgLock.Lock()
+		if migratedPeer.Dg != nil {
+			err := migratedPeer.Dg.CloseAll()
+			if err != nil {
+				migratedPeer.DgLock.Unlock()
+				return err
 			}
-		}()
-
-		deviceCloseFuncsLock.Lock()
-		defer deviceCloseFuncsLock.Unlock()
-
-		for _, closeFunc := range deviceCloseFuncs {
-			defer func(closeFunc func() error) {
-				if err := closeFunc(); err != nil {
-					errs = errors.Join(errs, err)
-				}
-			}(closeFunc)
 		}
+		migratedPeer.DgLock.Unlock()
 
-		return
+		// FIXME: Wait for half done migrations?
+		return migratedPeer.Wait()
 	}
 
 	// We don't track this because we return the wait function
@@ -379,12 +363,10 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 		}
 
 		// Save dg for later usage, when we want to migrate from here etc
+		migratedPeer.DgLock.Lock()
 		migratedPeer.Dg = dg
+		migratedPeer.DgLock.Unlock()
 
-		// Single shutdown function for the deviceGroup
-		deviceCloseFuncsLock.Lock()
-		deviceCloseFuncs = append(deviceCloseFuncs, dg.CloseAll)
-		deviceCloseFuncsLock.Unlock()
 		if hook := hooks.OnLocalAllDevicesRequested; hook != nil {
 			hook()
 		}

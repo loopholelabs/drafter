@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/loopholelabs/drafter/pkg/ipc"
@@ -27,7 +28,8 @@ type MigratedPeer[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] str
 	Wait  func() error
 	Close func() error
 
-	Dg *devicegroup.DeviceGroup
+	DgLock sync.Mutex
+	Dg     *devicegroup.DeviceGroup
 
 	devices []MigrateFromDevice
 	runner  *runner.Runner[L, R, G]
