@@ -606,9 +606,6 @@ func main() {
 			OnAfterSuspend: func() {
 				log.Println("Suspend:", time.Since(before))
 			},
-			OnAllDevicesSent: func() {
-				log.Println("Sent all devices")
-			},
 			OnAllMigrationsCompleted: func() {
 				log.Println("Completed all device migrations")
 			},
