@@ -45,6 +45,7 @@ func exposeSiloDeviceAsFile(vmpath string, name string, devicePath string) error
 
 /**
  * This creates a Silo Dev Schema given a MigrateFromDevice
+ * If you want to change the type of storage used, or Silo options, you can do so here.
  *
  */
 func createSiloDevSchema(i *MigrateFromDevice) (*config.DeviceSchema, error) {

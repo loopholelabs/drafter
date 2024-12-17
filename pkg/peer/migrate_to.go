@@ -15,13 +15,18 @@ import (
 	"github.com/loopholelabs/silo/pkg/storage/protocol"
 )
 
+// Callbacks
 type MigrateToHooks struct {
 	OnBeforeSuspend          func()
 	OnAfterSuspend           func()
-	OnAllDevicesSent         func()
 	OnAllMigrationsCompleted func()
 }
 
+/**
+ * MigrateTo migrates to a remote VM.
+ *
+ *
+ */
 func (migratablePeer *ResumedPeer[L, R, G]) MigrateTo(
 	ctx context.Context,
 	devices []mounter.MigrateToDevice,
@@ -53,13 +58,14 @@ func (migratablePeer *ResumedPeer[L, R, G]) MigrateTo(
 		}
 	})
 
-	// Start a migration to the protocol...
+	// Start a migration to the protocol. This will send all schema info etc
 	err := migratablePeer.Dg.StartMigrationTo(pro)
 	if err != nil {
 		return err
 	}
 
-	// TODO: Get this to call hooks
+	// Progress handler
+	// TODO: We should probably expose this in hooks
 	pHandler := func(p map[string]*migrator.MigrationProgress) {
 		totalSize := 0
 		totalDone := 0
@@ -72,10 +78,12 @@ func (migratablePeer *ResumedPeer[L, R, G]) MigrateTo(
 		if totalSize > 0 {
 			perc = float64(totalDone) * 100 / float64(totalSize)
 		}
+		// Report overall migration progress
 		fmt.Printf("# Overall migration Progress # (%d / %d) %.1f%%\n", totalDone, totalSize, perc)
 
+		// Report individual devices
 		for name, prog := range p {
-			fmt.Printf(" [%s] Progress Migrated Blocks (%d/%d) %d ready\n", name, prog.MigratedBlocks, prog.TotalBlocks, prog.ReadyBlocks)
+			fmt.Printf(" [%s] Progress Migrated Blocks (%d/%d)  %d ready\n", name, prog.MigratedBlocks, prog.TotalBlocks, prog.ReadyBlocks)
 		}
 	}
 
@@ -104,24 +112,9 @@ func (migratablePeer *ResumedPeer[L, R, G]) MigrateTo(
 		}
 	}
 
+	// When we are ready to transfer authority, we send a single Custom Event here.
 	authTransfer := func() error {
 		return migratablePeer.Dg.SendCustomData([]byte{byte(registry.EventCustomTransferAuthority)})
-		/*
-			// For now, do it as usual, 1 packet per device.
-			// TODO: Do a single event.
-			names := migratablePeer.Dg.GetAllNames()
-			for _, n := range names {
-				di := migratablePeer.Dg.GetDeviceInformationByName(n)
-				err := di.To.SendEvent(&packets.Event{
-					Type:       packets.EventCustom,
-					CustomType: byte(registry.EventCustomTransferAuthority),
-				})
-				if err != nil {
-					return errors.Join(mounter.ErrCouldNotSendTransferAuthorityEvent, err)
-				}
-			}
-			return nil
-		*/
 	}
 
 	dm := NewDirtyManager(vmState, dirtyDevices, authTransfer)
@@ -136,6 +129,7 @@ func (migratablePeer *ResumedPeer[L, R, G]) MigrateTo(
 		return err
 	}
 
+	// Send Silo completion events for the devices. This will trigger any S3 sync behaviour etc.
 	err = migratablePeer.Dg.Completed()
 	if err != nil {
 		return err

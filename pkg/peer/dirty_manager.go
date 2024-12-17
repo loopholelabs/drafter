@@ -2,7 +2,6 @@ package peer
 
 import (
 	"errors"
-	"fmt"
 	"sync"
 	"time"
 
@@ -68,7 +67,6 @@ func (dm *DirtyManager) markDeviceReady(name string, di *DeviceStatus) {
 }
 
 func (dm *DirtyManager) PostMigrateDirty(name string, blocks []uint) (bool, error) {
-	fmt.Printf(" = PostMigrateDirty %s %d\n", name, len(blocks))
 	di := dm.Devices[name]
 	time.Sleep(di.CycleThrottle)
 	if dm.VMState.CheckSuspendedVM() {
