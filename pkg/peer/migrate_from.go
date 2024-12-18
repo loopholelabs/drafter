@@ -217,126 +217,81 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 	if len(readers) > 0 && len(writers) > 0 { // Only open the protocol if we want passed in readers and writers
 		pro = protocol.NewRW(protocolCtx, readers, writers, nil)
 
-		// Do this in a goroutine for now...
+		// Start a goroutine to do the protocol Handle()
+		goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
+			err := pro.Handle()
+			if err != nil && !errors.Is(err, io.EOF) {
+				panic(errors.Join(registry.ErrCouldNotHandleProtocol, err))
+			}
+		})
+
+		fmt.Printf("MigrateFrom...\n")
+		// For now...
+		names := make([]string, 0)
+		var namesLock sync.Mutex
+		tweak := func(index int, name string, schema string) string {
+			namesLock.Lock()
+			names = append(names, name)
+			namesLock.Unlock()
+
+			s := strings.ReplaceAll(schema, "instance-0", "instance-1")
+			fmt.Printf("Tweaked schema for %s...\n%s\n\n", name, s)
+			return string(s)
+		}
+		events := func(e *packets.Event) {}
+		dg, err := devicegroup.NewFromProtocol(context.TODO(), pro, tweak, events, nil, nil)
+		if err != nil {
+			fmt.Printf("Error migrating %v\n", err)
+		}
+
+		// TODO: Setup goroutine better etc etc
 		go func() {
-			fmt.Printf("MigrateFrom...\n")
-			// For now...
-			names := make([]string, 0)
-			var namesLock sync.Mutex
-			tweak := func(index int, name string, schema string) string {
-				namesLock.Lock()
-				names = append(names, name)
-				namesLock.Unlock()
-
-				s := strings.ReplaceAll(schema, "instance-0", "instance-1")
-				fmt.Printf("Tweaked schema for %s...\n%s\n\n", name, s)
-				return string(s)
-			}
-			events := func(e *packets.Event) {}
-			dg, err := devicegroup.NewFromProtocol(context.TODO(), pro, tweak, events, nil, nil)
+			err := dg.HandleCustomData(func(data []byte) {
+				fmt.Printf("\n\nCustomData %v\n\n", data)
+				if len(data) == 1 && data[0] == byte(registry.EventCustomTransferAuthority) {
+					signalAllRemoteDevicesReady()
+				}
+			})
 			if err != nil {
-				fmt.Printf("Error migrating %v\n", err)
+				fmt.Printf("HandleCustomData returned %v\n", err)
 			}
+		}()
 
-			// TODO: Setup goroutine better etc etc
-			go func() {
-				err := dg.HandleCustomData(func(data []byte) {
-					fmt.Printf("\n\nCustomData %v\n\n", data)
-					if len(data) == 1 && data[0] == byte(registry.EventCustomTransferAuthority) {
-						signalAllRemoteDevicesReady()
-					}
-				})
+		for _, n := range names {
+			dev := dg.GetExposedDeviceByName(n)
+			if dev != nil {
+				err := exposeSiloDeviceAsFile(migratedPeer.runner.VMPath, n, filepath.Join("/dev", dev.Device()))
 				if err != nil {
-					fmt.Printf("HandleCustomData returned %v\n", err)
-				}
-			}()
-
-			for _, n := range names {
-				dev := dg.GetExposedDeviceByName(n)
-				if dev != nil {
-					err := exposeSiloDeviceAsFile(migratedPeer.runner.VMPath, n, filepath.Join("/dev", dev.Device()))
-					if err != nil {
-						fmt.Printf("Error migrating %v\n", err)
-					}
+					fmt.Printf("Error migrating %v\n", err)
 				}
 			}
+		}
 
-			dg.WaitForCompletion()
+		migratedPeer.Wait = sync.OnceValue(func() error {
+			defer cancelProtocolCtx()
+			fmt.Printf(" ### migratedPeer.Wait called\n")
+
+			dg.WaitForCompletion() // FIXME: Should probably return error
 
 			// Save dg for future migrations.
 			migratedPeer.DgLock.Lock()
 			migratedPeer.Dg = dg
 			migratedPeer.DgLock.Unlock()
-		}()
-	}
+			return nil
+		})
 
-	migratedPeer.Wait = sync.OnceValue(func() error {
-		fmt.Printf(" ### migratedPeer.Wait called\n")
-
-		defer cancelProtocolCtx()
-
-		// If we haven't opened the protocol, don't wait for it
-		if pro != nil {
-			if err := pro.Handle(); err != nil && !errors.Is(err, io.EOF) {
-				return err
-			}
-		}
-
-		fmt.Printf(" # Wait signalAllRemoteDevicesReady\n")
-		signalAllRemoteDevicesReady()
-
-		if hook := hooks.OnRemoteAllMigrationsCompleted; hook != nil {
-			hook()
-		}
-
-		return nil
-	})
-
-	// We don't track this because we return the wait function
-	goroutineManager.StartBackgroundGoroutine(func(_ context.Context) {
-		if err := migratedPeer.Wait(); err != nil {
-			panic(errors.Join(registry.ErrCouldNotWaitForMigrationCompletion, err))
-		}
-	})
-
-	// We don't track this because we return the close function
-	goroutineManager.StartBackgroundGoroutine(func(ctx context.Context) {
 		select {
-		// Failure case; we cancelled the internal context before all devices are ready
-		case <-ctx.Done():
-			fmt.Printf(" # Ctx done\n")
-
-			if err := migratedPeer.Close(); err != nil {
-				panic(errors.Join(ErrCouldNotCloseMigratedPeer, err))
+		case <-goroutineManager.Context().Done():
+			if err := goroutineManager.Context().Err(); err != nil {
+				panic(errors.Join(ErrPeerContextCancelled, err))
 			}
 
-		// Happy case; all devices are ready and we want to wait with closing the devices until we stop the Firecracker process
+			return
 		case <-allRemoteDevicesReady:
-			fmt.Printf(" # All remoteDevicesReady\n")
-
-			<-peer.hypervisorCtx.Done()
-
-			fmt.Printf(" # Close after hypervisorCtx.Done\n")
-
-			if err := migratedPeer.Close(); err != nil {
-				panic(errors.Join(ErrCouldNotCloseMigratedPeer, err))
-			}
+			fmt.Printf(" # allRemoteDevicesReady\n")
 
 			break
 		}
-	})
-
-	select {
-	case <-goroutineManager.Context().Done():
-		if err := goroutineManager.Context().Err(); err != nil {
-			panic(errors.Join(ErrPeerContextCancelled, err))
-		}
-
-		return
-	case <-allRemoteDevicesReady:
-		fmt.Printf(" # allRemoteDevicesReady\n")
-
-		break
 	}
 
 	//
