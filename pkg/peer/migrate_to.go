@@ -3,7 +3,6 @@ package peer
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"time"
 
@@ -20,6 +19,7 @@ type MigrateToHooks struct {
 	OnBeforeSuspend          func()
 	OnAfterSuspend           func()
 	OnAllMigrationsCompleted func()
+	OnProgress               func(p map[string]*migrator.MigrationProgress)
 }
 
 /**
@@ -64,31 +64,8 @@ func (migratablePeer *ResumedPeer[L, R, G]) MigrateTo(
 		return err
 	}
 
-	// Progress handler
-	// TODO: We should probably expose this in hooks
-	pHandler := func(p map[string]*migrator.MigrationProgress) {
-		totalSize := 0
-		totalDone := 0
-		for _, prog := range p {
-			totalSize += (prog.TotalBlocks * prog.BlockSize)
-			totalDone += (prog.ReadyBlocks * prog.BlockSize)
-		}
-
-		perc := float64(0.0)
-		if totalSize > 0 {
-			perc = float64(totalDone) * 100 / float64(totalSize)
-		}
-		// Report overall migration progress
-		fmt.Printf("# Overall migration Progress # (%d / %d) %.1f%%\n", totalDone, totalSize, perc)
-
-		// Report individual devices
-		for name, prog := range p {
-			fmt.Printf(" [%s] Progress Migrated Blocks (%d/%d)  %d ready\n", name, prog.MigratedBlocks, prog.TotalBlocks, prog.ReadyBlocks)
-		}
-	}
-
 	// Do the main migration of the data...
-	err = migratablePeer.Dg.MigrateAll(concurrency, pHandler)
+	err = migratablePeer.Dg.MigrateAll(concurrency, hooks.OnProgress)
 	if err != nil {
 		return err
 	}
@@ -135,8 +112,8 @@ func (migratablePeer *ResumedPeer[L, R, G]) MigrateTo(
 		return err
 	}
 
-	if hook := hooks.OnAllMigrationsCompleted; hook != nil {
-		hook()
+	if hooks.OnAllMigrationsCompleted != nil {
+		hooks.OnAllMigrationsCompleted()
 	}
 	return
 }
