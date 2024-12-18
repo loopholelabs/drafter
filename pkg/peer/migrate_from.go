@@ -22,6 +22,15 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+type MigrateFromDevice struct {
+	Name      string `json:"name"`
+	Base      string `json:"base"`
+	Overlay   string `json:"overlay"`
+	State     string `json:"state"`
+	BlockSize uint32 `json:"blockSize"`
+	Shared    bool   `json:"shared"`
+}
+
 // expose a Silo Device as a file within the vm directory
 func exposeSiloDeviceAsFile(vmpath string, name string, devicePath string) error {
 	deviceInfo, err := os.Stat(devicePath)
@@ -124,18 +133,6 @@ func migrateFromFS(vmpath string, devices []MigrateFromDevice) (*devicegroup.Dev
 	return dg, nil
 }
 
-///////////////////////////////////////////////////////////////////////////////
-// Under here is still WIP
-
-type MigrateFromDevice struct {
-	Name      string `json:"name"`
-	Base      string `json:"base"`
-	Overlay   string `json:"overlay"`
-	State     string `json:"state"`
-	BlockSize uint32 `json:"blockSize"`
-	Shared    bool   `json:"shared"`
-}
-
 func (peer *Peer[L, R, G]) MigrateFrom(
 	ctx context.Context,
 	devices []MigrateFromDevice,
@@ -151,18 +148,44 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 		Wait: func() error {
 			return nil
 		},
-		Close: func() error {
-			return nil
-		},
+
 		devices: devices,
 		runner:  peer.runner,
 	}
 
+	migratedPeer.Close = func() (errs error) {
+		// We have to close the runner before we close the devices
+		if err := peer.runner.Close(); err != nil {
+			return err
+		}
+
+		// Close any Silo devices
+		migratedPeer.DgLock.Lock()
+		if migratedPeer.Dg != nil {
+			err := migratedPeer.Dg.CloseAll()
+			if err != nil {
+				migratedPeer.DgLock.Unlock()
+				return err
+			}
+		}
+		migratedPeer.DgLock.Unlock()
+		return nil
+	}
+
+	///////////////////////////////////////////////////////////////////////////////
+	// Under here is still WIP
+	///////////////////////////////////////////////////////////////////////////////
+	///////////////////////////////////////////////////////////////////////////////
+	///////////////////////////////////////////////////////////////////////////////
+	///////////////////////////////////////////////////////////////////////////////
+
 	var (
-		allRemoteDevicesReceived       = make(chan struct{})
-		signalAllRemoteDevicesReceived = sync.OnceFunc(func() {
-			close(allRemoteDevicesReceived) // We can safely close() this channel since the caller only runs once/is `sync.OnceFunc`d
-		})
+		/*
+			allRemoteDevicesReceived       = make(chan struct{})
+			signalAllRemoteDevicesReceived = sync.OnceFunc(func() {
+				close(allRemoteDevicesReceived) // We can safely close() this channel since the caller only runs once/is `sync.OnceFunc`d
+			})
+		*/
 
 		allRemoteDevicesReady       = make(chan struct{})
 		signalAllRemoteDevicesReady = sync.OnceFunc(func() {
@@ -248,6 +271,8 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 	}
 
 	migratedPeer.Wait = sync.OnceValue(func() error {
+		fmt.Printf(" ### migratedPeer.Wait called\n")
+
 		defer cancelProtocolCtx()
 
 		// If we haven't opened the protocol, don't wait for it
@@ -257,21 +282,7 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 			}
 		}
 
-		// If it hasn't sent any devices, the remote Silo peer doesn't send `EventCustomAllDevicesSent`
-		// After the protocol has closed without errors, we can safely assume that we won't receive any
-		// additional devices, so we mark all devices as received and ready
-
-		select {
-		case <-allRemoteDevicesReceived:
-		default:
-			signalAllRemoteDevicesReceived()
-
-			// We need to call the hook manually too since we would otherwise only call if we received at least one device
-			if hook := hooks.OnRemoteAllDevicesReceived; hook != nil {
-				hook()
-			}
-		}
-
+		fmt.Printf(" # Wait signalAllRemoteDevicesReady\n")
 		signalAllRemoteDevicesReady()
 
 		if hook := hooks.OnRemoteAllMigrationsCompleted; hook != nil {
@@ -280,27 +291,6 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 
 		return nil
 	})
-
-	migratedPeer.Close = func() (errs error) {
-		// We have to close the runner before we close the devices
-		if err := peer.runner.Close(); err != nil {
-			return err
-		}
-
-		// Close any Silo devices
-		migratedPeer.DgLock.Lock()
-		if migratedPeer.Dg != nil {
-			err := migratedPeer.Dg.CloseAll()
-			if err != nil {
-				migratedPeer.DgLock.Unlock()
-				return err
-			}
-		}
-		migratedPeer.DgLock.Unlock()
-
-		// FIXME: Wait for half done migrations?
-		return migratedPeer.Wait()
-	}
 
 	// We don't track this because we return the wait function
 	goroutineManager.StartBackgroundGoroutine(func(_ context.Context) {
@@ -314,13 +304,19 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 		select {
 		// Failure case; we cancelled the internal context before all devices are ready
 		case <-ctx.Done():
+			fmt.Printf(" # Ctx done\n")
+
 			if err := migratedPeer.Close(); err != nil {
 				panic(errors.Join(ErrCouldNotCloseMigratedPeer, err))
 			}
 
 		// Happy case; all devices are ready and we want to wait with closing the devices until we stop the Firecracker process
 		case <-allRemoteDevicesReady:
+			fmt.Printf(" # All remoteDevicesReady\n")
+
 			<-peer.hypervisorCtx.Done()
+
+			fmt.Printf(" # Close after hypervisorCtx.Done\n")
 
 			if err := migratedPeer.Close(); err != nil {
 				panic(errors.Join(ErrCouldNotCloseMigratedPeer, err))
@@ -337,18 +333,9 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 		}
 
 		return
-	case <-allRemoteDevicesReceived:
-		break
-	}
-
-	select {
-	case <-goroutineManager.Context().Done():
-		if err := goroutineManager.Context().Err(); err != nil {
-			panic(errors.Join(ErrPeerContextCancelled, err))
-		}
-
-		return
 	case <-allRemoteDevicesReady:
+		fmt.Printf(" # allRemoteDevicesReady\n")
+
 		break
 	}
 
