@@ -27,6 +27,12 @@ type MigrateToHooks struct {
 	OnBeforeSuspend func()
 	OnAfterSuspend  func()
 
+	// This is called before a device authority is transferred;
+	// the return value will be sent as the custom payload for
+	// the registry.EventCustomTransferAuthority event and can be
+	// received in OnRemoteDeviceAuthorityReceived on the destination
+	OnBeforeSendDeviceAuthority func(deviceID uint32, remote bool) []byte
+
 	OnDeviceSent                       func(deviceID uint32, remote bool)
 	OnDeviceAuthoritySent              func(deviceID uint32, remote bool)
 	OnDeviceInitialMigrationProgress   func(deviceID uint32, remote bool, ready int, total int)
@@ -386,9 +392,15 @@ func (migratablePeer *MigratablePeer[L, R, G]) MigrateTo(
 				}
 			}
 
+			var customPayload []byte
+			if hook := hooks.OnBeforeSendDeviceAuthority; hook != nil {
+				customPayload = hook(uint32(index), input.prev.prev.prev.remote)
+			}
+
 			if err := to.SendEvent(&packets.Event{
-				Type:       packets.EventCustom,
-				CustomType: byte(registry.EventCustomTransferAuthority),
+				Type:          packets.EventCustom,
+				CustomType:    byte(registry.EventCustomTransferAuthority),
+				CustomPayload: customPayload,
 			}); err != nil {
 				panic(errors.Join(mounter.ErrCouldNotSendTransferAuthorityEvent, err))
 			}

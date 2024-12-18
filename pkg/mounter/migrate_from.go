@@ -37,7 +37,7 @@ type MigrateFromAndMountDevice struct {
 type MigrateFromHooks struct {
 	OnRemoteDeviceReceived           func(remoteDeviceID uint32, name string)
 	OnRemoteDeviceExposed            func(remoteDeviceID uint32, path string)
-	OnRemoteDeviceAuthorityReceived  func(remoteDeviceID uint32)
+	OnRemoteDeviceAuthorityReceived  func(remoteDeviceID uint32, customPayload []byte)
 	OnRemoteDeviceMigrationCompleted func(remoteDeviceID uint32)
 
 	OnRemoteAllDevicesReceived     func()
@@ -258,12 +258,12 @@ func MigrateFromAndMount(
 								}
 
 							case byte(registry.EventCustomTransferAuthority):
-								if receivedButNotReadyRemoteDevices.Add(-1) <= 0 {
-									signalAllRemoteDevicesReady()
+								if hook := hooks.OnRemoteDeviceAuthorityReceived; hook != nil {
+									hook(index, e.CustomPayload)
 								}
 
-								if hook := hooks.OnRemoteDeviceAuthorityReceived; hook != nil {
-									hook(index)
+								if receivedButNotReadyRemoteDevices.Add(-1) <= 0 {
+									signalAllRemoteDevicesReady()
 								}
 							}
 
