@@ -179,29 +179,6 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 	///////////////////////////////////////////////////////////////////////////////
 	///////////////////////////////////////////////////////////////////////////////
 
-	var (
-		/*
-			allRemoteDevicesReceived       = make(chan struct{})
-			signalAllRemoteDevicesReceived = sync.OnceFunc(func() {
-				close(allRemoteDevicesReceived) // We can safely close() this channel since the caller only runs once/is `sync.OnceFunc`d
-			})
-		*/
-
-		allRemoteDevicesReady       = make(chan struct{})
-		signalAllRemoteDevicesReady = sync.OnceFunc(func() {
-			close(allRemoteDevicesReady) // We can safely close() this channel since the caller only runs once/is `sync.OnceFunc`d
-		})
-	)
-
-	// We don't `defer cancelProtocolCtx()` this because we cancel in the wait function
-	protocolCtx, cancelProtocolCtx := context.WithCancel(ctx)
-
-	// We overwrite this further down, but this is so that we don't leak the `protocolCtx` if we `panic()` before we set `WaitForMigrationsToComplete`
-	migratedPeer.Wait = func() error {
-		cancelProtocolCtx()
-		return nil
-	}
-
 	goroutineManager := manager.NewGoroutineManager(
 		ctx,
 		&errs,
@@ -211,10 +188,12 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 	defer goroutineManager.StopAllGoroutines()
 	defer goroutineManager.CreateBackgroundPanicCollector()()
 
-	var pro *protocol.RW
-
 	// Migrate the devices from a protocol
 	if len(readers) > 0 && len(writers) > 0 { // Only open the protocol if we want passed in readers and writers
+		var pro *protocol.RW
+		protocolCtx, cancelProtocolCtx := context.WithCancel(ctx)
+		allRemoteDevicesReady := make(chan struct{})
+
 		pro = protocol.NewRW(protocolCtx, readers, writers, nil)
 
 		// Start a goroutine to do the protocol Handle()
@@ -249,7 +228,7 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 			err := dg.HandleCustomData(func(data []byte) {
 				fmt.Printf("\n\nCustomData %v\n\n", data)
 				if len(data) == 1 && data[0] == byte(registry.EventCustomTransferAuthority) {
-					signalAllRemoteDevicesReady()
+					close(allRemoteDevicesReady)
 				}
 			})
 			if err != nil {
