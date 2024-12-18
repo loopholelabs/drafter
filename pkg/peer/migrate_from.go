@@ -172,29 +172,17 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 		return nil
 	}
 
-	///////////////////////////////////////////////////////////////////////////////
-	// Under here is still WIP
-	///////////////////////////////////////////////////////////////////////////////
-	///////////////////////////////////////////////////////////////////////////////
-	///////////////////////////////////////////////////////////////////////////////
-	///////////////////////////////////////////////////////////////////////////////
-
-	goroutineManager := manager.NewGoroutineManager(
-		ctx,
-		&errs,
-		manager.GoroutineManagerHooks{},
-	)
+	goroutineManager := manager.NewGoroutineManager(ctx, &errs, manager.GoroutineManagerHooks{})
 	defer goroutineManager.Wait()
 	defer goroutineManager.StopAllGoroutines()
 	defer goroutineManager.CreateBackgroundPanicCollector()()
 
 	// Migrate the devices from a protocol
-	if len(readers) > 0 && len(writers) > 0 { // Only open the protocol if we want passed in readers and writers
-		var pro *protocol.RW
+	if len(readers) > 0 && len(writers) > 0 {
 		protocolCtx, cancelProtocolCtx := context.WithCancel(ctx)
-		allRemoteDevicesReady := make(chan struct{})
+		allRemoteDevicesReady := make(chan bool)
 
-		pro = protocol.NewRW(protocolCtx, readers, writers, nil)
+		pro := protocol.NewRW(protocolCtx, readers, writers, nil)
 
 		// Start a goroutine to do the protocol Handle()
 		goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
@@ -204,54 +192,42 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 			}
 		})
 
-		fmt.Printf("MigrateFrom...\n")
-		// For now...
-		names := make([]string, 0)
-		var namesLock sync.Mutex
+		// TODO: This schema tweak function should be exposed / passed in
 		tweak := func(index int, name string, schema string) string {
-			namesLock.Lock()
-			names = append(names, name)
-			namesLock.Unlock()
-
 			s := strings.ReplaceAll(schema, "instance-0", "instance-1")
 			fmt.Printf("Tweaked schema for %s...\n%s\n\n", name, s)
 			return string(s)
 		}
+
 		events := func(e *packets.Event) {}
-		dg, err := devicegroup.NewFromProtocol(context.TODO(), pro, tweak, events, nil, nil)
+		cdh := func(data []byte) {
+			if len(data) == 1 && data[0] == byte(registry.EventCustomTransferAuthority) {
+				close(allRemoteDevicesReady)
+			}
+		}
+		dg, err := devicegroup.NewFromProtocol(protocolCtx, pro, tweak, events, cdh, nil, nil)
 		if err != nil {
-			fmt.Printf("Error migrating %v\n", err)
+			return nil, err
 		}
 
-		// TODO: Setup goroutine better etc etc
-		go func() {
-			err := dg.HandleCustomData(func(data []byte) {
-				fmt.Printf("\n\nCustomData %v\n\n", data)
-				if len(data) == 1 && data[0] == byte(registry.EventCustomTransferAuthority) {
-					close(allRemoteDevicesReady)
-				}
-			})
-			if err != nil {
-				fmt.Printf("HandleCustomData returned %v\n", err)
-			}
-		}()
-
-		for _, n := range names {
+		// Expose all devices
+		for _, n := range dg.GetAllNames() {
 			dev := dg.GetExposedDeviceByName(n)
 			if dev != nil {
 				err := exposeSiloDeviceAsFile(migratedPeer.runner.VMPath, n, filepath.Join("/dev", dev.Device()))
 				if err != nil {
-					fmt.Printf("Error migrating %v\n", err)
+					return nil, err
 				}
 			}
 		}
 
 		migratedPeer.Wait = sync.OnceValue(func() error {
 			defer cancelProtocolCtx()
-			fmt.Printf(" ### migratedPeer.Wait called\n")
 
-			dg.WaitForCompletion() // FIXME: Should probably return error
-
+			err := dg.WaitForCompletion()
+			if err != nil {
+				return err
+			}
 			// Save dg for future migrations.
 			migratedPeer.DgLock.Lock()
 			migratedPeer.Dg = dg
@@ -259,18 +235,14 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 			return nil
 		})
 
+		// Wait until devices are ready to be used, or until context cancelled.
 		select {
 		case <-goroutineManager.Context().Done():
-			if err := goroutineManager.Context().Err(); err != nil {
-				panic(errors.Join(ErrPeerContextCancelled, err))
-			}
-
-			return
+			return nil, errors.Join(ErrPeerContextCancelled, goroutineManager.Context().Err())
 		case <-allRemoteDevicesReady:
-			fmt.Printf(" # allRemoteDevicesReady\n")
-
 			break
 		}
+
 	}
 
 	//
@@ -280,7 +252,7 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 	if len(readers) == 0 && len(writers) == 0 {
 		dg, err := migrateFromFS(migratedPeer.runner.VMPath, devices)
 		if err != nil {
-			panic(err)
+			return nil, err
 		}
 
 		// Save dg for later usage, when we want to migrate from here etc
