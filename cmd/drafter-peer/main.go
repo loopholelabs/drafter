@@ -23,6 +23,7 @@ import (
 	"github.com/loopholelabs/drafter/pkg/runner"
 	"github.com/loopholelabs/drafter/pkg/snapshotter"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
+	"github.com/loopholelabs/silo/pkg/storage/migrator"
 )
 
 type CompositeDevices struct {
@@ -608,6 +609,27 @@ func main() {
 			},
 			OnAllMigrationsCompleted: func() {
 				log.Println("Completed all device migrations")
+			},
+			OnProgress: func(p map[string]*migrator.MigrationProgress) {
+				totalSize := 0
+				totalDone := 0
+				for _, prog := range p {
+					totalSize += (prog.TotalBlocks * prog.BlockSize)
+					totalDone += (prog.ReadyBlocks * prog.BlockSize)
+				}
+
+				perc := float64(0.0)
+				if totalSize > 0 {
+					perc = float64(totalDone) * 100 / float64(totalSize)
+				}
+				// Report overall migration progress
+				log.Printf("# Overall migration Progress # (%d / %d) %.1f%%\n", totalDone, totalSize, perc)
+
+				// Report individual devices
+				for name, prog := range p {
+					log.Printf(" [%s] Progress Migrated Blocks (%d/%d)  %d ready\n", name, prog.MigratedBlocks, prog.TotalBlocks, prog.ReadyBlocks)
+				}
+
 			},
 		},
 	); err != nil {
