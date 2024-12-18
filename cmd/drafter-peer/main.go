@@ -360,7 +360,7 @@ func main() {
 				log.Println("Exposed remote device", remoteDeviceID, "at", path)
 			},
 			OnRemoteDeviceAuthorityReceived: func(remoteDeviceID uint32, customPayload []byte) {
-				log.Println("Received authority for remote device", remoteDeviceID, "with custom payload", customPayload)
+				log.Println("Received authority for remote device", remoteDeviceID)
 			},
 			OnRemoteDeviceMigrationCompleted: func(remoteDeviceID uint32) {
 				log.Println("Completed migration of remote device", remoteDeviceID)
