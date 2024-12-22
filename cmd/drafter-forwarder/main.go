@@ -2,13 +2,12 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"log"
 	"net"
 	"os"
 	"os/signal"
-
-	"github.com/fxamacker/cbor/v2"
 
 	"github.com/loopholelabs/drafter/pkg/forwarder"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
@@ -17,7 +16,7 @@ import (
 func main() {
 	rawHostVethCIDR := flag.String("host-veth-cidr", "10.0.8.0/22", "CIDR for the veths outside the namespace")
 
-	defaultPortForwards, err := cbor.Marshal([]forwarder.PortForward{
+	defaultPortForwards, err := json.Marshal([]forwarder.PortForward{
 		{
 			Netns:        "ark0",
 			InternalPort: "6379",
@@ -35,7 +34,7 @@ func main() {
 	flag.Parse()
 
 	var portForwards []forwarder.PortForward
-	if err := cbor.Unmarshal([]byte(*rawPortForwards), &portForwards); err != nil {
+	if err := json.Unmarshal([]byte(*rawPortForwards), &portForwards); err != nil {
 		panic(err)
 	}
 

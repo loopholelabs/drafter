@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"log"
 	"os"
@@ -9,8 +10,6 @@ import (
 	"os/signal"
 	"path/filepath"
 	"time"
-
-	"github.com/fxamacker/cbor/v2"
 
 	"github.com/loopholelabs/drafter/pkg/packager"
 	"github.com/loopholelabs/drafter/pkg/snapshotter"
@@ -41,7 +40,7 @@ func main() {
 	livenessVSockPort := flag.Int("liveness-vsock-port", 25, "Liveness VSock port")
 	agentVSockPort := flag.Int("agent-vsock-port", 26, "Agent VSock port")
 
-	defaultDevices, err := cbor.Marshal([]snapshotter.SnapshotDevice{
+	defaultDevices, err := json.Marshal([]snapshotter.SnapshotDevice{
 		{
 			Name:   packager.StateName,
 			Output: filepath.Join("out", "package", "state.bin"),
@@ -90,7 +89,7 @@ func main() {
 	defer cancel()
 
 	var devices []snapshotter.SnapshotDevice
-	if err := cbor.Unmarshal([]byte(*rawDevices), &devices); err != nil {
+	if err := json.Unmarshal([]byte(*rawDevices), &devices); err != nil {
 		panic(err)
 	}
 

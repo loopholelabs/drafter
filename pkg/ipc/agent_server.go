@@ -2,13 +2,12 @@ package ipc
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
 	"os"
 	"sync"
-
-	"github.com/fxamacker/cbor/v2"
 
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 	"github.com/pojntfx/panrpc/go/pkg/rpc"
@@ -198,7 +197,7 @@ func (agentServer *AgentServer[L, R, G]) Accept(
 		}
 	})
 
-	registry := rpc.NewRegistry[R, cbor.RawMessage](
+	registry := rpc.NewRegistry[R, json.RawMessage](
 		agentServer.agentServerLocal,
 
 		&rpc.RegistryHooks{
@@ -216,29 +215,29 @@ func (agentServer *AgentServer[L, R, G]) Accept(
 		// We don't `defer conn.Close` here since Firecracker handles resetting active VSock connections for us
 		defer cancelLinkCtx(nil)
 
-		encoder := cbor.NewEncoder(conn)
-		decoder := cbor.NewDecoder(conn)
+		encoder := json.NewEncoder(conn)
+		decoder := json.NewDecoder(conn)
 
 		if err := registry.LinkStream(
 			linkCtx,
 
-			func(v rpc.Message[cbor.RawMessage]) error {
+			func(v rpc.Message[json.RawMessage]) error {
 				return encoder.Encode(v)
 			},
-			func(v *rpc.Message[cbor.RawMessage]) error {
+			func(v *rpc.Message[json.RawMessage]) error {
 				return decoder.Decode(v)
 			},
 
-			func(v any) (cbor.RawMessage, error) {
-				b, err := cbor.Marshal(v)
+			func(v any) (json.RawMessage, error) {
+				b, err := json.Marshal(v)
 				if err != nil {
 					return nil, err
 				}
 
-				return cbor.RawMessage(b), nil
+				return json.RawMessage(b), nil
 			},
-			func(data cbor.RawMessage, v any) error {
-				return cbor.Unmarshal([]byte(data), v)
+			func(data json.RawMessage, v any) error {
+				return json.Unmarshal([]byte(data), v)
 			},
 
 			nil,

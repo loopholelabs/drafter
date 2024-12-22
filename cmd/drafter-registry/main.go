@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -11,15 +12,13 @@ import (
 	"os/signal"
 	"path/filepath"
 
-	"github.com/fxamacker/cbor/v2"
-
 	"github.com/loopholelabs/drafter/pkg/packager"
 	"github.com/loopholelabs/drafter/pkg/registry"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 )
 
 func main() {
-	defaultDevices, err := cbor.Marshal([]registry.RegistryDevice{
+	defaultDevices, err := json.Marshal([]registry.RegistryDevice{
 		{
 			Name:      packager.StateName,
 			Input:     filepath.Join("out", "package", "state.bin"),
@@ -70,7 +69,7 @@ func main() {
 	defer cancel()
 
 	var devices []registry.RegistryDevice
-	if err := cbor.Unmarshal([]byte(*rawDevices), &devices); err != nil {
+	if err := json.Unmarshal([]byte(*rawDevices), &devices); err != nil {
 		panic(err)
 	}
 

@@ -2,12 +2,11 @@ package peer
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"strings"
 	"time"
-
-	"github.com/fxamacker/cbor/v2"
 
 	"github.com/loopholelabs/drafter/pkg/ipc"
 	"github.com/loopholelabs/drafter/pkg/packager"
@@ -67,7 +66,7 @@ func (migratedPeer *MigratedPeer[L, R, G]) Resume(
 	defer packageConfigFile.Close()
 
 	var packageConfig snapshotter.PackageConfiguration
-	if err := cbor.NewDecoder(packageConfigFile).Decode(&packageConfig); err != nil {
+	if err := json.NewDecoder(packageConfigFile).Decode(&packageConfig); err != nil {
 		return nil, errors.Join(ErrCouldNotDecodeConfigFile, err)
 	}
 
