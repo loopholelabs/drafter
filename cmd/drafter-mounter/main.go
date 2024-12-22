@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"flag"
 	"io"
@@ -14,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/fxamacker/cbor/v2"
 
 	"github.com/loopholelabs/drafter/pkg/mounter"
 	"github.com/loopholelabs/drafter/pkg/packager"
@@ -41,7 +42,7 @@ type CompositeDevices struct {
 }
 
 func main() {
-	defaultDevices, err := json.Marshal([]CompositeDevices{
+	defaultDevices, err := cbor.Marshal([]CompositeDevices{
 		{
 			Name: packager.StateName,
 
@@ -177,7 +178,7 @@ func main() {
 	defer cancel()
 
 	var devices []CompositeDevices
-	if err := json.Unmarshal([]byte(*rawDevices), &devices); err != nil {
+	if err := cbor.Unmarshal([]byte(*rawDevices), &devices); err != nil {
 		panic(err)
 	}
 

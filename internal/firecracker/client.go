@@ -3,11 +3,12 @@ package firecracker
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
 	"path"
+
+	"github.com/fxamacker/cbor/v2"
 
 	v1 "github.com/loopholelabs/drafter/internal/api/http/firecracker/v1"
 )
@@ -40,7 +41,7 @@ const (
 )
 
 func submitJSON(ctx context.Context, method string, client *http.Client, body any, resource string) error {
-	p, err := json.Marshal(body)
+	p, err := cbor.Marshal(body)
 	if err != nil {
 		return errors.Join(ErrCouldNotMarshalJSON, err)
 	}

@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"flag"
 	"log"
 	"os"
@@ -12,6 +11,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/fxamacker/cbor/v2"
 
 	"github.com/loopholelabs/drafter/pkg/ipc"
 	"github.com/loopholelabs/drafter/pkg/packager"
@@ -30,7 +31,7 @@ type SharableDevice struct {
 }
 
 func main() {
-	defaultDevices, err := json.Marshal([]SharableDevice{
+	defaultDevices, err := cbor.Marshal([]SharableDevice{
 		{
 			Name:   packager.StateName,
 			Path:   filepath.Join("out", "package", "state.bin"),
@@ -100,7 +101,7 @@ func main() {
 	defer cancel()
 
 	var devices []SharableDevice
-	if err := json.Unmarshal([]byte(*rawDevices), &devices); err != nil {
+	if err := cbor.Unmarshal([]byte(*rawDevices), &devices); err != nil {
 		panic(err)
 	}
 
@@ -134,7 +135,7 @@ func main() {
 	defer configFile.Close()
 
 	var packageConfig snapshotter.PackageConfiguration
-	if err := json.NewDecoder(configFile).Decode(&packageConfig); err != nil {
+	if err := cbor.NewDecoder(configFile).Decode(&packageConfig); err != nil {
 		panic(err)
 	}
 

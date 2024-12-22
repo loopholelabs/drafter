@@ -2,19 +2,20 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"flag"
 	"log"
 	"os"
 	"os/signal"
 	"path/filepath"
 
+	"github.com/fxamacker/cbor/v2"
+
 	"github.com/loopholelabs/drafter/pkg/packager"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 )
 
 func main() {
-	defaultDevices, err := json.Marshal([]packager.PackagerDevice{
+	defaultDevices, err := cbor.Marshal([]packager.PackagerDevice{
 		{
 			Name: packager.StateName,
 			Path: filepath.Join("out", "package", "state.bin"),
@@ -56,7 +57,7 @@ func main() {
 	flag.Parse()
 
 	var devices []packager.PackagerDevice
-	if err := json.Unmarshal([]byte(*rawDevices), &devices); err != nil {
+	if err := cbor.Unmarshal([]byte(*rawDevices), &devices); err != nil {
 		panic(err)
 	}
 

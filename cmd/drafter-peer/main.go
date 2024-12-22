@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"flag"
 	"io"
@@ -15,6 +14,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/fxamacker/cbor/v2"
 
 	"github.com/loopholelabs/drafter/pkg/ipc"
 	"github.com/loopholelabs/drafter/pkg/mounter"
@@ -70,7 +71,7 @@ func main() {
 	experimentalMapPrivateStateOutput := flag.String("experimental-map-private-state-output", "", "(Experimental) Path to write the local changes to the shared state to (leave empty to write back to device directly) (ignored unless --experimental-map-private)")
 	experimentalMapPrivateMemoryOutput := flag.String("experimental-map-private-memory-output", "", "(Experimental) Path to write the local changes to the shared memory to (leave empty to write back to device directly) (ignored unless --experimental-map-private)")
 
-	defaultDevices, err := json.Marshal([]CompositeDevices{
+	defaultDevices, err := cbor.Marshal([]CompositeDevices{
 		{
 			Name: packager.StateName,
 
@@ -212,7 +213,7 @@ func main() {
 	defer cancel()
 
 	var devices []CompositeDevices
-	if err := json.Unmarshal([]byte(*rawDevices), &devices); err != nil {
+	if err := cbor.Unmarshal([]byte(*rawDevices), &devices); err != nil {
 		panic(err)
 	}
 

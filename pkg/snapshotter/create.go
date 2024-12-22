@@ -2,7 +2,6 @@ package snapshotter
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"io"
 	"net"
@@ -12,6 +11,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/fxamacker/cbor/v2"
 
 	"github.com/loopholelabs/drafter/internal/firecracker"
 	iutils "github.com/loopholelabs/drafter/internal/utils"
@@ -296,7 +297,7 @@ func CreateSnapshot(
 		panic(errors.Join(ErrCouldNotCreateSnapshot, err))
 	}
 
-	packageConfig, err := json.Marshal(PackageConfiguration{
+	packageConfig, err := cbor.Marshal(PackageConfiguration{
 		AgentVSockPort: agentConfiguration.AgentVSockPort,
 	})
 	if err != nil {

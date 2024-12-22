@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"flag"
 	"io"
 	"log"
@@ -11,13 +10,15 @@ import (
 	"os/signal"
 	"path/filepath"
 
+	"github.com/fxamacker/cbor/v2"
+
 	"github.com/loopholelabs/drafter/pkg/packager"
 	"github.com/loopholelabs/drafter/pkg/terminator"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 )
 
 func main() {
-	defaultDevices, err := json.Marshal([]terminator.TerminatorDevice{
+	defaultDevices, err := cbor.Marshal([]terminator.TerminatorDevice{
 		{
 			Name:   packager.StateName,
 			Output: filepath.Join("out", "package", "state.bin"),
@@ -60,7 +61,7 @@ func main() {
 	defer cancel()
 
 	var devices []terminator.TerminatorDevice
-	if err := json.Unmarshal([]byte(*rawDevices), &devices); err != nil {
+	if err := cbor.Unmarshal([]byte(*rawDevices), &devices); err != nil {
 		panic(err)
 	}
 
