@@ -1,6 +1,9 @@
 name: Tests
 
 on:
+  push:
+    paths-ignore:
+      - ".github/signatures/**"
   pull_request:
     paths-ignore:
       - '.github/signatures/**'
