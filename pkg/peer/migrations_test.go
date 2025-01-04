@@ -8,19 +8,11 @@ import (
 	"path"
 	"testing"
 
+	"github.com/loopholelabs/silo/pkg/storage/devicegroup"
 	"github.com/stretchr/testify/assert"
 )
 
-func TestMigrateFromFs(t *testing.T) {
-	currentUser, err := user.Current()
-	if err != nil {
-		panic(err)
-	}
-	if currentUser.Username != "root" {
-		fmt.Printf("Cannot run test unless we are root.\n")
-		return
-	}
-
+func setupFromFs(t *testing.T) (string, *devicegroup.DeviceGroup) {
 	// First lets setup a temp dir
 	tdir, err := os.MkdirTemp("", "drafter_vm_*")
 	assert.NoError(t, err)
@@ -71,4 +63,40 @@ func TestMigrateFromFs(t *testing.T) {
 	t.Cleanup(func() {
 		os.Remove(tdir)
 	})
+
+	return tdir, dg
+}
+
+func TestMigrateFromFs(t *testing.T) {
+	currentUser, err := user.Current()
+	if err != nil {
+		panic(err)
+	}
+	if currentUser.Username != "root" {
+		fmt.Printf("Cannot run test unless we are root.\n")
+		return
+	}
+
+	setupFromFs(t)
+}
+
+func TestMigrateFromFsThenBetween(t *testing.T) {
+	currentUser, err := user.Current()
+	if err != nil {
+		panic(err)
+	}
+	if currentUser.Username != "root" {
+		fmt.Printf("Cannot run test unless we are root.\n")
+		return
+	}
+
+	/*
+		TODO: Finish this... We should migrate through a pipe
+
+		tdir, dg := setupFromFs(t)
+
+		migrateToPipe()
+
+		migrateFromPipe()
+	*/
 }

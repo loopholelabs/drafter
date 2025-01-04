@@ -2,6 +2,7 @@ package peer
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"io"
 	"sync"
@@ -75,12 +76,29 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 			return nil
 		})
 
-		// For now, wait here until all migrations completed...
-		// This shouldn't be necessary
-		err = migratedPeer.Wait()
-		if err != nil {
-			return nil, err
+		names := dg.GetAllNames()
+		for _, n := range names {
+			di := dg.GetDeviceInformationByName(n)
+
+			a1, a2 := di.WaitingCacheLocal.Availability()
+			fmt.Printf("[%s] Waiting cache %d %d / %d\n", n, a1, a2, di.NumBlocks)
+
+			size := di.Prov.Size()
+			buffer := make([]byte, size)
+			di.Prov.ReadAt(buffer, 0)
+			// Calc hash (NB This should wait for any blocks)
+			hash := sha256.Sum256(buffer)
+			fmt.Printf("DATA[%s] is %x\n", n, hash)
 		}
+
+		/*
+			// For now, wait here until all migrations completed...
+			// This shouldn't be necessary
+			err = migratedPeer.Wait()
+			if err != nil {
+				return nil, err
+			}
+		*/
 	}
 
 	//
