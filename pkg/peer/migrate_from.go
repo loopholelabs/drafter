@@ -2,136 +2,12 @@ package peer
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
-	"strings"
 	"sync"
-	"syscall"
 
 	"github.com/loopholelabs/drafter/pkg/mounter"
-	"github.com/loopholelabs/drafter/pkg/registry"
-	"github.com/loopholelabs/drafter/pkg/snapshotter"
-	"github.com/loopholelabs/goroutine-manager/pkg/manager"
-	"github.com/loopholelabs/silo/pkg/storage/config"
-	"github.com/loopholelabs/silo/pkg/storage/devicegroup"
-	"github.com/loopholelabs/silo/pkg/storage/protocol"
-	"github.com/loopholelabs/silo/pkg/storage/protocol/packets"
-	"golang.org/x/sys/unix"
 )
-
-type MigrateFromDevice struct {
-	Name      string `json:"name"`
-	Base      string `json:"base"`
-	Overlay   string `json:"overlay"`
-	State     string `json:"state"`
-	BlockSize uint32 `json:"blockSize"`
-	Shared    bool   `json:"shared"`
-}
-
-// expose a Silo Device as a file within the vm directory
-func exposeSiloDeviceAsFile(vmpath string, name string, devicePath string) error {
-	deviceInfo, err := os.Stat(devicePath)
-	if err != nil {
-		return errors.Join(snapshotter.ErrCouldNotGetDeviceStat, err)
-	}
-
-	deviceStat, ok := deviceInfo.Sys().(*syscall.Stat_t)
-	if !ok {
-		return ErrCouldNotGetNBDDeviceStat
-	}
-
-	err = unix.Mknod(filepath.Join(vmpath, name), unix.S_IFBLK|0666, int(deviceStat.Rdev))
-	if err != nil {
-		return errors.Join(ErrCouldNotCreateDeviceNode, err)
-	}
-
-	return nil
-}
-
-/**
- * This creates a Silo Dev Schema given a MigrateFromDevice
- * If you want to change the type of storage used, or Silo options, you can do so here.
- *
- */
-func createSiloDevSchema(i *MigrateFromDevice) (*config.DeviceSchema, error) {
-	stat, err := os.Stat(i.Base)
-	if err != nil {
-		return nil, errors.Join(mounter.ErrCouldNotGetBaseDeviceStat, err)
-	}
-
-	ds := &config.DeviceSchema{
-		Name:      i.Name,
-		BlockSize: fmt.Sprintf("%v", i.BlockSize),
-		Expose:    true,
-		Size:      fmt.Sprintf("%v", stat.Size()),
-	}
-	if strings.TrimSpace(i.Overlay) == "" || strings.TrimSpace(i.State) == "" {
-		ds.System = "file"
-		ds.Location = i.Base
-	} else {
-		err := os.MkdirAll(filepath.Dir(i.Overlay), os.ModePerm)
-		if err != nil {
-			return nil, errors.Join(mounter.ErrCouldNotCreateOverlayDirectory, err)
-		}
-
-		err = os.MkdirAll(filepath.Dir(i.State), os.ModePerm)
-		if err != nil {
-			return nil, errors.Join(mounter.ErrCouldNotCreateStateDirectory, err)
-		}
-
-		ds.System = "sparsefile"
-		ds.Location = i.Overlay
-
-		ds.ROSource = &config.DeviceSchema{
-			Name:     i.State,
-			System:   "file",
-			Location: i.Base,
-			Size:     fmt.Sprintf("%v", stat.Size()),
-		}
-	}
-	return ds, nil
-}
-
-/**
- * 'migrate' from the local filesystem.
- *
- */
-func migrateFromFS(vmpath string, devices []MigrateFromDevice) (*devicegroup.DeviceGroup, error) {
-	siloDeviceSchemas := make([]*config.DeviceSchema, 0)
-	for _, input := range devices {
-		if input.Shared {
-			// Deal with shared devices here...
-			err := exposeSiloDeviceAsFile(vmpath, input.Name, input.Base)
-			if err != nil {
-				return nil, err
-			}
-		} else {
-			ds, err := createSiloDevSchema(&input)
-			if err != nil {
-				return nil, err
-			}
-			siloDeviceSchemas = append(siloDeviceSchemas, ds)
-		}
-	}
-
-	// Create a silo deviceGroup from all the schemas
-	dg, err := devicegroup.NewFromSchema(siloDeviceSchemas, nil, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, input := range siloDeviceSchemas {
-		dev := dg.GetExposedDeviceByName(input.Name)
-		err = exposeSiloDeviceAsFile(vmpath, input.Name, filepath.Join("/dev", dev.Device()))
-		if err != nil {
-			return nil, err
-		}
-	}
-	return dg, nil
-}
 
 func (peer *Peer[L, R, G]) MigrateFrom(
 	ctx context.Context,
@@ -172,62 +48,26 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 		return nil
 	}
 
-	goroutineManager := manager.NewGoroutineManager(ctx, &errs, manager.GoroutineManagerHooks{})
-	defer goroutineManager.Wait()
-	defer goroutineManager.StopAllGoroutines()
-	defer goroutineManager.CreateBackgroundPanicCollector()()
-
 	// Migrate the devices from a protocol
 	if len(readers) > 0 && len(writers) > 0 {
 		protocolCtx, cancelProtocolCtx := context.WithCancel(ctx)
-		allRemoteDevicesReady := make(chan bool)
 
-		pro := protocol.NewRW(protocolCtx, readers, writers, nil)
-
-		// Start a goroutine to do the protocol Handle()
-		goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
-			err := pro.Handle()
-			if err != nil && !errors.Is(err, io.EOF) {
-				panic(errors.Join(registry.ErrCouldNotHandleProtocol, err))
-			}
-		})
-
-		// TODO: This schema tweak function should be exposed / passed in
-		tweak := func(index int, name string, schema string) string {
-			s := strings.ReplaceAll(schema, "instance-0", "instance-1")
-			fmt.Printf("Tweaked schema for %s...\n%s\n\n", name, s)
-			return string(s)
-		}
-
-		events := func(e *packets.Event) {}
-		cdh := func(data []byte) {
-			if len(data) == 1 && data[0] == byte(registry.EventCustomTransferAuthority) {
-				close(allRemoteDevicesReady)
-			}
-		}
-		dg, err := devicegroup.NewFromProtocol(protocolCtx, pro, tweak, events, cdh, nil, nil)
+		dg, err := migrateFromPipe(migratedPeer.runner.VMPath, protocolCtx, readers, writers)
 		if err != nil {
 			return nil, err
-		}
-
-		// Expose all devices
-		for _, n := range dg.GetAllNames() {
-			dev := dg.GetExposedDeviceByName(n)
-			if dev != nil {
-				err := exposeSiloDeviceAsFile(migratedPeer.runner.VMPath, n, filepath.Join("/dev", dev.Device()))
-				if err != nil {
-					return nil, err
-				}
-			}
 		}
 
 		migratedPeer.Wait = sync.OnceValue(func() error {
 			defer cancelProtocolCtx()
 
+			fmt.Printf("Waiting for dg completion...\n")
 			err := dg.WaitForCompletion()
 			if err != nil {
 				return err
 			}
+
+			fmt.Printf("Migrations completed.\n")
+
 			// Save dg for future migrations.
 			migratedPeer.DgLock.Lock()
 			migratedPeer.Dg = dg
@@ -235,14 +75,12 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 			return nil
 		})
 
-		// Wait until devices are ready to be used, or until context cancelled.
-		select {
-		case <-goroutineManager.Context().Done():
-			return nil, errors.Join(ErrPeerContextCancelled, goroutineManager.Context().Err())
-		case <-allRemoteDevicesReady:
-			break
+		// For now, wait here until all migrations completed...
+		// This shouldn't be necessary
+		err = migratedPeer.Wait()
+		if err != nil {
+			return nil, err
 		}
-
 	}
 
 	//
@@ -264,6 +102,8 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 			hook()
 		}
 	}
+
+	fmt.Printf("Ready to use VM\n")
 
 	return
 }
