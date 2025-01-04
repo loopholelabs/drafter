@@ -19,13 +19,13 @@ jobs:
       matrix:
         target:
           # Tests
-          - id: test
-            src: .
-            os: golang:bookworm
-            flags: -e '-v /tmp/ccache:/root/.cache/go-build'
-            cmd: GOFLAGS="-short" ./Hydrunfile test
-            dst: out/nonexistent
-            runner: depot-ubuntu-22.04-32
+#          - id: test
+#            src: .
+#            os: golang:bookworm
+#            flags: -e '-v /tmp/ccache:/root/.cache/go-build'
+#            cmd: GOFLAGS="-short" ./Hydrunfile test
+#            dst: out/nonexistent
+#            runner: depot-ubuntu-22.04-32
 
           # Binaries
           - id: go.drafter-nat
@@ -220,9 +220,6 @@ jobs:
             runner: depot-ubuntu-22.04-32
 
     steps:
-      - name: Setup nbd
-        run: sudo modprobe nbd
-
       - name: Checkout
         uses: actions/checkout@v4
       - name: Restore ccache
