@@ -2,11 +2,8 @@ package peer
 
 import (
 	"context"
-	"crypto/sha256"
 	"fmt"
 	"io"
-	"log"
-	"os"
 	"sync"
 
 	"github.com/loopholelabs/drafter/pkg/mounter"
@@ -77,28 +74,29 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 			migratedPeer.DgLock.Unlock()
 			return nil
 		})
+		/*
+			names := dg.GetAllNames()
+			for _, n := range names {
+				di := dg.GetDeviceInformationByName(n)
 
-		names := dg.GetAllNames()
-		for _, n := range names {
-			di := dg.GetDeviceInformationByName(n)
+				a1, a2 := di.WaitingCacheLocal.Availability()
+				fmt.Printf("[%s] Waiting cache %d %d / %d\n", n, a1, a2, di.NumBlocks)
 
-			a1, a2 := di.WaitingCacheLocal.Availability()
-			fmt.Printf("[%s] Waiting cache %d %d / %d\n", n, a1, a2, di.NumBlocks)
+				// Read straight from device...
+				fp, err := os.Open(fmt.Sprintf("/dev/%s", di.Exp.Device()))
+				if err != nil {
+					panic(err)
+				}
 
-			// Read straight from device...
-			fp, err := os.Open(fmt.Sprintf("/dev/%s", di.Exp.Device()))
-			if err != nil {
-				panic(err)
+				size := di.Prov.Size()
+				buffer := make([]byte, size)
+				fp.ReadAt(buffer, 0)
+				hash := sha256.Sum256(buffer)
+				log.Printf("DATA[%s] %d hash %x\n", n, size, hash)
+
+				fp.Close()
 			}
-
-			size := di.Prov.Size()
-			buffer := make([]byte, size)
-			fp.ReadAt(buffer, 0)
-			hash := sha256.Sum256(buffer)
-			log.Printf("DATA[%s] %d hash %x\n", n, size, hash)
-
-			fp.Close()
-		}
+		*/
 	}
 
 	//

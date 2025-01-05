@@ -2,11 +2,7 @@ package peer
 
 import (
 	"context"
-	"crypto/sha256"
-	"fmt"
 	"io"
-	"log"
-	"os"
 	"time"
 
 	"github.com/loopholelabs/drafter/pkg/mounter"
@@ -52,27 +48,28 @@ func (migratablePeer *ResumedPeer[L, R, G]) MigrateTo(
 	}
 
 	// Log checksums...
-	names := migratablePeer.Dg.GetAllNames()
-	for _, n := range names {
-		di := migratablePeer.Dg.GetDeviceInformationByName(n)
+	/*
+		names := migratablePeer.Dg.GetAllNames()
+		for _, n := range names {
+			di := migratablePeer.Dg.GetDeviceInformationByName(n)
 
-		dirty := di.DirtyRemote.MeasureDirty()
+			dirty := di.DirtyRemote.MeasureDirty()
 
-		// Read straight from device...
-		fp, err := os.Open(fmt.Sprintf("/dev/%s", di.Exp.Device()))
-		if err != nil {
-			panic(err)
+			// Read straight from device...
+			fp, err := os.Open(fmt.Sprintf("/dev/%s", di.Exp.Device()))
+			if err != nil {
+				panic(err)
+			}
+
+			size := di.Prov.Size()
+			buffer := make([]byte, size)
+			fp.ReadAt(buffer, 0)
+			hash := sha256.Sum256(buffer)
+			log.Printf("DATA[%s] %d hash %x dirty %d\n", n, size, hash, dirty)
+
+			fp.Close()
 		}
-
-		size := di.Prov.Size()
-		buffer := make([]byte, size)
-		fp.ReadAt(buffer, 0)
-		hash := sha256.Sum256(buffer)
-		log.Printf("DATA[%s] %d hash %x dirty %d\n", n, size, hash, dirty)
-
-		fp.Close()
-	}
-
+	*/
 	if hooks.OnAllMigrationsCompleted != nil {
 		hooks.OnAllMigrationsCompleted()
 	}

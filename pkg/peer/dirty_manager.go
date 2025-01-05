@@ -30,6 +30,7 @@ type DirtyManager struct {
 	authorityTransferCompleted bool
 	suspendLock                sync.Mutex
 	suspendCompleted           bool
+	suspendDoneCh              chan bool
 }
 
 func NewDirtyManager(vmState *VMStateMgr, devices map[string]*DeviceStatus, authorityTransfer func() error) *DirtyManager {
@@ -38,6 +39,7 @@ func NewDirtyManager(vmState *VMStateMgr, devices map[string]*DeviceStatus, auth
 		Devices:           devices,
 		ReadyDevices:      make(map[string]*DeviceStatus),
 		AuthorityTransfer: authorityTransfer,
+		suspendDoneCh:     make(chan bool),
 	}
 }
 
@@ -113,10 +115,23 @@ func (dm *DirtyManager) PostMigrateDirty(name string, blocks []uint) (bool, erro
 	}
 
 	di := dm.Devices[name]
-	time.Sleep(di.CycleThrottle)
-	if dm.VMState.CheckSuspendedVM() {
-		return true, nil // VM is suspended, all done.
+
+	delay := time.After(di.CycleThrottle)
+
+	select {
+	case <-delay:
+	case <-dm.suspendDoneCh: // Interrupt the cycleThrottle because it's been suspended.
+		dm.ReadyDevicesLock.Lock()
+		sd := di.ReadyAndSentDirty
+		dm.ReadyDevicesLock.Unlock()
+
+		if !sd {
+			break // Shortcut out of here. The device hasn't sent a dirtyList
+		}
+
+		<-delay // Wait for the full delay
 	}
+
 	di.TotalCycles++
 
 	if len(blocks) < di.MaxDirtyBlocks {
@@ -144,6 +159,7 @@ func (dm *DirtyManager) PostMigrateDirty(name string, blocks []uint) (bool, erro
 			err := dm.VMState.SuspendAndMsync()
 
 			dm.suspendCompleted = true
+			close(dm.suspendDoneCh)
 			dm.suspendLock.Unlock()
 
 			if err != nil {
