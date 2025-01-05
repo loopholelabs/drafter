@@ -13,9 +13,12 @@ import (
 	"github.com/loopholelabs/drafter/pkg/mounter"
 	"github.com/loopholelabs/drafter/pkg/registry"
 	"github.com/loopholelabs/drafter/pkg/snapshotter"
+	"github.com/loopholelabs/logging"
+	"github.com/loopholelabs/logging/types"
 	"github.com/loopholelabs/silo/pkg/storage/config"
 	"github.com/loopholelabs/silo/pkg/storage/devicegroup"
 	"github.com/loopholelabs/silo/pkg/storage/migrator"
+	"github.com/loopholelabs/silo/pkg/storage/modules"
 	"github.com/loopholelabs/silo/pkg/storage/protocol"
 	"github.com/loopholelabs/silo/pkg/storage/protocol/packets"
 	"golang.org/x/sys/unix"
@@ -121,6 +124,13 @@ func migrateFromFS(vmpath string, devices []MigrateFromDevice) (*devicegroup.Dev
 	if err != nil {
 		return nil, err
 	}
+
+	// For state, add some logging...
+	log := logging.New(logging.Zerolog, "drafter", os.Stderr)
+	log.SetLevel(types.TraceLevel)
+	di := dg.GetDeviceInformationByName("state")
+	logger := modules.NewLogger(di.Volatility, "state", log)
+	di.Exp.SetProvider(logger)
 
 	for _, input := range siloDeviceSchemas {
 		dev := dg.GetExposedDeviceByName(input.Name)

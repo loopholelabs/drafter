@@ -627,7 +627,7 @@ func main() {
 
 				// Report individual devices
 				for name, prog := range p {
-					log.Printf(" [%s] Progress Migrated Blocks (%d/%d)  %d ready\n", name, prog.MigratedBlocks, prog.TotalBlocks, prog.ReadyBlocks)
+					log.Printf(" [%s] Progress Migrated Blocks (%d/%d)  %d ready %d total\n", name, prog.MigratedBlocks, prog.TotalBlocks, prog.ReadyBlocks, prog.TotalMigratedBlocks)
 				}
 
 			},

@@ -3,8 +3,10 @@ package peer
 import (
 	"context"
 	"crypto/sha256"
+	"fmt"
 	"io"
 	"log"
+	"os"
 	"time"
 
 	"github.com/loopholelabs/drafter/pkg/mounter"
@@ -56,12 +58,19 @@ func (migratablePeer *ResumedPeer[L, R, G]) MigrateTo(
 
 		dirty := di.DirtyRemote.MeasureDirty()
 
+		// Read straight from device...
+		fp, err := os.Open(fmt.Sprintf("/dev/%s", di.Exp.Device()))
+		if err != nil {
+			panic(err)
+		}
+
 		size := di.Prov.Size()
 		buffer := make([]byte, size)
-		di.Prov.ReadAt(buffer, 0)
-		// Calc hash (NB This should wait for any blocks)
+		fp.ReadAt(buffer, 0)
 		hash := sha256.Sum256(buffer)
 		log.Printf("DATA[%s] %d hash %x dirty %d\n", n, size, hash, dirty)
+
+		fp.Close()
 	}
 
 	if hooks.OnAllMigrationsCompleted != nil {
