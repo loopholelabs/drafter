@@ -3,6 +3,7 @@ package peer
 import (
 	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -19,13 +20,38 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func readAllFromDevice(name string, size int) ([]byte, error) {
+	fd, err := os.Open(name)
+	if err != nil {
+		return nil, err
+	}
+
+	// Try reading the device...
+	buffer := make([]byte, size)
+	n, err := fd.ReadAt(buffer, 0)
+	if n != size {
+		return nil, errors.New("unable to read full data")
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	err = fd.Close()
+	if err != nil {
+		return nil, err
+	}
+	return buffer, nil
+}
+
+const testFileSize = 16 * 1024 * 1024
+
 func setupFromFs(t *testing.T) (string, *devicegroup.DeviceGroup) {
 	// First lets setup a temp dir
 	tdir, err := os.MkdirTemp("", "drafter_vm_*")
 	assert.NoError(t, err)
 
 	// Create a dummy file to hold data for Silo.
-	data := make([]byte, 1024*1024*16) // 16M
+	data := make([]byte, testFileSize) // 16M
 	_, err = rand.Read(data)
 	assert.NoError(t, err)
 	os.WriteFile(path.Join(tdir, "file_data"), data, 0777)
@@ -51,18 +77,9 @@ func setupFromFs(t *testing.T) (string, *devicegroup.DeviceGroup) {
 	assert.Equal(t, 1, len(names))
 	assert.Equal(t, "test", names[0])
 
-	fd, err := os.Open(path.Join(tdir, "test"))
+	ddata, err := readAllFromDevice(path.Join(tdir, "test"), len(data))
 	assert.NoError(t, err)
-
-	// Try reading the device...
-	buffer := make([]byte, len(data))
-	n, err := fd.ReadAt(buffer, 0)
-	assert.Equal(t, len(data), n)
-	assert.NoError(t, err)
-	assert.Equal(t, data, buffer)
-
-	err = fd.Close()
-	assert.NoError(t, err)
+	assert.Equal(t, data, ddata)
 
 	t.Cleanup(func() {
 		err = dg.CloseAll()
@@ -145,6 +162,12 @@ func TestMigrateFromFsThenBetween(t *testing.T) {
 		assert.Equal(t, "test", names[0])
 
 		// TODO: Read data from tdir2 and make sure it matches.
+		ddata1, err := readAllFromDevice(path.Join(tdir, "test"), testFileSize)
+		assert.NoError(t, err)
+		ddata2, err := readAllFromDevice(path.Join(tdir2, "test"), testFileSize)
+		assert.NoError(t, err)
+
+		assert.Equal(t, ddata1, ddata2)
 
 		err = dg2.WaitForCompletion()
 		assert.NoError(t, err)
