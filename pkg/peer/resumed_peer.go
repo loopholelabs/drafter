@@ -5,9 +5,28 @@ import (
 	"io"
 	"time"
 
+	"github.com/loopholelabs/drafter/pkg/ipc"
 	"github.com/loopholelabs/drafter/pkg/mounter"
+	"github.com/loopholelabs/drafter/pkg/runner"
+	"github.com/loopholelabs/silo/pkg/storage/devicegroup"
 	"github.com/loopholelabs/silo/pkg/storage/migrator"
 )
+
+type ResumedPeer[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] struct {
+	Dg            *devicegroup.DeviceGroup
+	Remote        R
+	Wait          func() error
+	Close         func() error
+	resumedRunner *runner.ResumedRunner[L, R, G]
+}
+
+func (resumedPeer *ResumedPeer[L, R, G]) SuspendAndCloseAgentServer(ctx context.Context, resumeTimeout time.Duration) error {
+	return resumedPeer.resumedRunner.SuspendAndCloseAgentServer(
+		ctx,
+
+		resumeTimeout,
+	)
+}
 
 // Callbacks
 type MigrateToHooks struct {

@@ -85,8 +85,13 @@ func TestDirtyManager(t *testing.T) {
 		if count > 5 {
 			suspendCalled.Wait()
 			msyncCalled.Wait()
-			authTransferCalled.Wait()
 		}
 
+		// Auth is tranfered on NEXT loop to allow dirtyList to be sent
+		if count > 6 {
+			// Make sure auth was transferred
+			authTransferCalled.Wait()
+		}
 	}
+
 }
