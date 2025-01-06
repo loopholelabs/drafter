@@ -13,12 +13,11 @@ import (
 	"github.com/loopholelabs/drafter/pkg/mounter"
 	"github.com/loopholelabs/drafter/pkg/registry"
 	"github.com/loopholelabs/drafter/pkg/snapshotter"
-	"github.com/loopholelabs/logging"
 	"github.com/loopholelabs/logging/types"
 	"github.com/loopholelabs/silo/pkg/storage/config"
 	"github.com/loopholelabs/silo/pkg/storage/devicegroup"
+	"github.com/loopholelabs/silo/pkg/storage/metrics"
 	"github.com/loopholelabs/silo/pkg/storage/migrator"
-	"github.com/loopholelabs/silo/pkg/storage/modules"
 	"github.com/loopholelabs/silo/pkg/storage/protocol"
 	"github.com/loopholelabs/silo/pkg/storage/protocol/packets"
 	"golang.org/x/sys/unix"
@@ -101,7 +100,7 @@ func createSiloDevSchema(i *MigrateFromDevice) (*config.DeviceSchema, error) {
  * 'migrate' from the local filesystem.
  *
  */
-func migrateFromFS(vmpath string, devices []MigrateFromDevice) (*devicegroup.DeviceGroup, error) {
+func migrateFromFS(log types.Logger, met metrics.SiloMetrics, vmpath string, devices []MigrateFromDevice) (*devicegroup.DeviceGroup, error) {
 	siloDeviceSchemas := make([]*config.DeviceSchema, 0)
 	for _, input := range devices {
 		if input.Shared {
@@ -120,23 +119,23 @@ func migrateFromFS(vmpath string, devices []MigrateFromDevice) (*devicegroup.Dev
 	}
 
 	// Create a silo deviceGroup from all the schemas
-	dg, err := devicegroup.NewFromSchema(siloDeviceSchemas, nil, nil)
+	dg, err := devicegroup.NewFromSchema(siloDeviceSchemas, log, met)
 	if err != nil {
 		return nil, err
 	}
-
-	// For state, add some logging...
-	log := logging.New(logging.Zerolog, "drafter", os.Stderr)
-	log.SetLevel(types.TraceLevel)
-	di := dg.GetDeviceInformationByName("state")
-	logger := modules.NewLogger(di.Volatility, "state", log)
-	di.Exp.SetProvider(logger)
 
 	for _, input := range siloDeviceSchemas {
 		dev := dg.GetExposedDeviceByName(input.Name)
 		err = exposeSiloDeviceAsFile(vmpath, input.Name, filepath.Join("/dev", dev.Device()))
 		if err != nil {
 			return nil, err
+		}
+		if log != nil {
+			log.Info().
+				Str("name", input.Name).
+				Str("vmpath", vmpath).
+				Str("device", dev.Device()).
+				Msg("silo device exposed")
 		}
 	}
 	return dg, nil
@@ -146,7 +145,8 @@ func migrateFromFS(vmpath string, devices []MigrateFromDevice) (*devicegroup.Dev
  * Migrate FROM a pipe
  * NB: You should call dg.WaitForCompletion() later to ensure migrations are finished
  */
-func migrateFromPipe(vmpath string, ctx context.Context, readers []io.Reader, writers []io.Writer) (*devicegroup.DeviceGroup, error) {
+func migrateFromPipe(log types.Logger, met metrics.SiloMetrics, vmpath string,
+	ctx context.Context, readers []io.Reader, writers []io.Writer, schemaTweak func(index int, name string, schema string) string) (*devicegroup.DeviceGroup, error) {
 	ready := make(chan bool)
 	pro := protocol.NewRW(ctx, readers, writers, nil)
 
@@ -156,15 +156,11 @@ func migrateFromPipe(vmpath string, ctx context.Context, readers []io.Reader, wr
 		if err != nil && !errors.Is(err, io.EOF) {
 			// This deserves a warning log message, but will result in other errors being returned
 			// so can be ignored here.
+			if log != nil {
+				log.Warn().Err(err).Msg("protocol handle error")
+			}
 		}
 	}()
-
-	// TODO: This schema tweak function should be exposed / passed in
-	tweak := func(index int, name string, schema string) string {
-		s := strings.ReplaceAll(schema, "instance-0", "instance-1")
-		fmt.Printf("Tweaked schema for %s...\n%s\n\n", name, s)
-		return string(s)
-	}
 
 	events := func(e *packets.Event) {}
 	cdh := func(data []byte) {
@@ -172,7 +168,7 @@ func migrateFromPipe(vmpath string, ctx context.Context, readers []io.Reader, wr
 			close(ready)
 		}
 	}
-	dg, err := devicegroup.NewFromProtocol(ctx, pro, tweak, events, cdh, nil, nil)
+	dg, err := devicegroup.NewFromProtocol(ctx, pro, schemaTweak, events, cdh, log, met)
 	if err != nil {
 		return nil, err
 	}
@@ -184,6 +180,13 @@ func migrateFromPipe(vmpath string, ctx context.Context, readers []io.Reader, wr
 			err := exposeSiloDeviceAsFile(vmpath, n, filepath.Join("/dev", dev.Device()))
 			if err != nil {
 				return nil, err
+			}
+			if log != nil {
+				log.Info().
+					Str("name", n).
+					Str("vmpath", vmpath).
+					Str("device", dev.Device()).
+					Msg("silo device exposed")
 			}
 		}
 	}

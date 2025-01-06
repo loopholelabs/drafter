@@ -34,7 +34,7 @@ func setupFromFs(t *testing.T) (string, *devicegroup.DeviceGroup) {
 		},
 	}
 
-	dg, err := migrateFromFS(tdir, devices)
+	dg, err := migrateFromFS(nil, nil, tdir, devices)
 	assert.NoError(t, err)
 
 	// Check the devices look ok and contain what we think they should...

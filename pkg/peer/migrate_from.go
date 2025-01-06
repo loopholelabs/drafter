@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 	"sync"
 
 	"github.com/loopholelabs/drafter/pkg/mounter"
@@ -52,7 +53,14 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 	if len(readers) > 0 && len(writers) > 0 {
 		protocolCtx, cancelProtocolCtx := context.WithCancel(ctx)
 
-		dg, err := migrateFromPipe(migratedPeer.runner.VMPath, protocolCtx, readers, writers)
+		// TODO: This schema tweak function should be exposed / passed in
+		tweak := func(index int, name string, schema string) string {
+			s := strings.ReplaceAll(schema, "instance-0", "instance-1")
+			fmt.Printf("Tweaked schema for %s...\n%s\n\n", name, s)
+			return string(s)
+		}
+
+		dg, err := migrateFromPipe(nil, nil, migratedPeer.runner.VMPath, protocolCtx, readers, writers, tweak)
 		if err != nil {
 			return nil, err
 		}
@@ -104,7 +112,7 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 	//
 
 	if len(readers) == 0 && len(writers) == 0 {
-		dg, err := migrateFromFS(migratedPeer.runner.VMPath, devices)
+		dg, err := migrateFromFS(nil, nil, migratedPeer.runner.VMPath, devices)
 		if err != nil {
 			return nil, err
 		}
