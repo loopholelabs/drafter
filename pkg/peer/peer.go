@@ -12,6 +12,8 @@ import (
 	"github.com/loopholelabs/drafter/pkg/runner"
 	"github.com/loopholelabs/drafter/pkg/snapshotter"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
+	"github.com/loopholelabs/logging/types"
+	"github.com/loopholelabs/silo/pkg/storage/metrics"
 )
 
 type Peer[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] struct {
@@ -108,13 +110,22 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 	errs error,
 ) {
 
+	// TODO: Pass these in
+	// TODO: This schema tweak function should be exposed / passed in
+	var log types.Logger
+	var met metrics.SiloMetrics
+	tweak := func(index int, name string, schema string) string {
+		s := strings.ReplaceAll(schema, "instance-0", "instance-1")
+		// TODO: sync.autoStart should be set to false because it's an inbound migration.
+		return string(s)
+	}
+
 	migratedPeer = &MigratedPeer[L, R, G]{
+		devices: devices,
+		runner:  peer.runner,
 		Wait: func() error {
 			return nil
 		},
-
-		devices: devices,
-		runner:  peer.runner,
 	}
 
 	migratedPeer.Close = func() (errs error) {
@@ -140,13 +151,7 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 	if len(readers) > 0 && len(writers) > 0 {
 		protocolCtx, cancelProtocolCtx := context.WithCancel(ctx)
 
-		// TODO: This schema tweak function should be exposed / passed in
-		tweak := func(index int, name string, schema string) string {
-			s := strings.ReplaceAll(schema, "instance-0", "instance-1")
-			return string(s)
-		}
-
-		dg, err := migrateFromPipe(nil, nil, migratedPeer.runner.VMPath, protocolCtx, readers, writers, tweak)
+		dg, err := migrateFromPipe(log, met, migratedPeer.runner.VMPath, protocolCtx, readers, writers, tweak)
 		if err != nil {
 			return nil, err
 		}
@@ -172,7 +177,7 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 	//
 
 	if len(readers) == 0 && len(writers) == 0 {
-		dg, err := migrateFromFS(nil, nil, migratedPeer.runner.VMPath, devices)
+		dg, err := migrateFromFS(log, met, migratedPeer.runner.VMPath, devices)
 		if err != nil {
 			return nil, err
 		}
