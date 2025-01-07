@@ -3,6 +3,7 @@ package peer
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"strings"
 	"sync"
@@ -13,6 +14,7 @@ import (
 	"github.com/loopholelabs/drafter/pkg/snapshotter"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 	"github.com/loopholelabs/logging/types"
+	"github.com/loopholelabs/silo/pkg/storage/config"
 	"github.com/loopholelabs/silo/pkg/storage/metrics"
 )
 
@@ -114,10 +116,16 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 	// TODO: This schema tweak function should be exposed / passed in
 	var log types.Logger
 	var met metrics.SiloMetrics
-	tweak := func(index int, name string, schema string) string {
-		s := strings.ReplaceAll(schema, "instance-0", "instance-1")
+	tweakRemote := func(index int, name string, schema *config.DeviceSchema) *config.DeviceSchema {
+		schema.Location = strings.ReplaceAll(schema.Location, "instance-0", "instance-1")
+		schema.ROSource.Name = strings.ReplaceAll(schema.ROSource.Name, "instance-0", "instance-1")
 		// TODO: sync.autoStart should be set to false because it's an inbound migration.
-		return string(s)
+		fmt.Printf("Tweaked schema\n%s\n", schema.EncodeAsBlock())
+		return schema
+	}
+	// TODO: Add the sync stuff here...
+	tweakLocal := func(index int, name string, schema *config.DeviceSchema) *config.DeviceSchema {
+		return schema
 	}
 
 	migratedPeer = &MigratedPeer[L, R, G]{
@@ -151,7 +159,7 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 	if len(readers) > 0 && len(writers) > 0 {
 		protocolCtx, cancelProtocolCtx := context.WithCancel(ctx)
 
-		dg, err := migrateFromPipe(log, met, migratedPeer.runner.VMPath, protocolCtx, readers, writers, tweak)
+		dg, err := migrateFromPipe(log, met, migratedPeer.runner.VMPath, protocolCtx, readers, writers, tweakRemote)
 		if err != nil {
 			return nil, err
 		}
@@ -177,7 +185,7 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 	//
 
 	if len(readers) == 0 && len(writers) == 0 {
-		dg, err := migrateFromFS(log, met, migratedPeer.runner.VMPath, devices)
+		dg, err := migrateFromFS(log, met, migratedPeer.runner.VMPath, devices, tweakLocal)
 		if err != nil {
 			return nil, err
 		}

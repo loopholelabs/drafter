@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/loopholelabs/drafter/pkg/mounter"
+	"github.com/loopholelabs/silo/pkg/storage/config"
 	"github.com/loopholelabs/silo/pkg/storage/devicegroup"
 	"github.com/loopholelabs/silo/pkg/storage/migrator"
 	"github.com/stretchr/testify/assert"
@@ -67,7 +68,11 @@ func setupFromFs(t *testing.T) (string, *devicegroup.DeviceGroup) {
 		},
 	}
 
-	dg, err := migrateFromFS(nil, nil, tdir, devices)
+	tweak := func(_ int, _ string, s *config.DeviceSchema) *config.DeviceSchema {
+		return s
+	}
+
+	dg, err := migrateFromFS(nil, nil, tdir, devices, tweak)
 	assert.NoError(t, err)
 
 	// Check the devices look ok and contain what we think they should...
@@ -145,11 +150,9 @@ func TestMigrateFromFsThenBetween(t *testing.T) {
 
 	migrateWait.Add(1)
 	go func() {
-		tweak := func(index int, name string, schema string) string {
-			fmt.Printf("Tweak %s\n", schema)
-			s := strings.ReplaceAll(schema, tdir, tdir2)
-			fmt.Printf(" -> %s\n", s)
-			return s
+		tweak := func(index int, name string, schema *config.DeviceSchema) *config.DeviceSchema {
+			schema.Location = strings.ReplaceAll(schema.Location, tdir, tdir2)
+			return schema
 		}
 
 		dg2, err = migrateFromPipe(nil, nil, tdir2,

@@ -100,9 +100,10 @@ func createSiloDevSchema(i *MigrateFromDevice) (*config.DeviceSchema, error) {
  * 'migrate' from the local filesystem.
  *
  */
-func migrateFromFS(log types.Logger, met metrics.SiloMetrics, vmpath string, devices []MigrateFromDevice) (*devicegroup.DeviceGroup, error) {
+func migrateFromFS(log types.Logger, met metrics.SiloMetrics, vmpath string,
+	devices []MigrateFromDevice, tweak func(index int, name string, schema *config.DeviceSchema) *config.DeviceSchema) (*devicegroup.DeviceGroup, error) {
 	siloDeviceSchemas := make([]*config.DeviceSchema, 0)
-	for _, input := range devices {
+	for i, input := range devices {
 		if input.Shared {
 			// Deal with shared devices here...
 			err := exposeSiloDeviceAsFile(vmpath, input.Name, input.Base)
@@ -113,6 +114,10 @@ func migrateFromFS(log types.Logger, met metrics.SiloMetrics, vmpath string, dev
 			ds, err := createSiloDevSchema(&input)
 			if err != nil {
 				return nil, err
+			}
+
+			if tweak != nil {
+				ds = tweak(i, input.Name, ds)
 			}
 			siloDeviceSchemas = append(siloDeviceSchemas, ds)
 		}
@@ -146,7 +151,7 @@ func migrateFromFS(log types.Logger, met metrics.SiloMetrics, vmpath string, dev
  * NB: You should call dg.WaitForCompletion() later to ensure migrations are finished
  */
 func migrateFromPipe(log types.Logger, met metrics.SiloMetrics, vmpath string,
-	ctx context.Context, readers []io.Reader, writers []io.Writer, schemaTweak func(index int, name string, schema string) string) (*devicegroup.DeviceGroup, error) {
+	ctx context.Context, readers []io.Reader, writers []io.Writer, schemaTweak func(index int, name string, schema *config.DeviceSchema) *config.DeviceSchema) (*devicegroup.DeviceGroup, error) {
 	ready := make(chan bool)
 	pro := protocol.NewRW(ctx, readers, writers, nil)
 
