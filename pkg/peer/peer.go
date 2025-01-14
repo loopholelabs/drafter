@@ -159,9 +159,7 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 	if len(readers) > 0 && len(writers) > 0 {
 		protocolCtx, cancelProtocolCtx := context.WithCancel(ctx)
 
-		cdh := func([]byte) {} // TODO
-
-		dg, err := migrateFromPipe(log, met, migratedPeer.runner.VMPath, protocolCtx, readers, writers, tweakRemote, cdh)
+		dg, err := migrateFromPipe(log, met, migratedPeer.runner.VMPath, protocolCtx, readers, writers, tweakRemote, hooks.OnXferCustomData)
 		if err != nil {
 			return nil, err
 		}

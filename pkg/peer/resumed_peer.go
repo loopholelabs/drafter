@@ -34,6 +34,7 @@ type MigrateToHooks struct {
 	OnAfterSuspend           func()
 	OnAllMigrationsCompleted func()
 	OnProgress               func(p map[string]*migrator.MigrationProgress)
+	GetXferCustomData        func() []byte
 }
 
 /**
@@ -60,11 +61,7 @@ func (migratablePeer *ResumedPeer[L, R, G]) MigrateTo(
 		hooks.OnAfterSuspend,
 	)
 
-	getCustomPayload := func() []byte {
-		return []byte{} // TODO
-	}
-
-	err := migrateToPipe(ctx, readers, writers, migratablePeer.Dg, concurrency, hooks.OnProgress, vmState, devices, getCustomPayload)
+	err := migrateToPipe(ctx, readers, writers, migratablePeer.Dg, concurrency, hooks.OnProgress, vmState, devices, hooks.GetXferCustomData)
 
 	if err != nil {
 		return err

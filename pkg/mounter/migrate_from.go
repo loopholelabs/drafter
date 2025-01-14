@@ -47,6 +47,8 @@ type MigrateFromHooks struct {
 	OnLocalDeviceExposed   func(localDeviceID uint32, path string)
 
 	OnLocalAllDevicesRequested func()
+
+	OnXferCustomData func([]byte)
 }
 
 func MigrateFromAndMount(
