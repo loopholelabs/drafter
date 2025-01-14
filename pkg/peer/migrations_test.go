@@ -148,6 +148,9 @@ func TestMigrateFromFsThenBetween(t *testing.T) {
 	var dg2 *devicegroup.DeviceGroup
 	var migrateWait sync.WaitGroup
 
+	var customDataLock sync.Mutex
+	var customDataReceived []byte
+
 	migrateWait.Add(1)
 	go func() {
 		tweak := func(index int, name string, schema *config.DeviceSchema) *config.DeviceSchema {
@@ -155,8 +158,15 @@ func TestMigrateFromFsThenBetween(t *testing.T) {
 			return schema
 		}
 
+		cdh := func(cdata []byte) {
+			customDataLock.Lock()
+			customDataReceived = cdata
+			customDataLock.Unlock()
+			// cdata is custom xfer data
+		}
+
 		dg2, err = migrateFromPipe(nil, nil, tdir2,
-			context.TODO(), []io.Reader{r2}, []io.Writer{w1}, tweak)
+			context.TODO(), []io.Reader{r2}, []io.Writer{w1}, tweak, cdh)
 		assert.NoError(t, err)
 
 		// TODO: Check dg2 looks good...
@@ -196,10 +206,22 @@ func TestMigrateFromFsThenBetween(t *testing.T) {
 	vmState := NewVMStateMgr(context.TODO(), suspendFunc, 100*time.Millisecond,
 		msyncFunc, onBeforeSuspend, onAfterSuspend)
 
+	customData := []byte("hello")
+
+	getCustomPayload := func() []byte {
+		fmt.Printf("getCustomPayload\n")
+		return customData
+	}
+
 	err = migrateToPipe(context.TODO(), []io.Reader{r1}, []io.Writer{w2},
-		dg, 100, progress, vmState, devices)
+		dg, 100, progress, vmState, devices, getCustomPayload)
 	assert.NoError(t, err)
 
 	// Make sure it all completed
 	migrateWait.Wait()
+
+	customDataLock.Lock()
+	assert.Equal(t, customData, customDataReceived)
+	customDataLock.Unlock()
+
 }

@@ -60,7 +60,11 @@ func (migratablePeer *ResumedPeer[L, R, G]) MigrateTo(
 		hooks.OnAfterSuspend,
 	)
 
-	err := migrateToPipe(ctx, readers, writers, migratablePeer.Dg, concurrency, hooks.OnProgress, vmState, devices)
+	getCustomPayload := func() []byte {
+		return []byte{} // TODO
+	}
+
+	err := migrateToPipe(ctx, readers, writers, migratablePeer.Dg, concurrency, hooks.OnProgress, vmState, devices, getCustomPayload)
 
 	if err != nil {
 		return err

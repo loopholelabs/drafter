@@ -11,7 +11,6 @@ import (
 	"syscall"
 
 	"github.com/loopholelabs/drafter/pkg/mounter"
-	"github.com/loopholelabs/drafter/pkg/registry"
 	"github.com/loopholelabs/drafter/pkg/snapshotter"
 	"github.com/loopholelabs/logging/types"
 	"github.com/loopholelabs/silo/pkg/storage/config"
@@ -151,7 +150,8 @@ func migrateFromFS(log types.Logger, met metrics.SiloMetrics, vmpath string,
  * NB: You should call dg.WaitForCompletion() later to ensure migrations are finished
  */
 func migrateFromPipe(log types.Logger, met metrics.SiloMetrics, vmpath string,
-	ctx context.Context, readers []io.Reader, writers []io.Writer, schemaTweak func(index int, name string, schema *config.DeviceSchema) *config.DeviceSchema) (*devicegroup.DeviceGroup, error) {
+	ctx context.Context, readers []io.Reader, writers []io.Writer, schemaTweak func(index int, name string, schema *config.DeviceSchema) *config.DeviceSchema,
+	cdh func([]byte)) (*devicegroup.DeviceGroup, error) {
 	ready := make(chan bool)
 	pro := protocol.NewRW(ctx, readers, writers, nil)
 
@@ -168,12 +168,11 @@ func migrateFromPipe(log types.Logger, met metrics.SiloMetrics, vmpath string,
 	}()
 
 	events := func(e *packets.Event) {}
-	cdh := func(data []byte) {
-		if len(data) == 1 && data[0] == byte(registry.EventCustomTransferAuthority) {
-			close(ready)
-		}
+	icdh := func(data []byte) {
+		cdh(data)
+		close(ready)
 	}
-	dg, err := devicegroup.NewFromProtocol(ctx, pro, schemaTweak, events, cdh, log, met)
+	dg, err := devicegroup.NewFromProtocol(ctx, pro, schemaTweak, events, icdh, log, met)
 	if err != nil {
 		return nil, err
 	}
@@ -212,7 +211,7 @@ func migrateFromPipe(log types.Logger, met metrics.SiloMetrics, vmpath string,
  */
 func migrateToPipe(ctx context.Context, readers []io.Reader, writers []io.Writer,
 	dg *devicegroup.DeviceGroup, concurrency int, onProgress func(p map[string]*migrator.MigrationProgress),
-	vmState *VMStateMgr, devices []mounter.MigrateToDevice) error {
+	vmState *VMStateMgr, devices []mounter.MigrateToDevice, getCustomPayload func() []byte) error {
 
 	// Create a protocol for use by Silo
 	pro := protocol.NewRW(ctx, readers, writers, nil)
@@ -249,7 +248,8 @@ func migrateToPipe(ctx context.Context, readers []io.Reader, writers []io.Writer
 
 	// When we are ready to transfer authority, we send a single Custom Event here.
 	authTransfer := func() error {
-		return dg.SendCustomData([]byte{byte(registry.EventCustomTransferAuthority)})
+		cdata := getCustomPayload()
+		return dg.SendCustomData(cdata)
 	}
 
 	dm := NewDirtyManager(vmState, dirtyDevices, authTransfer)
