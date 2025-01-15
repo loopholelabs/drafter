@@ -45,22 +45,24 @@ func readAllFromDevice(name string, size int) ([]byte, error) {
 }
 
 const testFileSize = 16 * 1024 * 1024
+const tempDirFrom = "drafter_test_from"
+const tempDirTo = "drafter_test_to"
 
 func setupFromFs(t *testing.T) (string, *devicegroup.DeviceGroup) {
 	// First lets setup a temp dir
-	tdir, err := os.MkdirTemp("", "drafter_vm_*")
+	err := os.Mkdir(tempDirFrom, 0777)
 	assert.NoError(t, err)
 
 	// Create a dummy file to hold data for Silo.
 	data := make([]byte, testFileSize) // 16M
 	_, err = rand.Read(data)
 	assert.NoError(t, err)
-	os.WriteFile(path.Join(tdir, "file_data"), data, 0777)
+	os.WriteFile(path.Join(tempDirFrom, "file_data"), data, 0777)
 
 	devices := []MigrateFromDevice{
 		{
 			Name:      "test",
-			Base:      path.Join(tdir, "file_data"),
+			Base:      path.Join(tempDirFrom, "file_data"),
 			Overlay:   "",
 			State:     "",
 			BlockSize: 1024 * 1024,
@@ -72,7 +74,7 @@ func setupFromFs(t *testing.T) (string, *devicegroup.DeviceGroup) {
 		return s
 	}
 
-	dg, err := migrateFromFS(nil, nil, tdir, devices, tweak)
+	dg, err := migrateFromFS(nil, nil, tempDirFrom, devices, tweak)
 	assert.NoError(t, err)
 
 	// Check the devices look ok and contain what we think they should...
@@ -82,7 +84,7 @@ func setupFromFs(t *testing.T) (string, *devicegroup.DeviceGroup) {
 	assert.Equal(t, 1, len(names))
 	assert.Equal(t, "test", names[0])
 
-	ddata, err := readAllFromDevice(path.Join(tdir, "test"), len(data))
+	ddata, err := readAllFromDevice(path.Join(tempDirFrom, "test"), len(data))
 	assert.NoError(t, err)
 	assert.Equal(t, data, ddata)
 
@@ -90,10 +92,12 @@ func setupFromFs(t *testing.T) (string, *devicegroup.DeviceGroup) {
 		err = dg.CloseAll()
 		assert.NoError(t, err)
 
-		os.Remove(tdir)
+		err = os.RemoveAll(tempDirFrom)
+		assert.NoError(t, err)
+
 	})
 
-	return tdir, dg
+	return tempDirFrom, dg
 }
 
 func TestMigrateFromFs(t *testing.T) {
@@ -120,10 +124,11 @@ func TestMigrateFromFsThenBetween(t *testing.T) {
 	}
 
 	// First lets setup a temp dir
-	tdir2, err := os.MkdirTemp("", "drafter_vm_*")
+	err = os.Mkdir(tempDirTo, 0777)
 	assert.NoError(t, err)
 	t.Cleanup(func() {
-		os.Remove(tdir2)
+		err := os.RemoveAll(tempDirTo)
+		assert.NoError(t, err)
 	})
 
 	tdir, dg := setupFromFs(t)
@@ -154,7 +159,7 @@ func TestMigrateFromFsThenBetween(t *testing.T) {
 	migrateWait.Add(1)
 	go func() {
 		tweak := func(index int, name string, schema *config.DeviceSchema) *config.DeviceSchema {
-			schema.Location = strings.ReplaceAll(schema.Location, tdir, tdir2)
+			schema.Location = strings.ReplaceAll(schema.Location, tdir, tempDirTo)
 			return schema
 		}
 
@@ -165,7 +170,7 @@ func TestMigrateFromFsThenBetween(t *testing.T) {
 			// cdata is custom xfer data
 		}
 
-		dg2, err = migrateFromPipe(nil, nil, tdir2,
+		dg2, err = migrateFromPipe(nil, nil, tempDirTo,
 			context.TODO(), []io.Reader{r2}, []io.Writer{w1}, tweak, cdh)
 		assert.NoError(t, err)
 
@@ -177,7 +182,7 @@ func TestMigrateFromFsThenBetween(t *testing.T) {
 		// TODO: Read data from tdir2 and make sure it matches.
 		ddata1, err := readAllFromDevice(path.Join(tdir, "test"), testFileSize)
 		assert.NoError(t, err)
-		ddata2, err := readAllFromDevice(path.Join(tdir2, "test"), testFileSize)
+		ddata2, err := readAllFromDevice(path.Join(tempDirTo, "test"), testFileSize)
 		assert.NoError(t, err)
 
 		assert.Equal(t, ddata1, ddata2)
