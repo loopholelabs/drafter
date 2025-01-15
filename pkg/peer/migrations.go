@@ -169,7 +169,9 @@ func migrateFromPipe(log types.Logger, met metrics.SiloMetrics, vmpath string,
 
 	events := func(e *packets.Event) {}
 	icdh := func(data []byte) {
-		cdh(data)
+		if cdh != nil {
+			cdh(data)
+		}
 		close(ready)
 	}
 	dg, err := devicegroup.NewFromProtocol(ctx, pro, schemaTweak, events, icdh, log, met)
@@ -248,8 +250,13 @@ func migrateToPipe(ctx context.Context, readers []io.Reader, writers []io.Writer
 
 	// When we are ready to transfer authority, we send a single Custom Event here.
 	authTransfer := func() error {
-		cdata := getCustomPayload()
-		return dg.SendCustomData(cdata)
+		if getCustomPayload != nil {
+			cdata := getCustomPayload()
+			if cdata != nil {
+				return dg.SendCustomData(cdata)
+			}
+		}
+		return dg.SendCustomData([]byte{})
 	}
 
 	dm := NewDirtyManager(vmState, dirtyDevices, authTransfer)
