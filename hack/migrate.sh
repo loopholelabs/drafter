@@ -1,9 +1,7 @@
 sudo drafter-peer --netns ark1 --raddr 'localhost:1337' --laddr '' --devices '[
   {
     "name": "state",
-    "base": "image/package/state.bin",
-    "overlay": "image/instance-1/overlay/state.bin",
-    "state": "image/instance-1/state/state.bin",
+    "base": "image/instance-1/state.bin",
     "blockSize": 65536,
     "expiry": 1000000000,
     "maxDirtyBlocks": 200,
@@ -15,9 +13,7 @@ sudo drafter-peer --netns ark1 --raddr 'localhost:1337' --laddr '' --devices '[
   },
   {
     "name": "memory",
-    "base": "image/package/memory.bin",
-    "overlay": "image/instance-1/overlay/memory.bin",
-    "state": "image/instance-1/state/memory.bin",
+    "base": "image/instance-1/memory.bin",
     "blockSize": 65536,
     "expiry": 1000000000,
     "maxDirtyBlocks": 200,
@@ -29,9 +25,7 @@ sudo drafter-peer --netns ark1 --raddr 'localhost:1337' --laddr '' --devices '[
   },
   {
     "name": "kernel",
-    "base": "image/package/vmlinux",
-    "overlay": "image/instance-1/overlay/vmlinux",
-    "state": "image/instance-1/state/vmlinux",
+    "base": "image/instance-1/vmlinux",
     "blockSize": 65536,
     "expiry": 1000000000,
     "maxDirtyBlocks": 200,
@@ -43,9 +37,7 @@ sudo drafter-peer --netns ark1 --raddr 'localhost:1337' --laddr '' --devices '[
   },
   {
     "name": "disk",
-    "base": "image/package/rootfs.ext4",
-    "overlay": "image/instance-1/overlay/rootfs.ext4",
-    "state": "image/instance-1/state/rootfs.ext4",
+    "base": "image/instance-1/rootfs.ext4",
     "blockSize": 65536,
     "expiry": 1000000000,
     "maxDirtyBlocks": 200,
@@ -57,9 +49,7 @@ sudo drafter-peer --netns ark1 --raddr 'localhost:1337' --laddr '' --devices '[
   },
   {
     "name": "config",
-    "base": "image/package/config.json",
-    "overlay": "image/instance-1/overlay/config.json",
-    "state": "image/instance-1/state/config.json",
+    "base": "image/instance-1/config.json",
     "blockSize": 65536,
     "expiry": 1000000000,
     "maxDirtyBlocks": 200,
@@ -71,9 +61,7 @@ sudo drafter-peer --netns ark1 --raddr 'localhost:1337' --laddr '' --devices '[
   },
   {
     "name": "oci",
-    "base": "image/package/oci.ext4",
-    "overlay": "image/instance-1/overlay/oci.ext4",
-    "state": "image/instance-1/state/oci.ext4",
+    "base": "image/instance-1/oci.ext4",
     "blockSize": 65536,
     "expiry": 1000000000,
     "maxDirtyBlocks": 200,

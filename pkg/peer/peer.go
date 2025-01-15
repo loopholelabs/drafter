@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"strings"
 	"sync"
 
 	"github.com/loopholelabs/drafter/pkg/ipc"
@@ -117,11 +116,26 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 	var log types.Logger
 	var met metrics.SiloMetrics
 	tweakRemote := func(index int, name string, schema *config.DeviceSchema) *config.DeviceSchema {
-		schema.Location = strings.ReplaceAll(schema.Location, "instance-0", "instance-1")
-		schema.ROSource.Name = strings.ReplaceAll(schema.ROSource.Name, "instance-0", "instance-1")
-		// TODO: sync.autoStart should be set to false because it's an inbound migration.
-		fmt.Printf("Tweaked schema\n%s\n", schema.EncodeAsBlock())
-		return schema
+		newSchema := &config.DeviceSchema{
+			System:    "file",
+			Name:      name,
+			Expose:    true,
+			BlockSize: schema.BlockSize,
+			Size:      schema.Size,
+		}
+
+		for _, d := range devices {
+			if d.Name == schema.Name {
+				newSchema.Location = d.Base
+			}
+		}
+
+		if newSchema.Location == "" {
+			// FIXME: Error, unknown device name.
+		}
+
+		fmt.Printf("Tweaked schema\n%s\n", newSchema.EncodeAsBlock())
+		return newSchema
 	}
 	// TODO: Add the sync stuff here...
 	tweakLocal := func(index int, name string, schema *config.DeviceSchema) *config.DeviceSchema {

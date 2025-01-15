@@ -62,7 +62,7 @@ func setupFromFs(t *testing.T) (string, *devicegroup.DeviceGroup) {
 	devices := []MigrateFromDevice{
 		{
 			Name:      "test",
-			Base:      path.Join(tempDirFrom, "file_data"),
+			Base:      "", //path.Join(tempDirFrom, "file_data"),
 			Overlay:   "",
 			State:     "",
 			BlockSize: 1024 * 1024,
