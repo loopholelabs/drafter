@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
-	"strings"
+	"path"
 	"sync"
 	"time"
 
@@ -48,27 +48,24 @@ func (migratedPeer *MigratedPeer[L, R, G]) Resume(
 		},
 	}
 
-	configBasePath := ""
-	for _, device := range migratedPeer.devices {
-		if device.Name == packager.ConfigName {
-			configBasePath = device.Base
-
-			break
-		}
-	}
-
-	if strings.TrimSpace(configBasePath) == "" {
-		return nil, ErrConfigFileNotFound
-	}
-
-	packageConfigFile, err := os.Open(configBasePath)
+	// Read from the config device
+	configFileData, err := os.ReadFile(path.Join(migratedPeer.runner.VMPath, packager.ConfigName))
 	if err != nil {
 		return nil, errors.Join(ErrCouldNotOpenConfigFile, err)
 	}
-	defer packageConfigFile.Close()
+
+	// Find the first 0 byte...
+	firstZero := 0
+	for i := 0; i < len(configFileData); i++ {
+		if configFileData[i] == 0 {
+			firstZero = i
+			break
+		}
+	}
+	configFileData = configFileData[:firstZero]
 
 	var packageConfig snapshotter.PackageConfiguration
-	if err := json.NewDecoder(packageConfigFile).Decode(&packageConfig); err != nil {
+	if err := json.Unmarshal(configFileData, &packageConfig); err != nil {
 		return nil, errors.Join(ErrCouldNotDecodeConfigFile, err)
 	}
 

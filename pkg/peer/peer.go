@@ -182,14 +182,14 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 				if err != nil {
 					return err
 				}
-
-				// Save dg for future migrations.
-				migratedPeer.DgLock.Lock()
-				migratedPeer.Dg = dg
-				migratedPeer.DgLock.Unlock()
 			}
 			return nil
 		})
+
+		// Save dg for future migrations, AND for things like reading config
+		migratedPeer.DgLock.Lock()
+		migratedPeer.Dg = dg
+		migratedPeer.DgLock.Unlock()
 	}
 
 	//
