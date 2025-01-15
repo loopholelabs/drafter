@@ -53,6 +53,11 @@ func setupFromFs(t *testing.T) (string, *devicegroup.DeviceGroup) {
 	err := os.Mkdir(tempDirFrom, 0777)
 	assert.NoError(t, err)
 
+	t.Cleanup(func() {
+		err := os.RemoveAll(tempDirFrom)
+		assert.NoError(t, err)
+	})
+
 	// Create a dummy file to hold data for Silo.
 	data := make([]byte, testFileSize) // 16M
 	_, err = rand.Read(data)
@@ -62,7 +67,7 @@ func setupFromFs(t *testing.T) (string, *devicegroup.DeviceGroup) {
 	devices := []MigrateFromDevice{
 		{
 			Name:      "test",
-			Base:      "", //path.Join(tempDirFrom, "file_data"),
+			Base:      path.Join(tempDirFrom, "file_data"),
 			Overlay:   "",
 			State:     "",
 			BlockSize: 1024 * 1024,
@@ -79,23 +84,20 @@ func setupFromFs(t *testing.T) (string, *devicegroup.DeviceGroup) {
 
 	// Check the devices look ok and contain what we think they should...
 	// The devices should have been created as 'tdir/<name>'
+	if err == nil {
+		names := dg.GetAllNames()
+		assert.Equal(t, 1, len(names))
+		assert.Equal(t, "test", names[0])
 
-	names := dg.GetAllNames()
-	assert.Equal(t, 1, len(names))
-	assert.Equal(t, "test", names[0])
-
-	ddata, err := readAllFromDevice(path.Join(tempDirFrom, "test"), len(data))
-	assert.NoError(t, err)
-	assert.Equal(t, data, ddata)
-
-	t.Cleanup(func() {
-		err = dg.CloseAll()
+		ddata, err := readAllFromDevice(path.Join(tempDirFrom, "test"), len(data))
 		assert.NoError(t, err)
+		assert.Equal(t, data, ddata)
 
-		err = os.RemoveAll(tempDirFrom)
-		assert.NoError(t, err)
-
-	})
+		t.Cleanup(func() {
+			err = dg.CloseAll()
+			assert.NoError(t, err)
+		})
+	}
 
 	return tempDirFrom, dg
 }
@@ -133,100 +135,104 @@ func TestMigrateFromFsThenBetween(t *testing.T) {
 
 	tdir, dg := setupFromFs(t)
 
-	r1, w1 := io.Pipe()
-	r2, w2 := io.Pipe()
+	if dg != nil {
 
-	progress := func(p map[string]*migrator.MigrationProgress) {
-		fmt.Printf("Progress...\n")
-	}
+		r1, w1 := io.Pipe()
+		r2, w2 := io.Pipe()
 
-	devices := []mounter.MigrateToDevice{
-		{
-			Name:           "test",
-			MaxDirtyBlocks: 10,
-			MinCycles:      4,
-			MaxCycles:      10,
-			CycleThrottle:  100 * time.Millisecond,
-		},
-	}
-
-	var dg2 *devicegroup.DeviceGroup
-	var migrateWait sync.WaitGroup
-
-	var customDataLock sync.Mutex
-	var customDataReceived []byte
-
-	migrateWait.Add(1)
-	go func() {
-		tweak := func(index int, name string, schema *config.DeviceSchema) *config.DeviceSchema {
-			schema.Location = strings.ReplaceAll(schema.Location, tdir, tempDirTo)
-			return schema
+		progress := func(p map[string]*migrator.MigrationProgress) {
+			fmt.Printf("Progress...\n")
 		}
 
-		cdh := func(cdata []byte) {
-			customDataLock.Lock()
-			customDataReceived = cdata
-			customDataLock.Unlock()
-			// cdata is custom xfer data
+		devices := []mounter.MigrateToDevice{
+			{
+				Name:           "test",
+				MaxDirtyBlocks: 10,
+				MinCycles:      4,
+				MaxCycles:      10,
+				CycleThrottle:  100 * time.Millisecond,
+			},
 		}
 
-		dg2, err = migrateFromPipe(nil, nil, tempDirTo,
-			context.TODO(), []io.Reader{r2}, []io.Writer{w1}, tweak, cdh)
+		var dg2 *devicegroup.DeviceGroup
+		var migrateWait sync.WaitGroup
+
+		var customDataLock sync.Mutex
+		var customDataReceived []byte
+
+		migrateWait.Add(1)
+		go func() {
+			tweak := func(index int, name string, schema *config.DeviceSchema) *config.DeviceSchema {
+				schema.Location = strings.ReplaceAll(schema.Location, tdir, tempDirTo)
+				return schema
+			}
+
+			cdh := func(cdata []byte) {
+				customDataLock.Lock()
+				customDataReceived = cdata
+				customDataLock.Unlock()
+				// cdata is custom xfer data
+			}
+
+			dg2, err = migrateFromPipe(nil, nil, tempDirTo,
+				context.TODO(), []io.Reader{r2}, []io.Writer{w1}, tweak, cdh)
+			assert.NoError(t, err)
+
+			// TODO: Check dg2 looks good...
+			names := dg2.GetAllNames()
+			assert.Equal(t, 1, len(names))
+			assert.Equal(t, "test", names[0])
+
+			// TODO: Read data from tdir2 and make sure it matches.
+			ddata1, err := readAllFromDevice(path.Join(tdir, "test"), testFileSize)
+			assert.NoError(t, err)
+			ddata2, err := readAllFromDevice(path.Join(tempDirTo, "test"), testFileSize)
+			assert.NoError(t, err)
+
+			assert.Equal(t, ddata1, ddata2)
+
+			err = dg2.WaitForCompletion()
+			assert.NoError(t, err)
+
+			migrateWait.Done()
+		}()
+
+		suspendFunc := func(ctx context.Context, timeout time.Duration) error {
+			fmt.Printf("suspendFunc\n")
+			return nil
+		}
+		msyncFunc := func(ctx context.Context) error {
+			fmt.Printf("msyncFunc\n")
+			return nil
+		}
+		onBeforeSuspend := func() {
+			fmt.Printf("onBeforeSuspend\n")
+		}
+		onAfterSuspend := func() {
+			fmt.Printf("onAfterSuspend\n")
+		}
+
+		vmState := NewVMStateMgr(context.TODO(), suspendFunc, 100*time.Millisecond,
+			msyncFunc, onBeforeSuspend, onAfterSuspend)
+
+		customData := []byte("hello")
+
+		getCustomPayload := func() []byte {
+			fmt.Printf("getCustomPayload\n")
+			return customData
+		}
+
+		err = migrateToPipe(context.TODO(), []io.Reader{r1}, []io.Writer{w2},
+			dg, 100, progress, vmState, devices, getCustomPayload)
 		assert.NoError(t, err)
 
-		// TODO: Check dg2 looks good...
-		names := dg2.GetAllNames()
-		assert.Equal(t, 1, len(names))
-		assert.Equal(t, "test", names[0])
+		// Make sure it all completed
+		migrateWait.Wait()
 
-		// TODO: Read data from tdir2 and make sure it matches.
-		ddata1, err := readAllFromDevice(path.Join(tdir, "test"), testFileSize)
-		assert.NoError(t, err)
-		ddata2, err := readAllFromDevice(path.Join(tempDirTo, "test"), testFileSize)
-		assert.NoError(t, err)
-
-		assert.Equal(t, ddata1, ddata2)
-
-		err = dg2.WaitForCompletion()
-		assert.NoError(t, err)
-
-		migrateWait.Done()
-	}()
-
-	suspendFunc := func(ctx context.Context, timeout time.Duration) error {
-		fmt.Printf("suspendFunc\n")
-		return nil
+		customDataLock.Lock()
+		assert.Equal(t, customData, customDataReceived)
+		customDataLock.Unlock()
+	} else {
+		assert.Fail(t, "dg failed to setup")
 	}
-	msyncFunc := func(ctx context.Context) error {
-		fmt.Printf("msyncFunc\n")
-		return nil
-	}
-	onBeforeSuspend := func() {
-		fmt.Printf("onBeforeSuspend\n")
-	}
-	onAfterSuspend := func() {
-		fmt.Printf("onAfterSuspend\n")
-	}
-
-	vmState := NewVMStateMgr(context.TODO(), suspendFunc, 100*time.Millisecond,
-		msyncFunc, onBeforeSuspend, onAfterSuspend)
-
-	customData := []byte("hello")
-
-	getCustomPayload := func() []byte {
-		fmt.Printf("getCustomPayload\n")
-		return customData
-	}
-
-	err = migrateToPipe(context.TODO(), []io.Reader{r1}, []io.Writer{w2},
-		dg, 100, progress, vmState, devices, getCustomPayload)
-	assert.NoError(t, err)
-
-	// Make sure it all completed
-	migrateWait.Wait()
-
-	customDataLock.Lock()
-	assert.Equal(t, customData, customDataReceived)
-	customDataLock.Unlock()
-
 }

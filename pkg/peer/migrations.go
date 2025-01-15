@@ -69,6 +69,10 @@ func createSiloDevSchema(i *MigrateFromDevice) (*config.DeviceSchema, error) {
 		Size:      fmt.Sprintf("%v", stat.Size()),
 	}
 	if strings.TrimSpace(i.Overlay) == "" || strings.TrimSpace(i.State) == "" {
+		err := os.MkdirAll(filepath.Dir(i.Base), os.ModePerm)
+		if err != nil {
+			return nil, errors.Join(mounter.ErrCouldNotCreateDeviceDirectory, err)
+		}
 		ds.System = "file"
 		ds.Location = i.Base
 	} else {
@@ -90,6 +94,44 @@ func createSiloDevSchema(i *MigrateFromDevice) (*config.DeviceSchema, error) {
 			System:   "file",
 			Location: i.Base,
 			Size:     fmt.Sprintf("%v", stat.Size()),
+		}
+	}
+	return ds, nil
+}
+
+func createIncomingSiloDevSchema(i *MigrateFromDevice, schema *config.DeviceSchema) (*config.DeviceSchema, error) {
+	ds := &config.DeviceSchema{
+		Name:      i.Name,
+		BlockSize: fmt.Sprintf("%v", i.BlockSize),
+		Expose:    true,
+		Size:      schema.Size,
+	}
+	if strings.TrimSpace(i.Overlay) == "" || strings.TrimSpace(i.State) == "" {
+		err := os.MkdirAll(filepath.Dir(i.Base), os.ModePerm)
+		if err != nil {
+			return nil, errors.Join(mounter.ErrCouldNotCreateDeviceDirectory, err)
+		}
+		ds.System = "file"
+		ds.Location = i.Base
+	} else {
+		err := os.MkdirAll(filepath.Dir(i.Overlay), os.ModePerm)
+		if err != nil {
+			return nil, errors.Join(mounter.ErrCouldNotCreateOverlayDirectory, err)
+		}
+
+		err = os.MkdirAll(filepath.Dir(i.State), os.ModePerm)
+		if err != nil {
+			return nil, errors.Join(mounter.ErrCouldNotCreateStateDirectory, err)
+		}
+
+		ds.System = "sparsefile"
+		ds.Location = i.Overlay
+
+		ds.ROSource = &config.DeviceSchema{
+			Name:     i.State,
+			System:   "file",
+			Location: i.Base,
+			Size:     schema.Size,
 		}
 	}
 	return ds, nil

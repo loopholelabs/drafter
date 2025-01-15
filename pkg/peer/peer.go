@@ -116,26 +116,22 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 	var log types.Logger
 	var met metrics.SiloMetrics
 	tweakRemote := func(index int, name string, schema *config.DeviceSchema) *config.DeviceSchema {
-		newSchema := &config.DeviceSchema{
-			System:    "file",
-			Name:      name,
-			Expose:    true,
-			BlockSize: schema.BlockSize,
-			Size:      schema.Size,
-		}
 
 		for _, d := range devices {
 			if d.Name == schema.Name {
-				newSchema.Location = d.Base
+				newSchema, err := createIncomingSiloDevSchema(&d, schema)
+				if err == nil {
+					fmt.Printf("Tweaked schema %s\n", newSchema.EncodeAsBlock())
+					return newSchema
+				}
 			}
 		}
 
-		if newSchema.Location == "" {
-			// FIXME: Error, unknown device name.
-		}
+		// FIXME: Error. We didn't find the local device, or couldn't set it up.
 
-		fmt.Printf("Tweaked schema\n%s\n", newSchema.EncodeAsBlock())
-		return newSchema
+		fmt.Printf("ERROR, didn't find local device defined %s\n", name)
+
+		return schema
 	}
 	// TODO: Add the sync stuff here...
 	tweakLocal := func(index int, name string, schema *config.DeviceSchema) *config.DeviceSchema {
@@ -181,15 +177,17 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 		migratedPeer.Wait = sync.OnceValue(func() error {
 			defer cancelProtocolCtx()
 
-			err := dg.WaitForCompletion()
-			if err != nil {
-				return err
-			}
+			if dg != nil {
+				err := dg.WaitForCompletion()
+				if err != nil {
+					return err
+				}
 
-			// Save dg for future migrations.
-			migratedPeer.DgLock.Lock()
-			migratedPeer.Dg = dg
-			migratedPeer.DgLock.Unlock()
+				// Save dg for future migrations.
+				migratedPeer.DgLock.Lock()
+				migratedPeer.Dg = dg
+				migratedPeer.DgLock.Unlock()
+			}
 			return nil
 		})
 	}
