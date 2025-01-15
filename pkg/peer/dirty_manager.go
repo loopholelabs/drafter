@@ -77,6 +77,7 @@ func (dm *DirtyManager) markReadyDeviceSentDirty(name string) error {
 	defer dm.ReadyDevicesLock.Unlock()
 	di, ok := dm.ReadyDevices[name]
 	if ok {
+		// This should only get sent IF the suspend has happened...
 		di.ReadyAndSentDirty = true
 
 		// Now check if ALL devices are ready and have sent dirty, and if so, call auth transfer ONCE
@@ -109,9 +110,13 @@ func (dm *DirtyManager) markReadyDeviceSentDirty(name string) error {
 }
 
 func (dm *DirtyManager) PostMigrateDirty(name string, blocks []uint) (bool, error) {
-	err := dm.markReadyDeviceSentDirty(name)
-	if err != nil {
-		return false, err
+
+	// If it is suspended, mark as ready and sent dirty list
+	if dm.VMState.CheckSuspendedVM() {
+		err := dm.markReadyDeviceSentDirty(name)
+		if err != nil {
+			return false, err
+		}
 	}
 
 	di := dm.Devices[name]

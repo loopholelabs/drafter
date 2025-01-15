@@ -246,6 +246,22 @@ func migrateFromPipe(log types.Logger, met metrics.SiloMetrics, vmpath string,
 	case <-ready:
 	}
 
+	/*
+		// Wait here - check the data...
+		names := dg.GetAllNames()
+		for _, n := range names {
+			// Get a data hash
+			di := dg.GetDeviceInformationByName(n)
+			dev := di.Exp.Device()
+			hash := [32]byte{}
+			buffer, err := readAllDataFromDevice(fmt.Sprintf("/dev/%s", dev), int(di.Size))
+			if err == nil {
+				hash = sha256.Sum256(buffer)
+			}
+			fmt.Printf("%s | %s | %x\n", n, dev, hash)
+		}
+	*/
+
 	return dg, nil
 }
 
@@ -318,6 +334,44 @@ func migrateToPipe(ctx context.Context, readers []io.Reader, writers []io.Writer
 	if err != nil {
 		return err
 	}
-
+	/*
+		names := dg.GetAllNames()
+		for _, n := range names {
+			// Get a data hash
+			di := dg.GetDeviceInformationByName(n)
+			dev := di.Exp.Device()
+			hash := [32]byte{}
+			buffer, err := readAllDataFromDevice(fmt.Sprintf("/dev/%s", dev), int(di.Size))
+			if err == nil {
+				hash = sha256.Sum256(buffer)
+			}
+			fmt.Printf("%s | %s | %x\n", n, dev, hash)
+		}
+	*/
 	return nil
 }
+
+/*
+func readAllDataFromDevice(name string, size int) ([]byte, error) {
+	fd, err := os.Open(name)
+	if err != nil {
+		return nil, err
+	}
+
+	// Try reading the device...
+	buffer := make([]byte, size)
+	n, err := fd.ReadAt(buffer, 0)
+	if n != size {
+		return nil, errors.New("unable to read full data")
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	err = fd.Close()
+	if err != nil {
+		return nil, err
+	}
+	return buffer, nil
+}
+*/
