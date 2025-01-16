@@ -132,19 +132,9 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 		devices: devices,
 		runner:  peer.runner,
 		Wait: func() error {
+			fmt.Printf(" ### org migratedPeer.Wait\n")
 			return nil
 		},
-	}
-
-	migratedPeer.Close = func() (errs error) {
-		// We have to close the runner before we close the devices
-		err := peer.runner.Close()
-		if err != nil {
-			return err
-		}
-
-		// Close any Silo devices
-		return migratedPeer.closeDG()
 	}
 
 	// Migrate the devices from a protocol
@@ -157,6 +147,7 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 		}
 
 		migratedPeer.Wait = sync.OnceValue(func() error {
+			fmt.Printf(" ### migratedPeer.Wait\n")
 			defer cancelProtocolCtx()
 
 			if dg != nil {

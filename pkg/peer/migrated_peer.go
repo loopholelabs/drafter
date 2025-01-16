@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path"
 	"sync"
@@ -18,14 +19,32 @@ import (
 )
 
 type MigratedPeer[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] struct {
-	Wait  func() error
-	Close func() error
+	Wait func() error
 
 	dgLock sync.Mutex
 	dg     *devicegroup.DeviceGroup
 
 	devices []common.MigrateFromDevice
 	runner  *runner.Runner[L, R, G]
+
+	alreadyClosed bool
+}
+
+func (migratedPeer *MigratedPeer[L, R, G]) Close() error {
+	if migratedPeer.alreadyClosed {
+		fmt.Printf("FIXME: MigratedPeer.Close called multiple times\n")
+		return nil
+	}
+	migratedPeer.alreadyClosed = true
+
+	// We have to close the runner before we close the devices
+	err := migratedPeer.runner.Close()
+	if err != nil {
+		return err
+	}
+
+	// Close any Silo devices
+	return migratedPeer.closeDG()
 }
 
 func (migratedPeer *MigratedPeer[L, R, G]) setDG(dg *devicegroup.DeviceGroup) {
