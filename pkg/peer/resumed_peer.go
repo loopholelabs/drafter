@@ -2,6 +2,7 @@ package peer
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"time"
 
@@ -15,9 +16,36 @@ import (
 type ResumedPeer[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] struct {
 	dg            *devicegroup.DeviceGroup
 	Remote        R
-	Wait          func() error
-	Close         func() error
 	resumedRunner *runner.ResumedRunner[L, R, G]
+
+	alreadyClosed bool
+	alreadyWaited bool
+}
+
+func (resumedPeer *ResumedPeer[L, R, G]) Wait() error {
+	if resumedPeer.alreadyWaited {
+		fmt.Printf("FIXME: ResumedPeer.Wait called multiple times\n")
+		return nil
+	}
+	resumedPeer.alreadyWaited = true
+
+	if resumedPeer.resumedRunner != nil {
+		return resumedPeer.resumedRunner.Wait()
+	}
+	return nil
+}
+
+func (resumedPeer *ResumedPeer[L, R, G]) Close() error {
+	if resumedPeer.alreadyClosed {
+		fmt.Printf("FIXME: ResumedPeer.Close called multiple times\n")
+		return nil
+	}
+	resumedPeer.alreadyClosed = true
+
+	if resumedPeer.resumedRunner != nil {
+		return resumedPeer.resumedRunner.Close()
+	}
+	return nil
 }
 
 func (resumedPeer *ResumedPeer[L, R, G]) SuspendAndCloseAgentServer(ctx context.Context, resumeTimeout time.Duration) error {

@@ -58,12 +58,6 @@ func (migratedPeer *MigratedPeer[L, R, G]) Resume(
 ) (resumedPeer *ResumedPeer[L, R, G], errs error) {
 	resumedPeer = &ResumedPeer[L, R, G]{
 		dg: migratedPeer.dg,
-		Wait: func() error {
-			return nil
-		},
-		Close: func() error {
-			return nil
-		},
 	}
 
 	// Read from the config device
@@ -103,9 +97,6 @@ func (migratedPeer *MigratedPeer[L, R, G]) Resume(
 		return nil, errors.Join(ErrCouldNotResumeRunner, err)
 	}
 	resumedPeer.Remote = resumedPeer.resumedRunner.Remote
-
-	resumedPeer.Wait = resumedPeer.resumedRunner.Wait
-	resumedPeer.Close = resumedPeer.resumedRunner.Close
 
 	return resumedPeer, nil
 }
