@@ -7,7 +7,6 @@ import (
 
 	"github.com/loopholelabs/drafter/pkg/common"
 	"github.com/loopholelabs/drafter/pkg/ipc"
-	"github.com/loopholelabs/drafter/pkg/mounter"
 	"github.com/loopholelabs/drafter/pkg/runner"
 	"github.com/loopholelabs/silo/pkg/storage/devicegroup"
 	"github.com/loopholelabs/silo/pkg/storage/migrator"
@@ -45,7 +44,7 @@ type MigrateToHooks struct {
  */
 func (migratablePeer *ResumedPeer[L, R, G]) MigrateTo(
 	ctx context.Context,
-	devices []mounter.MigrateToDevice,
+	devices []common.MigrateToDevice,
 	suspendTimeout time.Duration,
 	concurrency int,
 	readers []io.Reader,

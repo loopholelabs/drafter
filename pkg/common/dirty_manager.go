@@ -5,8 +5,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/loopholelabs/drafter/pkg/mounter"
 	"github.com/loopholelabs/drafter/pkg/packager"
+)
+
+var (
+	ErrCouldNotSuspendAndMsyncVM = errors.New("could not suspend and msync VM")
 )
 
 type DeviceStatus struct {
@@ -168,7 +171,7 @@ func (dm *DirtyManager) PostMigrateDirty(name string, blocks []uint) (bool, erro
 			dm.suspendLock.Unlock()
 
 			if err != nil {
-				return true, errors.Join(mounter.ErrCouldNotSuspendAndMsyncVM, err)
+				return true, errors.Join(ErrCouldNotSuspendAndMsyncVM, err)
 			}
 		} else {
 			dm.suspendLock.Unlock()

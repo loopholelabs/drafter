@@ -14,7 +14,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loopholelabs/drafter/pkg/mounter"
 	"github.com/loopholelabs/silo/pkg/storage/config"
 	"github.com/loopholelabs/silo/pkg/storage/devicegroup"
 	"github.com/loopholelabs/silo/pkg/storage/migrator"
@@ -144,7 +143,7 @@ func TestMigrateFromFsThenBetween(t *testing.T) {
 			fmt.Printf("Progress...\n")
 		}
 
-		devices := []mounter.MigrateToDevice{
+		devices := []MigrateToDevice{
 			{
 				Name:           "test",
 				MaxDirtyBlocks: 10,

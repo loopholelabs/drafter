@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
-	"github.com/loopholelabs/drafter/pkg/mounter"
 	"github.com/loopholelabs/drafter/pkg/snapshotter"
 	"github.com/loopholelabs/logging/types"
 	"github.com/loopholelabs/silo/pkg/storage/config"
@@ -21,6 +21,23 @@ import (
 	"github.com/loopholelabs/silo/pkg/storage/protocol/packets"
 	"golang.org/x/sys/unix"
 )
+
+var (
+	ErrCouldNotCreateDeviceDirectory  = errors.New("could not create device directory")
+	ErrCouldNotGetBaseDeviceStat      = errors.New("could not get base device statistics")
+	ErrCouldNotCreateOverlayDirectory = errors.New("could not create overlay directory")
+	ErrCouldNotCreateStateDirectory   = errors.New("could not create state directory")
+)
+
+type MigrateToDevice struct {
+	Name string `json:"name"`
+
+	MaxDirtyBlocks int `json:"maxDirtyBlocks"`
+	MinCycles      int `json:"minCycles"`
+	MaxCycles      int `json:"maxCycles"`
+
+	CycleThrottle time.Duration `json:"cycleThrottle"`
+}
 
 type MigrateFromDevice struct {
 	Name      string `json:"name"`
@@ -38,6 +55,9 @@ var (
 
 // expose a Silo Device as a file within the vm directory
 func ExposeSiloDeviceAsFile(vmpath string, name string, devicePath string) error {
+	if vmpath == "" {
+		return nil
+	}
 	deviceInfo, err := os.Stat(devicePath)
 	if err != nil {
 		return errors.Join(snapshotter.ErrCouldNotGetDeviceStat, err)
@@ -64,7 +84,7 @@ func ExposeSiloDeviceAsFile(vmpath string, name string, devicePath string) error
 func CreateSiloDevSchema(i *MigrateFromDevice) (*config.DeviceSchema, error) {
 	stat, err := os.Stat(i.Base)
 	if err != nil {
-		return nil, errors.Join(mounter.ErrCouldNotGetBaseDeviceStat, err)
+		return nil, errors.Join(ErrCouldNotGetBaseDeviceStat, err)
 	}
 
 	ds := &config.DeviceSchema{
@@ -76,19 +96,19 @@ func CreateSiloDevSchema(i *MigrateFromDevice) (*config.DeviceSchema, error) {
 	if strings.TrimSpace(i.Overlay) == "" || strings.TrimSpace(i.State) == "" {
 		err := os.MkdirAll(filepath.Dir(i.Base), os.ModePerm)
 		if err != nil {
-			return nil, errors.Join(mounter.ErrCouldNotCreateDeviceDirectory, err)
+			return nil, errors.Join(ErrCouldNotCreateDeviceDirectory, err)
 		}
 		ds.System = "file"
 		ds.Location = i.Base
 	} else {
 		err := os.MkdirAll(filepath.Dir(i.Overlay), os.ModePerm)
 		if err != nil {
-			return nil, errors.Join(mounter.ErrCouldNotCreateOverlayDirectory, err)
+			return nil, errors.Join(ErrCouldNotCreateOverlayDirectory, err)
 		}
 
 		err = os.MkdirAll(filepath.Dir(i.State), os.ModePerm)
 		if err != nil {
-			return nil, errors.Join(mounter.ErrCouldNotCreateStateDirectory, err)
+			return nil, errors.Join(ErrCouldNotCreateStateDirectory, err)
 		}
 
 		ds.System = "sparsefile"
@@ -114,19 +134,19 @@ func CreateIncomingSiloDevSchema(i *MigrateFromDevice, schema *config.DeviceSche
 	if strings.TrimSpace(i.Overlay) == "" || strings.TrimSpace(i.State) == "" {
 		err := os.MkdirAll(filepath.Dir(i.Base), os.ModePerm)
 		if err != nil {
-			return nil, errors.Join(mounter.ErrCouldNotCreateDeviceDirectory, err)
+			return nil, errors.Join(ErrCouldNotCreateDeviceDirectory, err)
 		}
 		ds.System = "file"
 		ds.Location = i.Base
 	} else {
 		err := os.MkdirAll(filepath.Dir(i.Overlay), os.ModePerm)
 		if err != nil {
-			return nil, errors.Join(mounter.ErrCouldNotCreateOverlayDirectory, err)
+			return nil, errors.Join(ErrCouldNotCreateOverlayDirectory, err)
 		}
 
 		err = os.MkdirAll(filepath.Dir(i.State), os.ModePerm)
 		if err != nil {
-			return nil, errors.Join(mounter.ErrCouldNotCreateStateDirectory, err)
+			return nil, errors.Join(ErrCouldNotCreateStateDirectory, err)
 		}
 
 		ds.System = "sparsefile"
@@ -276,7 +296,7 @@ func MigrateFromPipe(log types.Logger, met metrics.SiloMetrics, vmpath string,
  */
 func MigrateToPipe(ctx context.Context, readers []io.Reader, writers []io.Writer,
 	dg *devicegroup.DeviceGroup, concurrency int, onProgress func(p map[string]*migrator.MigrationProgress),
-	vmState *VMStateMgr, devices []mounter.MigrateToDevice, getCustomPayload func() []byte) error {
+	vmState *VMStateMgr, devices []MigrateToDevice, getCustomPayload func() []byte) error {
 
 	// Create a protocol for use by Silo
 	pro := protocol.NewRW(ctx, readers, writers, nil)

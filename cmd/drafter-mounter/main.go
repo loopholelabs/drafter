@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -15,9 +16,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/loopholelabs/drafter/pkg/common"
 	"github.com/loopholelabs/drafter/pkg/mounter"
 	"github.com/loopholelabs/drafter/pkg/packager"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
+	"github.com/loopholelabs/silo/pkg/storage/migrator"
 )
 
 type CompositeDevices struct {
@@ -195,7 +198,7 @@ func main() {
 	)
 	defer goroutineManager.Wait()
 	defer goroutineManager.StopAllGoroutines()
-	defer goroutineManager.CreateBackgroundPanicCollector()()
+	//	defer goroutineManager.CreateBackgroundPanicCollector()()
 
 	bubbleSignals := false
 
@@ -445,13 +448,13 @@ l:
 
 			defer migratableMounter.Close()
 
-			migrateToDevices := []mounter.MigrateToDevice{}
+			migrateToDevices := []common.MigrateToDevice{}
 			for _, device := range devices {
 				if !device.MakeMigratable {
 					continue
 				}
 
-				migrateToDevices = append(migrateToDevices, mounter.MigrateToDevice{
+				migrateToDevices = append(migrateToDevices, common.MigrateToDevice{
 					Name: device.Name,
 
 					MaxDirtyBlocks: device.MaxDirtyBlocks,
@@ -530,9 +533,31 @@ l:
 					OnAllMigrationsCompleted: func() {
 						log.Println("Completed all device migrations")
 					},
+					OnProgress: func(p map[string]*migrator.MigrationProgress) {
+						totalSize := 0
+						totalDone := 0
+						for _, prog := range p {
+							totalSize += (prog.TotalBlocks * prog.BlockSize)
+							totalDone += (prog.ReadyBlocks * prog.BlockSize)
+						}
+
+						perc := float64(0.0)
+						if totalSize > 0 {
+							perc = float64(totalDone) * 100 / float64(totalSize)
+						}
+						// Report overall migration progress
+						log.Printf("# Overall migration Progress # (%d / %d) %.1f%%\n", totalDone, totalSize, perc)
+
+						// Report individual devices
+						for name, prog := range p {
+							log.Printf(" [%s] Progress Migrated Blocks (%d/%d)  %d ready %d total\n", name, prog.MigratedBlocks, prog.TotalBlocks, prog.ReadyBlocks, prog.TotalMigratedBlocks)
+						}
+
+					},
 				},
 			)
 		}(); err != nil {
+			fmt.Printf("ERROR %v\n", err)
 			panic(err)
 		}
 	}

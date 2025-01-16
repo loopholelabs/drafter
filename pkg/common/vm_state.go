@@ -41,6 +41,18 @@ func NewVMStateMgr(ctx context.Context,
 	}
 }
 
+func NewDummyVMStateMgr(ctx context.Context) *VMStateMgr {
+	return &VMStateMgr{
+		ctx:             ctx,
+		suspendFunc:     func(context.Context, time.Duration) error { return nil },
+		suspendTimeout:  10 * time.Second,
+		msyncFunc:       func(context.Context) error { return nil },
+		onBeforeSuspend: func() {},
+		onAfterSuspend:  func() {},
+		suspendedCh:     make(chan struct{}),
+	}
+}
+
 func (sm *VMStateMgr) GetSuspsnededVMCh() chan struct{} {
 	return sm.suspendedCh
 }

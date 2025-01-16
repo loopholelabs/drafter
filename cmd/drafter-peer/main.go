@@ -558,26 +558,13 @@ func main() {
 
 	log.Println("Migrating to", conn.RemoteAddr())
 
-	makeMigratableDevices := []mounter.MakeMigratableDevice{}
+	migrateToDevices := []common.MigrateToDevice{}
 	for _, device := range devices {
 		if !device.MakeMigratable || device.Shared {
 			continue
 		}
 
-		makeMigratableDevices = append(makeMigratableDevices, mounter.MakeMigratableDevice{
-			Name: device.Name,
-
-			Expiry: device.Expiry,
-		})
-	}
-
-	migrateToDevices := []mounter.MigrateToDevice{}
-	for _, device := range devices {
-		if !device.MakeMigratable || device.Shared {
-			continue
-		}
-
-		migrateToDevices = append(migrateToDevices, mounter.MigrateToDevice{
+		migrateToDevices = append(migrateToDevices, common.MigrateToDevice{
 			Name: device.Name,
 
 			MaxDirtyBlocks: device.MaxDirtyBlocks,
