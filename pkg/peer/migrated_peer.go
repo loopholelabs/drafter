@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/loopholelabs/drafter/pkg/common"
 	"github.com/loopholelabs/drafter/pkg/ipc"
 	"github.com/loopholelabs/drafter/pkg/packager"
 	"github.com/loopholelabs/drafter/pkg/runner"
@@ -23,7 +24,7 @@ type MigratedPeer[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] str
 	DgLock sync.Mutex
 	Dg     *devicegroup.DeviceGroup
 
-	devices []MigrateFromDevice
+	devices []common.MigrateFromDevice
 	runner  *runner.Runner[L, R, G]
 }
 

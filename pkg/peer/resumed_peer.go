@@ -5,6 +5,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/loopholelabs/drafter/pkg/common"
 	"github.com/loopholelabs/drafter/pkg/ipc"
 	"github.com/loopholelabs/drafter/pkg/mounter"
 	"github.com/loopholelabs/drafter/pkg/runner"
@@ -53,7 +54,7 @@ func (migratablePeer *ResumedPeer[L, R, G]) MigrateTo(
 ) error {
 
 	// This manages the status of the VM - if it's suspended or not.
-	vmState := NewVMStateMgr(ctx,
+	vmState := common.NewVMStateMgr(ctx,
 		migratablePeer.SuspendAndCloseAgentServer,
 		suspendTimeout,
 		migratablePeer.resumedRunner.Msync,
@@ -61,7 +62,7 @@ func (migratablePeer *ResumedPeer[L, R, G]) MigrateTo(
 		hooks.OnAfterSuspend,
 	)
 
-	err := migrateToPipe(ctx, readers, writers, migratablePeer.Dg, concurrency, hooks.OnProgress, vmState, devices, hooks.GetXferCustomData)
+	err := common.MigrateToPipe(ctx, readers, writers, migratablePeer.Dg, concurrency, hooks.OnProgress, vmState, devices, hooks.GetXferCustomData)
 
 	if err != nil {
 		return err

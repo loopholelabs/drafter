@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/loopholelabs/drafter/pkg/common"
 	"github.com/loopholelabs/drafter/pkg/ipc"
 	"github.com/loopholelabs/drafter/pkg/mounter"
 	"github.com/loopholelabs/drafter/pkg/packager"
@@ -330,9 +331,9 @@ func main() {
 		}
 	})
 
-	migrateFromDevices := []peer.MigrateFromDevice{}
+	migrateFromDevices := []common.MigrateFromDevice{}
 	for _, device := range devices {
-		migrateFromDevices = append(migrateFromDevices, peer.MigrateFromDevice{
+		migrateFromDevices = append(migrateFromDevices, common.MigrateFromDevice{
 			Name: device.Name,
 
 			Base:    device.Base,

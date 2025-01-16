@@ -1,4 +1,4 @@
-package peer
+package common
 
 import (
 	"context"
@@ -31,8 +31,13 @@ type MigrateFromDevice struct {
 	Shared    bool   `json:"shared"`
 }
 
+var (
+	ErrCouldNotGetNBDDeviceStat = errors.New("could not get NBD device stat")
+	ErrCouldNotCreateDeviceNode = errors.New("could not create device node")
+)
+
 // expose a Silo Device as a file within the vm directory
-func exposeSiloDeviceAsFile(vmpath string, name string, devicePath string) error {
+func ExposeSiloDeviceAsFile(vmpath string, name string, devicePath string) error {
 	deviceInfo, err := os.Stat(devicePath)
 	if err != nil {
 		return errors.Join(snapshotter.ErrCouldNotGetDeviceStat, err)
@@ -56,7 +61,7 @@ func exposeSiloDeviceAsFile(vmpath string, name string, devicePath string) error
  * If you want to change the type of storage used, or Silo options, you can do so here.
  *
  */
-func createSiloDevSchema(i *MigrateFromDevice) (*config.DeviceSchema, error) {
+func CreateSiloDevSchema(i *MigrateFromDevice) (*config.DeviceSchema, error) {
 	stat, err := os.Stat(i.Base)
 	if err != nil {
 		return nil, errors.Join(mounter.ErrCouldNotGetBaseDeviceStat, err)
@@ -99,7 +104,7 @@ func createSiloDevSchema(i *MigrateFromDevice) (*config.DeviceSchema, error) {
 	return ds, nil
 }
 
-func createIncomingSiloDevSchema(i *MigrateFromDevice, schema *config.DeviceSchema) (*config.DeviceSchema, error) {
+func CreateIncomingSiloDevSchema(i *MigrateFromDevice, schema *config.DeviceSchema) (*config.DeviceSchema, error) {
 	ds := &config.DeviceSchema{
 		Name:      i.Name,
 		BlockSize: fmt.Sprintf("%v", i.BlockSize),
@@ -141,18 +146,18 @@ func createIncomingSiloDevSchema(i *MigrateFromDevice, schema *config.DeviceSche
  * 'migrate' from the local filesystem.
  *
  */
-func migrateFromFS(log types.Logger, met metrics.SiloMetrics, vmpath string,
+func MigrateFromFS(log types.Logger, met metrics.SiloMetrics, vmpath string,
 	devices []MigrateFromDevice, tweak func(index int, name string, schema *config.DeviceSchema) *config.DeviceSchema) (*devicegroup.DeviceGroup, error) {
 	siloDeviceSchemas := make([]*config.DeviceSchema, 0)
 	for i, input := range devices {
 		if input.Shared {
 			// Deal with shared devices here...
-			err := exposeSiloDeviceAsFile(vmpath, input.Name, input.Base)
+			err := ExposeSiloDeviceAsFile(vmpath, input.Name, input.Base)
 			if err != nil {
 				return nil, err
 			}
 		} else {
-			ds, err := createSiloDevSchema(&input)
+			ds, err := CreateSiloDevSchema(&input)
 			if err != nil {
 				return nil, err
 			}
@@ -172,7 +177,7 @@ func migrateFromFS(log types.Logger, met metrics.SiloMetrics, vmpath string,
 
 	for _, input := range siloDeviceSchemas {
 		dev := dg.GetExposedDeviceByName(input.Name)
-		err = exposeSiloDeviceAsFile(vmpath, input.Name, filepath.Join("/dev", dev.Device()))
+		err = ExposeSiloDeviceAsFile(vmpath, input.Name, filepath.Join("/dev", dev.Device()))
 		if err != nil {
 			return nil, err
 		}
@@ -191,7 +196,7 @@ func migrateFromFS(log types.Logger, met metrics.SiloMetrics, vmpath string,
  * Migrate FROM a pipe
  * NB: You should call dg.WaitForCompletion() later to ensure migrations are finished
  */
-func migrateFromPipe(log types.Logger, met metrics.SiloMetrics, vmpath string,
+func MigrateFromPipe(log types.Logger, met metrics.SiloMetrics, vmpath string,
 	ctx context.Context, readers []io.Reader, writers []io.Writer, schemaTweak func(index int, name string, schema *config.DeviceSchema) *config.DeviceSchema,
 	cdh func([]byte)) (*devicegroup.DeviceGroup, error) {
 	ready := make(chan bool)
@@ -225,7 +230,7 @@ func migrateFromPipe(log types.Logger, met metrics.SiloMetrics, vmpath string,
 	for _, n := range dg.GetAllNames() {
 		dev := dg.GetExposedDeviceByName(n)
 		if dev != nil {
-			err := exposeSiloDeviceAsFile(vmpath, n, filepath.Join("/dev", dev.Device()))
+			err := ExposeSiloDeviceAsFile(vmpath, n, filepath.Join("/dev", dev.Device()))
 			if err != nil {
 				return nil, err
 			}
@@ -269,7 +274,7 @@ func migrateFromPipe(log types.Logger, met metrics.SiloMetrics, vmpath string,
  * Migrate TO a pipe
  *
  */
-func migrateToPipe(ctx context.Context, readers []io.Reader, writers []io.Writer,
+func MigrateToPipe(ctx context.Context, readers []io.Reader, writers []io.Writer,
 	dg *devicegroup.DeviceGroup, concurrency int, onProgress func(p map[string]*migrator.MigrationProgress),
 	vmState *VMStateMgr, devices []mounter.MigrateToDevice, getCustomPayload func() []byte) error {
 

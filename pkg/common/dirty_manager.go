@@ -1,4 +1,4 @@
-package peer
+package common
 
 import (
 	"errors"

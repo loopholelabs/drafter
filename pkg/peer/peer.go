@@ -7,6 +7,7 @@ import (
 	"io"
 	"sync"
 
+	"github.com/loopholelabs/drafter/pkg/common"
 	"github.com/loopholelabs/drafter/pkg/ipc"
 	"github.com/loopholelabs/drafter/pkg/mounter"
 	"github.com/loopholelabs/drafter/pkg/runner"
@@ -102,7 +103,7 @@ func StartPeer[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 
 func (peer *Peer[L, R, G]) MigrateFrom(
 	ctx context.Context,
-	devices []MigrateFromDevice,
+	devices []common.MigrateFromDevice,
 	readers []io.Reader,
 	writers []io.Writer,
 	hooks mounter.MigrateFromHooks,
@@ -119,7 +120,7 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 
 		for _, d := range devices {
 			if d.Name == schema.Name {
-				newSchema, err := createIncomingSiloDevSchema(&d, schema)
+				newSchema, err := common.CreateIncomingSiloDevSchema(&d, schema)
 				if err == nil {
 					fmt.Printf("Tweaked schema %s\n", newSchema.EncodeAsBlock())
 					return newSchema
@@ -169,7 +170,7 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 	if len(readers) > 0 && len(writers) > 0 {
 		protocolCtx, cancelProtocolCtx := context.WithCancel(ctx)
 
-		dg, err := migrateFromPipe(log, met, migratedPeer.runner.VMPath, protocolCtx, readers, writers, tweakRemote, hooks.OnXferCustomData)
+		dg, err := common.MigrateFromPipe(log, met, migratedPeer.runner.VMPath, protocolCtx, readers, writers, tweakRemote, hooks.OnXferCustomData)
 		if err != nil {
 			return nil, err
 		}
@@ -197,7 +198,7 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 	//
 
 	if len(readers) == 0 && len(writers) == 0 {
-		dg, err := migrateFromFS(log, met, migratedPeer.runner.VMPath, devices, tweakLocal)
+		dg, err := common.MigrateFromFS(log, met, migratedPeer.runner.VMPath, devices, tweakLocal)
 		if err != nil {
 			return nil, err
 		}

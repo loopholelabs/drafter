@@ -1,10 +1,15 @@
-package peer
+package common
 
 import (
 	"context"
 	"errors"
 	"sync"
 	"time"
+)
+
+var (
+	ErrCouldNotSuspendAndCloseAgentServer = errors.New("could not suspend and close agent server")
+	ErrCouldNotMsyncRunner                = errors.New("could not msync runner")
 )
 
 type VMStateMgr struct {
