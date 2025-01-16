@@ -19,15 +19,19 @@ import (
 )
 
 type MigratedPeer[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] struct {
-	Wait func() error
+	cancelCtx context.CancelFunc
 
-	dgLock sync.Mutex
-	dg     *devicegroup.DeviceGroup
+	//Wait func() error
+
+	dgLock     sync.Mutex
+	dg         *devicegroup.DeviceGroup
+	dgIncoming bool
 
 	devices []common.MigrateFromDevice
 	runner  *runner.Runner[L, R, G]
 
 	alreadyClosed bool
+	alreadyWaited bool
 }
 
 func (migratedPeer *MigratedPeer[L, R, G]) Close() error {
@@ -47,9 +51,34 @@ func (migratedPeer *MigratedPeer[L, R, G]) Close() error {
 	return migratedPeer.closeDG()
 }
 
-func (migratedPeer *MigratedPeer[L, R, G]) setDG(dg *devicegroup.DeviceGroup) {
+func (migratedPeer *MigratedPeer[L, R, G]) Wait() error {
+	if migratedPeer.alreadyWaited {
+		fmt.Printf("FIXME: MigratedPeer.Wait called multiple times\n")
+		return nil
+	}
+	migratedPeer.alreadyWaited = true
+
+	defer func() {
+		if migratedPeer.cancelCtx != nil {
+			migratedPeer.cancelCtx()
+		}
+	}()
+
+	migratedPeer.dgLock.Lock()
+	if migratedPeer.dgIncoming && migratedPeer.dg != nil {
+		migratedPeer.dgIncoming = false
+		migratedPeer.dgLock.Unlock()
+		return migratedPeer.dg.WaitForCompletion()
+	}
+	migratedPeer.dgLock.Unlock()
+
+	return nil
+}
+
+func (migratedPeer *MigratedPeer[L, R, G]) setDG(dg *devicegroup.DeviceGroup, incoming bool) {
 	migratedPeer.dgLock.Lock()
 	migratedPeer.dg = dg
+	migratedPeer.dgIncoming = incoming
 	migratedPeer.dgLock.Unlock()
 }
 

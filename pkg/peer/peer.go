@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"sync"
 
 	"github.com/loopholelabs/drafter/pkg/common"
 	"github.com/loopholelabs/drafter/pkg/ipc"
@@ -131,10 +130,6 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 	migratedPeer = &MigratedPeer[L, R, G]{
 		devices: devices,
 		runner:  peer.runner,
-		Wait: func() error {
-			fmt.Printf(" ### org migratedPeer.Wait\n")
-			return nil
-		},
 	}
 
 	// Migrate the devices from a protocol
@@ -146,21 +141,10 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 			return nil, err
 		}
 
-		migratedPeer.Wait = sync.OnceValue(func() error {
-			fmt.Printf(" ### migratedPeer.Wait\n")
-			defer cancelProtocolCtx()
-
-			if dg != nil {
-				err := dg.WaitForCompletion()
-				if err != nil {
-					return err
-				}
-			}
-			return nil
-		})
+		migratedPeer.cancelCtx = cancelProtocolCtx
 
 		// Save dg for future migrations, AND for things like reading config
-		migratedPeer.setDG(dg)
+		migratedPeer.setDG(dg, true)
 	}
 
 	//
@@ -174,7 +158,7 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 		}
 
 		// Save dg for later usage, when we want to migrate from here etc
-		migratedPeer.setDG(dg)
+		migratedPeer.setDG(dg, false)
 
 		if hook := hooks.OnLocalAllDevicesRequested; hook != nil {
 			hook()
