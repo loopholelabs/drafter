@@ -149,21 +149,13 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 
 	migratedPeer.Close = func() (errs error) {
 		// We have to close the runner before we close the devices
-		if err := peer.runner.Close(); err != nil {
+		err := peer.runner.Close()
+		if err != nil {
 			return err
 		}
 
 		// Close any Silo devices
-		migratedPeer.DgLock.Lock()
-		if migratedPeer.Dg != nil {
-			err := migratedPeer.Dg.CloseAll()
-			if err != nil {
-				migratedPeer.DgLock.Unlock()
-				return err
-			}
-		}
-		migratedPeer.DgLock.Unlock()
-		return nil
+		return migratedPeer.closeDG()
 	}
 
 	// Migrate the devices from a protocol
@@ -188,9 +180,7 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 		})
 
 		// Save dg for future migrations, AND for things like reading config
-		migratedPeer.DgLock.Lock()
-		migratedPeer.Dg = dg
-		migratedPeer.DgLock.Unlock()
+		migratedPeer.setDG(dg)
 	}
 
 	//
@@ -204,9 +194,7 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 		}
 
 		// Save dg for later usage, when we want to migrate from here etc
-		migratedPeer.DgLock.Lock()
-		migratedPeer.Dg = dg
-		migratedPeer.DgLock.Unlock()
+		migratedPeer.setDG(dg)
 
 		if hook := hooks.OnLocalAllDevicesRequested; hook != nil {
 			hook()

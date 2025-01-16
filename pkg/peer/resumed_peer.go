@@ -13,7 +13,7 @@ import (
 )
 
 type ResumedPeer[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] struct {
-	Dg            *devicegroup.DeviceGroup
+	dg            *devicegroup.DeviceGroup
 	Remote        R
 	Wait          func() error
 	Close         func() error
@@ -23,7 +23,6 @@ type ResumedPeer[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] stru
 func (resumedPeer *ResumedPeer[L, R, G]) SuspendAndCloseAgentServer(ctx context.Context, resumeTimeout time.Duration) error {
 	return resumedPeer.resumedRunner.SuspendAndCloseAgentServer(
 		ctx,
-
 		resumeTimeout,
 	)
 }
@@ -61,8 +60,7 @@ func (migratablePeer *ResumedPeer[L, R, G]) MigrateTo(
 		hooks.OnAfterSuspend,
 	)
 
-	err := common.MigrateToPipe(ctx, readers, writers, migratablePeer.Dg, concurrency, hooks.OnProgress, vmState, devices, hooks.GetXferCustomData)
-
+	err := common.MigrateToPipe(ctx, readers, writers, migratablePeer.dg, concurrency, hooks.OnProgress, vmState, devices, hooks.GetXferCustomData)
 	if err != nil {
 		return err
 	}

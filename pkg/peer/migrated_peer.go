@@ -21,11 +21,28 @@ type MigratedPeer[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] str
 	Wait  func() error
 	Close func() error
 
-	DgLock sync.Mutex
-	Dg     *devicegroup.DeviceGroup
+	dgLock sync.Mutex
+	dg     *devicegroup.DeviceGroup
 
 	devices []common.MigrateFromDevice
 	runner  *runner.Runner[L, R, G]
+}
+
+func (migratedPeer *MigratedPeer[L, R, G]) setDG(dg *devicegroup.DeviceGroup) {
+	migratedPeer.dgLock.Lock()
+	migratedPeer.dg = dg
+	migratedPeer.dgLock.Unlock()
+}
+
+func (migratedPeer *MigratedPeer[L, R, G]) closeDG() error {
+	var err error
+	migratedPeer.dgLock.Lock()
+	if migratedPeer.dg != nil {
+		err = migratedPeer.dg.CloseAll()
+		migratedPeer.dg = nil
+	}
+	migratedPeer.dgLock.Unlock()
+	return err
 }
 
 func (migratedPeer *MigratedPeer[L, R, G]) Resume(
@@ -40,7 +57,7 @@ func (migratedPeer *MigratedPeer[L, R, G]) Resume(
 	snapshotLoadConfiguration runner.SnapshotLoadConfiguration,
 ) (resumedPeer *ResumedPeer[L, R, G], errs error) {
 	resumedPeer = &ResumedPeer[L, R, G]{
-		Dg: migratedPeer.Dg,
+		dg: migratedPeer.dg,
 		Wait: func() error {
 			return nil
 		},
