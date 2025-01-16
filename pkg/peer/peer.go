@@ -2,7 +2,6 @@ package peer
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"sync"
@@ -12,7 +11,6 @@ import (
 	"github.com/loopholelabs/drafter/pkg/mounter"
 	"github.com/loopholelabs/drafter/pkg/runner"
 	"github.com/loopholelabs/drafter/pkg/snapshotter"
-	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 	"github.com/loopholelabs/logging/types"
 	"github.com/loopholelabs/silo/pkg/storage/config"
 	"github.com/loopholelabs/silo/pkg/storage/metrics"
@@ -22,12 +20,42 @@ type Peer[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] struct {
 	VMPath string
 	VMPid  int
 
-	Wait  func() error
-	Close func() error
-
 	hypervisorCtx context.Context
 
 	runner *runner.Runner[L, R, G]
+
+	alreadyClosed bool
+	alreadyWaited bool
+}
+
+func (p Peer[L, R, G]) Close() error {
+	if p.alreadyClosed {
+		fmt.Printf("FIXME: Peer.Close called multiple times\n")
+		return nil
+	}
+	p.alreadyClosed = true
+
+	if p.runner != nil {
+		err := p.runner.Close()
+		if err != nil {
+			return err
+		}
+		return p.runner.Wait()
+	}
+	return nil
+}
+
+func (p Peer[L, R, G]) Wait() error {
+	if p.alreadyWaited {
+		fmt.Printf("FIXME: Peer.Wait called multiple times\n")
+		return nil
+	}
+	p.alreadyWaited = true
+
+	if p.runner != nil {
+		return p.runner.Wait()
+	}
+	return nil
 }
 
 func StartPeer[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
@@ -38,67 +66,28 @@ func StartPeer[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 
 	stateName string,
 	memoryName string,
-) (
-	peer *Peer[L, R, G],
-
-	errs error,
-) {
-	peer = &Peer[L, R, G]{
+) (*Peer[L, R, G], error) {
+	peer := &Peer[L, R, G]{
 		hypervisorCtx: hypervisorCtx,
-
-		Wait: func() error {
-			return nil
-		},
-		Close: func() error {
-			return nil
-		},
 	}
-
-	goroutineManager := manager.NewGoroutineManager(
-		hypervisorCtx,
-		&errs,
-		manager.GoroutineManagerHooks{},
-	)
-	defer goroutineManager.Wait()
-	defer goroutineManager.StopAllGoroutines()
-	defer goroutineManager.CreateBackgroundPanicCollector()()
 
 	var err error
 	peer.runner, err = runner.StartRunner[L, R](
 		hypervisorCtx,
 		rescueCtx,
-
 		hypervisorConfiguration,
-
 		stateName,
 		memoryName,
 	)
 
-	// We set both of these even if we return an error since we need to have a way to wait for rescue operations to complete
-	peer.Wait = peer.runner.Wait
-	peer.Close = func() error {
-		if err := peer.runner.Close(); err != nil {
-			return err
-		}
-
-		return peer.Wait()
-	}
-
 	if err != nil {
-		panic(errors.Join(ErrCouldNotStartRunner, err))
+		return nil, err
 	}
 
 	peer.VMPath = peer.runner.VMPath
 	peer.VMPid = peer.runner.VMPid
 
-	// We don't track this because we return the wait function
-	goroutineManager.StartBackgroundGoroutine(func(_ context.Context) {
-		if err := peer.runner.Wait(); err != nil {
-			panic(err)
-		}
-	})
-
-	return
+	return peer, nil
 }
 
 func (peer *Peer[L, R, G]) MigrateFrom(
