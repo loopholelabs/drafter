@@ -189,8 +189,13 @@ func MigrateFromFS(log types.Logger, met metrics.SiloMetrics, vmpath string,
 		}
 	}
 
+	var slog types.Logger
+	if log != nil {
+		slog = log.SubLogger("silo")
+	}
+
 	// Create a silo deviceGroup from all the schemas
-	dg, err := devicegroup.NewFromSchema(siloDeviceSchemas, log, met)
+	dg, err := devicegroup.NewFromSchema(siloDeviceSchemas, slog, met)
 	if err != nil {
 		return nil, err
 	}
@@ -241,7 +246,13 @@ func MigrateFromPipe(log types.Logger, met metrics.SiloMetrics, vmpath string,
 		}
 		close(ready)
 	}
-	dg, err := devicegroup.NewFromProtocol(ctx, pro, schemaTweak, events, icdh, log, met)
+
+	var slog types.Logger
+	if log != nil {
+		slog = log.SubLogger("silo")
+	}
+
+	dg, err := devicegroup.NewFromProtocol(ctx, pro, schemaTweak, events, icdh, slog, met)
 	if err != nil {
 		return nil, err
 	}

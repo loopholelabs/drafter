@@ -24,6 +24,7 @@ import (
 	"github.com/loopholelabs/drafter/pkg/runner"
 	"github.com/loopholelabs/drafter/pkg/snapshotter"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
+	"github.com/loopholelabs/logging"
 	"github.com/loopholelabs/silo/pkg/storage/migrator"
 )
 
@@ -280,6 +281,9 @@ func main() {
 		writers = []io.Writer{conn}
 	}
 
+	// FIXME: Allow tweak from cmdline
+	ourlog := logging.New(logging.Zerolog, "drafter", os.Stderr)
+
 	p, err := peer.StartPeer[struct{}, ipc.AgentServerRemote[struct{}]](
 		goroutineManager.Context(),
 		context.Background(), // Never give up on rescue operations
@@ -303,6 +307,7 @@ func main() {
 
 		packager.StateName,
 		packager.MemoryName,
+		ourlog,
 	)
 
 	defer func() {

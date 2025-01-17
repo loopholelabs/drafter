@@ -2,7 +2,6 @@ package peer
 
 import (
 	"context"
-	"fmt"
 	"io"
 
 	"github.com/loopholelabs/drafter/pkg/common"
@@ -16,6 +15,8 @@ import (
 )
 
 type Peer[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] struct {
+	log types.Logger
+
 	VMPath string
 	VMPid  int
 
@@ -27,32 +28,44 @@ type Peer[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] struct {
 	alreadyWaited bool
 }
 
-func (p Peer[L, R, G]) Close() error {
-	if p.alreadyClosed {
-		fmt.Printf("FIXME: Peer.Close called multiple times\n")
+func (peer Peer[L, R, G]) Close() error {
+	if peer.log != nil {
+		peer.log.Debug().Msg("Peer.Wait")
+	}
+
+	if peer.alreadyClosed {
+		if peer.log != nil {
+			peer.log.Debug().Msg("FIXME: Peer.Close called multiple times")
+		}
 		return nil
 	}
-	p.alreadyClosed = true
+	peer.alreadyClosed = true
 
-	if p.runner != nil {
-		err := p.runner.Close()
+	if peer.runner != nil {
+		err := peer.runner.Close()
 		if err != nil {
 			return err
 		}
-		return p.runner.Wait()
+		return peer.runner.Wait()
 	}
 	return nil
 }
 
-func (p Peer[L, R, G]) Wait() error {
-	if p.alreadyWaited {
-		fmt.Printf("FIXME: Peer.Wait called multiple times\n")
+func (peer Peer[L, R, G]) Wait() error {
+	if peer.log != nil {
+		peer.log.Debug().Msg("Peer.Wait")
+	}
+
+	if peer.alreadyWaited {
+		if peer.log != nil {
+			peer.log.Debug().Msg("FIXME: Peer.Wait called multiple times")
+		}
 		return nil
 	}
-	p.alreadyWaited = true
+	peer.alreadyWaited = true
 
-	if p.runner != nil {
-		return p.runner.Wait()
+	if peer.runner != nil {
+		return peer.runner.Wait()
 	}
 	return nil
 }
@@ -65,9 +78,11 @@ func StartPeer[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 
 	stateName string,
 	memoryName string,
+	log types.Logger,
 ) (*Peer[L, R, G], error) {
 	peer := &Peer[L, R, G]{
 		hypervisorCtx: hypervisorCtx,
+		log:           log,
 	}
 
 	var err error
@@ -80,11 +95,18 @@ func StartPeer[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 	)
 
 	if err != nil {
+		if log != nil {
+			log.Warn().Err(err).Msg("error starting runner")
+		}
 		return nil, err
 	}
 
 	peer.VMPath = peer.runner.VMPath
 	peer.VMPid = peer.runner.VMPid
+
+	if log != nil {
+		log.Info().Str("vmpath", peer.VMPath).Int("vmpid", peer.VMPid).Msg("started peer runner")
+	}
 
 	return peer, nil
 }
@@ -95,14 +117,14 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 	readers []io.Reader,
 	writers []io.Writer,
 	hooks mounter.MigrateFromHooks,
-) (
-	migratedPeer *MigratedPeer[L, R, G],
-	errs error,
-) {
+) (*MigratedPeer[L, R, G], error) {
+
+	if peer.log != nil {
+		peer.log.Info().Msg("started MigrateFrom")
+	}
 
 	// TODO: Pass these in
 	// TODO: This schema tweak function should be exposed / passed in
-	var log types.Logger
 	var met metrics.SiloMetrics
 	tweakRemote := func(index int, name string, schema *config.DeviceSchema) *config.DeviceSchema {
 
@@ -110,15 +132,19 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 			if d.Name == schema.Name {
 				newSchema, err := common.CreateIncomingSiloDevSchema(&d, schema)
 				if err == nil {
-					fmt.Printf("Tweaked schema %s\n", newSchema.EncodeAsBlock())
+					if peer.log != nil {
+						peer.log.Debug().Str("schema", string(newSchema.EncodeAsBlock())).Msg("incoming schema")
+					}
 					return newSchema
 				}
 			}
 		}
 
 		// FIXME: Error. We didn't find the local device, or couldn't set it up.
-
-		fmt.Printf("ERROR, didn't find local device defined %s\n", name)
+		if peer.log != nil {
+			peer.log.Error().Str("name", name).Msg("unknown device name")
+			// We should probably relay an error here...
+		}
 
 		return schema
 	}
@@ -127,17 +153,25 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 		return schema
 	}
 
-	migratedPeer = &MigratedPeer[L, R, G]{
+	migratedPeer := &MigratedPeer[L, R, G]{
 		devices: devices,
 		runner:  peer.runner,
+		log:     peer.log,
 	}
 
 	// Migrate the devices from a protocol
 	if len(readers) > 0 && len(writers) > 0 {
 		protocolCtx, cancelProtocolCtx := context.WithCancel(ctx)
 
-		dg, err := common.MigrateFromPipe(log, met, migratedPeer.runner.VMPath, protocolCtx, readers, writers, tweakRemote, hooks.OnXferCustomData)
+		var slog types.Logger
+		if peer.log != nil {
+			slog = peer.log.SubLogger("silo")
+		}
+		dg, err := common.MigrateFromPipe(slog, met, migratedPeer.runner.VMPath, protocolCtx, readers, writers, tweakRemote, hooks.OnXferCustomData)
 		if err != nil {
+			if peer.log != nil {
+				peer.log.Warn().Err(err).Msg("error migrating from pipe")
+			}
 			return nil, err
 		}
 
@@ -145,6 +179,10 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 
 		// Save dg for future migrations, AND for things like reading config
 		migratedPeer.setDG(dg, true)
+
+		if peer.log != nil {
+			peer.log.Info().Msg("migrated from pipe successfully")
+		}
 	}
 
 	//
@@ -152,18 +190,30 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 	//
 
 	if len(readers) == 0 && len(writers) == 0 {
-		dg, err := common.MigrateFromFS(log, met, migratedPeer.runner.VMPath, devices, tweakLocal)
+		var slog types.Logger
+		if peer.log != nil {
+			slog = peer.log.SubLogger("silo")
+		}
+
+		dg, err := common.MigrateFromFS(slog, met, migratedPeer.runner.VMPath, devices, tweakLocal)
 		if err != nil {
+			if peer.log != nil {
+				peer.log.Warn().Err(err).Msg("error migrating from fs")
+			}
 			return nil, err
 		}
 
 		// Save dg for later usage, when we want to migrate from here etc
 		migratedPeer.setDG(dg, false)
 
+		if peer.log != nil {
+			peer.log.Info().Msg("migrated from fs successfully")
+		}
+
 		if hook := hooks.OnLocalAllDevicesRequested; hook != nil {
 			hook()
 		}
 	}
 
-	return
+	return migratedPeer, nil
 }

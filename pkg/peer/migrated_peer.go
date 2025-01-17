@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"os"
 	"path"
 	"sync"
@@ -15,13 +14,14 @@ import (
 	"github.com/loopholelabs/drafter/pkg/packager"
 	"github.com/loopholelabs/drafter/pkg/runner"
 	"github.com/loopholelabs/drafter/pkg/snapshotter"
+	"github.com/loopholelabs/logging/types"
 	"github.com/loopholelabs/silo/pkg/storage/devicegroup"
 )
 
 type MigratedPeer[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] struct {
 	cancelCtx context.CancelFunc
 
-	//Wait func() error
+	log types.Logger
 
 	dgLock     sync.Mutex
 	dg         *devicegroup.DeviceGroup
@@ -35,8 +35,13 @@ type MigratedPeer[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] str
 }
 
 func (migratedPeer *MigratedPeer[L, R, G]) Close() error {
+	if migratedPeer.log != nil {
+		migratedPeer.log.Debug().Msg("migratedPeer.Close")
+	}
 	if migratedPeer.alreadyClosed {
-		fmt.Printf("FIXME: MigratedPeer.Close called multiple times\n")
+		if migratedPeer.log != nil {
+			migratedPeer.log.Trace().Msg("FIXME: MigratedPeer.Close called multiple times")
+		}
 		return nil
 	}
 	migratedPeer.alreadyClosed = true
@@ -52,8 +57,13 @@ func (migratedPeer *MigratedPeer[L, R, G]) Close() error {
 }
 
 func (migratedPeer *MigratedPeer[L, R, G]) Wait() error {
+	if migratedPeer.log != nil {
+		migratedPeer.log.Debug().Msg("migratedPeer.Wait")
+	}
 	if migratedPeer.alreadyWaited {
-		fmt.Printf("FIXME: MigratedPeer.Wait called multiple times\n")
+		if migratedPeer.log != nil {
+			migratedPeer.log.Trace().Msg("FIXME: MigratedPeer.Wait called multiple times")
+		}
 		return nil
 	}
 	migratedPeer.alreadyWaited = true
@@ -68,7 +78,14 @@ func (migratedPeer *MigratedPeer[L, R, G]) Wait() error {
 	if migratedPeer.dgIncoming && migratedPeer.dg != nil {
 		migratedPeer.dgIncoming = false
 		migratedPeer.dgLock.Unlock()
-		return migratedPeer.dg.WaitForCompletion()
+		if migratedPeer.log != nil {
+			migratedPeer.log.Trace().Msg("waiting for device migrations to complete")
+		}
+		err := migratedPeer.dg.WaitForCompletion()
+		if migratedPeer.log != nil {
+			migratedPeer.log.Trace().Err(err).Msg("device migrations completed")
+		}
+		return err
 	}
 	migratedPeer.dgLock.Unlock()
 
@@ -103,9 +120,14 @@ func (migratedPeer *MigratedPeer[L, R, G]) Resume(
 	agentServerHooks ipc.AgentServerAcceptHooks[R, G],
 
 	snapshotLoadConfiguration runner.SnapshotLoadConfiguration,
-) (resumedPeer *ResumedPeer[L, R, G], errs error) {
-	resumedPeer = &ResumedPeer[L, R, G]{
-		dg: migratedPeer.dg,
+) (*ResumedPeer[L, R, G], error) {
+	resumedPeer := &ResumedPeer[L, R, G]{
+		dg:  migratedPeer.dg,
+		log: migratedPeer.log,
+	}
+
+	if migratedPeer.log != nil {
+		migratedPeer.log.Trace().Msg("resuming vm")
 	}
 
 	// Read from the config device
@@ -123,6 +145,10 @@ func (migratedPeer *MigratedPeer[L, R, G]) Resume(
 		}
 	}
 	configFileData = configFileData[:firstZero]
+
+	if migratedPeer.log != nil {
+		migratedPeer.log.Trace().Str("config", string(configFileData)).Msg("resuming config")
+	}
 
 	var packageConfig snapshotter.PackageConfiguration
 	if err := json.Unmarshal(configFileData, &packageConfig); err != nil {
@@ -142,9 +168,16 @@ func (migratedPeer *MigratedPeer[L, R, G]) Resume(
 		snapshotLoadConfiguration,
 	)
 	if err != nil {
+		if migratedPeer.log != nil {
+			migratedPeer.log.Warn().Err(err).Msg("could not resume runner")
+		}
 		return nil, errors.Join(ErrCouldNotResumeRunner, err)
 	}
 	resumedPeer.Remote = resumedPeer.resumedRunner.Remote
+
+	if migratedPeer.log != nil {
+		migratedPeer.log.Info().Msg("resumed vm")
+	}
 
 	return resumedPeer, nil
 }
