@@ -34,6 +34,7 @@ func decodeDevices(data string) ([]CompositeDevices, error) {
 	err := json.Unmarshal([]byte(data), &devices)
 	return devices, err
 }
+
 func getDefaultDevices() string {
 	defaultDevices, err := json.Marshal([]CompositeDevices{
 		{
