@@ -2,11 +2,9 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"flag"
 	"io"
-	"log"
 	"net"
 	"os"
 	"os/exec"
@@ -25,199 +23,50 @@ import (
 	"github.com/loopholelabs/drafter/pkg/snapshotter"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 	"github.com/loopholelabs/logging"
+	"github.com/loopholelabs/logging/types"
 	"github.com/loopholelabs/silo/pkg/storage/migrator"
 )
 
-type CompositeDevices struct {
-	Name string `json:"name"`
-
-	Base    string `json:"base"`
-	Overlay string `json:"overlay"`
-	State   string `json:"state"`
-
-	BlockSize uint32 `json:"blockSize"`
-
-	Expiry time.Duration `json:"expiry"`
-
-	MaxDirtyBlocks int `json:"maxDirtyBlocks"`
-	MinCycles      int `json:"minCycles"`
-	MaxCycles      int `json:"maxCycles"`
-
-	CycleThrottle time.Duration `json:"cycleThrottle"`
-
-	MakeMigratable bool `json:"makeMigratable"`
-	Shared         bool `json:"shared"`
-}
-
 func main() {
+
+	// General flags
+	rawDevices := flag.String("devices", getDefaultDevices(), "Devices configuration")
+	devices, err := decodeDevices(*rawDevices)
+	if err != nil {
+		panic(err)
+	}
+
+	raddr := flag.String("raddr", "localhost:1337", "Remote address to connect to (leave empty to disable)")
+	laddr := flag.String("laddr", "localhost:1337", "Local address to listen on (leave empty to disable)")
+	concurrency := flag.Int("concurrency", 1024, "Number of concurrent workers to use in migrations")
+
+	// Firewcracker flags
 	rawFirecrackerBin := flag.String("firecracker-bin", "firecracker", "Firecracker binary")
 	rawJailerBin := flag.String("jailer-bin", "jailer", "Jailer binary (from Firecracker)")
-
 	chrootBaseDir := flag.String("chroot-base-dir", filepath.Join("out", "vms"), "chroot base directory")
-
 	uid := flag.Int("uid", 0, "User ID for the Firecracker process")
 	gid := flag.Int("gid", 0, "Group ID for the Firecracker process")
-
 	enableOutput := flag.Bool("enable-output", true, "Whether to enable VM stdout and stderr")
 	enableInput := flag.Bool("enable-input", false, "Whether to enable VM stdin")
+	netns := flag.String("netns", "ark0", "Network namespace to run Firecracker in")
+	numaNode := flag.Int("numa-node", 0, "NUMA node to run Firecracker in")
+	cgroupVersion := flag.Int("cgroup-version", 2, "Cgroup version to use for Jailer")
 
 	resumeTimeout := flag.Duration("resume-timeout", time.Minute, "Maximum amount of time to wait for agent and liveness to resume")
 	rescueTimeout := flag.Duration("rescue-timeout", time.Minute, "Maximum amount of time to wait for rescue operations")
-
-	netns := flag.String("netns", "ark0", "Network namespace to run Firecracker in")
-
-	numaNode := flag.Int("numa-node", 0, "NUMA node to run Firecracker in")
-	cgroupVersion := flag.Int("cgroup-version", 2, "Cgroup version to use for Jailer")
 
 	experimentalMapPrivate := flag.Bool("experimental-map-private", false, "(Experimental) Whether to use MAP_PRIVATE for memory and state devices")
 	experimentalMapPrivateStateOutput := flag.String("experimental-map-private-state-output", "", "(Experimental) Path to write the local changes to the shared state to (leave empty to write back to device directly) (ignored unless --experimental-map-private)")
 	experimentalMapPrivateMemoryOutput := flag.String("experimental-map-private-memory-output", "", "(Experimental) Path to write the local changes to the shared memory to (leave empty to write back to device directly) (ignored unless --experimental-map-private)")
 
-	defaultDevices, err := json.Marshal([]CompositeDevices{
-		{
-			Name: packager.StateName,
-
-			Base:    filepath.Join("out", "package", "state.bin"),
-			Overlay: filepath.Join("out", "overlay", "state.bin"),
-			State:   filepath.Join("out", "state", "state.bin"),
-
-			BlockSize: 1024 * 64,
-
-			Expiry: time.Second,
-
-			MaxDirtyBlocks: 200,
-			MinCycles:      5,
-			MaxCycles:      20,
-
-			CycleThrottle: time.Millisecond * 500,
-
-			MakeMigratable: true,
-			Shared:         false,
-		},
-		{
-			Name: packager.MemoryName,
-
-			Base:    filepath.Join("out", "package", "memory.bin"),
-			Overlay: filepath.Join("out", "overlay", "memory.bin"),
-			State:   filepath.Join("out", "state", "memory.bin"),
-
-			BlockSize: 1024 * 64,
-
-			Expiry: time.Second,
-
-			MaxDirtyBlocks: 200,
-			MinCycles:      5,
-			MaxCycles:      20,
-
-			CycleThrottle: time.Millisecond * 500,
-
-			MakeMigratable: true,
-			Shared:         false,
-		},
-
-		{
-			Name: packager.KernelName,
-
-			Base:    filepath.Join("out", "package", "vmlinux"),
-			Overlay: filepath.Join("out", "overlay", "vmlinux"),
-			State:   filepath.Join("out", "state", "vmlinux"),
-
-			BlockSize: 1024 * 64,
-
-			Expiry: time.Second,
-
-			MaxDirtyBlocks: 200,
-			MinCycles:      5,
-			MaxCycles:      20,
-
-			CycleThrottle: time.Millisecond * 500,
-
-			MakeMigratable: true,
-			Shared:         false,
-		},
-		{
-			Name: packager.DiskName,
-
-			Base:    filepath.Join("out", "package", "rootfs.ext4"),
-			Overlay: filepath.Join("out", "overlay", "rootfs.ext4"),
-			State:   filepath.Join("out", "state", "rootfs.ext4"),
-
-			BlockSize: 1024 * 64,
-
-			Expiry: time.Second,
-
-			MaxDirtyBlocks: 200,
-			MinCycles:      5,
-			MaxCycles:      20,
-
-			CycleThrottle: time.Millisecond * 500,
-
-			MakeMigratable: true,
-			Shared:         false,
-		},
-
-		{
-			Name: packager.ConfigName,
-
-			Base:    filepath.Join("out", "package", "config.json"),
-			Overlay: filepath.Join("out", "overlay", "config.json"),
-			State:   filepath.Join("out", "state", "config.json"),
-
-			BlockSize: 1024 * 64,
-
-			Expiry: time.Second,
-
-			MaxDirtyBlocks: 200,
-			MinCycles:      5,
-			MaxCycles:      20,
-
-			CycleThrottle: time.Millisecond * 500,
-
-			MakeMigratable: true,
-			Shared:         false,
-		},
-
-		{
-			Name: "oci",
-
-			Base:    filepath.Join("out", "package", "oci.ext4"),
-			Overlay: filepath.Join("out", "overlay", "oci.ext4"),
-			State:   filepath.Join("out", "state", "oci.ext4"),
-
-			BlockSize: 1024 * 64,
-
-			Expiry: time.Second,
-
-			MaxDirtyBlocks: 200,
-			MinCycles:      5,
-			MaxCycles:      20,
-
-			CycleThrottle: time.Millisecond * 500,
-
-			MakeMigratable: true,
-			Shared:         false,
-		},
-	})
-	if err != nil {
-		panic(err)
-	}
-
-	rawDevices := flag.String("devices", string(defaultDevices), "Devices configuration")
-
-	raddr := flag.String("raddr", "localhost:1337", "Remote address to connect to (leave empty to disable)")
-	laddr := flag.String("laddr", "localhost:1337", "Local address to listen on (leave empty to disable)")
-
-	concurrency := flag.Int("concurrency", 1024, "Number of concurrent workers to use in migrations")
-
 	flag.Parse()
+
+	// FIXME: Allow tweak from cmdline
+	log := logging.New(logging.Zerolog, "drafter", os.Stderr)
+	log.SetLevel(types.TraceLevel)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-
-	var devices []CompositeDevices
-	if err := json.Unmarshal([]byte(*rawDevices), &devices); err != nil {
-		panic(err)
-	}
 
 	var errs error
 	defer func() {
@@ -237,20 +86,18 @@ func main() {
 
 	bubbleSignals := false
 
+	// Handle Interrupts
 	done := make(chan os.Signal, 1)
 	go func() {
 		signal.Notify(done, os.Interrupt)
-
 		v := <-done
 
 		if bubbleSignals {
 			done <- v
-
 			return
 		}
 
-		log.Println("Exiting gracefully")
-
+		log.Info().Msg("Exiting gracefully")
 		cancel()
 	}()
 
@@ -275,14 +122,11 @@ func main() {
 		}
 		defer conn.Close()
 
-		log.Println("Migrating from", conn.RemoteAddr())
+		log.Info().Str("remote", conn.RemoteAddr().String()).Msg("Migrating from")
 
 		readers = []io.Reader{conn}
 		writers = []io.Writer{conn}
 	}
-
-	// FIXME: Allow tweak from cmdline
-	ourlog := logging.New(logging.Zerolog, "drafter", os.Stderr)
 
 	p, err := peer.StartPeer[struct{}, ipc.AgentServerRemote[struct{}]](
 		goroutineManager.Context(),
@@ -291,28 +135,23 @@ func main() {
 		snapshotter.HypervisorConfiguration{
 			FirecrackerBin: firecrackerBin,
 			JailerBin:      jailerBin,
-
-			ChrootBaseDir: *chrootBaseDir,
-
-			UID: *uid,
-			GID: *gid,
-
-			NetNS:         *netns,
-			NumaNode:      *numaNode,
-			CgroupVersion: *cgroupVersion,
-
-			EnableOutput: *enableOutput,
-			EnableInput:  *enableInput,
+			ChrootBaseDir:  *chrootBaseDir,
+			UID:            *uid,
+			GID:            *gid,
+			NetNS:          *netns,
+			NumaNode:       *numaNode,
+			CgroupVersion:  *cgroupVersion,
+			EnableOutput:   *enableOutput,
+			EnableInput:    *enableInput,
 		},
 
 		packager.StateName,
 		packager.MemoryName,
-		ourlog,
+		log,
 	)
 
 	defer func() {
 		defer goroutineManager.CreateForegroundPanicCollector()()
-
 		if err := p.Wait(); err != nil {
 			panic(err)
 		}
@@ -324,7 +163,6 @@ func main() {
 
 	defer func() {
 		defer goroutineManager.CreateForegroundPanicCollector()()
-
 		if err := p.Close(); err != nil {
 			panic(err)
 		}
@@ -339,63 +177,53 @@ func main() {
 	migrateFromDevices := []common.MigrateFromDevice{}
 	for _, device := range devices {
 		migrateFromDevices = append(migrateFromDevices, common.MigrateFromDevice{
-			Name: device.Name,
-
-			Base:    device.Base,
-			Overlay: device.Overlay,
-			State:   device.State,
-
+			Name:      device.Name,
+			Base:      device.Base,
+			Overlay:   device.Overlay,
+			State:     device.State,
 			BlockSize: device.BlockSize,
-
-			Shared: device.Shared,
+			Shared:    device.Shared,
 		})
 	}
 
 	migratedPeer, err := p.MigrateFrom(
 		goroutineManager.Context(),
-
 		migrateFromDevices,
-
 		readers,
 		writers,
-
 		mounter.MigrateFromHooks{
 			OnRemoteDeviceReceived: func(remoteDeviceID uint32, name string) {
-				log.Println("Received remote device", remoteDeviceID, "with name", name)
+				log.Info().Uint32("deviceID", remoteDeviceID).Str("name", name).Msg("Received remote device")
 			},
 			OnRemoteDeviceExposed: func(remoteDeviceID uint32, path string) {
-				log.Println("Exposed remote device", remoteDeviceID, "at", path)
+				log.Info().Uint32("deviceID", remoteDeviceID).Str("path", path).Msg("Exposed remote device")
 			},
 			OnRemoteDeviceAuthorityReceived: func(remoteDeviceID uint32) {
-				log.Println("Received authority for remote device", remoteDeviceID)
+				log.Info().Uint32("deviceID", remoteDeviceID).Msg("Received authority for remote device")
 			},
 			OnRemoteDeviceMigrationCompleted: func(remoteDeviceID uint32) {
-				log.Println("Completed migration of remote device", remoteDeviceID)
+				log.Info().Uint32("deviceID", remoteDeviceID).Msg("Completed migration of remote device")
 			},
-
 			OnRemoteAllDevicesReceived: func() {
-				log.Println("Received all remote devices")
+				log.Info().Msg("Received all remote devices")
 			},
 			OnRemoteAllMigrationsCompleted: func() {
-				log.Println("Completed all remote device migrations")
+				log.Info().Msg("Completed all remote device migrations")
 			},
-
 			OnLocalDeviceRequested: func(localDeviceID uint32, name string) {
-				log.Println("Requested local device", localDeviceID, "with name", name)
+				log.Info().Uint32("deviceID", localDeviceID).Str("name", name).Msg("Requested local device")
 			},
 			OnLocalDeviceExposed: func(localDeviceID uint32, path string) {
-				log.Println("Exposed local device", localDeviceID, "at", path)
+				log.Info().Uint32("deviceID", localDeviceID).Str("path", path).Msg("Exposed local device")
 			},
-
 			OnLocalAllDevicesRequested: func() {
-				log.Println("Requested all local devices")
+				log.Info().Msg("Requested all local devices")
 			},
 		},
 	)
 
 	defer func() {
 		defer goroutineManager.CreateForegroundPanicCollector()()
-
 		if err := migratedPeer.Wait(); err != nil {
 			panic(err)
 		}
@@ -407,7 +235,6 @@ func main() {
 
 	defer func() {
 		defer goroutineManager.CreateForegroundPanicCollector()()
-
 		if err := migratedPeer.Close(); err != nil {
 			panic(err)
 		}
@@ -423,16 +250,12 @@ func main() {
 
 	resumedPeer, err := migratedPeer.Resume(
 		goroutineManager.Context(),
-
 		*resumeTimeout,
 		*rescueTimeout,
-
 		struct{}{},
 		ipc.AgentServerAcceptHooks[ipc.AgentServerRemote[struct{}], struct{}]{},
-
 		runner.SnapshotLoadConfiguration{
-			ExperimentalMapPrivate: *experimentalMapPrivate,
-
+			ExperimentalMapPrivate:             *experimentalMapPrivate,
 			ExperimentalMapPrivateStateOutput:  *experimentalMapPrivateStateOutput,
 			ExperimentalMapPrivateMemoryOutput: *experimentalMapPrivateMemoryOutput,
 		},
@@ -444,7 +267,6 @@ func main() {
 
 	defer func() {
 		defer goroutineManager.CreateForegroundPanicCollector()()
-
 		if err := resumedPeer.Close(); err != nil {
 			panic(err)
 		}
@@ -456,7 +278,7 @@ func main() {
 		}
 	})
 
-	log.Println("Resumed VM in", time.Since(before), "on", p.VMPath)
+	log.Info().Int64("ms", time.Since(before).Milliseconds()).Str("path", p.VMPath).Msg("Resumed VM")
 
 	if err := migratedPeer.Wait(); err != nil {
 		panic(err)
@@ -476,10 +298,7 @@ func main() {
 				panic(err)
 			}
 
-			log.Println("Suspend:", time.Since(before))
-
-			log.Println("Shutting down")
-
+			log.Info().Int64("ms", time.Since(before).Milliseconds()).Msg("Suspend. Shutting down.")
 			return
 		}
 	}
@@ -496,9 +315,7 @@ func main() {
 		defer goroutineManager.CreateForegroundPanicCollector()()
 
 		closeLock.Lock()
-
 		closed = true
-
 		closeLock.Unlock()
 
 		if err := lis.Close(); err != nil {
@@ -506,7 +323,7 @@ func main() {
 		}
 	}()
 
-	log.Println("Serving on", lis.Addr())
+	log.Info().Str("addr", lis.Addr().String()).Msg("Listening for connections")
 
 	var (
 		ready       = make(chan struct{})
@@ -529,10 +346,8 @@ func main() {
 
 				return
 			}
-
 			panic(err)
 		}
-
 		signalReady()
 	})
 
@@ -544,15 +359,11 @@ func main() {
 
 	case <-done:
 		before = time.Now()
-
 		if err := resumedPeer.SuspendAndCloseAgentServer(goroutineManager.Context(), *resumeTimeout); err != nil {
 			panic(err)
 		}
 
-		log.Println("Suspend:", time.Since(before))
-
-		log.Println("Shutting down")
-
+		log.Info().Int64("ms", time.Since(before).Milliseconds()).Msg("Suspend. Shutting down.")
 		return
 
 	case <-ready:
@@ -561,7 +372,7 @@ func main() {
 
 	defer conn.Close()
 
-	log.Println("Migrating to", conn.RemoteAddr())
+	log.Info().Str("addr", conn.RemoteAddr().String()).Msg("Migrating to")
 
 	migrateToDevices := []common.MigrateToDevice{}
 	for _, device := range devices {
@@ -570,38 +381,31 @@ func main() {
 		}
 
 		migrateToDevices = append(migrateToDevices, common.MigrateToDevice{
-			Name: device.Name,
-
+			Name:           device.Name,
 			MaxDirtyBlocks: device.MaxDirtyBlocks,
 			MinCycles:      device.MinCycles,
 			MaxCycles:      device.MaxCycles,
-
-			CycleThrottle: device.CycleThrottle,
+			CycleThrottle:  device.CycleThrottle,
 		})
 	}
 
 	before = time.Now()
 	if err := resumedPeer.MigrateTo(
 		goroutineManager.Context(),
-
 		migrateToDevices,
-
 		*resumeTimeout,
 		*concurrency,
-
 		[]io.Reader{conn},
 		[]io.Writer{conn},
-
 		peer.MigrateToHooks{
-
 			OnBeforeSuspend: func() {
 				before = time.Now()
 			},
 			OnAfterSuspend: func() {
-				log.Println("Suspend:", time.Since(before))
+				log.Info().Int64("ms", time.Since(before).Milliseconds()).Msg("Suspend")
 			},
 			OnAllMigrationsCompleted: func() {
-				log.Println("Completed all device migrations")
+				log.Info().Msg("Completed all device migrations")
 			},
 			OnProgress: func(p map[string]*migrator.MigrationProgress) {
 				totalSize := 0
@@ -616,11 +420,19 @@ func main() {
 					perc = float64(totalDone) * 100 / float64(totalSize)
 				}
 				// Report overall migration progress
-				log.Printf("# Overall migration Progress # (%d / %d) %.1f%%\n", totalDone, totalSize, perc)
+				log.Info().Float64("perc", perc).
+					Int("done", totalDone).
+					Int("size", totalSize).
+					Msg("# Overall migration Progress #")
 
 				// Report individual devices
 				for name, prog := range p {
-					log.Printf(" [%s] Progress Migrated Blocks (%d/%d)  %d ready %d total\n", name, prog.MigratedBlocks, prog.TotalBlocks, prog.ReadyBlocks, prog.TotalMigratedBlocks)
+					log.Info().Str("name", name).
+						Int("migratedBlocks", prog.MigratedBlocks).
+						Int("totalBlocks", prog.TotalBlocks).
+						Int("readyBlocks", prog.ReadyBlocks).
+						Int("totalMigratedBlocks", prog.TotalMigratedBlocks).
+						Msg("Device migration progress")
 				}
 
 			},
@@ -629,5 +441,5 @@ func main() {
 		panic(err)
 	}
 
-	log.Println("Shutting down")
+	log.Info().Msg("Shutting down")
 }
