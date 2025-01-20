@@ -46,14 +46,6 @@ type MigrateFromAndMountDevice struct {
 }
 
 type MigrateFromHooks struct {
-	OnRemoteDeviceReceived           func(remoteDeviceID uint32, name string)
-	OnRemoteDeviceExposed            func(remoteDeviceID uint32, path string)
-	OnRemoteDeviceAuthorityReceived  func(remoteDeviceID uint32)
-	OnRemoteDeviceMigrationCompleted func(remoteDeviceID uint32)
-
-	OnRemoteAllDevicesReceived     func()
-	OnRemoteAllMigrationsCompleted func()
-
 	OnLocalDeviceRequested func(localDeviceID uint32, name string)
 	OnLocalDeviceExposed   func(localDeviceID uint32, path string)
 

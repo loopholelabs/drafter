@@ -188,24 +188,6 @@ func main() {
 		readers,
 		writers,
 		mounter.MigrateFromHooks{
-			OnRemoteDeviceReceived: func(remoteDeviceID uint32, name string) {
-				log.Info().Uint32("deviceID", remoteDeviceID).Str("name", name).Msg("Received remote device")
-			},
-			OnRemoteDeviceExposed: func(remoteDeviceID uint32, path string) {
-				log.Info().Uint32("deviceID", remoteDeviceID).Str("path", path).Msg("Exposed remote device")
-			},
-			OnRemoteDeviceAuthorityReceived: func(remoteDeviceID uint32) {
-				log.Info().Uint32("deviceID", remoteDeviceID).Msg("Received authority for remote device")
-			},
-			OnRemoteDeviceMigrationCompleted: func(remoteDeviceID uint32) {
-				log.Info().Uint32("deviceID", remoteDeviceID).Msg("Completed migration of remote device")
-			},
-			OnRemoteAllDevicesReceived: func() {
-				log.Info().Msg("Received all remote devices")
-			},
-			OnRemoteAllMigrationsCompleted: func() {
-				log.Info().Msg("Completed all remote device migrations")
-			},
 			OnLocalDeviceRequested: func(localDeviceID uint32, name string) {
 				log.Info().Uint32("deviceID", localDeviceID).Str("name", name).Msg("Requested local device")
 			},
