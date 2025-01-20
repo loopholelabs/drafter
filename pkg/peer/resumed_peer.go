@@ -13,10 +13,10 @@ import (
 	"github.com/loopholelabs/silo/pkg/storage/migrator"
 )
 
-type ResumedPeer[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] struct {
+type ResumedPeer struct {
 	dg            *devicegroup.DeviceGroup
-	Remote        R
-	resumedRunner *runner.ResumedRunner[L, R, G]
+	Remote        ipc.AgentServerRemote[struct{}]
+	resumedRunner *runner.ResumedRunner[struct{}, ipc.AgentServerRemote[struct{}], struct{}]
 
 	log types.Logger
 
@@ -24,7 +24,7 @@ type ResumedPeer[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] stru
 	alreadyWaited bool
 }
 
-func (resumedPeer *ResumedPeer[L, R, G]) Wait() error {
+func (resumedPeer *ResumedPeer) Wait() error {
 	if resumedPeer.log != nil {
 		resumedPeer.log.Debug().Msg("resumedPeer.Wait")
 	}
@@ -42,7 +42,7 @@ func (resumedPeer *ResumedPeer[L, R, G]) Wait() error {
 	return nil
 }
 
-func (resumedPeer *ResumedPeer[L, R, G]) Close() error {
+func (resumedPeer *ResumedPeer) Close() error {
 	if resumedPeer.log != nil {
 		resumedPeer.log.Debug().Msg("resumedPeer.Close")
 	}
@@ -60,7 +60,7 @@ func (resumedPeer *ResumedPeer[L, R, G]) Close() error {
 	return nil
 }
 
-func (resumedPeer *ResumedPeer[L, R, G]) SuspendAndCloseAgentServer(ctx context.Context, resumeTimeout time.Duration) error {
+func (resumedPeer *ResumedPeer) SuspendAndCloseAgentServer(ctx context.Context, resumeTimeout time.Duration) error {
 	if resumedPeer.log != nil {
 		resumedPeer.log.Debug().Msg("resumedPeer.SuspendAndCloseAgentServer")
 	}
@@ -90,15 +90,10 @@ type MigrateToHooks struct {
  *
  *
  */
-func (resumedPeer *ResumedPeer[L, R, G]) MigrateTo(
-	ctx context.Context,
-	devices []common.MigrateToDevice,
-	suspendTimeout time.Duration,
-	concurrency int,
-	readers []io.Reader,
-	writers []io.Writer,
-	hooks MigrateToHooks,
-) error {
+func (resumedPeer *ResumedPeer) MigrateTo(ctx context.Context, devices []common.MigrateToDevice,
+	suspendTimeout time.Duration, concurrency int, readers []io.Reader, writers []io.Writer,
+	hooks MigrateToHooks) error {
+
 	if resumedPeer.log != nil {
 		resumedPeer.log.Info().Msg("resumedPeer.MigrateTo")
 	}
@@ -118,10 +113,6 @@ func (resumedPeer *ResumedPeer[L, R, G]) MigrateTo(
 			resumedPeer.log.Info().Err(err).Msg("error in resumedPeer.MigrateTo")
 		}
 		return err
-	}
-
-	if hooks.OnAllMigrationsCompleted != nil {
-		hooks.OnAllMigrationsCompleted()
 	}
 
 	if resumedPeer.log != nil {

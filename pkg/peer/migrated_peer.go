@@ -18,7 +18,7 @@ import (
 	"github.com/loopholelabs/silo/pkg/storage/devicegroup"
 )
 
-type MigratedPeer[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] struct {
+type MigratedPeer struct {
 	cancelCtx context.CancelFunc
 
 	log types.Logger
@@ -28,13 +28,13 @@ type MigratedPeer[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] str
 	dgIncoming bool
 
 	devices []common.MigrateFromDevice
-	runner  *runner.Runner[L, R, G]
+	runner  *runner.Runner[struct{}, ipc.AgentServerRemote[struct{}], struct{}]
 
 	alreadyClosed bool
 	alreadyWaited bool
 }
 
-func (migratedPeer *MigratedPeer[L, R, G]) Close() error {
+func (migratedPeer *MigratedPeer) Close() error {
 	if migratedPeer.log != nil {
 		migratedPeer.log.Debug().Msg("migratedPeer.Close")
 	}
@@ -56,7 +56,7 @@ func (migratedPeer *MigratedPeer[L, R, G]) Close() error {
 	return migratedPeer.closeDG()
 }
 
-func (migratedPeer *MigratedPeer[L, R, G]) Wait() error {
+func (migratedPeer *MigratedPeer) Wait() error {
 	if migratedPeer.log != nil {
 		migratedPeer.log.Debug().Msg("migratedPeer.Wait")
 	}
@@ -92,14 +92,14 @@ func (migratedPeer *MigratedPeer[L, R, G]) Wait() error {
 	return nil
 }
 
-func (migratedPeer *MigratedPeer[L, R, G]) setDG(dg *devicegroup.DeviceGroup, incoming bool) {
+func (migratedPeer *MigratedPeer) setDG(dg *devicegroup.DeviceGroup, incoming bool) {
 	migratedPeer.dgLock.Lock()
 	migratedPeer.dg = dg
 	migratedPeer.dgIncoming = incoming
 	migratedPeer.dgLock.Unlock()
 }
 
-func (migratedPeer *MigratedPeer[L, R, G]) closeDG() error {
+func (migratedPeer *MigratedPeer) closeDG() error {
 	var err error
 	migratedPeer.dgLock.Lock()
 	if migratedPeer.dg != nil {
@@ -110,18 +110,18 @@ func (migratedPeer *MigratedPeer[L, R, G]) closeDG() error {
 	return err
 }
 
-func (migratedPeer *MigratedPeer[L, R, G]) Resume(
+func (migratedPeer *MigratedPeer) Resume(
 	ctx context.Context,
 
 	resumeTimeout,
 	rescueTimeout time.Duration,
 
-	agentServerLocal L,
-	agentServerHooks ipc.AgentServerAcceptHooks[R, G],
+	agentServerLocal struct{},
+	agentServerHooks ipc.AgentServerAcceptHooks[ipc.AgentServerRemote[struct{}], struct{}],
 
 	snapshotLoadConfiguration runner.SnapshotLoadConfiguration,
-) (*ResumedPeer[L, R, G], error) {
-	resumedPeer := &ResumedPeer[L, R, G]{
+) (*ResumedPeer, error) {
+	resumedPeer := &ResumedPeer{
 		dg:  migratedPeer.dg,
 		log: migratedPeer.log,
 	}

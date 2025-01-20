@@ -31,8 +31,7 @@ type MounterMigrateToHooks struct {
 
 	OnProgress func(p map[string]*migrator.MigrationProgress)
 
-	OnAllDevicesSent         func()
-	OnAllMigrationsCompleted func()
+	OnAllDevicesSent func()
 }
 
 func (migratableMounter *MigratableMounter) MigrateTo(
@@ -56,15 +55,5 @@ func (migratableMounter *MigratableMounter) MigrateTo(
 	}()
 
 	vmStateMgr := common.NewDummyVMStateMgr(ctx)
-	err := common.MigrateToPipe(ctx, readers, writers, migratableMounter.Dg, concurrency, hooks.OnProgress, vmStateMgr, devices, nil)
-
-	if err != nil {
-		return err
-	}
-
-	if hooks.OnAllMigrationsCompleted != nil {
-		hooks.OnAllMigrationsCompleted()
-	}
-
-	return
+	return common.MigrateToPipe(ctx, readers, writers, migratableMounter.Dg, concurrency, hooks.OnProgress, vmStateMgr, devices, nil)
 }

@@ -510,9 +510,6 @@ l:
 					OnAllDevicesSent: func() {
 						log.Println("Sent all devices")
 					},
-					OnAllMigrationsCompleted: func() {
-						log.Println("Completed all device migrations")
-					},
 					OnProgress: func(p map[string]*migrator.MigrationProgress) {
 						totalSize := 0
 						totalDone := 0

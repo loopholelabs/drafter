@@ -109,7 +109,7 @@ func main() {
 		panic(err)
 	}
 
-	p, err := peer.StartPeer[struct{}, ipc.AgentServerRemote[struct{}]](
+	p, err := peer.StartPeer(
 		goroutineManager.Context(),
 		context.Background(), // Never give up on rescue operations
 

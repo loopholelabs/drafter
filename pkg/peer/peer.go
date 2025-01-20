@@ -14,7 +14,7 @@ import (
 	"github.com/loopholelabs/silo/pkg/storage/metrics"
 )
 
-type Peer[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] struct {
+type Peer struct {
 	log types.Logger
 
 	VMPath string
@@ -22,13 +22,13 @@ type Peer[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] struct {
 
 	hypervisorCtx context.Context
 
-	runner *runner.Runner[L, R, G]
+	runner *runner.Runner[struct{}, ipc.AgentServerRemote[struct{}], struct{}]
 
 	alreadyClosed bool
 	alreadyWaited bool
 }
 
-func (peer Peer[L, R, G]) Close() error {
+func (peer Peer) Close() error {
 	if peer.log != nil {
 		peer.log.Debug().Msg("Peer.Wait")
 	}
@@ -51,7 +51,7 @@ func (peer Peer[L, R, G]) Close() error {
 	return nil
 }
 
-func (peer Peer[L, R, G]) Wait() error {
+func (peer Peer) Wait() error {
 	if peer.log != nil {
 		peer.log.Debug().Msg("Peer.Wait")
 	}
@@ -70,23 +70,16 @@ func (peer Peer[L, R, G]) Wait() error {
 	return nil
 }
 
-func StartPeer[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
-	hypervisorCtx context.Context,
-	rescueCtx context.Context,
-
+func StartPeer(hypervisorCtx context.Context, rescueCtx context.Context,
 	hypervisorConfiguration snapshotter.HypervisorConfiguration,
-
-	stateName string,
-	memoryName string,
-	log types.Logger,
-) (*Peer[L, R, G], error) {
-	peer := &Peer[L, R, G]{
+	stateName string, memoryName string, log types.Logger) (*Peer, error) {
+	peer := &Peer{
 		hypervisorCtx: hypervisorCtx,
 		log:           log,
 	}
 
 	var err error
-	peer.runner, err = runner.StartRunner[L, R](
+	peer.runner, err = runner.StartRunner[struct{}, ipc.AgentServerRemote[struct{}]](
 		hypervisorCtx,
 		rescueCtx,
 		hypervisorConfiguration,
@@ -107,17 +100,11 @@ func StartPeer[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 	if log != nil {
 		log.Info().Str("vmpath", peer.VMPath).Int("vmpid", peer.VMPid).Msg("started peer runner")
 	}
-
 	return peer, nil
 }
 
-func (peer *Peer[L, R, G]) MigrateFrom(
-	ctx context.Context,
-	devices []common.MigrateFromDevice,
-	readers []io.Reader,
-	writers []io.Writer,
-	hooks mounter.MigrateFromHooks,
-) (*MigratedPeer[L, R, G], error) {
+func (peer *Peer) MigrateFrom(ctx context.Context, devices []common.MigrateFromDevice,
+	readers []io.Reader, writers []io.Writer, hooks mounter.MigrateFromHooks) (*MigratedPeer, error) {
 
 	if peer.log != nil {
 		peer.log.Info().Msg("started MigrateFrom")
@@ -153,7 +140,7 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 		return schema
 	}
 
-	migratedPeer := &MigratedPeer[L, R, G]{
+	migratedPeer := &MigratedPeer{
 		devices: devices,
 		runner:  peer.runner,
 		log:     peer.log,
