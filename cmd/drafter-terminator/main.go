@@ -17,35 +17,14 @@ import (
 )
 
 func main() {
-	defaultDevices, err := json.Marshal([]terminator.TerminatorDevice{
-		{
-			Name:   common.DeviceStateName,
-			Output: filepath.Join("out", "package", "state.bin"),
-		},
-		{
-			Name:   common.DeviceMemoryName,
-			Output: filepath.Join("out", "package", "memory.bin"),
-		},
-
-		{
-			Name:   common.DeviceKernelName,
-			Output: filepath.Join("out", "package", "vmlinux"),
-		},
-		{
-			Name:   common.DeviceDiskName,
-			Output: filepath.Join("out", "package", "rootfs.ext4"),
-		},
-
-		{
-			Name:   common.DeviceConfigName,
-			Output: filepath.Join("out", "package", "config.json"),
-		},
-
-		{
-			Name:   "oci",
-			Output: filepath.Join("out", "package", "oci.ext4"),
-		},
-	})
+	defDevices := make([]terminator.TerminatorDevice, 0)
+	for _, n := range common.KnownNames {
+		defDevices = append(defDevices, terminator.TerminatorDevice{
+			Name:   n,
+			Output: filepath.Join("out", "package", common.DeviceFilenames[n]),
+		})
+	}
+	defaultDevices, err := json.Marshal(defDevices)
 	if err != nil {
 		panic(err)
 	}

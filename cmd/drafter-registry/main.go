@@ -18,41 +18,15 @@ import (
 )
 
 func main() {
-	defaultDevices, err := json.Marshal([]registry.RegistryDevice{
-		{
-			Name:      common.DeviceStateName,
-			Input:     filepath.Join("out", "package", "state.bin"),
+	defDevices := make([]registry.RegistryDevice, 0)
+	for _, n := range common.KnownNames {
+		defDevices = append(defDevices, registry.RegistryDevice{
+			Name:      n,
+			Input:     filepath.Join("out", "package", common.DeviceFilenames[n]),
 			BlockSize: 1024 * 64,
-		},
-		{
-			Name:      common.DeviceMemoryName,
-			Input:     filepath.Join("out", "package", "memory.bin"),
-			BlockSize: 1024 * 64,
-		},
-
-		{
-			Name:      common.DeviceKernelName,
-			Input:     filepath.Join("out", "package", "vmlinux"),
-			BlockSize: 1024 * 64,
-		},
-		{
-			Name:      common.DeviceDiskName,
-			Input:     filepath.Join("out", "package", "rootfs.ext4"),
-			BlockSize: 1024 * 64,
-		},
-
-		{
-			Name:      common.DeviceConfigName,
-			Input:     filepath.Join("out", "package", "config.json"),
-			BlockSize: 1024 * 64,
-		},
-
-		{
-			Name:      "oci",
-			Input:     filepath.Join("out", "blueprint", "oci.ext4"),
-			BlockSize: 1024 * 64,
-		},
-	})
+		})
+	}
+	defaultDevices, err := json.Marshal(defDevices)
 	if err != nil {
 		panic(err)
 	}

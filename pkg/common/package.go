@@ -35,6 +35,7 @@ const (
 	DeviceStateName  = "state"
 	DeviceMemoryName = "memory"
 	DeviceConfigName = "config"
+	DeviceOCIName    = "oci"
 )
 
 var KnownNames = []string{
@@ -43,6 +44,15 @@ var KnownNames = []string{
 	DeviceStateName,
 	DeviceMemoryName,
 	DeviceConfigName,
+}
+
+var DeviceFilenames = map[string]string{
+	DeviceKernelName: "vmlinux",
+	DeviceDiskName:   "rootfs.ext4",
+	DeviceStateName:  "state.bin",
+	DeviceMemoryName: "memory.bin",
+	DeviceConfigName: "config.json",
+	DeviceOCIName:    "oci.ext4",
 }
 
 type PackagerDevice struct {

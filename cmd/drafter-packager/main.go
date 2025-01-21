@@ -14,35 +14,15 @@ import (
 )
 
 func main() {
-	defaultDevices, err := json.Marshal([]common.PackagerDevice{
-		{
-			Name: common.DeviceStateName,
-			Path: filepath.Join("out", "package", "state.bin"),
-		},
-		{
-			Name: common.DeviceMemoryName,
-			Path: filepath.Join("out", "package", "memory.bin"),
-		},
+	defDevices := make([]common.PackagerDevice, 0)
+	for _, n := range common.KnownNames {
+		defDevices = append(defDevices, common.PackagerDevice{
+			Name: n,
+			Path: filepath.Join("out", "package", common.DeviceFilenames[n]),
+		})
+	}
 
-		{
-			Name: common.DeviceKernelName,
-			Path: filepath.Join("out", "package", "vmlinux"),
-		},
-		{
-			Name: common.DeviceDiskName,
-			Path: filepath.Join("out", "package", "rootfs.ext4"),
-		},
-
-		{
-			Name: common.DeviceConfigName,
-			Path: filepath.Join("out", "package", "config.json"),
-		},
-
-		{
-			Name: "oci",
-			Path: filepath.Join("out", "blueprint", "oci.ext4"),
-		},
-	})
+	defaultDevices, err := json.Marshal(defDevices)
 	if err != nil {
 		panic(err)
 	}

@@ -30,41 +30,15 @@ type SharableDevice struct {
 }
 
 func main() {
-	defaultDevices, err := json.Marshal([]SharableDevice{
-		{
-			Name:   common.DeviceStateName,
-			Path:   filepath.Join("out", "package", "state.bin"),
+	defDevices := make([]SharableDevice, 0)
+	for _, n := range common.KnownNames {
+		defDevices = append(defDevices, SharableDevice{
+			Name:   n,
+			Path:   filepath.Join("out", "package", common.DeviceFilenames[n]),
 			Shared: false,
-		},
-		{
-			Name:   common.DeviceMemoryName,
-			Path:   filepath.Join("out", "package", "memory.bin"),
-			Shared: false,
-		},
-
-		{
-			Name:   common.DeviceKernelName,
-			Path:   filepath.Join("out", "package", "vmlinux"),
-			Shared: false,
-		},
-		{
-			Name:   common.DeviceDiskName,
-			Path:   filepath.Join("out", "package", "rootfs.ext4"),
-			Shared: false,
-		},
-
-		{
-			Name:   common.DeviceConfigName,
-			Path:   filepath.Join("out", "package", "config.json"),
-			Shared: false,
-		},
-
-		{
-			Name:   "oci",
-			Path:   filepath.Join("out", "blueprint", "oci.ext4"),
-			Shared: false,
-		},
-	})
+		})
+	}
+	defaultDevices, err := json.Marshal(defDevices)
 	if err != nil {
 		panic(err)
 	}

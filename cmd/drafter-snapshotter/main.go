@@ -40,38 +40,21 @@ func main() {
 	livenessVSockPort := flag.Int("liveness-vsock-port", 25, "Liveness VSock port")
 	agentVSockPort := flag.Int("agent-vsock-port", 26, "Agent VSock port")
 
-	defaultDevices, err := json.Marshal([]snapshotter.SnapshotDevice{
-		{
-			Name:   common.DeviceStateName,
-			Output: filepath.Join("out", "package", "state.bin"),
-		},
-		{
-			Name:   common.DeviceMemoryName,
-			Output: filepath.Join("out", "package", "memory.bin"),
-		},
+	defDevices := make([]snapshotter.SnapshotDevice, 0)
+	for _, n := range common.KnownNames {
+		sd := snapshotter.SnapshotDevice{
+			Name:   n,
+			Output: filepath.Join("out", "package", common.DeviceFilenames[n]),
+		}
+		if n == common.DeviceKernelName ||
+			n == common.DeviceDiskName ||
+			n == common.DeviceOCIName {
+			sd.Output = filepath.Join("out", "blueprint", common.DeviceFilenames[n])
+		}
+		defDevices = append(defDevices, sd)
+	}
+	defaultDevices, err := json.Marshal(defDevices)
 
-		{
-			Name:   common.DeviceKernelName,
-			Input:  filepath.Join("out", "blueprint", "vmlinux"),
-			Output: filepath.Join("out", "package", "vmlinux"),
-		},
-		{
-			Name:   common.DeviceDiskName,
-			Input:  filepath.Join("out", "blueprint", "rootfs.ext4"),
-			Output: filepath.Join("out", "package", "rootfs.ext4"),
-		},
-
-		{
-			Name:   common.DeviceConfigName,
-			Output: filepath.Join("out", "package", "config.json"),
-		},
-
-		{
-			Name:   "oci",
-			Input:  filepath.Join("out", "blueprint", "oci.ext4"),
-			Output: filepath.Join("out", "package", "oci.ext4"),
-		},
-	})
 	if err != nil {
 		panic(err)
 	}
