@@ -182,7 +182,7 @@ func main() {
 		log.Info().Str("remote", remoteAddr).Msg("Migrating from")
 	}
 
-	migratedPeer, err := p.MigrateFrom(
+	err = p.MigrateFrom(
 		goroutineManager.Context(),
 		migrateFromDevices,
 		readers,
@@ -202,7 +202,7 @@ func main() {
 
 	defer func() {
 		defer goroutineManager.CreateForegroundPanicCollector()()
-		if err := migratedPeer.Wait(); err != nil {
+		if err := p.Wait(); err != nil {
 			panic(err)
 		}
 	}()
@@ -213,20 +213,20 @@ func main() {
 
 	defer func() {
 		defer goroutineManager.CreateForegroundPanicCollector()()
-		if err := migratedPeer.Close(); err != nil {
+		if err := p.Close(); err != nil {
 			panic(err)
 		}
 	}()
 
 	goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
-		if err := migratedPeer.Wait(); err != nil {
+		if err := p.Wait(); err != nil {
 			panic(err)
 		}
 	})
 
 	before := time.Now()
 
-	resumedPeer, err := migratedPeer.Resume(
+	resumedPeer, err := p.Resume(
 		goroutineManager.Context(),
 		*resumeTimeout,
 		*rescueTimeout,
@@ -258,7 +258,7 @@ func main() {
 
 	log.Info().Int64("ms", time.Since(before).Milliseconds()).Str("path", p.VMPath).Msg("Resumed VM")
 
-	if err := migratedPeer.Wait(); err != nil {
+	if err := p.Wait(); err != nil {
 		panic(err)
 	}
 
