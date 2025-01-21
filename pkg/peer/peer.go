@@ -23,6 +23,11 @@ import (
 	"github.com/loopholelabs/silo/pkg/storage/migrator"
 )
 
+var ErrConfigFileNotFound = errors.New("config file not found")
+var ErrCouldNotOpenConfigFile = errors.New("could not open config file")
+var ErrCouldNotDecodeConfigFile = errors.New("could not decode config file")
+var ErrCouldNotResumeRunner = errors.New("could not resume runner")
+
 type Peer struct {
 	log types.Logger
 
