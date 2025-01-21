@@ -20,6 +20,7 @@ import (
 	"github.com/loopholelabs/silo/pkg/storage/config"
 	"github.com/loopholelabs/silo/pkg/storage/devicegroup"
 	"github.com/loopholelabs/silo/pkg/storage/metrics"
+	"github.com/loopholelabs/silo/pkg/storage/migrator"
 )
 
 type Peer struct {
@@ -31,6 +32,10 @@ type Peer struct {
 	hypervisorCtx context.Context
 	runner        *runner.Runner[struct{}, ipc.AgentServerRemote[struct{}], struct{}]
 
+	// resumed
+	Remote        ipc.AgentServerRemote[struct{}]
+	resumedRunner *runner.ResumedRunner[struct{}, ipc.AgentServerRemote[struct{}], struct{}]
+
 	// Devices
 	dgLock     sync.Mutex
 	dg         *devicegroup.DeviceGroup
@@ -41,6 +46,15 @@ type Peer struct {
 	// TODO: Going
 	alreadyClosed bool
 	alreadyWaited bool
+}
+
+// Callbacks for MigrateTO
+type MigrateToHooks struct {
+	OnBeforeSuspend          func()
+	OnAfterSuspend           func()
+	OnAllMigrationsCompleted func()
+	OnProgress               func(p map[string]*migrator.MigrationProgress)
+	GetXferCustomData        func() []byte
 }
 
 func (peer *Peer) Close() error {
@@ -56,13 +70,30 @@ func (peer *Peer) Close() error {
 	}
 	peer.alreadyClosed = true
 
+	// TODO: Correct?
 	if peer.runner != nil {
 		err := peer.runner.Close()
 		if err != nil {
 			return err
 		}
-		return peer.runner.Wait()
+		err = peer.runner.Wait()
+		if err != nil {
+			return err
+		}
 	}
+
+	// TODO: Correct?
+	if peer.resumedRunner != nil {
+		err := peer.resumedRunner.Close()
+		if err != nil {
+			return err
+		}
+		err = peer.resumedRunner.Wait()
+		if err != nil {
+			return err
+		}
+	}
+
 	return peer.closeDG()
 }
 
@@ -104,6 +135,12 @@ func (peer *Peer) Wait() error {
 	if peer.runner != nil {
 		return peer.runner.Wait()
 	}
+
+	// TODO: Should this be here?
+	if peer.resumedRunner != nil {
+		return peer.resumedRunner.Wait()
+	}
+
 	return nil
 }
 
@@ -266,8 +303,8 @@ func (peer *Peer) Resume(
 	agentServerHooks ipc.AgentServerAcceptHooks[ipc.AgentServerRemote[struct{}], struct{}],
 
 	snapshotLoadConfiguration runner.SnapshotLoadConfiguration,
-) (*ResumedPeer, error) {
-	resumedPeer := &ResumedPeer{
+) (*Peer, error) {
+	resumedPeer := &Peer{
 		dg:  peer.dg,
 		log: peer.log,
 	}
@@ -326,4 +363,57 @@ func (peer *Peer) Resume(
 	}
 
 	return resumedPeer, nil
+}
+
+func (resumedPeer *Peer) SuspendAndCloseAgentServer(ctx context.Context, resumeTimeout time.Duration) error {
+	if resumedPeer.log != nil {
+		resumedPeer.log.Debug().Msg("resumedPeer.SuspendAndCloseAgentServer")
+	}
+	err := resumedPeer.resumedRunner.SuspendAndCloseAgentServer(
+		ctx,
+		resumeTimeout,
+	)
+	if err != nil {
+		if resumedPeer.log != nil {
+			resumedPeer.log.Warn().Err(err).Msg("error from resumedPeer.SuspendAndCloseAgentServer")
+		}
+	}
+	return err
+}
+
+/**
+ * MigrateTo migrates to a remote VM.
+ *
+ *
+ */
+func (resumedPeer *Peer) MigrateTo(ctx context.Context, devices []common.MigrateToDevice,
+	suspendTimeout time.Duration, concurrency int, readers []io.Reader, writers []io.Writer,
+	hooks MigrateToHooks) error {
+
+	if resumedPeer.log != nil {
+		resumedPeer.log.Info().Msg("resumedPeer.MigrateTo")
+	}
+
+	// This manages the status of the VM - if it's suspended or not.
+	vmState := common.NewVMStateMgr(ctx,
+		resumedPeer.SuspendAndCloseAgentServer,
+		suspendTimeout,
+		resumedPeer.resumedRunner.Msync,
+		hooks.OnBeforeSuspend,
+		hooks.OnAfterSuspend,
+	)
+
+	err := common.MigrateToPipe(ctx, readers, writers, resumedPeer.dg, concurrency, hooks.OnProgress, vmState, devices, hooks.GetXferCustomData)
+	if err != nil {
+		if resumedPeer.log != nil {
+			resumedPeer.log.Info().Err(err).Msg("error in resumedPeer.MigrateTo")
+		}
+		return err
+	}
+
+	if resumedPeer.log != nil {
+		resumedPeer.log.Info().Msg("resumedPeer.MigrateTo completed successfuly")
+	}
+
+	return nil
 }
