@@ -18,7 +18,6 @@ import (
 
 	"github.com/loopholelabs/drafter/pkg/common"
 	"github.com/loopholelabs/drafter/pkg/mounter"
-	"github.com/loopholelabs/drafter/pkg/packager"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 	"github.com/loopholelabs/silo/pkg/storage/migrator"
 )
@@ -46,7 +45,7 @@ type CompositeDevices struct {
 func main() {
 	defaultDevices, err := json.Marshal([]CompositeDevices{
 		{
-			Name: packager.StateName,
+			Name: common.DeviceStateName,
 
 			Base:    filepath.Join("out", "package", "state.bin"),
 			Overlay: filepath.Join("out", "overlay", "state.bin"),
@@ -65,7 +64,7 @@ func main() {
 			MakeMigratable: true,
 		},
 		{
-			Name: packager.MemoryName,
+			Name: common.DeviceMemoryName,
 
 			Base:    filepath.Join("out", "package", "memory.bin"),
 			Overlay: filepath.Join("out", "overlay", "memory.bin"),
@@ -85,7 +84,7 @@ func main() {
 		},
 
 		{
-			Name: packager.KernelName,
+			Name: common.DeviceKernelName,
 
 			Base:    filepath.Join("out", "package", "vmlinux"),
 			Overlay: filepath.Join("out", "overlay", "vmlinux"),
@@ -104,7 +103,7 @@ func main() {
 			MakeMigratable: true,
 		},
 		{
-			Name: packager.DiskName,
+			Name: common.DeviceDiskName,
 
 			Base:    filepath.Join("out", "package", "rootfs.ext4"),
 			Overlay: filepath.Join("out", "overlay", "rootfs.ext4"),
@@ -124,7 +123,7 @@ func main() {
 		},
 
 		{
-			Name: packager.ConfigName,
+			Name: common.DeviceConfigName,
 
 			Base:    filepath.Join("out", "package", "config.json"),
 			Overlay: filepath.Join("out", "overlay", "config.json"),

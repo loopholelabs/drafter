@@ -12,7 +12,7 @@ import (
 	"os/signal"
 	"path/filepath"
 
-	"github.com/loopholelabs/drafter/pkg/packager"
+	"github.com/loopholelabs/drafter/pkg/common"
 	"github.com/loopholelabs/drafter/pkg/registry"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 )
@@ -20,29 +20,29 @@ import (
 func main() {
 	defaultDevices, err := json.Marshal([]registry.RegistryDevice{
 		{
-			Name:      packager.StateName,
+			Name:      common.DeviceStateName,
 			Input:     filepath.Join("out", "package", "state.bin"),
 			BlockSize: 1024 * 64,
 		},
 		{
-			Name:      packager.MemoryName,
+			Name:      common.DeviceMemoryName,
 			Input:     filepath.Join("out", "package", "memory.bin"),
 			BlockSize: 1024 * 64,
 		},
 
 		{
-			Name:      packager.KernelName,
+			Name:      common.DeviceKernelName,
 			Input:     filepath.Join("out", "package", "vmlinux"),
 			BlockSize: 1024 * 64,
 		},
 		{
-			Name:      packager.DiskName,
+			Name:      common.DeviceDiskName,
 			Input:     filepath.Join("out", "package", "rootfs.ext4"),
 			BlockSize: 1024 * 64,
 		},
 
 		{
-			Name:      packager.ConfigName,
+			Name:      common.DeviceConfigName,
 			Input:     filepath.Join("out", "package", "config.json"),
 			BlockSize: 1024 * 64,
 		},

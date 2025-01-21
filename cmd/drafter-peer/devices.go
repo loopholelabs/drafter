@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/loopholelabs/drafter/pkg/packager"
+	"github.com/loopholelabs/drafter/pkg/common"
 )
 
 type CompositeDevices struct {
@@ -38,7 +38,7 @@ func decodeDevices(data string) ([]CompositeDevices, error) {
 func getDefaultDevices() string {
 	defaultDevices, err := json.Marshal([]CompositeDevices{
 		{
-			Name: packager.StateName,
+			Name: common.DeviceStateName,
 
 			Base:    filepath.Join("out", "package", "state.bin"),
 			Overlay: filepath.Join("out", "overlay", "state.bin"),
@@ -58,7 +58,7 @@ func getDefaultDevices() string {
 			Shared:         false,
 		},
 		{
-			Name: packager.MemoryName,
+			Name: common.DeviceMemoryName,
 
 			Base:    filepath.Join("out", "package", "memory.bin"),
 			Overlay: filepath.Join("out", "overlay", "memory.bin"),
@@ -79,7 +79,7 @@ func getDefaultDevices() string {
 		},
 
 		{
-			Name: packager.KernelName,
+			Name: common.DeviceKernelName,
 
 			Base:    filepath.Join("out", "package", "vmlinux"),
 			Overlay: filepath.Join("out", "overlay", "vmlinux"),
@@ -99,7 +99,7 @@ func getDefaultDevices() string {
 			Shared:         false,
 		},
 		{
-			Name: packager.DiskName,
+			Name: common.DeviceDiskName,
 
 			Base:    filepath.Join("out", "package", "rootfs.ext4"),
 			Overlay: filepath.Join("out", "overlay", "rootfs.ext4"),
@@ -120,7 +120,7 @@ func getDefaultDevices() string {
 		},
 
 		{
-			Name: packager.ConfigName,
+			Name: common.DeviceConfigName,
 
 			Base:    filepath.Join("out", "package", "config.json"),
 			Overlay: filepath.Join("out", "overlay", "config.json"),

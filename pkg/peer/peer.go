@@ -13,7 +13,6 @@ import (
 	"github.com/loopholelabs/drafter/pkg/common"
 	"github.com/loopholelabs/drafter/pkg/ipc"
 	"github.com/loopholelabs/drafter/pkg/mounter"
-	"github.com/loopholelabs/drafter/pkg/packager"
 	"github.com/loopholelabs/drafter/pkg/runner"
 	"github.com/loopholelabs/drafter/pkg/snapshotter"
 	"github.com/loopholelabs/logging/types"
@@ -64,7 +63,7 @@ type MigrateToHooks struct {
 
 func (peer *Peer) Close() error {
 	if peer.log != nil {
-		peer.log.Debug().Msg("Peer.Wait")
+		peer.log.Debug().Msg("Peer.Close")
 	}
 
 	if peer.alreadyClosed {
@@ -77,6 +76,9 @@ func (peer *Peer) Close() error {
 
 	// TODO: Correct?
 	if peer.runner != nil {
+		if peer.log != nil {
+			peer.log.Debug().Msg("Closing runner")
+		}
 		err := peer.runner.Close()
 		if err != nil {
 			return err
@@ -89,7 +91,13 @@ func (peer *Peer) Close() error {
 
 	// TODO: Correct?
 	if peer.resumedRunner != nil {
-		err := peer.resumedRunner.Close()
+		if peer.log != nil {
+			peer.log.Debug().Msg("Closing resumed runner")
+		}
+
+		err := peer.SuspendAndCloseAgentServer(context.TODO(), time.Minute) // TODO
+
+		err = peer.resumedRunner.Close()
 		if err != nil {
 			return err
 		}
@@ -99,6 +107,9 @@ func (peer *Peer) Close() error {
 		}
 	}
 
+	if peer.log != nil {
+		peer.log.Debug().Msg("Closing dg")
+	}
 	return peer.closeDG()
 }
 
@@ -135,17 +146,17 @@ func (peer *Peer) Wait() error {
 		return err
 	}
 	peer.dgLock.Unlock()
+	/*
+		// TODO: Should this be here?
+		if peer.runner != nil {
+			return peer.runner.Wait()
+		}
 
-	// TODO: Should this be here?
-	if peer.runner != nil {
-		return peer.runner.Wait()
-	}
-
-	// TODO: Should this be here?
-	if peer.resumedRunner != nil {
-		return peer.resumedRunner.Wait()
-	}
-
+		// TODO: Should this be here?
+		if peer.resumedRunner != nil {
+			return peer.resumedRunner.Wait()
+		}
+	*/
 	return nil
 }
 
@@ -319,7 +330,7 @@ func (peer *Peer) Resume(
 	}
 
 	// Read from the config device
-	configFileData, err := os.ReadFile(path.Join(peer.runner.VMPath, packager.ConfigName))
+	configFileData, err := os.ReadFile(path.Join(peer.runner.VMPath, common.DeviceConfigName))
 	if err != nil {
 		return nil, errors.Join(ErrCouldNotOpenConfigFile, err)
 	}

@@ -11,7 +11,7 @@ import (
 	"os/signal"
 	"path/filepath"
 
-	"github.com/loopholelabs/drafter/pkg/packager"
+	"github.com/loopholelabs/drafter/pkg/common"
 	"github.com/loopholelabs/drafter/pkg/terminator"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 )
@@ -19,25 +19,25 @@ import (
 func main() {
 	defaultDevices, err := json.Marshal([]terminator.TerminatorDevice{
 		{
-			Name:   packager.StateName,
+			Name:   common.DeviceStateName,
 			Output: filepath.Join("out", "package", "state.bin"),
 		},
 		{
-			Name:   packager.MemoryName,
+			Name:   common.DeviceMemoryName,
 			Output: filepath.Join("out", "package", "memory.bin"),
 		},
 
 		{
-			Name:   packager.KernelName,
+			Name:   common.DeviceKernelName,
 			Output: filepath.Join("out", "package", "vmlinux"),
 		},
 		{
-			Name:   packager.DiskName,
+			Name:   common.DeviceDiskName,
 			Output: filepath.Join("out", "package", "rootfs.ext4"),
 		},
 
 		{
-			Name:   packager.ConfigName,
+			Name:   common.DeviceConfigName,
 			Output: filepath.Join("out", "package", "config.json"),
 		},
 

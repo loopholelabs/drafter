@@ -11,7 +11,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/loopholelabs/drafter/pkg/snapshotter"
 	"github.com/loopholelabs/logging/types"
 	"github.com/loopholelabs/silo/pkg/storage/config"
 	"github.com/loopholelabs/silo/pkg/storage/devicegroup"
@@ -60,7 +59,7 @@ func ExposeSiloDeviceAsFile(vmpath string, name string, devicePath string) error
 	}
 	deviceInfo, err := os.Stat(devicePath)
 	if err != nil {
-		return errors.Join(snapshotter.ErrCouldNotGetDeviceStat, err)
+		return errors.Join(ErrCouldNotGetBaseDeviceStat, err)
 	}
 
 	deviceStat, ok := deviceInfo.Sys().(*syscall.Stat_t)

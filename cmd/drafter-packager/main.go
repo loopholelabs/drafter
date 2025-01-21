@@ -9,32 +9,32 @@ import (
 	"os/signal"
 	"path/filepath"
 
-	"github.com/loopholelabs/drafter/pkg/packager"
+	"github.com/loopholelabs/drafter/pkg/common"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 )
 
 func main() {
-	defaultDevices, err := json.Marshal([]packager.PackagerDevice{
+	defaultDevices, err := json.Marshal([]common.PackagerDevice{
 		{
-			Name: packager.StateName,
+			Name: common.DeviceStateName,
 			Path: filepath.Join("out", "package", "state.bin"),
 		},
 		{
-			Name: packager.MemoryName,
+			Name: common.DeviceMemoryName,
 			Path: filepath.Join("out", "package", "memory.bin"),
 		},
 
 		{
-			Name: packager.KernelName,
+			Name: common.DeviceKernelName,
 			Path: filepath.Join("out", "package", "vmlinux"),
 		},
 		{
-			Name: packager.DiskName,
+			Name: common.DeviceDiskName,
 			Path: filepath.Join("out", "package", "rootfs.ext4"),
 		},
 
 		{
-			Name: packager.ConfigName,
+			Name: common.DeviceConfigName,
 			Path: filepath.Join("out", "package", "config.json"),
 		},
 
@@ -55,7 +55,7 @@ func main() {
 
 	flag.Parse()
 
-	var devices []packager.PackagerDevice
+	var devices []common.PackagerDevice
 	if err := json.Unmarshal([]byte(*rawDevices), &devices); err != nil {
 		panic(err)
 	}
@@ -91,17 +91,11 @@ func main() {
 	}()
 
 	if *extract {
-		if err := packager.ExtractPackage(
+		if err := common.ExtractPackage(
 			goroutineManager.Context(),
 
 			*packagePath,
 			devices,
-
-			packager.PackagerHooks{
-				OnBeforeProcessFile: func(name, path string) {
-					log.Println("Extracting device", name, "to", path)
-				},
-			},
 		); err != nil {
 			panic(err)
 		}
@@ -109,17 +103,11 @@ func main() {
 		return
 	}
 
-	if err := packager.ArchivePackage(
+	if err := common.ArchivePackage(
 		goroutineManager.Context(),
 
 		devices,
 		*packagePath,
-
-		packager.PackagerHooks{
-			OnBeforeProcessFile: func(name, path string) {
-				log.Println("Archiving device", name, "from", path)
-			},
-		},
 	); err != nil {
 		panic(err)
 	}

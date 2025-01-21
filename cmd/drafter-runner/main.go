@@ -13,8 +13,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/loopholelabs/drafter/pkg/common"
 	"github.com/loopholelabs/drafter/pkg/ipc"
-	"github.com/loopholelabs/drafter/pkg/packager"
 	"github.com/loopholelabs/drafter/pkg/peer"
 	"github.com/loopholelabs/drafter/pkg/runner"
 	"github.com/loopholelabs/drafter/pkg/snapshotter"
@@ -32,29 +32,29 @@ type SharableDevice struct {
 func main() {
 	defaultDevices, err := json.Marshal([]SharableDevice{
 		{
-			Name:   packager.StateName,
+			Name:   common.DeviceStateName,
 			Path:   filepath.Join("out", "package", "state.bin"),
 			Shared: false,
 		},
 		{
-			Name:   packager.MemoryName,
+			Name:   common.DeviceMemoryName,
 			Path:   filepath.Join("out", "package", "memory.bin"),
 			Shared: false,
 		},
 
 		{
-			Name:   packager.KernelName,
+			Name:   common.DeviceKernelName,
 			Path:   filepath.Join("out", "package", "vmlinux"),
 			Shared: false,
 		},
 		{
-			Name:   packager.DiskName,
+			Name:   common.DeviceDiskName,
 			Path:   filepath.Join("out", "package", "rootfs.ext4"),
 			Shared: false,
 		},
 
 		{
-			Name:   packager.ConfigName,
+			Name:   common.DeviceConfigName,
 			Path:   filepath.Join("out", "package", "config.json"),
 			Shared: false,
 		},
@@ -116,7 +116,7 @@ func main() {
 
 	configPath := ""
 	for _, device := range devices {
-		if device.Name == packager.ConfigName {
+		if device.Name == common.DeviceConfigName {
 			configPath = device.Path
 
 			break
@@ -196,8 +196,8 @@ func main() {
 			EnableInput:  *enableInput,
 		},
 
-		packager.StateName,
-		packager.MemoryName,
+		common.DeviceStateName,
+		common.DeviceMemoryName,
 	)
 
 	defer func() {

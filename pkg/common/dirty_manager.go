@@ -4,8 +4,6 @@ import (
 	"errors"
 	"sync"
 	"time"
-
-	"github.com/loopholelabs/drafter/pkg/packager"
 )
 
 var (
@@ -48,7 +46,7 @@ func NewDirtyManager(vmState *VMStateMgr, devices map[string]*DeviceStatus, auth
 
 func (dm *DirtyManager) PreGetDirty(name string) error {
 	// If the VM is still running, do an Msync for the memory...
-	if !dm.VMState.CheckSuspendedVM() && name == packager.MemoryName {
+	if !dm.VMState.CheckSuspendedVM() && name == DeviceMemoryName {
 		err := dm.VMState.Msync()
 		if err != nil {
 			return errors.Join(ErrCouldNotMsyncRunner, err)

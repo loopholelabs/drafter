@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/loopholelabs/drafter/pkg/packager"
+	"github.com/loopholelabs/drafter/pkg/common"
 	"github.com/loopholelabs/drafter/pkg/snapshotter"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 )
@@ -42,27 +42,27 @@ func main() {
 
 	defaultDevices, err := json.Marshal([]snapshotter.SnapshotDevice{
 		{
-			Name:   packager.StateName,
+			Name:   common.DeviceStateName,
 			Output: filepath.Join("out", "package", "state.bin"),
 		},
 		{
-			Name:   packager.MemoryName,
+			Name:   common.DeviceMemoryName,
 			Output: filepath.Join("out", "package", "memory.bin"),
 		},
 
 		{
-			Name:   packager.KernelName,
+			Name:   common.DeviceKernelName,
 			Input:  filepath.Join("out", "blueprint", "vmlinux"),
 			Output: filepath.Join("out", "package", "vmlinux"),
 		},
 		{
-			Name:   packager.DiskName,
+			Name:   common.DeviceDiskName,
 			Input:  filepath.Join("out", "blueprint", "rootfs.ext4"),
 			Output: filepath.Join("out", "package", "rootfs.ext4"),
 		},
 
 		{
-			Name:   packager.ConfigName,
+			Name:   common.DeviceConfigName,
 			Output: filepath.Join("out", "package", "config.json"),
 		},
 

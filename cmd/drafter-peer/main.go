@@ -14,11 +14,9 @@ import (
 	"github.com/loopholelabs/drafter/pkg/common"
 	"github.com/loopholelabs/drafter/pkg/ipc"
 	"github.com/loopholelabs/drafter/pkg/mounter"
-	"github.com/loopholelabs/drafter/pkg/packager"
 	"github.com/loopholelabs/drafter/pkg/peer"
 	"github.com/loopholelabs/drafter/pkg/runner"
 	"github.com/loopholelabs/drafter/pkg/snapshotter"
-	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 	"github.com/loopholelabs/logging"
 	"github.com/loopholelabs/logging/types"
 	"github.com/loopholelabs/silo/pkg/storage/migrator"
@@ -66,51 +64,28 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	var errs error
-	defer func() {
-		if errs != nil {
-			panic(errs)
-		}
-	}()
-
-	goroutineManager := manager.NewGoroutineManager(
-		ctx,
-		&errs,
-		manager.GoroutineManagerHooks{},
-	)
-	defer goroutineManager.Wait()
-	defer goroutineManager.StopAllGoroutines()
-	defer goroutineManager.CreateBackgroundPanicCollector()()
-
-	bubbleSignals := false
-
-	// Handle Interrupts
+	// Handle Interrupt by cancelling context
 	done := make(chan os.Signal, 1)
+	signal.Notify(done, os.Interrupt)
 	go func() {
-		signal.Notify(done, os.Interrupt)
-		v := <-done
-
-		if bubbleSignals {
-			done <- v
-			return
-		}
-
+		<-done
 		log.Info().Msg("Exiting gracefully")
 		cancel()
 	}()
 
 	firecrackerBin, err := exec.LookPath(*rawFirecrackerBin)
 	if err != nil {
+		log.Error().Err(err).Msg("Could not find firecracker bin")
 		panic(err)
 	}
 
 	jailerBin, err := exec.LookPath(*rawJailerBin)
 	if err != nil {
+		log.Error().Err(err).Msg("Could not find jailer bin")
 		panic(err)
 	}
 
-	p, err := peer.StartPeer(
-		goroutineManager.Context(),
+	p, err := peer.StartPeer(ctx,
 		context.Background(), // Never give up on rescue operations
 
 		snapshotter.HypervisorConfiguration{
@@ -126,34 +101,22 @@ func main() {
 			EnableInput:    *enableInput,
 		},
 
-		packager.StateName,
-		packager.MemoryName,
+		common.DeviceStateName,
+		common.DeviceMemoryName,
 		log,
 	)
 
-	defer func() {
-		defer goroutineManager.CreateForegroundPanicCollector()()
-		if err := p.Wait(); err != nil {
-			panic(err)
-		}
-	}()
-
 	if err != nil {
+		log.Error().Err(err).Msg("Could not start peer")
 		panic(err)
 	}
 
 	defer func() {
-		defer goroutineManager.CreateForegroundPanicCollector()()
-		if err := p.Close(); err != nil {
+		err := p.Close()
+		if err != nil {
 			panic(err)
 		}
 	}()
-
-	goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
-		if err := p.Wait(); err != nil {
-			panic(err)
-		}
-	})
 
 	migrateFromDevices := []common.MigrateFromDevice{}
 	for _, device := range devices {
@@ -173,7 +136,7 @@ func main() {
 	var remoteAddr string
 
 	if *raddr != "" {
-		closer, readers, writers, remoteAddr, err = connectAddr(goroutineManager.Context(), *raddr)
+		closer, readers, writers, remoteAddr, err = connectAddr(ctx, *raddr)
 		if err != nil {
 			panic(err)
 		}
@@ -182,11 +145,7 @@ func main() {
 		log.Info().Str("remote", remoteAddr).Msg("Migrating from")
 	}
 
-	err = p.MigrateFrom(
-		goroutineManager.Context(),
-		migrateFromDevices,
-		readers,
-		writers,
+	err = p.MigrateFrom(ctx, migrateFromDevices, readers, writers,
 		mounter.MigrateFromHooks{
 			OnLocalDeviceRequested: func(localDeviceID uint32, name string) {
 				log.Info().Uint32("deviceID", localDeviceID).Str("name", name).Msg("Requested local device")
@@ -200,37 +159,14 @@ func main() {
 		},
 	)
 
-	defer func() {
-		defer goroutineManager.CreateForegroundPanicCollector()()
-		if err := p.Wait(); err != nil {
-			panic(err)
-		}
-	}()
-
 	if err != nil {
+		log.Error().Err(err).Msg("Could not migrate peer")
 		panic(err)
 	}
 
-	defer func() {
-		defer goroutineManager.CreateForegroundPanicCollector()()
-		if err := p.Close(); err != nil {
-			panic(err)
-		}
-	}()
-
-	goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
-		if err := p.Wait(); err != nil {
-			panic(err)
-		}
-	})
-
 	before := time.Now()
 
-	resumedPeer, err := p.Resume(
-		goroutineManager.Context(),
-		*resumeTimeout,
-		*rescueTimeout,
-		struct{}{},
+	resumedPeer, err := p.Resume(ctx, *resumeTimeout, *rescueTimeout, struct{}{},
 		ipc.AgentServerAcceptHooks[ipc.AgentServerRemote[struct{}], struct{}]{},
 		runner.SnapshotLoadConfiguration{
 			ExperimentalMapPrivate:             *experimentalMapPrivate,
@@ -240,119 +176,109 @@ func main() {
 	)
 
 	if err != nil {
+		log.Error().Err(err).Msg("Could not resume peer")
 		panic(err)
 	}
 
-	defer func() {
-		defer goroutineManager.CreateForegroundPanicCollector()()
-		if err := resumedPeer.Close(); err != nil {
-			panic(err)
-		}
-	}()
-
-	goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
-		if err := resumedPeer.Wait(); err != nil {
-			panic(err)
-		}
-	})
+	// Wait for any pending migration
+	err = p.Wait()
+	if err != nil {
+		log.Error().Err(err).Msg("Error waiting for migration")
+		panic(err)
+	}
 
 	log.Info().Int64("ms", time.Since(before).Milliseconds()).Str("path", p.VMPath).Msg("Resumed VM")
 
-	if err := p.Wait(); err != nil {
-		panic(err)
-	}
+	if strings.TrimSpace(*laddr) != "" {
 
-	if strings.TrimSpace(*laddr) == "" {
-		bubbleSignals = true
-
-		select {
-		case <-goroutineManager.Context().Done():
-			return
-
-		case <-done:
-			before = time.Now()
-
-			if err := resumedPeer.SuspendAndCloseAgentServer(goroutineManager.Context(), *resumeTimeout); err != nil {
+		log.Info().Str("addr", *laddr).Msg("Listening for connections")
+		closer, readers, writers, remoteAddr, err = listenAddr(ctx, *laddr)
+		if err != nil {
+			if err == context.Canceled {
+				// We don't care
+			} else {
+				log.Error().Err(err).Msg("Error listening for connection")
 				panic(err)
 			}
+		} else {
+			defer closer.Close()
 
-			log.Info().Int64("ms", time.Since(before).Milliseconds()).Msg("Suspend. Shutting down.")
-			return
+			log.Info().Str("addr", remoteAddr).Msg("Migrating to")
+
+			migrateToDevices := []common.MigrateToDevice{}
+			for _, device := range devices {
+				if !device.MakeMigratable || device.Shared {
+					continue
+				}
+
+				migrateToDevices = append(migrateToDevices, common.MigrateToDevice{
+					Name:           device.Name,
+					MaxDirtyBlocks: device.MaxDirtyBlocks,
+					MinCycles:      device.MinCycles,
+					MaxCycles:      device.MaxCycles,
+					CycleThrottle:  device.CycleThrottle,
+				})
+			}
+
+			before = time.Now()
+			err = resumedPeer.MigrateTo(
+				ctx,
+				migrateToDevices,
+				*resumeTimeout,
+				*concurrency,
+				readers,
+				writers,
+				peer.MigrateToHooks{
+					OnBeforeSuspend: func() {
+						before = time.Now()
+					},
+					OnAfterSuspend: func() {
+						log.Info().Int64("ms", time.Since(before).Milliseconds()).Msg("Suspend")
+					},
+					OnAllMigrationsCompleted: func() {
+						log.Info().Msg("Completed all device migrations")
+					},
+					OnProgress: func(p map[string]*migrator.MigrationProgress) {
+						totalSize := 0
+						totalDone := 0
+						for _, prog := range p {
+							totalSize += (prog.TotalBlocks * prog.BlockSize)
+							totalDone += (prog.ReadyBlocks * prog.BlockSize)
+						}
+
+						perc := float64(0.0)
+						if totalSize > 0 {
+							perc = float64(totalDone) * 100 / float64(totalSize)
+						}
+						// Report overall migration progress
+						log.Info().Float64("perc", perc).
+							Int("done", totalDone).
+							Int("size", totalSize).
+							Msg("# Overall migration Progress #")
+
+						// Report individual devices
+						for name, prog := range p {
+							log.Info().Str("name", name).
+								Int("migratedBlocks", prog.MigratedBlocks).
+								Int("totalBlocks", prog.TotalBlocks).
+								Int("readyBlocks", prog.ReadyBlocks).
+								Int("totalMigratedBlocks", prog.TotalMigratedBlocks).
+								Msg("Device migration progress")
+						}
+
+					},
+				},
+			)
+			if err != nil {
+				log.Error().Err(err).Msg("Error migrating to")
+				panic(err)
+			}
+			cancel() // Cancel the context, since we're done.
 		}
 	}
 
-	log.Info().Str("addr", *laddr).Msg("Listening for connections")
-	closer, readers, writers, remoteAddr, err = listenAddr(goroutineManager.Context(), *laddr)
-	defer closer.Close()
-
-	log.Info().Str("addr", remoteAddr).Msg("Migrating to")
-
-	migrateToDevices := []common.MigrateToDevice{}
-	for _, device := range devices {
-		if !device.MakeMigratable || device.Shared {
-			continue
-		}
-
-		migrateToDevices = append(migrateToDevices, common.MigrateToDevice{
-			Name:           device.Name,
-			MaxDirtyBlocks: device.MaxDirtyBlocks,
-			MinCycles:      device.MinCycles,
-			MaxCycles:      device.MaxCycles,
-			CycleThrottle:  device.CycleThrottle,
-		})
-	}
-
-	before = time.Now()
-	if err := resumedPeer.MigrateTo(
-		goroutineManager.Context(),
-		migrateToDevices,
-		*resumeTimeout,
-		*concurrency,
-		readers,
-		writers,
-		peer.MigrateToHooks{
-			OnBeforeSuspend: func() {
-				before = time.Now()
-			},
-			OnAfterSuspend: func() {
-				log.Info().Int64("ms", time.Since(before).Milliseconds()).Msg("Suspend")
-			},
-			OnAllMigrationsCompleted: func() {
-				log.Info().Msg("Completed all device migrations")
-			},
-			OnProgress: func(p map[string]*migrator.MigrationProgress) {
-				totalSize := 0
-				totalDone := 0
-				for _, prog := range p {
-					totalSize += (prog.TotalBlocks * prog.BlockSize)
-					totalDone += (prog.ReadyBlocks * prog.BlockSize)
-				}
-
-				perc := float64(0.0)
-				if totalSize > 0 {
-					perc = float64(totalDone) * 100 / float64(totalSize)
-				}
-				// Report overall migration progress
-				log.Info().Float64("perc", perc).
-					Int("done", totalDone).
-					Int("size", totalSize).
-					Msg("# Overall migration Progress #")
-
-				// Report individual devices
-				for name, prog := range p {
-					log.Info().Str("name", name).
-						Int("migratedBlocks", prog.MigratedBlocks).
-						Int("totalBlocks", prog.TotalBlocks).
-						Int("readyBlocks", prog.ReadyBlocks).
-						Int("totalMigratedBlocks", prog.TotalMigratedBlocks).
-						Msg("Device migration progress")
-				}
-
-			},
-		},
-	); err != nil {
-		panic(err)
-	}
+	// Wait for context done
+	<-ctx.Done()
 
 	log.Info().Msg("Shutting down")
 }
