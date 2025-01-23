@@ -13,7 +13,6 @@ import (
 
 	"github.com/loopholelabs/drafter/pkg/common"
 	"github.com/loopholelabs/drafter/pkg/snapshotter"
-	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 )
 
 func main() {
@@ -86,44 +85,20 @@ func main() {
 		panic(err)
 	}
 
-	var errs error
-	defer func() {
-		if errs != nil {
-			panic(errs)
-		}
-	}()
-
-	goroutineManager := manager.NewGoroutineManager(
-		ctx,
-		&errs,
-		manager.GoroutineManagerHooks{},
-	)
-	defer goroutineManager.Wait()
-	defer goroutineManager.StopAllGoroutines()
-	defer goroutineManager.CreateBackgroundPanicCollector()()
-
+	done := make(chan os.Signal, 1)
+	signal.Notify(done, os.Interrupt)
 	go func() {
-		done := make(chan os.Signal, 1)
-		signal.Notify(done, os.Interrupt)
-
 		<-done
-
 		log.Println("Exiting gracefully")
-
 		cancel()
 	}()
 
-	if err := snapshotter.CreateSnapshot(
-		goroutineManager.Context(),
-
-		devices,
-
+	err = snapshotter.CreateSnapshot(ctx, devices,
 		snapshotter.VMConfiguration{
 			CPUCount:    *cpuCount,
 			MemorySize:  *memorySize,
 			CPUTemplate: *cpuTemplate,
-
-			BootArgs: *bootArgs,
+			BootArgs:    *bootArgs,
 		},
 		snapshotter.LivenessConfiguration{
 			LivenessVSockPort: uint32(*livenessVSockPort),
@@ -133,18 +108,14 @@ func main() {
 		snapshotter.HypervisorConfiguration{
 			FirecrackerBin: firecrackerBin,
 			JailerBin:      jailerBin,
-
-			ChrootBaseDir: *chrootBaseDir,
-
-			UID: *uid,
-			GID: *gid,
-
-			NetNS:         *netns,
-			NumaNode:      *numaNode,
-			CgroupVersion: *cgroupVersion,
-
-			EnableOutput: *enableOutput,
-			EnableInput:  *enableInput,
+			ChrootBaseDir:  *chrootBaseDir,
+			UID:            *uid,
+			GID:            *gid,
+			NetNS:          *netns,
+			NumaNode:       *numaNode,
+			CgroupVersion:  *cgroupVersion,
+			EnableOutput:   *enableOutput,
+			EnableInput:    *enableInput,
 		},
 		snapshotter.NetworkConfiguration{
 			Interface: *iface,
@@ -154,7 +125,9 @@ func main() {
 			AgentVSockPort: uint32(*agentVSockPort),
 			ResumeTimeout:  *resumeTimeout,
 		},
-	); err != nil {
+	)
+
+	if err != nil {
 		panic(err)
 	}
 
