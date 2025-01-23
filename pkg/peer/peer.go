@@ -31,14 +31,17 @@ type Peer struct {
 	log types.Logger
 
 	// Runner
-	VMPath        string
-	VMPid         int
-	hypervisorCtx context.Context
-	runner        *runner.Runner[struct{}, ipc.AgentServerRemote[struct{}], struct{}]
+	VMPath           string
+	VMPid            int
+	hypervisorCtx    context.Context
+	hypervisorCancel context.CancelFunc
+	runner           *runner.Runner[struct{}, ipc.AgentServerRemote[struct{}], struct{}]
 
 	// resumed
 	Remote        ipc.AgentServerRemote[struct{}]
 	resumedRunner *runner.ResumedRunner[struct{}, ipc.AgentServerRemote[struct{}], struct{}]
+	resumeCtx     context.Context
+	resumeCancel  context.CancelFunc
 
 	// Devices
 	dgLock     sync.Mutex
@@ -75,7 +78,25 @@ func (peer *Peer) Close() error {
 	peer.alreadyClosed = true
 
 	// TODO: Correct?
-	if peer.runner != nil {
+	if peer.resumedRunner != nil {
+		if peer.log != nil {
+			peer.log.Debug().Msg("Closing resumed runner")
+		}
+
+		err := peer.SuspendAndCloseAgentServer(context.TODO(), time.Minute) // TODO
+
+		peer.resumeCancel() // We can cancel this context now
+		peer.hypervisorCancel()
+
+		err = peer.resumedRunner.Close()
+		if err != nil {
+			return err
+		}
+		err = peer.resumedRunner.Wait()
+		if err != nil {
+			return err
+		}
+	} else if peer.runner != nil {
 		if peer.log != nil {
 			peer.log.Debug().Msg("Closing runner")
 		}
@@ -84,24 +105,6 @@ func (peer *Peer) Close() error {
 			return err
 		}
 		err = peer.runner.Wait()
-		if err != nil {
-			return err
-		}
-	}
-
-	// TODO: Correct?
-	if peer.resumedRunner != nil {
-		if peer.log != nil {
-			peer.log.Debug().Msg("Closing resumed runner")
-		}
-
-		err := peer.SuspendAndCloseAgentServer(context.TODO(), time.Minute) // TODO
-
-		err = peer.resumedRunner.Close()
-		if err != nil {
-			return err
-		}
-		err = peer.resumedRunner.Wait()
 		if err != nil {
 			return err
 		}
@@ -178,12 +181,16 @@ func (peer *Peer) closeDG() error {
 	return err
 }
 
-func StartPeer(hypervisorCtx context.Context, rescueCtx context.Context,
+func StartPeer(ctx context.Context, rescueCtx context.Context,
 	hypervisorConfiguration snapshotter.HypervisorConfiguration,
 	stateName string, memoryName string, log types.Logger) (*Peer, error) {
+
+	hypervisorCtx, hypervisorCancel := context.WithCancel(context.TODO())
+
 	peer := &Peer{
-		hypervisorCtx: hypervisorCtx,
-		log:           log,
+		hypervisorCtx:    hypervisorCtx,
+		hypervisorCancel: hypervisorCancel,
+		log:              log,
 	}
 
 	var err error
@@ -319,11 +326,7 @@ func (peer *Peer) Resume(
 	agentServerHooks ipc.AgentServerAcceptHooks[ipc.AgentServerRemote[struct{}], struct{}],
 
 	snapshotLoadConfiguration runner.SnapshotLoadConfiguration,
-) (*Peer, error) {
-	resumedPeer := &Peer{
-		dg:  peer.dg,
-		log: peer.log,
-	}
+) error {
 
 	if peer.log != nil {
 		peer.log.Trace().Msg("resuming vm")
@@ -332,7 +335,7 @@ func (peer *Peer) Resume(
 	// Read from the config device
 	configFileData, err := os.ReadFile(path.Join(peer.runner.VMPath, common.DeviceConfigName))
 	if err != nil {
-		return nil, errors.Join(ErrCouldNotOpenConfigFile, err)
+		return errors.Join(ErrCouldNotOpenConfigFile, err)
 	}
 
 	// Find the first 0 byte...
@@ -351,11 +354,16 @@ func (peer *Peer) Resume(
 
 	var packageConfig snapshotter.PackageConfiguration
 	if err := json.Unmarshal(configFileData, &packageConfig); err != nil {
-		return nil, errors.Join(ErrCouldNotDecodeConfigFile, err)
+		return errors.Join(ErrCouldNotDecodeConfigFile, err)
 	}
 
-	resumedPeer.resumedRunner, err = peer.runner.Resume(
-		ctx,
+	resumeCtx, resumeCancel := context.WithCancel(context.TODO())
+
+	peer.resumeCtx = resumeCtx
+	peer.resumeCancel = resumeCancel
+
+	peer.resumedRunner, err = peer.runner.Resume(
+		resumeCtx,
 
 		resumeTimeout,
 		rescueTimeout,
@@ -370,28 +378,28 @@ func (peer *Peer) Resume(
 		if peer.log != nil {
 			peer.log.Warn().Err(err).Msg("could not resume runner")
 		}
-		return nil, errors.Join(ErrCouldNotResumeRunner, err)
+		return errors.Join(ErrCouldNotResumeRunner, err)
 	}
-	resumedPeer.Remote = resumedPeer.resumedRunner.Remote
+	peer.Remote = peer.resumedRunner.Remote
 
 	if peer.log != nil {
 		peer.log.Info().Msg("resumed vm")
 	}
 
-	return resumedPeer, nil
+	return nil
 }
 
-func (resumedPeer *Peer) SuspendAndCloseAgentServer(ctx context.Context, resumeTimeout time.Duration) error {
-	if resumedPeer.log != nil {
-		resumedPeer.log.Debug().Msg("resumedPeer.SuspendAndCloseAgentServer")
+func (peer *Peer) SuspendAndCloseAgentServer(ctx context.Context, resumeTimeout time.Duration) error {
+	if peer.log != nil {
+		peer.log.Debug().Msg("resumedPeer.SuspendAndCloseAgentServer")
 	}
-	err := resumedPeer.resumedRunner.SuspendAndCloseAgentServer(
+	err := peer.resumedRunner.SuspendAndCloseAgentServer(
 		ctx,
 		resumeTimeout,
 	)
 	if err != nil {
-		if resumedPeer.log != nil {
-			resumedPeer.log.Warn().Err(err).Msg("error from resumedPeer.SuspendAndCloseAgentServer")
+		if peer.log != nil {
+			peer.log.Warn().Err(err).Msg("error from resumedPeer.SuspendAndCloseAgentServer")
 		}
 	}
 	return err
@@ -402,33 +410,33 @@ func (resumedPeer *Peer) SuspendAndCloseAgentServer(ctx context.Context, resumeT
  *
  *
  */
-func (resumedPeer *Peer) MigrateTo(ctx context.Context, devices []common.MigrateToDevice,
+func (peer *Peer) MigrateTo(ctx context.Context, devices []common.MigrateToDevice,
 	suspendTimeout time.Duration, concurrency int, readers []io.Reader, writers []io.Writer,
 	hooks MigrateToHooks) error {
 
-	if resumedPeer.log != nil {
-		resumedPeer.log.Info().Msg("resumedPeer.MigrateTo")
+	if peer.log != nil {
+		peer.log.Info().Msg("resumedPeer.MigrateTo")
 	}
 
 	// This manages the status of the VM - if it's suspended or not.
 	vmState := common.NewVMStateMgr(ctx,
-		resumedPeer.SuspendAndCloseAgentServer,
+		peer.SuspendAndCloseAgentServer,
 		suspendTimeout,
-		resumedPeer.resumedRunner.Msync,
+		peer.resumedRunner.Msync,
 		hooks.OnBeforeSuspend,
 		hooks.OnAfterSuspend,
 	)
 
-	err := common.MigrateToPipe(ctx, readers, writers, resumedPeer.dg, concurrency, hooks.OnProgress, vmState, devices, hooks.GetXferCustomData)
+	err := common.MigrateToPipe(ctx, readers, writers, peer.dg, concurrency, hooks.OnProgress, vmState, devices, hooks.GetXferCustomData)
 	if err != nil {
-		if resumedPeer.log != nil {
-			resumedPeer.log.Info().Err(err).Msg("error in resumedPeer.MigrateTo")
+		if peer.log != nil {
+			peer.log.Info().Err(err).Msg("error in resumedPeer.MigrateTo")
 		}
 		return err
 	}
 
-	if resumedPeer.log != nil {
-		resumedPeer.log.Info().Msg("resumedPeer.MigrateTo completed successfuly")
+	if peer.log != nil {
+		peer.log.Info().Msg("resumedPeer.MigrateTo completed successfuly")
 	}
 
 	return nil

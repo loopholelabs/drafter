@@ -166,7 +166,7 @@ func main() {
 
 	before := time.Now()
 
-	resumedPeer, err := p.Resume(ctx, *resumeTimeout, *rescueTimeout, struct{}{},
+	err = p.Resume(ctx, *resumeTimeout, *rescueTimeout, struct{}{},
 		ipc.AgentServerAcceptHooks[ipc.AgentServerRemote[struct{}], struct{}]{},
 		runner.SnapshotLoadConfiguration{
 			ExperimentalMapPrivate:             *experimentalMapPrivate,
@@ -221,7 +221,7 @@ func main() {
 			}
 
 			before = time.Now()
-			err = resumedPeer.MigrateTo(
+			err = p.MigrateTo(
 				ctx,
 				migrateToDevices,
 				*resumeTimeout,
