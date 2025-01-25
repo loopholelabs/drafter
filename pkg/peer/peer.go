@@ -27,7 +27,7 @@ var ErrCouldNotOpenConfigFile = errors.New("could not open config file")
 var ErrCouldNotDecodeConfigFile = errors.New("could not decode config file")
 var ErrCouldNotResumeRunner = errors.New("could not resume runner")
 
-type Peer struct {
+type Peer[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] struct {
 	log types.Logger
 
 	// Runner
@@ -35,11 +35,11 @@ type Peer struct {
 	VMPid            int
 	hypervisorCtx    context.Context
 	hypervisorCancel context.CancelFunc
-	runner           *runner.Runner[struct{}, ipc.AgentServerRemote[struct{}], struct{}]
+	runner           *runner.Runner[L, R, G]
 
 	// resumed
-	Remote        ipc.AgentServerRemote[struct{}]
-	resumedRunner *runner.ResumedRunner[struct{}, ipc.AgentServerRemote[struct{}], struct{}]
+	Remote        R
+	resumedRunner *runner.ResumedRunner[L, R, G]
 	resumeCtx     context.Context
 	resumeCancel  context.CancelFunc
 
@@ -64,7 +64,7 @@ type MigrateToHooks struct {
 	GetXferCustomData        func() []byte
 }
 
-func (peer *Peer) Close() error {
+func (peer *Peer[L, R, G]) Close() error {
 	if peer.log != nil {
 		peer.log.Debug().Msg("Peer.Close")
 	}
@@ -116,7 +116,7 @@ func (peer *Peer) Close() error {
 	return peer.closeDG()
 }
 
-func (peer *Peer) Wait() error {
+func (peer *Peer[L, R, G]) Wait() error {
 	if peer.log != nil {
 		peer.log.Debug().Msg("Peer.Wait")
 	}
@@ -163,14 +163,14 @@ func (peer *Peer) Wait() error {
 	return nil
 }
 
-func (peer *Peer) setDG(dg *devicegroup.DeviceGroup, incoming bool) {
+func (peer *Peer[L, R, G]) setDG(dg *devicegroup.DeviceGroup, incoming bool) {
 	peer.dgLock.Lock()
 	peer.dg = dg
 	peer.dgIncoming = incoming
 	peer.dgLock.Unlock()
 }
 
-func (peer *Peer) closeDG() error {
+func (peer *Peer[L, R, G]) closeDG() error {
 	var err error
 	peer.dgLock.Lock()
 	if peer.dg != nil {
@@ -181,20 +181,20 @@ func (peer *Peer) closeDG() error {
 	return err
 }
 
-func StartPeer(ctx context.Context, rescueCtx context.Context,
+func StartPeer[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](ctx context.Context, rescueCtx context.Context,
 	hypervisorConfiguration snapshotter.HypervisorConfiguration,
-	stateName string, memoryName string, log types.Logger) (*Peer, error) {
+	stateName string, memoryName string, log types.Logger) (*Peer[L, R, G], error) {
 
 	hypervisorCtx, hypervisorCancel := context.WithCancel(context.TODO())
 
-	peer := &Peer{
+	peer := &Peer[L, R, G]{
 		hypervisorCtx:    hypervisorCtx,
 		hypervisorCancel: hypervisorCancel,
 		log:              log,
 	}
 
 	var err error
-	peer.runner, err = runner.StartRunner[struct{}, ipc.AgentServerRemote[struct{}]](
+	peer.runner, err = runner.StartRunner[L, R, G](
 		hypervisorCtx,
 		rescueCtx,
 		hypervisorConfiguration,
@@ -218,7 +218,7 @@ func StartPeer(ctx context.Context, rescueCtx context.Context,
 	return peer, nil
 }
 
-func (peer *Peer) MigrateFrom(ctx context.Context, devices []common.MigrateFromDevice,
+func (peer *Peer[L, R, G]) MigrateFrom(ctx context.Context, devices []common.MigrateFromDevice,
 	readers []io.Reader, writers []io.Writer, hooks mounter.MigrateFromHooks) error {
 
 	if peer.log != nil {
@@ -316,14 +316,14 @@ func (peer *Peer) MigrateFrom(ctx context.Context, devices []common.MigrateFromD
 	return nil
 }
 
-func (peer *Peer) Resume(
+func (peer *Peer[L, R, G]) Resume(
 	ctx context.Context,
 
 	resumeTimeout,
 	rescueTimeout time.Duration,
 
-	agentServerLocal struct{},
-	agentServerHooks ipc.AgentServerAcceptHooks[ipc.AgentServerRemote[struct{}], struct{}],
+	agentServerLocal L,
+	agentServerHooks ipc.AgentServerAcceptHooks[R, G],
 
 	snapshotLoadConfiguration runner.SnapshotLoadConfiguration,
 ) error {
@@ -389,7 +389,7 @@ func (peer *Peer) Resume(
 	return nil
 }
 
-func (peer *Peer) SuspendAndCloseAgentServer(ctx context.Context, resumeTimeout time.Duration) error {
+func (peer *Peer[L, R, G]) SuspendAndCloseAgentServer(ctx context.Context, resumeTimeout time.Duration) error {
 	if peer.log != nil {
 		peer.log.Debug().Msg("resumedPeer.SuspendAndCloseAgentServer")
 	}
@@ -410,7 +410,7 @@ func (peer *Peer) SuspendAndCloseAgentServer(ctx context.Context, resumeTimeout 
  *
  *
  */
-func (peer *Peer) MigrateTo(ctx context.Context, devices []common.MigrateToDevice,
+func (peer *Peer[L, R, G]) MigrateTo(ctx context.Context, devices []common.MigrateToDevice,
 	suspendTimeout time.Duration, concurrency int, readers []io.Reader, writers []io.Writer,
 	hooks MigrateToHooks) error {
 

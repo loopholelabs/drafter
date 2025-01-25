@@ -85,7 +85,7 @@ func main() {
 		panic(err)
 	}
 
-	p, err := peer.StartPeer(ctx,
+	p, err := peer.StartPeer[struct{}, ipc.AgentServerRemote[struct{}]](ctx,
 		context.Background(), // Never give up on rescue operations
 
 		snapshotter.HypervisorConfiguration{
