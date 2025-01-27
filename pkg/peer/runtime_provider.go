@@ -12,7 +12,7 @@ import (
 
 type RuntimeProvider[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] struct {
 	Log                     types.Logger
-	Remote                  ipc.AgentServerRemote[R]
+	Remote                  R
 	Runner                  *runner.Runner[L, R, G]
 	ResumedRunner           *runner.ResumedRunner[L, R, G]
 	HypervisorConfiguration snapshotter.HypervisorConfiguration
@@ -55,6 +55,8 @@ func (rp *RuntimeProvider[L, R, G]) Resume(resumeTimeout time.Duration, rescueTi
 		rp.AgentServerHooks,
 		rp.SnapshotLoadConfiguration,
 	)
+
+	rp.Remote = rp.ResumedRunner.Remote
 	return err
 }
 
