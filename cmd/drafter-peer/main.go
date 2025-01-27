@@ -85,10 +85,9 @@ func main() {
 		panic(err)
 	}
 
-	p, err := peer.StartPeer(ctx,
-		context.Background(), // Never give up on rescue operations
-
-		snapshotter.HypervisorConfiguration{
+	rp := &peer.RuntimeProvider[struct{}, ipc.AgentServerRemote[struct{}], struct{}]{
+		Log: log,
+		HypervisorConfiguration: snapshotter.HypervisorConfiguration{
 			FirecrackerBin: firecrackerBin,
 			JailerBin:      jailerBin,
 			ChrootBaseDir:  *chrootBaseDir,
@@ -100,10 +99,20 @@ func main() {
 			EnableOutput:   *enableOutput,
 			EnableInput:    *enableInput,
 		},
+		StateName:        common.DeviceStateName,
+		MemoryName:       common.DeviceMemoryName,
+		AgentServerLocal: struct{}{},
+		AgentServerHooks: ipc.AgentServerAcceptHooks[ipc.AgentServerRemote[struct{}], struct{}]{},
+		SnapshotLoadConfiguration: runner.SnapshotLoadConfiguration{
+			ExperimentalMapPrivate:             *experimentalMapPrivate,
+			ExperimentalMapPrivateStateOutput:  *experimentalMapPrivateStateOutput,
+			ExperimentalMapPrivateMemoryOutput: *experimentalMapPrivateMemoryOutput,
+		},
+	}
 
-		common.DeviceStateName,
-		common.DeviceMemoryName,
-		log,
+	p, err := peer.StartPeer(ctx,
+		context.Background(), // Never give up on rescue operations
+		log, rp,
 	)
 
 	if err != nil {
@@ -166,14 +175,7 @@ func main() {
 
 	before := time.Now()
 
-	err = p.Resume(ctx, *resumeTimeout, *rescueTimeout, struct{}{},
-		ipc.AgentServerAcceptHooks[ipc.AgentServerRemote[struct{}], struct{}]{},
-		runner.SnapshotLoadConfiguration{
-			ExperimentalMapPrivate:             *experimentalMapPrivate,
-			ExperimentalMapPrivateStateOutput:  *experimentalMapPrivateStateOutput,
-			ExperimentalMapPrivateMemoryOutput: *experimentalMapPrivateMemoryOutput,
-		},
-	)
+	err = p.Resume(ctx, *resumeTimeout, *rescueTimeout)
 
 	if err != nil {
 		log.Error().Err(err).Msg("Could not resume peer")

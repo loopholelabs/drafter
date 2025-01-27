@@ -11,9 +11,7 @@ import (
 	"time"
 
 	"github.com/loopholelabs/drafter/pkg/common"
-	"github.com/loopholelabs/drafter/pkg/ipc"
 	"github.com/loopholelabs/drafter/pkg/mounter"
-	"github.com/loopholelabs/drafter/pkg/runner"
 	"github.com/loopholelabs/drafter/pkg/snapshotter"
 	"github.com/loopholelabs/logging/types"
 	"github.com/loopholelabs/silo/pkg/storage/config"
@@ -30,25 +28,17 @@ var ErrCouldNotResumeRunner = errors.New("could not resume runner")
 type Peer struct {
 	log types.Logger
 
-	// Runner
-	VMPath           string
-	VMPid            int
-	hypervisorCtx    context.Context
-	hypervisorCancel context.CancelFunc
-	runner           *runner.Runner[struct{}, ipc.AgentServerRemote[struct{}], struct{}]
-
-	// resumed
-	Remote        ipc.AgentServerRemote[struct{}]
-	resumedRunner *runner.ResumedRunner[struct{}, ipc.AgentServerRemote[struct{}], struct{}]
-	resumeCtx     context.Context
-	resumeCancel  context.CancelFunc
-
 	// Devices
 	dgLock     sync.Mutex
 	dg         *devicegroup.DeviceGroup
 	dgIncoming bool
 	devices    []common.MigrateFromDevice
 	cancelCtx  context.CancelFunc
+
+	// Runtime
+	runtimeProvider RuntimeProviderIfc
+	VMPath          string
+	VMPid           int
 
 	// TODO: Going
 	alreadyClosed bool
@@ -77,37 +67,9 @@ func (peer *Peer) Close() error {
 	}
 	peer.alreadyClosed = true
 
-	// TODO: Correct?
-	if peer.resumedRunner != nil {
-		if peer.log != nil {
-			peer.log.Debug().Msg("Closing resumed runner")
-		}
-
-		err := peer.SuspendAndCloseAgentServer(context.TODO(), time.Minute) // TODO
-
-		peer.resumeCancel() // We can cancel this context now
-		peer.hypervisorCancel()
-
-		err = peer.resumedRunner.Close()
-		if err != nil {
-			return err
-		}
-		err = peer.resumedRunner.Wait()
-		if err != nil {
-			return err
-		}
-	} else if peer.runner != nil {
-		if peer.log != nil {
-			peer.log.Debug().Msg("Closing runner")
-		}
-		err := peer.runner.Close()
-		if err != nil {
-			return err
-		}
-		err = peer.runner.Wait()
-		if err != nil {
-			return err
-		}
+	err := peer.runtimeProvider.Close()
+	if err != nil {
+		return err
 	}
 
 	if peer.log != nil {
@@ -182,25 +144,14 @@ func (peer *Peer) closeDG() error {
 }
 
 func StartPeer(ctx context.Context, rescueCtx context.Context,
-	hypervisorConfiguration snapshotter.HypervisorConfiguration,
-	stateName string, memoryName string, log types.Logger) (*Peer, error) {
-
-	hypervisorCtx, hypervisorCancel := context.WithCancel(context.TODO())
+	log types.Logger, rp RuntimeProviderIfc) (*Peer, error) {
 
 	peer := &Peer{
-		hypervisorCtx:    hypervisorCtx,
-		hypervisorCancel: hypervisorCancel,
-		log:              log,
+		log:             log,
+		runtimeProvider: rp,
 	}
 
-	var err error
-	peer.runner, err = runner.StartRunner[struct{}, ipc.AgentServerRemote[struct{}]](
-		hypervisorCtx,
-		rescueCtx,
-		hypervisorConfiguration,
-		stateName,
-		memoryName,
-	)
+	err := peer.runtimeProvider.Start(ctx, rescueCtx)
 
 	if err != nil {
 		if log != nil {
@@ -209,8 +160,8 @@ func StartPeer(ctx context.Context, rescueCtx context.Context,
 		return nil, err
 	}
 
-	peer.VMPath = peer.runner.VMPath
-	peer.VMPid = peer.runner.VMPid
+	peer.VMPath = peer.runtimeProvider.DevicePath()
+	peer.VMPid = peer.runtimeProvider.GetVMPid()
 
 	if log != nil {
 		log.Info().Str("vmpath", peer.VMPath).Int("vmpid", peer.VMPid).Msg("started peer runner")
@@ -265,7 +216,7 @@ func (peer *Peer) MigrateFrom(ctx context.Context, devices []common.MigrateFromD
 		if peer.log != nil {
 			slog = peer.log.SubLogger("silo")
 		}
-		dg, err := common.MigrateFromPipe(slog, met, peer.runner.VMPath, protocolCtx, readers, writers, tweakRemote, hooks.OnXferCustomData)
+		dg, err := common.MigrateFromPipe(slog, met, peer.runtimeProvider.DevicePath(), protocolCtx, readers, writers, tweakRemote, hooks.OnXferCustomData)
 		if err != nil {
 			if peer.log != nil {
 				peer.log.Warn().Err(err).Msg("error migrating from pipe")
@@ -293,7 +244,7 @@ func (peer *Peer) MigrateFrom(ctx context.Context, devices []common.MigrateFromD
 			slog = peer.log.SubLogger("silo")
 		}
 
-		dg, err := common.MigrateFromFS(slog, met, peer.runner.VMPath, devices, tweakLocal)
+		dg, err := common.MigrateFromFS(slog, met, peer.runtimeProvider.DevicePath(), devices, tweakLocal)
 		if err != nil {
 			if peer.log != nil {
 				peer.log.Warn().Err(err).Msg("error migrating from fs")
@@ -318,14 +269,8 @@ func (peer *Peer) MigrateFrom(ctx context.Context, devices []common.MigrateFromD
 
 func (peer *Peer) Resume(
 	ctx context.Context,
-
 	resumeTimeout,
 	rescueTimeout time.Duration,
-
-	agentServerLocal struct{},
-	agentServerHooks ipc.AgentServerAcceptHooks[ipc.AgentServerRemote[struct{}], struct{}],
-
-	snapshotLoadConfiguration runner.SnapshotLoadConfiguration,
 ) error {
 
 	if peer.log != nil {
@@ -333,7 +278,7 @@ func (peer *Peer) Resume(
 	}
 
 	// Read from the config device
-	configFileData, err := os.ReadFile(path.Join(peer.runner.VMPath, common.DeviceConfigName))
+	configFileData, err := os.ReadFile(path.Join(peer.runtimeProvider.DevicePath(), common.DeviceConfigName))
 	if err != nil {
 		return errors.Join(ErrCouldNotOpenConfigFile, err)
 	}
@@ -357,52 +302,20 @@ func (peer *Peer) Resume(
 		return errors.Join(ErrCouldNotDecodeConfigFile, err)
 	}
 
-	resumeCtx, resumeCancel := context.WithCancel(context.TODO())
+	err = peer.runtimeProvider.Resume(resumeTimeout, rescueTimeout, packageConfig.AgentVSockPort)
 
-	peer.resumeCtx = resumeCtx
-	peer.resumeCancel = resumeCancel
-
-	peer.resumedRunner, err = peer.runner.Resume(
-		resumeCtx,
-
-		resumeTimeout,
-		rescueTimeout,
-		packageConfig.AgentVSockPort,
-
-		agentServerLocal,
-		agentServerHooks,
-
-		snapshotLoadConfiguration,
-	)
 	if err != nil {
 		if peer.log != nil {
 			peer.log.Warn().Err(err).Msg("could not resume runner")
 		}
 		return errors.Join(ErrCouldNotResumeRunner, err)
 	}
-	peer.Remote = peer.resumedRunner.Remote
 
 	if peer.log != nil {
 		peer.log.Info().Msg("resumed vm")
 	}
 
 	return nil
-}
-
-func (peer *Peer) SuspendAndCloseAgentServer(ctx context.Context, resumeTimeout time.Duration) error {
-	if peer.log != nil {
-		peer.log.Debug().Msg("resumedPeer.SuspendAndCloseAgentServer")
-	}
-	err := peer.resumedRunner.SuspendAndCloseAgentServer(
-		ctx,
-		resumeTimeout,
-	)
-	if err != nil {
-		if peer.log != nil {
-			peer.log.Warn().Err(err).Msg("error from resumedPeer.SuspendAndCloseAgentServer")
-		}
-	}
-	return err
 }
 
 /**
@@ -420,9 +333,9 @@ func (peer *Peer) MigrateTo(ctx context.Context, devices []common.MigrateToDevic
 
 	// This manages the status of the VM - if it's suspended or not.
 	vmState := common.NewVMStateMgr(ctx,
-		peer.SuspendAndCloseAgentServer,
+		peer.runtimeProvider.SuspendAndCloseAgentServer,
 		suspendTimeout,
-		peer.resumedRunner.Msync,
+		peer.runtimeProvider.FlushData,
 		hooks.OnBeforeSuspend,
 		hooks.OnAfterSuspend,
 	)
