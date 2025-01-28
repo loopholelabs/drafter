@@ -1,4 +1,4 @@
-package main
+package cmd
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"net"
 )
 
-func connectAddr(ctx context.Context, addr string) (io.Closer, []io.Reader, []io.Writer, string, error) {
+func ConnectAddr(ctx context.Context, addr string) (io.Closer, []io.Reader, []io.Writer, string, error) {
 	conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", addr)
 	if err != nil {
 		return nil, nil, nil, "", err
@@ -16,7 +16,7 @@ func connectAddr(ctx context.Context, addr string) (io.Closer, []io.Reader, []io
 	return conn, readers, writers, conn.RemoteAddr().String(), nil
 }
 
-func listenAddr(ctx context.Context, addr string) (io.Closer, []io.Reader, []io.Writer, string, error) {
+func ListenAddr(ctx context.Context, addr string) (io.Closer, []io.Reader, []io.Writer, string, error) {
 	connCh := make(chan net.Conn, 1)
 	errCh := make(chan error, 1)
 

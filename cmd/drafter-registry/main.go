@@ -2,176 +2,197 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"flag"
-	"fmt"
 	"io"
-	"log"
-	"net"
 	"os"
 	"os/signal"
-	"path/filepath"
+	"strings"
+	"time"
 
+	"github.com/loopholelabs/drafter/internal/cmd"
 	"github.com/loopholelabs/drafter/pkg/common"
-	"github.com/loopholelabs/drafter/pkg/registry"
-	"github.com/loopholelabs/goroutine-manager/pkg/manager"
+	"github.com/loopholelabs/drafter/pkg/peer"
+	"github.com/loopholelabs/drafter/pkg/runtimes"
+	"github.com/loopholelabs/logging"
+	"github.com/loopholelabs/logging/types"
+	"github.com/loopholelabs/silo/pkg/storage/migrator"
 )
 
 func main() {
-	defDevices := make([]registry.RegistryDevice, 0)
-	for _, n := range common.KnownNames {
-		defDevices = append(defDevices, registry.RegistryDevice{
-			Name:      n,
-			Input:     filepath.Join("out", "package", common.DeviceFilenames[n]),
-			BlockSize: 1024 * 64,
-		})
-	}
-	defaultDevices, err := json.Marshal(defDevices)
-	if err != nil {
-		panic(err)
-	}
 
-	rawDevices := flag.String("devices", string(defaultDevices), "Devices configuration")
+	// General flags
+	rawDevices := flag.String("devices", cmd.GetDefaultDevices(), "Devices configuration")
 
-	laddr := flag.String("laddr", ":1600", "Address to listen on")
-
+	laddr := flag.String("laddr", "localhost:1337", "Local address to listen on (leave empty to disable)")
 	concurrency := flag.Int("concurrency", 1024, "Number of concurrent workers to use in migrations")
 
 	flag.Parse()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	var devices []registry.RegistryDevice
-	if err := json.Unmarshal([]byte(*rawDevices), &devices); err != nil {
-		panic(err)
-	}
-
-	lis, err := net.Listen("tcp", *laddr)
+	devices, err := cmd.DecodeDevices(*rawDevices)
 	if err != nil {
 		panic(err)
 	}
-	defer lis.Close()
 
-	log.Println("Serving on", lis.Addr())
+	// FIXME: Allow tweak from cmdline
+	log := logging.New(logging.Zerolog, "drafter", os.Stderr)
+	log.SetLevel(types.DebugLevel)
 
-	var errs error
-	defer func() {
-		if errs != nil {
-			panic(errs)
-		}
-	}()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-	goroutineManager := manager.NewGoroutineManager(
-		ctx,
-		&errs,
-		manager.GoroutineManagerHooks{},
-	)
-	defer goroutineManager.Wait()
-	defer goroutineManager.StopAllGoroutines()
-	defer goroutineManager.CreateBackgroundPanicCollector()()
-
+	// Handle Interrupt by cancelling context
+	done := make(chan os.Signal, 1)
+	signal.Notify(done, os.Interrupt)
 	go func() {
-		done := make(chan os.Signal, 1)
-		signal.Notify(done, os.Interrupt)
-
 		<-done
-
-		log.Println("Exiting gracefully")
-
+		log.Info().Msg("Exiting gracefully")
 		cancel()
+	}()
 
-		defer goroutineManager.CreateForegroundPanicCollector()()
+	rp := &runtimes.EmptyRuntimeProvider{}
 
-		if lis != nil {
-			if err := lis.Close(); err != nil {
-				panic(err)
-			}
+	p, err := peer.StartPeer(ctx,
+		context.Background(), // Never give up on rescue operations
+		log, rp,
+	)
+
+	if err != nil {
+		log.Error().Err(err).Msg("Could not start peer")
+		panic(err)
+	}
+
+	defer func() {
+		err := p.Close()
+		if err != nil {
+			panic(err)
 		}
 	}()
 
-l:
-	for {
-		conn, err := lis.Accept()
-		if err != nil {
-			select {
-			case <-goroutineManager.Context().Done():
-				break l
+	migrateFromDevices := []common.MigrateFromDevice{}
+	for _, device := range devices {
+		migrateFromDevices = append(migrateFromDevices, common.MigrateFromDevice{
+			Name:      device.Name,
+			Base:      device.Base,
+			Overlay:   device.Overlay,
+			State:     device.State,
+			BlockSize: device.BlockSize,
+			Shared:    device.Shared,
+		})
+	}
 
-			default:
+	err = p.MigrateFrom(ctx, migrateFromDevices, nil, nil,
+		peer.MigrateFromHooks{
+			OnLocalDeviceRequested: func(localDeviceID uint32, name string) {
+				log.Info().Uint32("deviceID", localDeviceID).Str("name", name).Msg("Requested local device")
+			},
+			OnLocalDeviceExposed: func(localDeviceID uint32, path string) {
+				log.Info().Uint32("deviceID", localDeviceID).Str("path", path).Msg("Exposed local device")
+			},
+			OnLocalAllDevicesRequested: func() {
+				log.Info().Msg("Requested all local devices")
+			},
+		},
+	)
+
+	if err != nil {
+		log.Error().Err(err).Msg("Could not migrate peer")
+		panic(err)
+	}
+
+	if strings.TrimSpace(*laddr) != "" {
+		var closer io.Closer
+		var readers []io.Reader
+		var writers []io.Writer
+		var remoteAddr string
+
+		log.Info().Str("addr", *laddr).Msg("Listening for connections")
+		closer, readers, writers, remoteAddr, err = cmd.ListenAddr(ctx, *laddr)
+		if err != nil {
+			if err == context.Canceled {
+				// We don't care
+			} else {
+				log.Error().Err(err).Msg("Error listening for connection")
 				panic(err)
 			}
-		}
+		} else {
+			defer closer.Close()
 
-		log.Println("Migrating to", conn.RemoteAddr())
+			log.Info().Str("addr", remoteAddr).Msg("Migrating to")
 
-		go func() {
-			defer conn.Close()
-			defer func() {
-				if err := recover(); err != nil {
-					var e error
-					if v, ok := err.(error); ok {
-						e = v
-					} else {
-						e = fmt.Errorf("%v", err)
-					}
-
-					log.Printf("Registry client disconnected with error: %v", e)
+			migrateToDevices := []common.MigrateToDevice{}
+			for _, device := range devices {
+				if !device.MakeMigratable || device.Shared {
+					continue
 				}
-			}()
 
-			openedDevices, defers, err := registry.OpenDevices(
-				devices,
+				migrateToDevices = append(migrateToDevices, common.MigrateToDevice{
+					Name:           device.Name,
+					MaxDirtyBlocks: device.MaxDirtyBlocks,
+					MinCycles:      device.MinCycles,
+					MaxCycles:      device.MaxCycles,
+					CycleThrottle:  device.CycleThrottle,
+				})
+			}
 
-				registry.OpenDevicesHooks{
-					OnDeviceOpened: func(deviceID uint32, name string) {
-						log.Println("Opened device", deviceID, "with name", name)
+			before := time.Now()
+			err = p.MigrateTo(
+				ctx,
+				migrateToDevices,
+				10*time.Second,
+				*concurrency,
+				readers,
+				writers,
+				peer.MigrateToHooks{
+					OnBeforeSuspend: func() {
+						before = time.Now()
+					},
+					OnAfterSuspend: func() {
+						log.Info().Int64("ms", time.Since(before).Milliseconds()).Msg("Suspend")
+					},
+					OnAllMigrationsCompleted: func() {
+						log.Info().Msg("Completed all device migrations")
+					},
+					OnProgress: func(p map[string]*migrator.MigrationProgress) {
+						totalSize := 0
+						totalDone := 0
+						for _, prog := range p {
+							totalSize += (prog.TotalBlocks * prog.BlockSize)
+							totalDone += (prog.ReadyBlocks * prog.BlockSize)
+						}
+
+						perc := float64(0.0)
+						if totalSize > 0 {
+							perc = float64(totalDone) * 100 / float64(totalSize)
+						}
+						// Report overall migration progress
+						log.Info().Float64("perc", perc).
+							Int("done", totalDone).
+							Int("size", totalSize).
+							Msg("# Overall migration Progress #")
+
+						// Report individual devices
+						for name, prog := range p {
+							log.Info().Str("name", name).
+								Int("migratedBlocks", prog.MigratedBlocks).
+								Int("totalBlocks", prog.TotalBlocks).
+								Int("readyBlocks", prog.ReadyBlocks).
+								Int("totalMigratedBlocks", prog.TotalMigratedBlocks).
+								Msg("Device migration progress")
+						}
+
 					},
 				},
 			)
 			if err != nil {
+				log.Error().Err(err).Msg("Error migrating to")
 				panic(err)
 			}
-
-			for _, deferFunc := range defers {
-				defer deferFunc()
-			}
-
-			if err := registry.MigrateTo(
-				goroutineManager.Context(),
-
-				openedDevices,
-				*concurrency,
-
-				[]io.Reader{conn},
-				[]io.Writer{conn},
-
-				registry.MigrateToHooks{
-					OnDeviceSent: func(deviceID uint32) {
-						log.Println("Sent device", deviceID)
-					},
-					OnDeviceAuthoritySent: func(deviceID uint32) {
-						log.Println("Sent authority for device", deviceID)
-					},
-					OnDeviceMigrationProgress: func(deviceID uint32, ready, total int) {
-						log.Println("Migrated", ready, "of", total, "blocks for device", deviceID)
-					},
-					OnDeviceMigrationCompleted: func(deviceID uint32) {
-						log.Println("Completed migration of device", deviceID)
-					},
-
-					OnAllDevicesSent: func() {
-						log.Println("Sent all devices")
-					},
-					OnAllMigrationsCompleted: func() {
-						log.Println("Completed all device migrations")
-					},
-				},
-			); err != nil {
-				panic(err)
-			}
-		}()
+			cancel() // Cancel the context, since we're done.
+		}
 	}
 
-	log.Println("Shutting down")
+	// Wait for context done
+	<-ctx.Done()
+
+	log.Info().Msg("Shutting down")
 }

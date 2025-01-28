@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/loopholelabs/drafter/internal/cmd"
 	"github.com/loopholelabs/drafter/pkg/common"
 	"github.com/loopholelabs/drafter/pkg/ipc"
 	"github.com/loopholelabs/drafter/pkg/peer"
@@ -25,7 +26,7 @@ import (
 func main() {
 
 	// General flags
-	rawDevices := flag.String("devices", getDefaultDevices(), "Devices configuration")
+	rawDevices := flag.String("devices", cmd.GetDefaultDevices(), "Devices configuration")
 
 	raddr := flag.String("raddr", "localhost:1337", "Remote address to connect to (leave empty to disable)")
 	laddr := flag.String("laddr", "localhost:1337", "Local address to listen on (leave empty to disable)")
@@ -52,7 +53,7 @@ func main() {
 
 	flag.Parse()
 
-	devices, err := decodeDevices(*rawDevices)
+	devices, err := cmd.DecodeDevices(*rawDevices)
 	if err != nil {
 		panic(err)
 	}
@@ -151,7 +152,7 @@ func main() {
 	var remoteAddr string
 
 	if *raddr != "" {
-		closer, readers, writers, remoteAddr, err = connectAddr(ctx, *raddr)
+		closer, readers, writers, remoteAddr, err = cmd.ConnectAddr(ctx, *raddr)
 		if err != nil {
 			panic(err)
 		}
@@ -193,7 +194,7 @@ func main() {
 	if strings.TrimSpace(*laddr) != "" {
 
 		log.Info().Str("addr", *laddr).Msg("Listening for connections")
-		closer, readers, writers, remoteAddr, err = listenAddr(ctx, *laddr)
+		closer, readers, writers, remoteAddr, err = cmd.ListenAddr(ctx, *laddr)
 		if err != nil {
 			if err == context.Canceled {
 				// We don't care

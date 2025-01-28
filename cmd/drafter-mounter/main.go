@@ -2,512 +2,181 @@ package main
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
 	"flag"
-	"fmt"
 	"io"
-	"log"
-	"net"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
+	"github.com/loopholelabs/drafter/internal/cmd"
 	"github.com/loopholelabs/drafter/pkg/common"
-	"github.com/loopholelabs/drafter/pkg/mounter"
-	"github.com/loopholelabs/goroutine-manager/pkg/manager"
+	"github.com/loopholelabs/drafter/pkg/peer"
+	"github.com/loopholelabs/drafter/pkg/runtimes"
+	"github.com/loopholelabs/logging"
+	"github.com/loopholelabs/logging/types"
 	"github.com/loopholelabs/silo/pkg/storage/migrator"
 )
 
-type CompositeDevices struct {
-	Name string `json:"name"`
-
-	Base    string `json:"base"`
-	Overlay string `json:"overlay"`
-	State   string `json:"state"`
-
-	BlockSize uint32 `json:"blockSize"`
-
-	Expiry time.Duration `json:"expiry"`
-
-	MaxDirtyBlocks int `json:"maxDirtyBlocks"`
-	MinCycles      int `json:"minCycles"`
-	MaxCycles      int `json:"maxCycles"`
-
-	CycleThrottle time.Duration `json:"cycleThrottle"`
-
-	MakeMigratable bool `json:"makeMigratable"`
-}
-
 func main() {
-	defaultDevices, err := json.Marshal([]CompositeDevices{
-		{
-			Name: common.DeviceStateName,
 
-			Base:    filepath.Join("out", "package", "state.bin"),
-			Overlay: filepath.Join("out", "overlay", "state.bin"),
-			State:   filepath.Join("out", "state", "state.bin"),
+	// General flags
+	rawDevices := flag.String("devices", cmd.GetDefaultDevices(), "Devices configuration")
 
-			BlockSize: 1024 * 64,
+	raddr := flag.String("raddr", "localhost:1337", "Remote address to connect to (leave empty to disable)")
+	laddr := flag.String("laddr", "localhost:1337", "Local address to listen on (leave empty to disable)")
+	concurrency := flag.Int("concurrency", 1024, "Number of concurrent workers to use in migrations")
+	devpath := flag.String("path", "", "Path to expose devices (optional)")
 
-			Expiry: time.Second,
+	flag.Parse()
 
-			MaxDirtyBlocks: 200,
-			MinCycles:      5,
-			MaxCycles:      20,
-
-			CycleThrottle: time.Millisecond * 500,
-
-			MakeMigratable: true,
-		},
-		{
-			Name: common.DeviceMemoryName,
-
-			Base:    filepath.Join("out", "package", "memory.bin"),
-			Overlay: filepath.Join("out", "overlay", "memory.bin"),
-			State:   filepath.Join("out", "state", "memory.bin"),
-
-			BlockSize: 1024 * 64,
-
-			Expiry: time.Second,
-
-			MaxDirtyBlocks: 200,
-			MinCycles:      5,
-			MaxCycles:      20,
-
-			CycleThrottle: time.Millisecond * 500,
-
-			MakeMigratable: true,
-		},
-
-		{
-			Name: common.DeviceKernelName,
-
-			Base:    filepath.Join("out", "package", "vmlinux"),
-			Overlay: filepath.Join("out", "overlay", "vmlinux"),
-			State:   filepath.Join("out", "state", "vmlinux"),
-
-			BlockSize: 1024 * 64,
-
-			Expiry: time.Second,
-
-			MaxDirtyBlocks: 200,
-			MinCycles:      5,
-			MaxCycles:      20,
-
-			CycleThrottle: time.Millisecond * 500,
-
-			MakeMigratable: true,
-		},
-		{
-			Name: common.DeviceDiskName,
-
-			Base:    filepath.Join("out", "package", "rootfs.ext4"),
-			Overlay: filepath.Join("out", "overlay", "rootfs.ext4"),
-			State:   filepath.Join("out", "state", "rootfs.ext4"),
-
-			BlockSize: 1024 * 64,
-
-			Expiry: time.Second,
-
-			MaxDirtyBlocks: 200,
-			MinCycles:      5,
-			MaxCycles:      20,
-
-			CycleThrottle: time.Millisecond * 500,
-
-			MakeMigratable: true,
-		},
-
-		{
-			Name: common.DeviceConfigName,
-
-			Base:    filepath.Join("out", "package", "config.json"),
-			Overlay: filepath.Join("out", "overlay", "config.json"),
-			State:   filepath.Join("out", "state", "config.json"),
-
-			BlockSize: 1024 * 64,
-
-			Expiry: time.Second,
-
-			MaxDirtyBlocks: 200,
-			MinCycles:      5,
-			MaxCycles:      20,
-
-			CycleThrottle: time.Millisecond * 500,
-
-			MakeMigratable: true,
-		},
-
-		{
-			Name: "oci",
-
-			Base:    filepath.Join("out", "package", "oci.ext4"),
-			Overlay: filepath.Join("out", "overlay", "oci.ext4"),
-			State:   filepath.Join("out", "state", "oci.ext4"),
-
-			BlockSize: 1024 * 64,
-
-			Expiry: time.Second,
-
-			MaxDirtyBlocks: 200,
-			MinCycles:      5,
-			MaxCycles:      20,
-
-			CycleThrottle: time.Millisecond * 500,
-
-			MakeMigratable: true,
-		},
-	})
+	devices, err := cmd.DecodeDevices(*rawDevices)
 	if err != nil {
 		panic(err)
 	}
 
-	rawDevices := flag.String("devices", string(defaultDevices), "Devices configuration")
-
-	raddr := flag.String("raddr", "localhost:1337", "Remote address to connect to (leave empty to disable)")
-	laddr := flag.String("laddr", "localhost:1337", "Local address to listen on (leave empty to disable)")
-
-	concurrency := flag.Int("concurrency", 1024, "Number of concurrent workers to use in migrations")
-
-	flag.Parse()
+	// FIXME: Allow tweak from cmdline
+	log := logging.New(logging.Zerolog, "drafter", os.Stderr)
+	log.SetLevel(types.DebugLevel)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	var devices []CompositeDevices
-	if err := json.Unmarshal([]byte(*rawDevices), &devices); err != nil {
-		panic(err)
-	}
-
-	var errs error
-	defer func() {
-		if errs != nil {
-			panic(errs)
-		}
-	}()
-
-	goroutineManager := manager.NewGoroutineManager(
-		ctx,
-		&errs,
-		manager.GoroutineManagerHooks{},
-	)
-	defer goroutineManager.Wait()
-	defer goroutineManager.StopAllGoroutines()
-	//	defer goroutineManager.CreateBackgroundPanicCollector()()
-
-	bubbleSignals := false
-
+	// Handle Interrupt by cancelling context
 	done := make(chan os.Signal, 1)
+	signal.Notify(done, os.Interrupt)
 	go func() {
-		signal.Notify(done, os.Interrupt)
-
-		v := <-done
-
-		if bubbleSignals {
-			done <- v
-
-			return
-		}
-
-		log.Println("Exiting gracefully")
-
+		<-done
+		log.Info().Msg("Exiting gracefully")
 		cancel()
 	}()
 
-	var (
-		readers []io.Reader
-		writers []io.Writer
+	rp := &runtimes.EmptyRuntimeProvider{
+		HomePath: *devpath,
+	}
+
+	p, err := peer.StartPeer(ctx,
+		context.Background(), // Never give up on rescue operations
+		log, rp,
 	)
-	if strings.TrimSpace(*raddr) != "" {
-		conn, err := (&net.Dialer{}).DialContext(goroutineManager.Context(), "tcp", *raddr)
+
+	if err != nil {
+		log.Error().Err(err).Msg("Could not start peer")
+		panic(err)
+	}
+
+	defer func() {
+		err := p.Close()
 		if err != nil {
 			panic(err)
 		}
-		defer conn.Close()
+	}()
 
-		log.Println("Migrating from", conn.RemoteAddr())
-
-		readers = []io.Reader{conn}
-		writers = []io.Writer{conn}
-	}
-
-	migrateFromDevices := []mounter.MigrateFromAndMountDevice{}
+	migrateFromDevices := []common.MigrateFromDevice{}
 	for _, device := range devices {
-		migrateFromDevices = append(migrateFromDevices, mounter.MigrateFromAndMountDevice{
-			Name: device.Name,
-
-			Base:    device.Base,
-			Overlay: device.Overlay,
-			State:   device.State,
-
+		migrateFromDevices = append(migrateFromDevices, common.MigrateFromDevice{
+			Name:      device.Name,
+			Base:      device.Base,
+			Overlay:   device.Overlay,
+			State:     device.State,
 			BlockSize: device.BlockSize,
+			Shared:    device.Shared,
 		})
 	}
 
-	migratedMounter, err := mounter.MigrateFromAndMount(
-		goroutineManager.Context(),
-		goroutineManager.Context(),
+	var readers []io.Reader
+	var writers []io.Writer
+	var closer io.Closer
+	var remoteAddr string
 
-		migrateFromDevices,
+	if *raddr != "" {
+		closer, readers, writers, remoteAddr, err = cmd.ConnectAddr(ctx, *raddr)
+		if err != nil {
+			panic(err)
+		}
+		defer closer.Close()
 
-		readers,
-		writers,
+		log.Info().Str("remote", remoteAddr).Msg("Migrating from")
+	}
 
-		mounter.MigrateFromHooks{
+	err = p.MigrateFrom(ctx, migrateFromDevices, readers, writers,
+		peer.MigrateFromHooks{
 			OnLocalDeviceRequested: func(localDeviceID uint32, name string) {
-				log.Println("Requested local device", localDeviceID, "with name", name)
+				log.Info().Uint32("deviceID", localDeviceID).Str("name", name).Msg("Requested local device")
 			},
 			OnLocalDeviceExposed: func(localDeviceID uint32, path string) {
-				log.Println("Exposed local device", localDeviceID, "at", path)
+				log.Info().Uint32("deviceID", localDeviceID).Str("path", path).Msg("Exposed local device")
 			},
-
 			OnLocalAllDevicesRequested: func() {
-				log.Println("Requested all local devices")
+				log.Info().Msg("Requested all local devices")
 			},
 		},
 	)
 
-	defer func() {
-		defer goroutineManager.CreateForegroundPanicCollector()()
-
-		if err := migratedMounter.Wait(); err != nil {
-			panic(err)
-		}
-	}()
-
 	if err != nil {
+		log.Error().Err(err).Msg("Could not migrate peer")
 		panic(err)
 	}
 
-	defer func() {
-		defer goroutineManager.CreateForegroundPanicCollector()()
+	before := time.Now()
 
-		if err := migratedMounter.Close(); err != nil {
-			panic(err)
-		}
-	}()
-
-	goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
-		if err := migratedMounter.Wait(); err != nil {
-			panic(err)
-		}
-	})
-
-	log.Println("Mounted devices", func() string {
-		deviceMap := ""
-
-		for i, device := range migratedMounter.Devices {
-			if i > 0 {
-				deviceMap += ", "
-			}
-
-			deviceMap += device.Name + " on " + device.Path
-		}
-
-		return deviceMap
-	}())
-
-	if err := migratedMounter.Wait(); err != nil {
-		panic(err)
-	}
-
-	if strings.TrimSpace(*laddr) == "" {
-		bubbleSignals = true
-
-		select {
-		case <-goroutineManager.Context().Done():
-			return
-
-		case <-done:
-			log.Println("Shutting down")
-
-			return
-		}
-	}
-
-	var (
-		closeLock sync.Mutex
-		closed    bool
-	)
-	lis, err := net.Listen("tcp", *laddr)
+	// Wait for any pending migration
+	err = p.Wait()
 	if err != nil {
+		log.Error().Err(err).Msg("Error waiting for migration")
 		panic(err)
 	}
-	defer func() {
-		defer goroutineManager.CreateForegroundPanicCollector()()
 
-		closeLock.Lock()
+	log.Info().Int64("ms", time.Since(before).Milliseconds()).Str("path", p.VMPath).Msg("Resumed VM")
 
-		closed = true
+	if strings.TrimSpace(*laddr) != "" {
 
-		closeLock.Unlock()
-
-		if err := lis.Close(); err != nil {
-			panic(err)
-		}
-	}()
-
-	log.Println("Serving on", lis.Addr())
-
-l:
-	for {
-		var (
-			ready       = make(chan struct{})
-			signalReady = sync.OnceFunc(func() {
-				close(ready) // We can safely close() this channel since the caller only runs once/is `sync.OnceFunc`d
-			})
-		)
-
-		var conn net.Conn
-		goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
-			conn, err = lis.Accept()
-			if err != nil {
-				closeLock.Lock()
-				defer closeLock.Unlock()
-
-				if closed && errors.Is(err, net.ErrClosed) { // Don't treat closed errors as errors if we closed the connection
-					if err := goroutineManager.Context().Err(); err != nil {
-						panic(err)
-					}
-
-					return
-				}
-
+		log.Info().Str("addr", *laddr).Msg("Listening for connections")
+		closer, readers, writers, remoteAddr, err = cmd.ListenAddr(ctx, *laddr)
+		if err != nil {
+			if err == context.Canceled {
+				// We don't care
+			} else {
+				log.Error().Err(err).Msg("Error listening for connection")
 				panic(err)
 			}
+		} else {
+			defer closer.Close()
 
-			signalReady()
-		})
-
-		bubbleSignals = true
-
-	s:
-		select {
-		case <-goroutineManager.Context().Done():
-			return
-
-		case <-done:
-			break l
-
-		case <-ready:
-			break s
-		}
-
-		if err := func() error {
-			defer conn.Close()
-
-			log.Println("Migrating to", conn.RemoteAddr())
-
-			makeMigratableDevices := []mounter.MakeMigratableDevice{}
-			for _, device := range devices {
-				if !device.MakeMigratable {
-					continue
-				}
-
-				makeMigratableDevices = append(makeMigratableDevices, mounter.MakeMigratableDevice{
-					Name: device.Name,
-
-					Expiry: device.Expiry,
-				})
-			}
-
-			migratableMounter, err := migratedMounter.MakeMigratable(
-				goroutineManager.Context(),
-
-				makeMigratableDevices,
-			)
-
-			if err != nil {
-				return err
-			}
-
-			defer migratableMounter.Close()
+			log.Info().Str("addr", remoteAddr).Msg("Migrating to")
 
 			migrateToDevices := []common.MigrateToDevice{}
 			for _, device := range devices {
-				if !device.MakeMigratable {
+				if !device.MakeMigratable || device.Shared {
 					continue
 				}
 
 				migrateToDevices = append(migrateToDevices, common.MigrateToDevice{
-					Name: device.Name,
-
+					Name:           device.Name,
 					MaxDirtyBlocks: device.MaxDirtyBlocks,
 					MinCycles:      device.MinCycles,
 					MaxCycles:      device.MaxCycles,
-
-					CycleThrottle: device.CycleThrottle,
+					CycleThrottle:  device.CycleThrottle,
 				})
 			}
 
-			return migratableMounter.MigrateTo(
-				goroutineManager.Context(),
-
+			before = time.Now()
+			err = p.MigrateTo(
+				ctx,
 				migrateToDevices,
-
+				1*time.Second,
 				*concurrency,
-
-				[]io.Reader{conn},
-				[]io.Writer{conn},
-
-				mounter.MounterMigrateToHooks{
-					OnBeforeGetDirtyBlocks: func(deviceID uint32, remote bool) {
-						if remote {
-							log.Println("Getting dirty blocks for remote device", deviceID)
-						} else {
-							log.Println("Getting dirty blocks for local device", deviceID)
-						}
+				readers,
+				writers,
+				peer.MigrateToHooks{
+					OnBeforeSuspend: func() {
+						before = time.Now()
 					},
-
-					OnDeviceSent: func(deviceID uint32, remote bool) {
-						if remote {
-							log.Println("Sent remote device", deviceID)
-						} else {
-							log.Println("Sent local device", deviceID)
-						}
+					OnAfterSuspend: func() {
+						log.Info().Int64("ms", time.Since(before).Milliseconds()).Msg("Suspend")
 					},
-					OnDeviceAuthoritySent: func(deviceID uint32, remote bool) {
-						if remote {
-							log.Println("Sent authority for remote device", deviceID)
-						} else {
-							log.Println("Sent authority for local device", deviceID)
-						}
-					},
-					OnDeviceInitialMigrationProgress: func(deviceID uint32, remote bool, ready, total int) {
-						if remote {
-							log.Println("Migrated", ready, "of", total, "initial blocks for remote device", deviceID)
-						} else {
-							log.Println("Migrated", ready, "of", total, "initial blocks for local device", deviceID)
-						}
-					},
-					OnDeviceContinousMigrationProgress: func(deviceID uint32, remote bool, delta int) {
-						if remote {
-							log.Println("Migrated", delta, "continous blocks for remote device", deviceID)
-						} else {
-							log.Println("Migrated", delta, "continous blocks for local device", deviceID)
-						}
-					},
-					OnDeviceFinalMigrationProgress: func(deviceID uint32, remote bool, delta int) {
-						if remote {
-							log.Println("Migrated", delta, "final blocks for remote device", deviceID)
-						} else {
-							log.Println("Migrated", delta, "final blocks for local device", deviceID)
-						}
-					},
-					OnDeviceMigrationCompleted: func(deviceID uint32, remote bool) {
-						if remote {
-							log.Println("Completed migration of remote device", deviceID)
-						} else {
-							log.Println("Completed migration of local device", deviceID)
-						}
-					},
-
-					OnAllDevicesSent: func() {
-						log.Println("Sent all devices")
+					OnAllMigrationsCompleted: func() {
+						log.Info().Msg("Completed all device migrations")
 					},
 					OnProgress: func(p map[string]*migrator.MigrationProgress) {
 						totalSize := 0
@@ -522,21 +191,34 @@ l:
 							perc = float64(totalDone) * 100 / float64(totalSize)
 						}
 						// Report overall migration progress
-						log.Printf("# Overall migration Progress # (%d / %d) %.1f%%\n", totalDone, totalSize, perc)
+						log.Info().Float64("perc", perc).
+							Int("done", totalDone).
+							Int("size", totalSize).
+							Msg("# Overall migration Progress #")
 
 						// Report individual devices
 						for name, prog := range p {
-							log.Printf(" [%s] Progress Migrated Blocks (%d/%d)  %d ready %d total\n", name, prog.MigratedBlocks, prog.TotalBlocks, prog.ReadyBlocks, prog.TotalMigratedBlocks)
+							log.Info().Str("name", name).
+								Int("migratedBlocks", prog.MigratedBlocks).
+								Int("totalBlocks", prog.TotalBlocks).
+								Int("readyBlocks", prog.ReadyBlocks).
+								Int("totalMigratedBlocks", prog.TotalMigratedBlocks).
+								Msg("Device migration progress")
 						}
 
 					},
 				},
 			)
-		}(); err != nil {
-			fmt.Printf("ERROR %v\n", err)
-			panic(err)
+			if err != nil {
+				log.Error().Err(err).Msg("Error migrating to")
+				panic(err)
+			}
+			cancel() // Cancel the context, since we're done.
 		}
 	}
 
-	log.Println("Shutting down")
+	// Wait for context done
+	<-ctx.Done()
+
+	log.Info().Msg("Shutting down")
 }

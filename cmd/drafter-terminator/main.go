@@ -2,111 +2,131 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"flag"
 	"io"
-	"log"
-	"net"
 	"os"
 	"os/signal"
-	"path/filepath"
+	"time"
 
+	"github.com/loopholelabs/drafter/internal/cmd"
 	"github.com/loopholelabs/drafter/pkg/common"
-	"github.com/loopholelabs/drafter/pkg/terminator"
-	"github.com/loopholelabs/goroutine-manager/pkg/manager"
+	"github.com/loopholelabs/drafter/pkg/peer"
+	"github.com/loopholelabs/drafter/pkg/runtimes"
+	"github.com/loopholelabs/logging"
+	"github.com/loopholelabs/logging/types"
 )
 
 func main() {
-	defDevices := make([]terminator.TerminatorDevice, 0)
-	for _, n := range common.KnownNames {
-		defDevices = append(defDevices, terminator.TerminatorDevice{
-			Name:   n,
-			Output: filepath.Join("out", "package", common.DeviceFilenames[n]),
-		})
-	}
-	defaultDevices, err := json.Marshal(defDevices)
+
+	// General flags
+	rawDevices := flag.String("devices", cmd.GetDefaultDevices(), "Devices configuration")
+
+	raddr := flag.String("raddr", "localhost:1337", "Remote address to connect to (leave empty to disable)")
+	devpath := flag.String("path", "", "Path to expose devices (optional)")
+
+	flag.Parse()
+
+	devices, err := cmd.DecodeDevices(*rawDevices)
 	if err != nil {
 		panic(err)
 	}
 
-	rawDevices := flag.String("devices", string(defaultDevices), "Devices configuration")
-
-	raddr := flag.String("raddr", "localhost:1337", "Remote address to connect to")
-
-	flag.Parse()
+	// FIXME: Allow tweak from cmdline
+	log := logging.New(logging.Zerolog, "drafter", os.Stderr)
+	log.SetLevel(types.DebugLevel)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	var devices []terminator.TerminatorDevice
-	if err := json.Unmarshal([]byte(*rawDevices), &devices); err != nil {
-		panic(err)
-	}
-
-	var errs error
-	defer func() {
-		if errs != nil {
-			panic(errs)
-		}
-	}()
-
-	goroutineManager := manager.NewGoroutineManager(
-		ctx,
-		&errs,
-		manager.GoroutineManagerHooks{},
-	)
-	defer goroutineManager.Wait()
-	defer goroutineManager.StopAllGoroutines()
-	defer goroutineManager.CreateBackgroundPanicCollector()()
-
+	// Handle Interrupt by cancelling context
+	done := make(chan os.Signal, 1)
+	signal.Notify(done, os.Interrupt)
 	go func() {
-		done := make(chan os.Signal, 1)
-		signal.Notify(done, os.Interrupt)
-
 		<-done
-
-		log.Println("Exiting gracefully")
-
+		log.Info().Msg("Exiting gracefully")
 		cancel()
 	}()
 
-	conn, err := (&net.Dialer{}).DialContext(goroutineManager.Context(), "tcp", *raddr)
+	rp := &runtimes.EmptyRuntimeProvider{
+		HomePath: *devpath,
+	}
+
+	p, err := peer.StartPeer(ctx,
+		context.Background(), // Never give up on rescue operations
+		log, rp,
+	)
+
 	if err != nil {
+		log.Error().Err(err).Msg("Could not start peer")
 		panic(err)
 	}
-	defer conn.Close()
 
-	log.Println("Migrating from", conn.RemoteAddr())
+	defer func() {
+		err := p.Close()
+		if err != nil {
+			panic(err)
+		}
+	}()
 
-	if err := terminator.Terminate(
-		goroutineManager.Context(),
+	migrateFromDevices := []common.MigrateFromDevice{}
+	for _, device := range devices {
+		migrateFromDevices = append(migrateFromDevices, common.MigrateFromDevice{
+			Name:      device.Name,
+			Base:      device.Base,
+			Overlay:   device.Overlay,
+			State:     device.State,
+			BlockSize: device.BlockSize,
+			Shared:    device.Shared,
+		})
+	}
 
-		devices,
+	var readers []io.Reader
+	var writers []io.Writer
+	var closer io.Closer
+	var remoteAddr string
 
-		[]io.Reader{conn},
-		[]io.Writer{conn},
+	if *raddr != "" {
+		closer, readers, writers, remoteAddr, err = cmd.ConnectAddr(ctx, *raddr)
+		if err != nil {
+			panic(err)
+		}
+		defer closer.Close()
 
-		terminator.TerminateHooks{
-			OnDeviceReceived: func(deviceID uint32, name string) {
-				log.Println("Received device", deviceID, "with name", name)
+		log.Info().Str("remote", remoteAddr).Msg("Migrating from")
+	}
+
+	before := time.Now()
+
+	err = p.MigrateFrom(ctx, migrateFromDevices, readers, writers,
+		peer.MigrateFromHooks{
+			OnLocalDeviceRequested: func(localDeviceID uint32, name string) {
+				log.Info().Uint32("deviceID", localDeviceID).Str("name", name).Msg("Requested local device")
 			},
-			OnDeviceAuthorityReceived: func(deviceID uint32) {
-				log.Println("Received authority for device", deviceID)
+			OnLocalDeviceExposed: func(localDeviceID uint32, path string) {
+				log.Info().Uint32("deviceID", localDeviceID).Str("path", path).Msg("Exposed local device")
 			},
-			OnDeviceMigrationCompleted: func(deviceID uint32) {
-				log.Println("Completed migration of device", deviceID)
-			},
-
-			OnAllDevicesReceived: func() {
-				log.Println("Received all devices")
-			},
-			OnAllMigrationsCompleted: func() {
-				log.Println("Completed all device migrations")
+			OnLocalAllDevicesRequested: func() {
+				log.Info().Msg("Requested all local devices")
 			},
 		},
-	); err != nil {
+	)
+
+	if err != nil {
+		log.Error().Err(err).Msg("Could not migrate peer")
 		panic(err)
 	}
 
-	log.Println("Shutting down")
+	// Wait for any pending migration
+	err = p.Wait()
+	if err != nil {
+		log.Error().Err(err).Msg("Error waiting for migration")
+		panic(err)
+	}
+
+	log.Info().Int64("ms", time.Since(before).Milliseconds()).Str("path", p.VMPath).Msg("Resumed VM")
+
+	// Wait for context done
+	<-ctx.Done()
+
+	log.Info().Msg("Shutting down")
 }

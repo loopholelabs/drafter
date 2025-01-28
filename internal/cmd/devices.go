@@ -1,4 +1,4 @@
-package main
+package cmd
 
 import (
 	"encoding/json"
@@ -29,13 +29,13 @@ type CompositeDevices struct {
 	Shared         bool `json:"shared"`
 }
 
-func decodeDevices(data string) ([]CompositeDevices, error) {
+func DecodeDevices(data string) ([]CompositeDevices, error) {
 	var devices []CompositeDevices
 	err := json.Unmarshal([]byte(data), &devices)
 	return devices, err
 }
 
-func getDefaultDevices() string {
+func GetDefaultDevices() string {
 	defaultDevices, err := json.Marshal([]CompositeDevices{
 		{
 			Name: common.DeviceStateName,

@@ -259,7 +259,7 @@ func MigrateFromPipe(log types.Logger, met metrics.SiloMetrics, vmpath string,
 	// Expose all devices
 	for _, n := range dg.GetAllNames() {
 		dev := dg.GetExposedDeviceByName(n)
-		if dev != nil {
+		if dev != nil && vmpath != "" {
 			err := ExposeSiloDeviceAsFile(vmpath, n, filepath.Join("/dev", dev.Device()))
 			if err != nil {
 				return nil, err
