@@ -15,6 +15,22 @@ import (
 	"github.com/loopholelabs/logging/types"
 )
 
+var ErrConfigFileNotFound = errors.New("config file not found")
+var ErrCouldNotOpenConfigFile = errors.New("could not open config file")
+var ErrCouldNotDecodeConfigFile = errors.New("could not decode config file")
+var ErrCouldNotResumeRunner = errors.New("could not resume runner")
+
+type RuntimeProviderIfc interface {
+	Start(ctx context.Context, rescueCtx context.Context) error
+	Resume(resumeTimeout time.Duration, rescueTimeout time.Duration) error
+	SuspendAndCloseAgentServer(ctx context.Context, timeout time.Duration) error
+	FlushData(ctx context.Context) error
+	Close() error
+
+	DevicePath() string
+	GetVMPid() int
+}
+
 type RuntimeProvider[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] struct {
 	Log                     types.Logger
 	Remote                  R
@@ -33,16 +49,6 @@ type RuntimeProvider[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] 
 	AgentServerHooks ipc.AgentServerAcceptHooks[R, G]
 
 	SnapshotLoadConfiguration runner.SnapshotLoadConfiguration
-}
-
-type RuntimeProviderIfc interface {
-	Start(ctx context.Context, rescueCtx context.Context) error
-	Close() error
-	DevicePath() string
-	GetVMPid() int
-	SuspendAndCloseAgentServer(ctx context.Context, timeout time.Duration) error
-	FlushData(ctx context.Context) error
-	Resume(resumeTimeout time.Duration, rescueTimeout time.Duration) error
 }
 
 func (rp *RuntimeProvider[L, R, G]) Resume(resumeTimeout time.Duration, rescueTimeout time.Duration) error {

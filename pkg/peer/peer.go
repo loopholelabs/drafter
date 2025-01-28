@@ -2,7 +2,6 @@ package peer
 
 import (
 	"context"
-	"errors"
 	"io"
 	"sync"
 	"time"
@@ -15,11 +14,6 @@ import (
 	"github.com/loopholelabs/silo/pkg/storage/metrics"
 	"github.com/loopholelabs/silo/pkg/storage/migrator"
 )
-
-var ErrConfigFileNotFound = errors.New("config file not found")
-var ErrCouldNotOpenConfigFile = errors.New("could not open config file")
-var ErrCouldNotDecodeConfigFile = errors.New("could not decode config file")
-var ErrCouldNotResumeRunner = errors.New("could not resume runner")
 
 type Peer struct {
 	log types.Logger
@@ -151,7 +145,7 @@ func StartPeer(ctx context.Context, rescueCtx context.Context,
 
 	if err != nil {
 		if log != nil {
-			log.Warn().Err(err).Msg("error starting runner")
+			log.Warn().Err(err).Msg("error starting runtime")
 		}
 		return nil, err
 	}
@@ -160,7 +154,7 @@ func StartPeer(ctx context.Context, rescueCtx context.Context,
 	peer.VMPid = peer.runtimeProvider.GetVMPid()
 
 	if log != nil {
-		log.Info().Str("vmpath", peer.VMPath).Int("vmpid", peer.VMPid).Msg("started peer runner")
+		log.Info().Str("vmpath", peer.VMPath).Int("vmpid", peer.VMPid).Msg("started peer runtime")
 	}
 	return peer, nil
 }
@@ -270,20 +264,20 @@ func (peer *Peer) Resume(
 ) error {
 
 	if peer.log != nil {
-		peer.log.Trace().Msg("resuming vm")
+		peer.log.Trace().Msg("resuming runtime")
 	}
 
 	err := peer.runtimeProvider.Resume(resumeTimeout, rescueTimeout)
 
 	if err != nil {
 		if peer.log != nil {
-			peer.log.Warn().Err(err).Msg("could not resume runner")
+			peer.log.Warn().Err(err).Msg("could not resume runtime")
 		}
-		return errors.Join(ErrCouldNotResumeRunner, err)
+		return err
 	}
 
 	if peer.log != nil {
-		peer.log.Info().Msg("resumed vm")
+		peer.log.Info().Msg("resumed runtime")
 	}
 
 	return nil
@@ -299,7 +293,7 @@ func (peer *Peer) MigrateTo(ctx context.Context, devices []common.MigrateToDevic
 	hooks MigrateToHooks) error {
 
 	if peer.log != nil {
-		peer.log.Info().Msg("resumedPeer.MigrateTo")
+		peer.log.Info().Msg("peer.MigrateTo")
 	}
 
 	// This manages the status of the VM - if it's suspended or not.
@@ -314,13 +308,13 @@ func (peer *Peer) MigrateTo(ctx context.Context, devices []common.MigrateToDevic
 	err := common.MigrateToPipe(ctx, readers, writers, peer.dg, concurrency, hooks.OnProgress, vmState, devices, hooks.GetXferCustomData)
 	if err != nil {
 		if peer.log != nil {
-			peer.log.Info().Err(err).Msg("error in resumedPeer.MigrateTo")
+			peer.log.Info().Err(err).Msg("error in peer.MigrateTo")
 		}
 		return err
 	}
 
 	if peer.log != nil {
-		peer.log.Info().Msg("resumedPeer.MigrateTo completed successfuly")
+		peer.log.Info().Msg("peer.MigrateTo completed successfuly")
 	}
 
 	return nil

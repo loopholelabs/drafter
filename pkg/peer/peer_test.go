@@ -61,11 +61,7 @@ func (rp *MockRuntimeProvider) Resume(resumeTimeout time.Duration, rescueTimeout
 const testPeerSource = "test_peer_source"
 const testPeerDest = "test_peer_dest"
 
-func TestPeer(t *testing.T) {
-
-	log := logging.New(logging.Zerolog, "test", os.Stderr)
-	//	log.SetLevel(types.TraceLevel)
-
+func setupDevices(t *testing.T) ([]common.MigrateFromDevice, []common.MigrateFromDevice, []common.MigrateToDevice) {
 	err := os.Mkdir(testPeerSource, 0777)
 	assert.NoError(t, err)
 	err = os.Mkdir(testPeerDest, 0777)
@@ -120,6 +116,16 @@ func TestPeer(t *testing.T) {
 
 	}
 
+	return devicesInit, devicesFrom, devicesTo
+}
+
+func TestPeer(t *testing.T) {
+
+	log := logging.New(logging.Zerolog, "test", os.Stderr)
+	//	log.SetLevel(types.TraceLevel)
+
+	devicesInit, devicesFrom, devicesTo := setupDevices(t)
+
 	rp := &MockRuntimeProvider{
 		HomePath: testPeerSource,
 	}
@@ -135,8 +141,6 @@ func TestPeer(t *testing.T) {
 
 	err = peer.MigrateFrom(context.TODO(), devicesInit, nil, nil, hooks1)
 	assert.NoError(t, err)
-
-	fmt.Printf("Resume\n")
 
 	err = peer.Resume(context.TODO(), 10*time.Second, 10*time.Second)
 	assert.NoError(t, err)
@@ -163,9 +167,7 @@ func TestPeer(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
-		fmt.Printf("Calling MigrateTo...\n")
-		err = peer.MigrateTo(context.TODO(), devicesTo, 10*time.Second, 10, []io.Reader{r1}, []io.Writer{w2}, hooks)
-		fmt.Printf("MigrateTo returned %v\n", err)
+		err := peer.MigrateTo(context.TODO(), devicesTo, 10*time.Second, 10, []io.Reader{r1}, []io.Writer{w2}, hooks)
 		assert.NoError(t, err)
 		wg.Done()
 	}()
@@ -176,15 +178,12 @@ func TestPeer(t *testing.T) {
 		OnLocalAllDevicesRequested: func() {},
 		OnXferCustomData:           func(data []byte) {},
 	}
-	fmt.Printf("MigrateFrom...\n")
 	err = peer2.MigrateFrom(context.TODO(), devicesFrom, []io.Reader{r2}, []io.Writer{w1}, hooks2)
-	fmt.Printf("MigrateFrom returned %v\n", err)
 	assert.NoError(t, err)
 
 	wg.Wait()
 
 	// Make sure everything migrated as expected...
-
 	for _, n := range common.KnownNames {
 		fn := common.DeviceFilenames[n]
 		buff1, err := os.ReadFile(path.Join(testPeerSource, fn))
@@ -195,4 +194,12 @@ func TestPeer(t *testing.T) {
 		// Check the data is identical
 		assert.Equal(t, buff1, buff2)
 	}
+
+	// Make sure we can close the peers...
+	err = peer2.Close()
+	assert.NoError(t, err)
+
+	err = peer.Close()
+	assert.NoError(t, err)
+
 }
