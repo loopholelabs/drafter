@@ -2,8 +2,13 @@ package peer
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
+	"os"
+	"path"
 	"time"
 
+	"github.com/loopholelabs/drafter/pkg/common"
 	"github.com/loopholelabs/drafter/pkg/ipc"
 	"github.com/loopholelabs/drafter/pkg/runner"
 	"github.com/loopholelabs/drafter/pkg/snapshotter"
@@ -37,20 +42,40 @@ type RuntimeProviderIfc interface {
 	GetVMPid() int
 	SuspendAndCloseAgentServer(ctx context.Context, timeout time.Duration) error
 	FlushData(ctx context.Context) error
-	Resume(resumeTimeout time.Duration, rescueTimeout time.Duration, vsockPort uint32) error
+	Resume(resumeTimeout time.Duration, rescueTimeout time.Duration) error
 }
 
-func (rp *RuntimeProvider[L, R, G]) Resume(resumeTimeout time.Duration, rescueTimeout time.Duration, vsockPort uint32) error {
+func (rp *RuntimeProvider[L, R, G]) Resume(resumeTimeout time.Duration, rescueTimeout time.Duration) error {
 	resumeCtx, resumeCancel := context.WithCancel(context.TODO())
 	rp.resumeCtx = resumeCtx
 	rp.resumeCancel = resumeCancel
 
-	var err error
+	// Read from the config device
+	configFileData, err := os.ReadFile(path.Join(rp.DevicePath(), common.DeviceConfigName))
+	if err != nil {
+		return errors.Join(ErrCouldNotOpenConfigFile, err)
+	}
+
+	// Find the first 0 byte...
+	firstZero := 0
+	for i := 0; i < len(configFileData); i++ {
+		if configFileData[i] == 0 {
+			firstZero = i
+			break
+		}
+	}
+	configFileData = configFileData[:firstZero]
+
+	var packageConfig snapshotter.PackageConfiguration
+	if err := json.Unmarshal(configFileData, &packageConfig); err != nil {
+		return errors.Join(ErrCouldNotDecodeConfigFile, err)
+	}
+
 	rp.ResumedRunner, err = rp.Runner.Resume(
 		resumeCtx,
 		resumeTimeout,
 		rescueTimeout,
-		vsockPort,
+		packageConfig.AgentVSockPort,
 		rp.AgentServerLocal,
 		rp.AgentServerHooks,
 		rp.SnapshotLoadConfiguration,

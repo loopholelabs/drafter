@@ -2,17 +2,13 @@ package peer
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"io"
-	"os"
-	"path"
 	"sync"
 	"time"
 
 	"github.com/loopholelabs/drafter/pkg/common"
 	"github.com/loopholelabs/drafter/pkg/mounter"
-	"github.com/loopholelabs/drafter/pkg/snapshotter"
 	"github.com/loopholelabs/logging/types"
 	"github.com/loopholelabs/silo/pkg/storage/config"
 	"github.com/loopholelabs/silo/pkg/storage/devicegroup"
@@ -277,32 +273,7 @@ func (peer *Peer) Resume(
 		peer.log.Trace().Msg("resuming vm")
 	}
 
-	// Read from the config device
-	configFileData, err := os.ReadFile(path.Join(peer.runtimeProvider.DevicePath(), common.DeviceConfigName))
-	if err != nil {
-		return errors.Join(ErrCouldNotOpenConfigFile, err)
-	}
-
-	// Find the first 0 byte...
-	firstZero := 0
-	for i := 0; i < len(configFileData); i++ {
-		if configFileData[i] == 0 {
-			firstZero = i
-			break
-		}
-	}
-	configFileData = configFileData[:firstZero]
-
-	if peer.log != nil {
-		peer.log.Trace().Str("config", string(configFileData)).Msg("resuming config")
-	}
-
-	var packageConfig snapshotter.PackageConfiguration
-	if err := json.Unmarshal(configFileData, &packageConfig); err != nil {
-		return errors.Join(ErrCouldNotDecodeConfigFile, err)
-	}
-
-	err = peer.runtimeProvider.Resume(resumeTimeout, rescueTimeout, packageConfig.AgentVSockPort)
+	err := peer.runtimeProvider.Resume(resumeTimeout, rescueTimeout)
 
 	if err != nil {
 		if peer.log != nil {
