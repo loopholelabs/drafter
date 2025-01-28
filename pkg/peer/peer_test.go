@@ -42,17 +42,15 @@ func (rp *MockRuntimeProvider) Close() error {
 }
 
 func (rp *MockRuntimeProvider) DevicePath() string {
-	fmt.Printf(" ### DevicePath %s\n", rp.HomePath)
 	return rp.HomePath
 }
 
 func (rp *MockRuntimeProvider) GetVMPid() int {
-	fmt.Printf(" ### GetVMPid %s\n", rp.HomePath)
 	return 0
 }
 
 func (rp *MockRuntimeProvider) SuspendAndCloseAgentServer(ctx context.Context, timeout time.Duration) error {
-	fmt.Printf(" ### SuspendAndCloseAgentServer %s\n", rp.HomePath)
+	fmt.Printf(" ### Suspend %s\n", rp.HomePath)
 
 	rp.writeCancel()         // Cancel the VM writer
 	rp.writeWaitGroup.Wait() // Wait until it's done
@@ -69,7 +67,14 @@ func (rp *MockRuntimeProvider) FlushData(ctx context.Context) error {
 func (rp *MockRuntimeProvider) Resume(resumeTimeout time.Duration, rescueTimeout time.Duration) error {
 	fmt.Printf(" ### Resume %s\n", rp.HomePath)
 
-	periodWrites := 50 * time.Millisecond
+	periodWrites := 400 * time.Millisecond
+
+	for _, n := range common.KnownNames {
+		buffer, err := os.ReadFile(path.Join(rp.HomePath, n))
+		assert.NoError(rp.t, err)
+		hash := sha256.Sum256(buffer)
+		fmt.Printf(" # HASH # %s ~ %x\n", n, hash)
+	}
 
 	// Setup something to write to the devices randomly
 	rp.writeContext, rp.writeCancel = context.WithCancel(context.TODO())
@@ -92,7 +97,7 @@ func (rp *MockRuntimeProvider) Resume(resumeTimeout time.Duration, rescueTimeout
 				crand.Read(data)
 				offset := rand.Intn(size - len(data))
 
-				fmt.Printf(" ### WriteAt %s %s %d\n", rp.HomePath, devName, offset)
+				fmt.Printf(" ### WriteAt %s %s offset %d\n", rp.HomePath, devName, offset)
 				// Write some random data to the device...
 				_, err = fp.WriteAt(data, int64(offset))
 				assert.NoError(rp.t, err)
@@ -144,6 +149,8 @@ func setupDevices(t *testing.T) ([]common.MigrateFromDevice, []common.MigrateFro
 
 		dataSize := (1 + rand.Intn(5)) * 1024 * 1024
 		buffer := make([]byte, dataSize)
+		_, err = crand.Read(buffer)
+		assert.NoError(t, err)
 		err = os.WriteFile(path.Join(testPeerSource, fn), buffer, 0777)
 		assert.NoError(t, err)
 
@@ -258,6 +265,8 @@ func TestPeer(t *testing.T) {
 		// Compare hashes so we don't get tons of output if they do differ.
 		hash1 := sha256.Sum256(buff1)
 		hash2 := sha256.Sum256(buff2)
+
+		fmt.Printf(" # End hash %s ~ %x\n", n, hash1)
 
 		// Check the data is identical
 		assert.Equal(t, hash1, hash2)
