@@ -2,6 +2,8 @@ package peer
 
 import (
 	"context"
+	crand "crypto/rand"
+	"crypto/sha256"
 	"fmt"
 	"io"
 	"math/rand"
@@ -20,7 +22,13 @@ import (
 
 // A MockRuntimeProvider will periodically modify device(s) while it's running
 type MockRuntimeProvider struct {
-	HomePath string
+	t              *testing.T
+	HomePath       string
+	DoWrites       bool
+	DeviceSizes    map[string]int
+	writeContext   context.Context
+	writeCancel    context.CancelFunc
+	writeWaitGroup sync.WaitGroup
 }
 
 func (rp *MockRuntimeProvider) Start(ctx context.Context, rescueCtx context.Context) error {
@@ -45,23 +53,72 @@ func (rp *MockRuntimeProvider) GetVMPid() int {
 
 func (rp *MockRuntimeProvider) SuspendAndCloseAgentServer(ctx context.Context, timeout time.Duration) error {
 	fmt.Printf(" ### SuspendAndCloseAgentServer %s\n", rp.HomePath)
+
+	rp.writeCancel()         // Cancel the VM writer
+	rp.writeWaitGroup.Wait() // Wait until it's done
 	return nil
 }
 
 func (rp *MockRuntimeProvider) FlushData(ctx context.Context) error {
 	fmt.Printf(" ### FlushData %s\n", rp.HomePath)
+
+	// Shouldn't need anything here, but may need fs.Sync
 	return nil
 }
 
 func (rp *MockRuntimeProvider) Resume(resumeTimeout time.Duration, rescueTimeout time.Duration) error {
 	fmt.Printf(" ### Resume %s\n", rp.HomePath)
+
+	periodWrites := 50 * time.Millisecond
+
+	// Setup something to write to the devices randomly
+	rp.writeContext, rp.writeCancel = context.WithCancel(context.TODO())
+	rp.writeWaitGroup.Add(1)
+	go func() {
+		defer rp.writeWaitGroup.Done()
+
+		if rp.DoWrites {
+			// TODO: Write to some devices randomly until the context is cancelled...
+
+			for {
+				dev := rand.Intn(len(common.KnownNames))
+				devName := common.KnownNames[dev]
+				// Lets change a byte in this device...
+				fp, err := os.OpenFile(path.Join(rp.HomePath, devName), os.O_RDWR, 0777)
+				assert.NoError(rp.t, err)
+
+				size := rp.DeviceSizes[devName]
+				data := make([]byte, 4096)
+				crand.Read(data)
+				offset := rand.Intn(size - len(data))
+
+				fmt.Printf(" ### WriteAt %s %s %d\n", rp.HomePath, devName, offset)
+				// Write some random data to the device...
+				_, err = fp.WriteAt(data, int64(offset))
+				assert.NoError(rp.t, err)
+				err = fp.Close()
+				assert.NoError(rp.t, err)
+
+				select {
+				case <-rp.writeContext.Done():
+					fmt.Printf(" ### Writer stopped\n")
+					return
+				case <-time.After(periodWrites):
+					break
+				}
+			}
+
+		}
+
+	}()
+
 	return nil
 }
 
 const testPeerSource = "test_peer_source"
 const testPeerDest = "test_peer_dest"
 
-func setupDevices(t *testing.T) ([]common.MigrateFromDevice, []common.MigrateFromDevice, []common.MigrateToDevice) {
+func setupDevices(t *testing.T) ([]common.MigrateFromDevice, []common.MigrateFromDevice, []common.MigrateToDevice, map[string]int) {
 	err := os.Mkdir(testPeerSource, 0777)
 	assert.NoError(t, err)
 	err = os.Mkdir(testPeerDest, 0777)
@@ -78,6 +135,8 @@ func setupDevices(t *testing.T) ([]common.MigrateFromDevice, []common.MigrateFro
 	devicesTo := make([]common.MigrateToDevice, 0)
 	devicesFrom := make([]common.MigrateFromDevice, 0)
 
+	deviceSizes := make(map[string]int, 0)
+
 	// Create some device source files, and setup devicesTo and devicesFrom for migration.
 	for _, n := range common.KnownNames {
 		// Create some initial devices...
@@ -87,6 +146,8 @@ func setupDevices(t *testing.T) ([]common.MigrateFromDevice, []common.MigrateFro
 		buffer := make([]byte, dataSize)
 		err = os.WriteFile(path.Join(testPeerSource, fn), buffer, 0777)
 		assert.NoError(t, err)
+
+		deviceSizes[n] = dataSize
 
 		devicesInit = append(devicesInit, common.MigrateFromDevice{
 			Name:      n,
@@ -116,7 +177,7 @@ func setupDevices(t *testing.T) ([]common.MigrateFromDevice, []common.MigrateFro
 
 	}
 
-	return devicesInit, devicesFrom, devicesTo
+	return devicesInit, devicesFrom, devicesTo, deviceSizes
 }
 
 func TestPeer(t *testing.T) {
@@ -124,10 +185,12 @@ func TestPeer(t *testing.T) {
 	log := logging.New(logging.Zerolog, "test", os.Stderr)
 	//	log.SetLevel(types.TraceLevel)
 
-	devicesInit, devicesFrom, devicesTo := setupDevices(t)
+	devicesInit, devicesFrom, devicesTo, deviceSizes := setupDevices(t)
 
 	rp := &MockRuntimeProvider{
-		HomePath: testPeerSource,
+		HomePath:    testPeerSource,
+		DoWrites:    true,
+		DeviceSizes: deviceSizes,
 	}
 	peer, err := StartPeer(context.TODO(), context.Background(), log, rp)
 	assert.NoError(t, err)
@@ -148,7 +211,9 @@ func TestPeer(t *testing.T) {
 	// Now we have a "resumed peer"
 
 	rp2 := &MockRuntimeProvider{
-		HomePath: testPeerDest,
+		HomePath:    testPeerDest,
+		DoWrites:    false,
+		DeviceSizes: deviceSizes,
 	}
 	peer2, err := StartPeer(context.TODO(), context.Background(), log, rp2)
 	assert.NoError(t, err)
@@ -185,14 +250,17 @@ func TestPeer(t *testing.T) {
 
 	// Make sure everything migrated as expected...
 	for _, n := range common.KnownNames {
-		fn := common.DeviceFilenames[n]
-		buff1, err := os.ReadFile(path.Join(testPeerSource, fn))
+		buff1, err := os.ReadFile(path.Join(testPeerSource, n))
 		assert.NoError(t, err)
-		buff2, err := os.ReadFile(path.Join(testPeerDest, fn))
+		buff2, err := os.ReadFile(path.Join(testPeerDest, n))
 		assert.NoError(t, err)
 
+		// Compare hashes so we don't get tons of output if they do differ.
+		hash1 := sha256.Sum256(buff1)
+		hash2 := sha256.Sum256(buff2)
+
 		// Check the data is identical
-		assert.Equal(t, buff1, buff2)
+		assert.Equal(t, hash1, hash2)
 	}
 
 	// Make sure we can close the peers...
