@@ -13,9 +13,9 @@ import (
 
 	"github.com/loopholelabs/drafter/pkg/common"
 	"github.com/loopholelabs/drafter/pkg/ipc"
-	"github.com/loopholelabs/drafter/pkg/mounter"
 	"github.com/loopholelabs/drafter/pkg/peer"
 	"github.com/loopholelabs/drafter/pkg/runner"
+	"github.com/loopholelabs/drafter/pkg/runtimes"
 	"github.com/loopholelabs/drafter/pkg/snapshotter"
 	"github.com/loopholelabs/logging"
 	"github.com/loopholelabs/logging/types"
@@ -85,7 +85,7 @@ func main() {
 		panic(err)
 	}
 
-	rp := &peer.RuntimeProvider[struct{}, ipc.AgentServerRemote[struct{}], struct{}]{
+	rp := &runtimes.FirecrackerRuntimeProvider[struct{}, ipc.AgentServerRemote[struct{}], struct{}]{
 		Log: log,
 		HypervisorConfiguration: snapshotter.HypervisorConfiguration{
 			FirecrackerBin: firecrackerBin,
@@ -155,7 +155,7 @@ func main() {
 	}
 
 	err = p.MigrateFrom(ctx, migrateFromDevices, readers, writers,
-		mounter.MigrateFromHooks{
+		peer.MigrateFromHooks{
 			OnLocalDeviceRequested: func(localDeviceID uint32, name string) {
 				log.Info().Uint32("deviceID", localDeviceID).Str("name", name).Msg("Requested local device")
 			},

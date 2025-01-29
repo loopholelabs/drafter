@@ -15,8 +15,8 @@ import (
 
 	"github.com/loopholelabs/drafter/pkg/common"
 	"github.com/loopholelabs/drafter/pkg/ipc"
-	"github.com/loopholelabs/drafter/pkg/peer"
 	"github.com/loopholelabs/drafter/pkg/runner"
+	"github.com/loopholelabs/drafter/pkg/runtimes"
 	"github.com/loopholelabs/drafter/pkg/snapshotter"
 	"github.com/loopholelabs/drafter/pkg/utils"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
@@ -98,7 +98,7 @@ func main() {
 	}
 
 	if strings.TrimSpace(configPath) == "" {
-		panic(peer.ErrConfigFileNotFound)
+		panic(runtimes.ErrConfigFileNotFound)
 	}
 
 	configFile, err := os.Open(configPath)

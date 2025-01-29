@@ -1,4 +1,4 @@
-package peer
+package runtimes
 
 import (
 	"context"
@@ -20,18 +20,7 @@ var ErrCouldNotOpenConfigFile = errors.New("could not open config file")
 var ErrCouldNotDecodeConfigFile = errors.New("could not decode config file")
 var ErrCouldNotResumeRunner = errors.New("could not resume runner")
 
-type RuntimeProviderIfc interface {
-	Start(ctx context.Context, rescueCtx context.Context) error
-	Resume(resumeTimeout time.Duration, rescueTimeout time.Duration) error
-	SuspendAndCloseAgentServer(ctx context.Context, timeout time.Duration) error
-	FlushData(ctx context.Context) error
-	Close() error
-
-	DevicePath() string
-	GetVMPid() int
-}
-
-type RuntimeProvider[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] struct {
+type FirecrackerRuntimeProvider[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] struct {
 	Log                     types.Logger
 	Remote                  R
 	Runner                  *runner.Runner[L, R, G]
@@ -51,7 +40,7 @@ type RuntimeProvider[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] 
 	SnapshotLoadConfiguration runner.SnapshotLoadConfiguration
 }
 
-func (rp *RuntimeProvider[L, R, G]) Resume(resumeTimeout time.Duration, rescueTimeout time.Duration) error {
+func (rp *FirecrackerRuntimeProvider[L, R, G]) Resume(resumeTimeout time.Duration, rescueTimeout time.Duration) error {
 	resumeCtx, resumeCancel := context.WithCancel(context.TODO())
 	rp.resumeCtx = resumeCtx
 	rp.resumeCancel = resumeCancel
@@ -91,7 +80,7 @@ func (rp *RuntimeProvider[L, R, G]) Resume(resumeTimeout time.Duration, rescueTi
 	return err
 }
 
-func (rp *RuntimeProvider[L, R, G]) Start(ctx context.Context, rescueCtx context.Context) error {
+func (rp *FirecrackerRuntimeProvider[L, R, G]) Start(ctx context.Context, rescueCtx context.Context) error {
 	hypervisorCtx, hypervisorCancel := context.WithCancel(context.TODO())
 
 	rp.hypervisorCtx = hypervisorCtx
@@ -108,26 +97,26 @@ func (rp *RuntimeProvider[L, R, G]) Start(ctx context.Context, rescueCtx context
 	return err
 }
 
-func (rp *RuntimeProvider[L, R, G]) FlushData(ctx context.Context) error {
+func (rp *FirecrackerRuntimeProvider[L, R, G]) FlushData(ctx context.Context) error {
 	return rp.ResumedRunner.Msync(ctx)
 }
 
-func (rp *RuntimeProvider[L, R, G]) DevicePath() string {
+func (rp *FirecrackerRuntimeProvider[L, R, G]) DevicePath() string {
 	return rp.Runner.VMPath
 }
 
-func (rp *RuntimeProvider[L, R, G]) GetVMPid() int {
+func (rp *FirecrackerRuntimeProvider[L, R, G]) GetVMPid() int {
 	return rp.Runner.VMPid
 }
 
-func (rp *RuntimeProvider[L, R, G]) Close() error {
+func (rp *FirecrackerRuntimeProvider[L, R, G]) Close() error {
 	// TODO: Correct?
 	if rp.ResumedRunner != nil {
 		if rp.Log != nil {
 			rp.Log.Debug().Msg("Closing resumed runner")
 		}
 
-		err := rp.SuspendAndCloseAgentServer(context.TODO(), time.Minute) // TODO
+		err := rp.Suspend(context.TODO(), time.Minute) // TODO
 
 		rp.resumeCancel() // We can cancel this context now
 		rp.hypervisorCancel()
@@ -156,7 +145,7 @@ func (rp *RuntimeProvider[L, R, G]) Close() error {
 	return nil
 }
 
-func (rp *RuntimeProvider[L, R, G]) SuspendAndCloseAgentServer(ctx context.Context, resumeTimeout time.Duration) error {
+func (rp *FirecrackerRuntimeProvider[L, R, G]) Suspend(ctx context.Context, resumeTimeout time.Duration) error {
 	if rp.Log != nil {
 		rp.Log.Debug().Msg("resumedPeer.SuspendAndCloseAgentServer")
 	}

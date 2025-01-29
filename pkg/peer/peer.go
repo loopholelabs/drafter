@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/loopholelabs/drafter/pkg/common"
-	"github.com/loopholelabs/drafter/pkg/mounter"
+	"github.com/loopholelabs/drafter/pkg/runtimes"
 	"github.com/loopholelabs/logging/types"
 	"github.com/loopholelabs/silo/pkg/storage/config"
 	"github.com/loopholelabs/silo/pkg/storage/devicegroup"
@@ -26,7 +26,7 @@ type Peer struct {
 	cancelCtx  context.CancelFunc
 
 	// Runtime
-	runtimeProvider RuntimeProviderIfc
+	runtimeProvider runtimes.RuntimeProviderIfc
 	VMPath          string
 	VMPid           int
 
@@ -42,6 +42,16 @@ type MigrateToHooks struct {
 	OnAllMigrationsCompleted func()
 	OnProgress               func(p map[string]*migrator.MigrationProgress)
 	GetXferCustomData        func() []byte
+}
+
+// Callbacks for MigrateFrom
+type MigrateFromHooks struct {
+	OnLocalDeviceRequested func(localDeviceID uint32, name string)
+	OnLocalDeviceExposed   func(localDeviceID uint32, path string)
+
+	OnLocalAllDevicesRequested func()
+
+	OnXferCustomData func([]byte)
 }
 
 func (peer *Peer) Close() error {
@@ -134,7 +144,7 @@ func (peer *Peer) closeDG() error {
 }
 
 func StartPeer(ctx context.Context, rescueCtx context.Context,
-	log types.Logger, rp RuntimeProviderIfc) (*Peer, error) {
+	log types.Logger, rp runtimes.RuntimeProviderIfc) (*Peer, error) {
 
 	peer := &Peer{
 		log:             log,
@@ -160,7 +170,7 @@ func StartPeer(ctx context.Context, rescueCtx context.Context,
 }
 
 func (peer *Peer) MigrateFrom(ctx context.Context, devices []common.MigrateFromDevice,
-	readers []io.Reader, writers []io.Writer, hooks mounter.MigrateFromHooks) error {
+	readers []io.Reader, writers []io.Writer, hooks MigrateFromHooks) error {
 
 	if peer.log != nil {
 		peer.log.Info().Msg("started MigrateFrom")
@@ -298,7 +308,7 @@ func (peer *Peer) MigrateTo(ctx context.Context, devices []common.MigrateToDevic
 
 	// This manages the status of the VM - if it's suspended or not.
 	vmState := common.NewVMStateMgr(ctx,
-		peer.runtimeProvider.SuspendAndCloseAgentServer,
+		peer.runtimeProvider.Suspend,
 		suspendTimeout,
 		peer.runtimeProvider.FlushData,
 		hooks.OnBeforeSuspend,

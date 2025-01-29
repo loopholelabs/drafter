@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/loopholelabs/drafter/pkg/common"
-	"github.com/loopholelabs/drafter/pkg/mounter"
 	"github.com/loopholelabs/logging"
 	"github.com/loopholelabs/silo/pkg/storage/migrator"
 	"github.com/stretchr/testify/assert"
@@ -49,7 +48,7 @@ func (rp *MockRuntimeProvider) GetVMPid() int {
 	return 0
 }
 
-func (rp *MockRuntimeProvider) SuspendAndCloseAgentServer(ctx context.Context, timeout time.Duration) error {
+func (rp *MockRuntimeProvider) Suspend(ctx context.Context, timeout time.Duration) error {
 	fmt.Printf(" ### Suspend %s\n", rp.HomePath)
 
 	rp.writeCancel()         // Cancel the VM writer
@@ -202,7 +201,7 @@ func TestPeer(t *testing.T) {
 	peer, err := StartPeer(context.TODO(), context.Background(), log, rp)
 	assert.NoError(t, err)
 
-	hooks1 := mounter.MigrateFromHooks{
+	hooks1 := MigrateFromHooks{
 		OnLocalDeviceRequested:     func(id uint32, path string) {},
 		OnLocalDeviceExposed:       func(id uint32, path string) {},
 		OnLocalAllDevicesRequested: func() {},
@@ -244,7 +243,7 @@ func TestPeer(t *testing.T) {
 		wg.Done()
 	}()
 
-	hooks2 := mounter.MigrateFromHooks{
+	hooks2 := MigrateFromHooks{
 		OnLocalDeviceRequested:     func(id uint32, path string) {},
 		OnLocalDeviceExposed:       func(id uint32, path string) {},
 		OnLocalAllDevicesRequested: func() {},
