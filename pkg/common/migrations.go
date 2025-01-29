@@ -45,6 +45,12 @@ type MigrateFromDevice struct {
 	State     string `json:"state"`
 	BlockSize uint32 `json:"blockSize"`
 	Shared    bool   `json:"shared"`
+
+	S3Sync      bool   `json:"s3sync"`
+	S3AccessKey string `json:"s3accesskey"`
+	S3SecretKey string `json:"s3secretkey"`
+	S3Endpoint  string `json:"s3endpoint"`
+	S3Bucket    string `json:"s3bucket"`
 }
 
 var (
@@ -120,6 +126,25 @@ func CreateSiloDevSchema(i *MigrateFromDevice) (*config.DeviceSchema, error) {
 			Size:     fmt.Sprintf("%v", stat.Size()),
 		}
 	}
+
+	if i.S3Sync {
+		ds.Sync = &config.SyncS3Schema{
+			Secure:    true,
+			AccessKey: i.S3AccessKey,
+			SecretKey: i.S3SecretKey,
+			Endpoint:  i.S3Endpoint,
+			Bucket:    i.S3Bucket,
+			AutoStart: true,
+			Config: &config.SyncConfigSchema{
+				OnlyDirty:   false,
+				BlockShift:  2,
+				MaxAge:      "100ms",
+				MinChanged:  4,
+				Limit:       256,
+				CheckPeriod: "100ms",
+			},
+		}
+	}
 	return ds, nil
 }
 
@@ -129,6 +154,10 @@ func CreateIncomingSiloDevSchema(i *MigrateFromDevice, schema *config.DeviceSche
 		BlockSize: fmt.Sprintf("%v", i.BlockSize),
 		Expose:    true,
 		Size:      schema.Size,
+		Sync:      schema.Sync,
+	}
+	if schema.Sync != nil {
+		ds.Sync.AutoStart = false
 	}
 	if strings.TrimSpace(i.Overlay) == "" || strings.TrimSpace(i.State) == "" {
 		err := os.MkdirAll(filepath.Dir(i.Base), os.ModePerm)
@@ -281,22 +310,6 @@ func MigrateFromPipe(log types.Logger, met metrics.SiloMetrics, vmpath string,
 	case <-ready:
 	}
 
-	/*
-		// Wait here - check the data...
-		names := dg.GetAllNames()
-		for _, n := range names {
-			// Get a data hash
-			di := dg.GetDeviceInformationByName(n)
-			dev := di.Exp.Device()
-			hash := [32]byte{}
-			buffer, err := readAllDataFromDevice(fmt.Sprintf("/dev/%s", dev), int(di.Size))
-			if err == nil {
-				hash = sha256.Sum256(buffer)
-			}
-			fmt.Printf("%s | %s | %x\n", n, dev, hash)
-		}
-	*/
-
 	return dg, nil
 }
 
@@ -369,44 +382,5 @@ func MigrateToPipe(ctx context.Context, readers []io.Reader, writers []io.Writer
 	if err != nil {
 		return err
 	}
-	/*
-		names := dg.GetAllNames()
-		for _, n := range names {
-			// Get a data hash
-			di := dg.GetDeviceInformationByName(n)
-			dev := di.Exp.Device()
-			hash := [32]byte{}
-			buffer, err := readAllDataFromDevice(fmt.Sprintf("/dev/%s", dev), int(di.Size))
-			if err == nil {
-				hash = sha256.Sum256(buffer)
-			}
-			fmt.Printf("%s | %s | %x\n", n, dev, hash)
-		}
-	*/
 	return nil
 }
-
-/*
-func readAllDataFromDevice(name string, size int) ([]byte, error) {
-	fd, err := os.Open(name)
-	if err != nil {
-		return nil, err
-	}
-
-	// Try reading the device...
-	buffer := make([]byte, size)
-	n, err := fd.ReadAt(buffer, 0)
-	if n != size {
-		return nil, errors.New("unable to read full data")
-	}
-	if err != nil {
-		return nil, err
-	}
-
-	err = fd.Close()
-	if err != nil {
-		return nil, err
-	}
-	return buffer, nil
-}
-*/
