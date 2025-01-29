@@ -61,6 +61,12 @@ func main() {
 		panic(err)
 	}
 
+	go func() {
+		err := <-p.BackgroundErr()
+		log.Error().Err(err).Msg("Error from peer background tasks")
+		cancel()
+	}()
+
 	defer func() {
 		err := p.Close()
 		if err != nil {
@@ -113,13 +119,6 @@ func main() {
 
 	if err != nil {
 		log.Error().Err(err).Msg("Could not migrate peer")
-		panic(err)
-	}
-
-	// Wait for any pending migration
-	err = p.Wait()
-	if err != nil {
-		log.Error().Err(err).Msg("Error waiting for migration")
 		panic(err)
 	}
 

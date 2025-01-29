@@ -65,6 +65,12 @@ func main() {
 		panic(err)
 	}
 
+	go func() {
+		err := <-p.BackgroundErr()
+		log.Error().Err(err).Msg("Error from peer background tasks")
+		cancel()
+	}()
+
 	defer func() {
 		err := p.Close()
 		if err != nil {
@@ -119,13 +125,6 @@ func main() {
 	}
 
 	before := time.Now()
-
-	// Wait for any pending migration
-	err = p.Wait()
-	if err != nil {
-		log.Error().Err(err).Msg("Error waiting for migration")
-		panic(err)
-	}
 
 	log.Info().Int64("ms", time.Since(before).Milliseconds()).Str("path", p.VMPath).Msg("Resumed VM")
 
