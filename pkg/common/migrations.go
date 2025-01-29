@@ -145,7 +145,6 @@ func CreateSiloDevSchema(i *MigrateFromDevice) (*config.DeviceSchema, error) {
 			},
 		}
 	}
-	fmt.Printf("SILO DEVICE %s\n", ds.EncodeAsBlock())
 	return ds, nil
 }
 
