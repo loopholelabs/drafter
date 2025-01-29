@@ -18,6 +18,7 @@ import (
 
 type Peer struct {
 	log types.Logger
+	met metrics.SiloMetrics
 
 	// Devices
 	dgLock  sync.Mutex
@@ -93,10 +94,11 @@ func (peer *Peer) closeDG() error {
 }
 
 func StartPeer(ctx context.Context, rescueCtx context.Context,
-	log types.Logger, rp runtimes.RuntimeProviderIfc) (*Peer, error) {
+	log types.Logger, met metrics.SiloMetrics, rp runtimes.RuntimeProviderIfc) (*Peer, error) {
 
 	peer := &Peer{
 		log:             log,
+		met:             met,
 		runtimeProvider: rp,
 		backgroundErr:   make(chan error, 12),
 	}
@@ -126,7 +128,6 @@ func (peer *Peer) MigrateFrom(ctx context.Context, devices []common.MigrateFromD
 		peer.log.Info().Msg("started MigrateFrom")
 	}
 
-	var met metrics.SiloMetrics
 	tweakRemote := func(index int, name string, schema *config.DeviceSchema) *config.DeviceSchema {
 
 		for _, d := range devices {
@@ -164,7 +165,7 @@ func (peer *Peer) MigrateFrom(ctx context.Context, devices []common.MigrateFromD
 		if peer.log != nil {
 			slog = peer.log.SubLogger("silo")
 		}
-		dg, err := common.MigrateFromPipe(slog, met, peer.runtimeProvider.DevicePath(), protocolCtx, readers, writers, tweakRemote, hooks.OnXferCustomData)
+		dg, err := common.MigrateFromPipe(slog, peer.met, peer.runtimeProvider.DevicePath(), protocolCtx, readers, writers, tweakRemote, hooks.OnXferCustomData)
 		if err != nil {
 			if peer.log != nil {
 				peer.log.Warn().Err(err).Msg("error migrating from pipe")
@@ -209,7 +210,7 @@ func (peer *Peer) MigrateFrom(ctx context.Context, devices []common.MigrateFromD
 			slog = peer.log.SubLogger("silo")
 		}
 
-		dg, err := common.MigrateFromFS(slog, met, peer.runtimeProvider.DevicePath(), devices, tweakLocal)
+		dg, err := common.MigrateFromFS(slog, peer.met, peer.runtimeProvider.DevicePath(), devices, tweakLocal)
 		if err != nil {
 			if peer.log != nil {
 				peer.log.Warn().Err(err).Msg("error migrating from fs")

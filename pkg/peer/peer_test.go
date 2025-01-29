@@ -198,7 +198,7 @@ func TestPeer(t *testing.T) {
 		DoWrites:    true,
 		DeviceSizes: deviceSizes,
 	}
-	peer, err := StartPeer(context.TODO(), context.Background(), log, rp)
+	peer, err := StartPeer(context.TODO(), context.Background(), log, nil, rp)
 	assert.NoError(t, err)
 
 	hooks1 := MigrateFromHooks{
@@ -221,7 +221,7 @@ func TestPeer(t *testing.T) {
 		DoWrites:    false,
 		DeviceSizes: deviceSizes,
 	}
-	peer2, err := StartPeer(context.TODO(), context.Background(), log, rp2)
+	peer2, err := StartPeer(context.TODO(), context.Background(), log, nil, rp2)
 	assert.NoError(t, err)
 
 	r1, w1 := io.Pipe()

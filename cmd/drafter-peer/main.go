@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -19,7 +20,12 @@ import (
 	"github.com/loopholelabs/drafter/pkg/snapshotter"
 	"github.com/loopholelabs/logging"
 	"github.com/loopholelabs/logging/types"
+	"github.com/loopholelabs/silo/pkg/storage/metrics"
+	siloprom "github.com/loopholelabs/silo/pkg/storage/metrics/prometheus"
 	"github.com/loopholelabs/silo/pkg/storage/migrator"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 func main() {
@@ -50,7 +56,35 @@ func main() {
 	experimentalMapPrivateStateOutput := flag.String("experimental-map-private-state-output", "", "(Experimental) Path to write the local changes to the shared state to (leave empty to write back to device directly) (ignored unless --experimental-map-private)")
 	experimentalMapPrivateMemoryOutput := flag.String("experimental-map-private-memory-output", "", "(Experimental) Path to write the local changes to the shared memory to (leave empty to write back to device directly) (ignored unless --experimental-map-private)")
 
+	serveMetrics := flag.String("metrics", "", "Address to serve metrics from")
+
 	flag.Parse()
+
+	var reg *prometheus.Registry
+	var siloMetrics metrics.SiloMetrics
+	if *serveMetrics != "" {
+		reg = prometheus.NewRegistry()
+
+		siloMetrics = siloprom.New(reg, siloprom.DefaultConfig())
+
+		// Add the default go metrics
+		reg.MustRegister(
+			collectors.NewGoCollector(),
+			collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
+		)
+
+		http.Handle("/metrics", promhttp.HandlerFor(
+			reg,
+			promhttp.HandlerOpts{
+				// Opt into OpenMetrics to support exemplars.
+				EnableOpenMetrics: true,
+				// Pass custom registry
+				Registry: reg,
+			},
+		))
+
+		go http.ListenAndServe(*serveMetrics, nil)
+	}
 
 	devices, err := decodeDevices(*rawDevices)
 	if err != nil {
@@ -112,7 +146,7 @@ func main() {
 
 	p, err := peer.StartPeer(ctx,
 		context.Background(), // Never give up on rescue operations
-		log, rp,
+		log, siloMetrics, rp,
 	)
 
 	if err != nil {
@@ -136,12 +170,17 @@ func main() {
 	migrateFromDevices := []common.MigrateFromDevice{}
 	for _, device := range devices {
 		migrateFromDevices = append(migrateFromDevices, common.MigrateFromDevice{
-			Name:      device.Name,
-			Base:      device.Base,
-			Overlay:   device.Overlay,
-			State:     device.State,
-			BlockSize: device.BlockSize,
-			Shared:    device.Shared,
+			Name:        device.Name,
+			Base:        device.Base,
+			Overlay:     device.Overlay,
+			State:       device.State,
+			BlockSize:   device.BlockSize,
+			Shared:      device.Shared,
+			S3Sync:      device.S3Sync,
+			S3AccessKey: device.S3AccessKey,
+			S3SecretKey: device.S3SecretKey,
+			S3Endpoint:  device.S3Endpoint,
+			S3Bucket:    device.S3Bucket,
 		})
 	}
 
