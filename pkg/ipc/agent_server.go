@@ -179,21 +179,18 @@ func (agentServer *AgentServer[L, R, G]) Accept(
 		select {
 		// Failure case; something failed and the goroutineManager.Context() was cancelled before we got a connection
 		case <-ctx.Done():
+
+			// Happy case; we've got a connection and we want to wait with closing the agent's connections until the context, not the internal context is cancelled
+			select {
+			case <-ready:
+				<-remoteCtx.Done() // Wait here...
+			default:
+			}
+
 			if err := acceptingAgentServer.Close(); err != nil {
 				panic(errors.Join(ErrCouldNotCloseAcceptingAgentServer, err))
 			}
 			agentServer.Close() // We ignore errors here since we might interrupt a network connection
-
-		// Happy case; we've got a connection and we want to wait with closing the agent's connections until the context, not the internal context is cancelled
-		case <-ready:
-			<-remoteCtx.Done()
-
-			if err := acceptingAgentServer.Close(); err != nil {
-				panic(errors.Join(ErrCouldNotCloseAcceptingAgentServer, err))
-			}
-			agentServer.Close() // We ignore errors here since we might interrupt a network connection
-
-			break
 		}
 	})
 
