@@ -40,7 +40,7 @@ type FirecrackerRuntimeProvider[L ipc.AgentServerLocal, R ipc.AgentServerRemote[
 	SnapshotLoadConfiguration runner.SnapshotLoadConfiguration
 }
 
-func (rp *FirecrackerRuntimeProvider[L, R, G]) Resume(resumeTimeout time.Duration, rescueTimeout time.Duration) error {
+func (rp *FirecrackerRuntimeProvider[L, R, G]) Resume(resumeTimeout time.Duration, rescueTimeout time.Duration, errChan chan error) error {
 	resumeCtx, resumeCancel := context.WithCancel(context.TODO())
 	rp.resumeCtx = resumeCtx
 	rp.resumeCancel = resumeCancel
@@ -75,12 +75,26 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Resume(resumeTimeout time.Duratio
 		rp.AgentServerHooks,
 		rp.SnapshotLoadConfiguration,
 	)
+	if err == nil {
+		if err == nil {
+			go func() {
+				err := rp.ResumedRunner.Wait()
+				if err != nil {
+					select {
+					case errChan <- err:
+					default:
+					}
+				}
+			}()
+		}
+
+	}
 
 	rp.Remote = rp.ResumedRunner.Remote
 	return err
 }
 
-func (rp *FirecrackerRuntimeProvider[L, R, G]) Start(ctx context.Context, rescueCtx context.Context) error {
+func (rp *FirecrackerRuntimeProvider[L, R, G]) Start(ctx context.Context, rescueCtx context.Context, errChan chan error) error {
 	hypervisorCtx, hypervisorCancel := context.WithCancel(context.TODO())
 
 	rp.hypervisorCtx = hypervisorCtx
@@ -93,7 +107,18 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Start(ctx context.Context, rescue
 		rp.StateName,
 		rp.MemoryName,
 	)
-	rp.Runner = run
+	if err == nil {
+		rp.Runner = run
+		go func() {
+			err := run.Wait()
+			if err != nil {
+				select {
+				case errChan <- err:
+				default:
+				}
+			}
+		}()
+	}
 	return err
 }
 

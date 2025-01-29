@@ -9,7 +9,7 @@ type EmptyRuntimeProvider struct {
 	HomePath string
 }
 
-func (rp *EmptyRuntimeProvider) Start(ctx context.Context, rescueCtx context.Context) error {
+func (rp *EmptyRuntimeProvider) Start(ctx context.Context, rescueCtx context.Context, errChan chan error) error {
 	return nil
 }
 
@@ -33,6 +33,6 @@ func (rp *EmptyRuntimeProvider) FlushData(ctx context.Context) error {
 	return nil
 }
 
-func (rp *EmptyRuntimeProvider) Resume(resumeTimeout time.Duration, rescueTimeout time.Duration) error {
+func (rp *EmptyRuntimeProvider) Resume(resumeTimeout time.Duration, rescueTimeout time.Duration, errChan chan error) error {
 	return nil
 }

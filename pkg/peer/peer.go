@@ -2,6 +2,7 @@ package peer
 
 import (
 	"context"
+	"errors"
 	"io"
 	"sync"
 	"time"
@@ -19,20 +20,17 @@ type Peer struct {
 	log types.Logger
 
 	// Devices
-	dgLock     sync.Mutex
-	dg         *devicegroup.DeviceGroup
-	dgIncoming bool
-	devices    []common.MigrateFromDevice
-	cancelCtx  context.CancelFunc
+	dgLock  sync.Mutex
+	dg      *devicegroup.DeviceGroup
+	devices []common.MigrateFromDevice
 
 	// Runtime
 	runtimeProvider runtimes.RuntimeProviderIfc
 	VMPath          string
 	VMPid           int
 
-	// TODO: Going
-	alreadyClosed bool
-	alreadyWaited bool
+	// Errors
+	backgroundErr chan error
 }
 
 // Callbacks for MigrateTO
@@ -59,76 +57,27 @@ func (peer *Peer) Close() error {
 		peer.log.Debug().Msg("Peer.Close")
 	}
 
-	if peer.alreadyClosed {
-		if peer.log != nil {
-			peer.log.Debug().Msg("FIXME: Peer.Close called multiple times")
-		}
-		return nil
-	}
-	peer.alreadyClosed = true
-
-	err := peer.runtimeProvider.Close()
-	if err != nil {
-		return err
+	// Try to close the runtimeProvider first
+	errRuntime := peer.runtimeProvider.Close()
+	if errRuntime != nil {
+		peer.log.Error().Err(errRuntime).Msg("Error closing runtime")
 	}
 
 	if peer.log != nil {
 		peer.log.Debug().Msg("Closing dg")
 	}
-	return peer.closeDG()
+	errDG := peer.closeDG()
+	// Return
+	return errors.Join(errRuntime, errDG)
 }
 
-func (peer *Peer) Wait() error {
-	if peer.log != nil {
-		peer.log.Debug().Msg("Peer.Wait")
-	}
-
-	if peer.alreadyWaited {
-		if peer.log != nil {
-			peer.log.Debug().Msg("FIXME: Peer.Wait called multiple times")
-		}
-		return nil
-	}
-	peer.alreadyWaited = true
-
-	defer func() {
-		if peer.cancelCtx != nil {
-			peer.cancelCtx()
-		}
-	}()
-
-	peer.dgLock.Lock()
-	if peer.dgIncoming && peer.dg != nil {
-		peer.dgIncoming = false
-		peer.dgLock.Unlock()
-		if peer.log != nil {
-			peer.log.Trace().Msg("waiting for device migrations to complete")
-		}
-		err := peer.dg.WaitForCompletion()
-		if peer.log != nil {
-			peer.log.Trace().Err(err).Msg("device migrations completed")
-		}
-		return err
-	}
-	peer.dgLock.Unlock()
-	/*
-		// TODO: Should this be here?
-		if peer.runner != nil {
-			return peer.runner.Wait()
-		}
-
-		// TODO: Should this be here?
-		if peer.resumedRunner != nil {
-			return peer.resumedRunner.Wait()
-		}
-	*/
-	return nil
+func (peer *Peer) BackgroundErr() chan error {
+	return peer.backgroundErr
 }
 
-func (peer *Peer) setDG(dg *devicegroup.DeviceGroup, incoming bool) {
+func (peer *Peer) setDG(dg *devicegroup.DeviceGroup) {
 	peer.dgLock.Lock()
 	peer.dg = dg
-	peer.dgIncoming = incoming
 	peer.dgLock.Unlock()
 }
 
@@ -149,9 +98,10 @@ func StartPeer(ctx context.Context, rescueCtx context.Context,
 	peer := &Peer{
 		log:             log,
 		runtimeProvider: rp,
+		backgroundErr:   make(chan error, 12),
 	}
 
-	err := peer.runtimeProvider.Start(ctx, rescueCtx)
+	err := peer.runtimeProvider.Start(ctx, rescueCtx, peer.backgroundErr)
 
 	if err != nil {
 		if log != nil {
@@ -224,14 +174,31 @@ func (peer *Peer) MigrateFrom(ctx context.Context, devices []common.MigrateFromD
 			return err
 		}
 
-		peer.cancelCtx = cancelProtocolCtx
-
 		// Save dg for future migrations, AND for things like reading config
-		peer.setDG(dg, true)
+		peer.setDG(dg)
 
 		if peer.log != nil {
 			peer.log.Info().Msg("migrated from pipe successfully")
 		}
+
+		// Monitor the transfer, and report any error if it happens
+		go func() {
+			defer cancelProtocolCtx()
+
+			if peer.log != nil {
+				peer.log.Trace().Msg("waiting for device migrations to complete")
+			}
+			err := dg.WaitForCompletion()
+			if peer.log != nil {
+				peer.log.Trace().Err(err).Msg("device migrations completed")
+			}
+			if err != nil {
+				select {
+				case peer.backgroundErr <- err:
+				default:
+				}
+			}
+		}()
 	}
 
 	//
@@ -253,7 +220,7 @@ func (peer *Peer) MigrateFrom(ctx context.Context, devices []common.MigrateFromD
 		}
 
 		// Save dg for later usage, when we want to migrate from here etc
-		peer.setDG(dg, false)
+		peer.setDG(dg)
 
 		if peer.log != nil {
 			peer.log.Info().Msg("migrated from fs successfully")
@@ -267,17 +234,13 @@ func (peer *Peer) MigrateFrom(ctx context.Context, devices []common.MigrateFromD
 	return nil
 }
 
-func (peer *Peer) Resume(
-	ctx context.Context,
-	resumeTimeout,
-	rescueTimeout time.Duration,
-) error {
+func (peer *Peer) Resume(ctx context.Context, resumeTimeout time.Duration, rescueTimeout time.Duration) error {
 
 	if peer.log != nil {
 		peer.log.Trace().Msg("resuming runtime")
 	}
 
-	err := peer.runtimeProvider.Resume(resumeTimeout, rescueTimeout)
+	err := peer.runtimeProvider.Resume(resumeTimeout, rescueTimeout, peer.backgroundErr)
 
 	if err != nil {
 		if peer.log != nil {

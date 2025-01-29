@@ -30,7 +30,7 @@ type MockRuntimeProvider struct {
 	writeWaitGroup sync.WaitGroup
 }
 
-func (rp *MockRuntimeProvider) Start(ctx context.Context, rescueCtx context.Context) error {
+func (rp *MockRuntimeProvider) Start(ctx context.Context, rescueCtx context.Context, errChan chan error) error {
 	fmt.Printf(" ### Start %s\n", rp.HomePath)
 	return nil
 }
@@ -63,7 +63,7 @@ func (rp *MockRuntimeProvider) FlushData(ctx context.Context) error {
 	return nil
 }
 
-func (rp *MockRuntimeProvider) Resume(resumeTimeout time.Duration, rescueTimeout time.Duration) error {
+func (rp *MockRuntimeProvider) Resume(resumeTimeout time.Duration, rescueTimeout time.Duration, errChan chan error) error {
 	fmt.Printf(" ### Resume %s\n", rp.HomePath)
 
 	periodWrites := 400 * time.Millisecond
