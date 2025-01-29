@@ -126,8 +126,6 @@ func (peer *Peer) MigrateFrom(ctx context.Context, devices []common.MigrateFromD
 		peer.log.Info().Msg("started MigrateFrom")
 	}
 
-	// TODO: Pass these in
-	// TODO: This schema tweak function should be exposed / passed in
 	var met metrics.SiloMetrics
 	tweakRemote := func(index int, name string, schema *config.DeviceSchema) *config.DeviceSchema {
 
@@ -151,7 +149,7 @@ func (peer *Peer) MigrateFrom(ctx context.Context, devices []common.MigrateFromD
 
 		return schema
 	}
-	// TODO: Add the sync stuff here...
+
 	tweakLocal := func(index int, name string, schema *config.DeviceSchema) *config.DeviceSchema {
 		return schema
 	}
