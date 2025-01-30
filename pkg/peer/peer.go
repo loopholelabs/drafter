@@ -47,6 +47,7 @@ type MigrateToHooks struct {
 type MigrateFromHooks struct {
 	OnLocalDeviceRequested func(localDeviceID uint32, name string)
 	OnLocalDeviceExposed   func(localDeviceID uint32, path string)
+	OnCompletion           func()
 
 	OnLocalAllDevicesRequested func()
 
@@ -196,6 +197,9 @@ func (peer *Peer) MigrateFrom(ctx context.Context, devices []common.MigrateFromD
 				case peer.backgroundErr <- err:
 				default:
 				}
+			}
+			if hooks.OnCompletion != nil {
+				hooks.OnCompletion()
 			}
 		}()
 	}
