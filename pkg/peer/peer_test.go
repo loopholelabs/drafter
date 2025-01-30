@@ -236,10 +236,12 @@ func TestPeer(t *testing.T) {
 	}
 
 	var wg sync.WaitGroup
+	var sendingErr error
 	wg.Add(1)
 	go func() {
 		err := peer.MigrateTo(context.TODO(), devicesTo, 10*time.Second, 10, []io.Reader{r1}, []io.Writer{w2}, hooks)
 		assert.NoError(t, err)
+		sendingErr = err
 		wg.Done()
 	}()
 
@@ -248,28 +250,117 @@ func TestPeer(t *testing.T) {
 		OnLocalDeviceExposed:       func(id uint32, path string) {},
 		OnLocalAllDevicesRequested: func() {},
 		OnXferCustomData:           func(data []byte) {},
+		OnCompletion: func() {
+			fmt.Printf("Completed!\n")
+		},
 	}
 	err = peer2.MigrateFrom(context.TODO(), devicesFrom, []io.Reader{r2}, []io.Writer{w1}, hooks2)
 	assert.NoError(t, err)
 
 	wg.Wait()
 
-	// Make sure everything migrated as expected...
-	for _, n := range common.KnownNames {
-		buff1, err := os.ReadFile(path.Join(testPeerSource, n))
-		assert.NoError(t, err)
-		buff2, err := os.ReadFile(path.Join(testPeerDest, n))
-		assert.NoError(t, err)
+	if err == nil && sendingErr == nil {
+		// Make sure everything migrated as expected...
+		for _, n := range common.KnownNames {
+			buff1, err := os.ReadFile(path.Join(testPeerSource, n))
+			assert.NoError(t, err)
+			buff2, err := os.ReadFile(path.Join(testPeerDest, n))
+			assert.NoError(t, err)
 
-		// Compare hashes so we don't get tons of output if they do differ.
-		hash1 := sha256.Sum256(buff1)
-		hash2 := sha256.Sum256(buff2)
+			// Compare hashes so we don't get tons of output if they do differ.
+			hash1 := sha256.Sum256(buff1)
+			hash2 := sha256.Sum256(buff2)
 
-		fmt.Printf(" # End hash %s ~ %x\n", n, hash1)
+			fmt.Printf(" # End hash %s ~ %x\n", n, hash1)
 
-		// Check the data is identical
-		assert.Equal(t, hash1, hash2)
+			// Check the data is identical
+			assert.Equal(t, hash1, hash2)
+		}
 	}
+	// Make sure we can close the peers...
+	err = peer2.Close()
+	assert.NoError(t, err)
+
+	err = peer.Close()
+	assert.NoError(t, err)
+
+}
+
+func TestPeerEarlyClose(t *testing.T) {
+
+	log := logging.New(logging.Zerolog, "test", os.Stderr)
+	//	log.SetLevel(types.TraceLevel)
+
+	devicesInit, devicesFrom, devicesTo, deviceSizes := setupDevices(t)
+
+	rp := &MockRuntimeProvider{
+		HomePath:    testPeerSource,
+		DoWrites:    true,
+		DeviceSizes: deviceSizes,
+	}
+	peer, err := StartPeer(context.TODO(), context.Background(), log, nil, rp)
+	assert.NoError(t, err)
+
+	hooks1 := MigrateFromHooks{
+		OnLocalDeviceRequested:     func(id uint32, path string) {},
+		OnLocalDeviceExposed:       func(id uint32, path string) {},
+		OnLocalAllDevicesRequested: func() {},
+		OnXferCustomData:           func(data []byte) {},
+	}
+
+	err = peer.MigrateFrom(context.TODO(), devicesInit, nil, nil, hooks1)
+	assert.NoError(t, err)
+
+	err = peer.Resume(context.TODO(), 10*time.Second, 10*time.Second)
+	assert.NoError(t, err)
+
+	// Now we have a "resumed peer"
+
+	rp2 := &MockRuntimeProvider{
+		HomePath:    testPeerDest,
+		DoWrites:    false,
+		DeviceSizes: deviceSizes,
+	}
+	peer2, err := StartPeer(context.TODO(), context.Background(), log, nil, rp2)
+	assert.NoError(t, err)
+
+	r1, w1 := io.Pipe()
+	r2, w2 := io.Pipe()
+
+	hooks := MigrateToHooks{
+		OnBeforeSuspend:          func() {},
+		OnAfterSuspend:           func() {},
+		OnAllMigrationsCompleted: func() {},
+		OnProgress:               func(p map[string]*migrator.MigrationProgress) {},
+		GetXferCustomData:        func() []byte { return []byte{} },
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		err := peer.MigrateTo(context.TODO(), devicesTo, 10*time.Second, 10, []io.Reader{r1}, []io.Writer{w2}, hooks)
+		// We expect there to be an error here...
+		assert.Error(t, err)
+		wg.Done()
+	}()
+
+	hooks2 := MigrateFromHooks{
+		OnLocalDeviceRequested:     func(id uint32, path string) {},
+		OnLocalDeviceExposed:       func(id uint32, path string) {},
+		OnLocalAllDevicesRequested: func() {},
+		OnXferCustomData:           func(data []byte) {},
+		OnCompletion: func() {
+			fmt.Printf("Completed!\n")
+		},
+	}
+	err = peer2.MigrateFrom(context.TODO(), devicesFrom, []io.Reader{r2}, []io.Writer{w1}, hooks2)
+	assert.NoError(t, err)
+
+	// CLOSE the connection before migration has completed.
+	r2.Close()
+	w1.Close()
+
+	wg.Wait()
 
 	// Make sure we can close the peers...
 	err = peer2.Close()

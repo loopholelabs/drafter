@@ -253,7 +253,10 @@ func MigrateFromPipe(log types.Logger, met metrics.SiloMetrics, vmpath string,
 	ctx context.Context, readers []io.Reader, writers []io.Writer, schemaTweak func(index int, name string, schema *config.DeviceSchema) *config.DeviceSchema,
 	cdh func([]byte)) (*devicegroup.DeviceGroup, error) {
 	ready := make(chan bool)
-	pro := protocol.NewRW(ctx, readers, writers, nil)
+
+	protocolCtx, protocolCancel := context.WithCancel(ctx)
+
+	pro := protocol.NewRW(protocolCtx, readers, writers, nil)
 
 	// Start a goroutine to do the protocol Handle()
 	go func() {
@@ -264,6 +267,8 @@ func MigrateFromPipe(log types.Logger, met metrics.SiloMetrics, vmpath string,
 			if log != nil {
 				log.Warn().Err(err).Msg("protocol handle error")
 			}
+
+			protocolCancel()
 		}
 	}()
 
@@ -280,7 +285,7 @@ func MigrateFromPipe(log types.Logger, met metrics.SiloMetrics, vmpath string,
 		slog = log.SubLogger("silo")
 	}
 
-	dg, err := devicegroup.NewFromProtocol(ctx, pro, schemaTweak, events, icdh, slog, met)
+	dg, err := devicegroup.NewFromProtocol(protocolCtx, pro, schemaTweak, events, icdh, slog, met)
 	if err != nil {
 		return nil, err
 	}
@@ -321,14 +326,18 @@ func MigrateToPipe(ctx context.Context, readers []io.Reader, writers []io.Writer
 	dg *devicegroup.DeviceGroup, concurrency int, onProgress func(p map[string]*migrator.MigrationProgress),
 	vmState *VMStateMgr, devices []MigrateToDevice, getCustomPayload func() []byte) error {
 
+	protocolCtx, protocolCancel := context.WithCancel(ctx)
+
 	// Create a protocol for use by Silo
-	pro := protocol.NewRW(ctx, readers, writers, nil)
+	pro := protocol.NewRW(protocolCtx, readers, writers, nil)
 
 	// Start a goroutine to do the protocol Handle()
 	go func() {
 		err := pro.Handle()
 		if err != nil && !errors.Is(err, io.EOF) {
 			// Deserves a log, but not critical, as it'll get returned in other errors
+			fmt.Printf("ERROR in protocol %v\n", err)
+			protocolCancel()
 		}
 	}()
 
@@ -337,6 +346,8 @@ func MigrateToPipe(ctx context.Context, readers []io.Reader, writers []io.Writer
 	if err != nil {
 		return err
 	}
+
+	fmt.Printf("MigrateAll...\n")
 
 	// Do the main migration of the data...
 	err = dg.MigrateAll(concurrency, onProgress)
@@ -367,6 +378,8 @@ func MigrateToPipe(ctx context.Context, readers []io.Reader, writers []io.Writer
 
 	dm := NewDirtyManager(vmState, dirtyDevices, authTransfer)
 
+	fmt.Printf("MigrateDirty...\n")
+
 	err = dg.MigrateDirty(&devicegroup.MigrateDirtyHooks{
 		PreGetDirty:      dm.PreGetDirty,
 		PostGetDirty:     dm.PostGetDirty,
@@ -377,10 +390,15 @@ func MigrateToPipe(ctx context.Context, readers []io.Reader, writers []io.Writer
 		return err
 	}
 
+	fmt.Printf("Completed...\n")
+
 	// Send Silo completion events for the devices. This will trigger any S3 sync behaviour etc.
 	err = dg.Completed()
 	if err != nil {
 		return err
 	}
+
+	fmt.Printf("DONE...\n")
+
 	return nil
 }
