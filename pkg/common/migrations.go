@@ -223,7 +223,7 @@ func MigrateFromFS(log types.Logger, met metrics.SiloMetrics, vmpath string,
 	}
 
 	// Create a silo deviceGroup from all the schemas
-	dg, err := devicegroup.NewFromSchema(siloDeviceSchemas, slog, met)
+	dg, err := devicegroup.NewFromSchema(siloDeviceSchemas, false, slog, met)
 	if err != nil {
 		return nil, err
 	}
