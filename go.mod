@@ -11,9 +11,10 @@ require (
 	github.com/lithammer/shortuuid/v4 v4.2.0
 	github.com/loopholelabs/goroutine-manager v0.1.1
 	github.com/loopholelabs/logging v0.3.1
-	github.com/loopholelabs/silo v0.1.8
+	github.com/loopholelabs/silo v0.1.9
 	github.com/metal-stack/go-ipam v1.14.7
 	github.com/pojntfx/panrpc/go v0.0.0-20241003051136-b93809e92a15
+	github.com/prometheus/client_golang v1.20.5
 	github.com/stretchr/testify v1.10.0
 	github.com/vishvananda/netlink v1.3.0
 	github.com/vishvananda/netns v0.0.5
@@ -56,7 +57,6 @@ require (
 	github.com/montanaflynn/stats v0.7.1 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
-	github.com/prometheus/client_golang v1.20.5 // indirect
 	github.com/prometheus/client_model v0.6.1 // indirect
 	github.com/prometheus/common v0.56.0 // indirect
 	github.com/prometheus/procfs v0.15.1 // indirect
