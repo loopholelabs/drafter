@@ -192,17 +192,19 @@ func (peer *Peer) MigrateFrom(ctx context.Context, devices []common.MigrateFromD
 			if peer.log != nil {
 				if err != nil {
 					peer.log.Trace().Err(err).Msg("device migrations completed")
+				} else {
+					peer.log.Trace().Msg("device migrations completed")
 				}
-				peer.log.Trace().Msg("device migrations completed")
 			}
-			if err != nil {
+			if err == nil {
+				if hooks.OnCompletion != nil {
+					hooks.OnCompletion()
+				}
+			} else {
 				select {
 				case peer.backgroundErr <- err:
 				default:
 				}
-			}
-			if hooks.OnCompletion != nil {
-				hooks.OnCompletion()
 			}
 		}()
 	}
