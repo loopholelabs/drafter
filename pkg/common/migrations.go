@@ -336,7 +336,7 @@ func MigrateToPipe(ctx context.Context, readers []io.Reader, writers []io.Writer
 		err := pro.Handle()
 		if err != nil && !errors.Is(err, io.EOF) {
 			// Deserves a log, but not critical, as it'll get returned in other errors
-			fmt.Printf("ERROR in protocol %v\n", err)
+			//			fmt.Printf("ERROR in protocol %v\n", err)
 			protocolCancel()
 		}
 	}()
@@ -346,8 +346,6 @@ func MigrateToPipe(ctx context.Context, readers []io.Reader, writers []io.Writer
 	if err != nil {
 		return err
 	}
-
-	fmt.Printf("MigrateAll...\n")
 
 	// Do the main migration of the data...
 	err = dg.MigrateAll(concurrency, onProgress)
@@ -378,8 +376,6 @@ func MigrateToPipe(ctx context.Context, readers []io.Reader, writers []io.Writer
 
 	dm := NewDirtyManager(vmState, dirtyDevices, authTransfer)
 
-	fmt.Printf("MigrateDirty...\n")
-
 	err = dg.MigrateDirty(&devicegroup.MigrateDirtyHooks{
 		PreGetDirty:      dm.PreGetDirty,
 		PostGetDirty:     dm.PostGetDirty,
@@ -390,15 +386,11 @@ func MigrateToPipe(ctx context.Context, readers []io.Reader, writers []io.Writer
 		return err
 	}
 
-	fmt.Printf("Completed...\n")
-
 	// Send Silo completion events for the devices. This will trigger any S3 sync behaviour etc.
 	err = dg.Completed()
 	if err != nil {
 		return err
 	}
-
-	fmt.Printf("DONE...\n")
 
 	return nil
 }

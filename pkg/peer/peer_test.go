@@ -37,6 +37,7 @@ func (rp *MockRuntimeProvider) Start(ctx context.Context, rescueCtx context.Cont
 
 func (rp *MockRuntimeProvider) Close() error {
 	fmt.Printf(" ### Close %s\n", rp.HomePath)
+	rp.Suspend(context.TODO(), 10*time.Second)
 	return nil
 }
 
@@ -54,6 +55,7 @@ func (rp *MockRuntimeProvider) Suspend(ctx context.Context, timeout time.Duratio
 	if rp.writeCancel != nil {
 		rp.writeCancel()         // Cancel the VM writer
 		rp.writeWaitGroup.Wait() // Wait until it's done
+		rp.writeCancel = nil
 	}
 	return nil
 }

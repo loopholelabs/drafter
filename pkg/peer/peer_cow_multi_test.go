@@ -220,7 +220,15 @@ func TestPeerCowMulti(t *testing.T) {
 		err = nextPeer.Resume(context.TODO(), 10*time.Second, 10*time.Second)
 		assert.NoError(t, err)
 
+		// Close from receiving side
+		r2.Close()
+		w1.Close()
+
 		// Make sure we can close the last peer.
+		for _, devName := range common.KnownNames {
+			os.Remove(path.Join(fmt.Sprintf("%s_%d", testPeerDirCow, migration), devName))
+		}
+
 		err = lastPeer.Close()
 		assert.NoError(t, err)
 
