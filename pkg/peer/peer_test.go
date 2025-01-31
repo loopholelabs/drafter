@@ -51,22 +51,32 @@ func (rp *MockRuntimeProvider) GetVMPid() int {
 func (rp *MockRuntimeProvider) Suspend(ctx context.Context, timeout time.Duration) error {
 	fmt.Printf(" ### Suspend %s\n", rp.HomePath)
 
-	rp.writeCancel()         // Cancel the VM writer
-	rp.writeWaitGroup.Wait() // Wait until it's done
+	if rp.writeCancel != nil {
+		rp.writeCancel()         // Cancel the VM writer
+		rp.writeWaitGroup.Wait() // Wait until it's done
+	}
 	return nil
 }
 
 func (rp *MockRuntimeProvider) FlushData(ctx context.Context) error {
 	fmt.Printf(" ### FlushData %s\n", rp.HomePath)
+	/*
+		for _, devName := range common.KnownNames {
+			fp, err := os.OpenFile(path.Join(rp.HomePath, devName), os.O_RDWR, 0777)
+			assert.NoError(rp.t, err)
 
+			err = fp.Sync()
+			assert.NoError(rp.t, err)
+			err = fp.Close()
+			assert.NoError(rp.t, err)
+		}
+	*/
 	// Shouldn't need anything here, but may need fs.Sync
 	return nil
 }
 
 func (rp *MockRuntimeProvider) Resume(resumeTimeout time.Duration, rescueTimeout time.Duration, errChan chan error) error {
 	fmt.Printf(" ### Resume %s\n", rp.HomePath)
-
-	periodWrites := 400 * time.Millisecond
 
 	for _, n := range common.KnownNames {
 		buffer, err := os.ReadFile(path.Join(rp.HomePath, n))
@@ -75,47 +85,53 @@ func (rp *MockRuntimeProvider) Resume(resumeTimeout time.Duration, rescueTimeout
 		fmt.Printf(" # HASH # %s ~ %x\n", n, hash)
 	}
 
-	// Setup something to write to the devices randomly
-	rp.writeContext, rp.writeCancel = context.WithCancel(context.TODO())
-	rp.writeWaitGroup.Add(1)
-	go func() {
-		defer rp.writeWaitGroup.Done()
+	if rp.DoWrites {
+		periodWrites := 400 * time.Millisecond
 
-		if rp.DoWrites {
-			// TODO: Write to some devices randomly until the context is cancelled...
+		// Setup something to write to the devices randomly
+		rp.writeContext, rp.writeCancel = context.WithCancel(context.TODO())
+		rp.writeWaitGroup.Add(1)
+		go func() {
+			defer rp.writeWaitGroup.Done()
 
-			for {
-				dev := rand.Intn(len(common.KnownNames))
-				devName := common.KnownNames[dev]
-				// Lets change a byte in this device...
-				fp, err := os.OpenFile(path.Join(rp.HomePath, devName), os.O_RDWR, 0777)
-				assert.NoError(rp.t, err)
+			if rp.DoWrites {
+				// TODO: Write to some devices randomly until the context is cancelled...
 
-				size := rp.DeviceSizes[devName]
-				data := make([]byte, 4096)
-				crand.Read(data)
-				offset := rand.Intn(size - len(data))
+				for {
+					dev := rand.Intn(len(common.KnownNames))
+					devName := common.KnownNames[dev]
+					// Lets change a byte in this device...
+					fp, err := os.OpenFile(path.Join(rp.HomePath, devName), os.O_RDWR, 0777)
+					assert.NoError(rp.t, err)
 
-				fmt.Printf(" ### WriteAt %s %s offset %d\n", rp.HomePath, devName, offset)
-				// Write some random data to the device...
-				_, err = fp.WriteAt(data, int64(offset))
-				assert.NoError(rp.t, err)
-				err = fp.Close()
-				assert.NoError(rp.t, err)
+					size := rp.DeviceSizes[devName]
+					data := make([]byte, 4096)
+					crand.Read(data)
+					offset := rand.Intn(size - len(data))
 
-				select {
-				case <-rp.writeContext.Done():
-					fmt.Printf(" ### Writer stopped\n")
-					return
-				case <-time.After(periodWrites):
-					break
+					fmt.Printf(" ### WriteAt %s %s offset %d\n", rp.HomePath, devName, offset)
+					// Write some random data to the device...
+					_, err = fp.WriteAt(data, int64(offset))
+					assert.NoError(rp.t, err)
+
+					err = fp.Sync()
+					assert.NoError(rp.t, err)
+					err = fp.Close()
+					assert.NoError(rp.t, err)
+
+					select {
+					case <-rp.writeContext.Done():
+						fmt.Printf(" ### Writer stopped\n")
+						return
+					case <-time.After(periodWrites):
+						break
+					}
 				}
+
 			}
 
-		}
-
-	}()
-
+		}()
+	}
 	return nil
 }
 
