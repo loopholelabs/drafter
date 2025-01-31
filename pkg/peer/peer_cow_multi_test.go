@@ -191,6 +191,27 @@ func TestPeerCowMulti(t *testing.T) {
 			}
 		}
 
+		// HACK
+
+		for _, devName := range common.KnownNames {
+			os.Remove(path.Join(fmt.Sprintf("%s_%d", testPeerDirCow, migration+1), devName))
+		}
+
+		nextPeer.Close()
+		nextPeer, err = StartPeer(context.TODO(), context.Background(), log, nil, rp2)
+		assert.NoError(t, err)
+
+		hooks1 := MigrateFromHooks{
+			OnLocalDeviceRequested:     func(id uint32, path string) {},
+			OnLocalDeviceExposed:       func(id uint32, path string) {},
+			OnLocalAllDevicesRequested: func() {},
+			OnXferCustomData:           func(data []byte) {},
+		}
+
+		err = nextPeer.MigrateFrom(context.TODO(), devicesFrom[migration+1], nil, nil, hooks1)
+		assert.NoError(t, err)
+		// END OF HACK
+
 		// We can resume here, and will start writes again.
 		err = nextPeer.Resume(context.TODO(), 10*time.Second, 10*time.Second)
 		assert.NoError(t, err)
