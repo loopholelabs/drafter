@@ -15,7 +15,6 @@ import (
 
 	"github.com/loopholelabs/drafter/pkg/common"
 	"github.com/loopholelabs/logging"
-	"github.com/loopholelabs/logging/types"
 	"github.com/loopholelabs/silo/pkg/storage/migrator"
 	"github.com/stretchr/testify/assert"
 )
@@ -26,12 +25,12 @@ func setupDevicesCow(t *testing.T, num int) ([]common.MigrateToDevice, [][]commo
 	for n := 0; n < num; n++ {
 		err := os.Mkdir(fmt.Sprintf("%s_%d", testPeerDirCow, n), 0777)
 		assert.NoError(t, err)
-		/*
-			t.Cleanup(func() {
-				err := os.RemoveAll(fmt.Sprintf("%s_%d", testPeerDirCow, n))
-				assert.NoError(t, err)
-			})
-		*/
+
+		t.Cleanup(func() {
+			err := os.RemoveAll(fmt.Sprintf("%s_%d", testPeerDirCow, n))
+			assert.NoError(t, err)
+		})
+
 	}
 
 	devicesTo := make([]common.MigrateToDevice, 0)
@@ -83,7 +82,7 @@ func setupDevicesCow(t *testing.T, num int) ([]common.MigrateToDevice, [][]commo
 func TestPeerCowMulti(t *testing.T) {
 
 	log := logging.New(logging.Zerolog, "test", os.Stderr)
-	log.SetLevel(types.DebugLevel)
+	//	log.SetLevel(types.TraceLevel)
 
 	numMigrations := 2
 
@@ -185,7 +184,7 @@ func TestPeerCowMulti(t *testing.T) {
 				hash1 := sha256.Sum256(buff1)
 				hash2 := sha256.Sum256(buff2)
 
-				fmt.Printf(" # Migration %d End hash %s ~ %x | %x\n", migration+1, n, hash1, hash2)
+				fmt.Printf(" # Migration %d End hash %s ~ %x => %x\n", migration+1, n, hash1, hash2)
 
 				// Check the data is identical
 				assert.Equal(t, hash1, hash2)
@@ -201,6 +200,8 @@ func TestPeerCowMulti(t *testing.T) {
 		assert.NoError(t, err)
 
 		lastPeer = nextPeer
+
+		fmt.Printf("\nMIGRATION %d COMPLETED\n\n", migration+1)
 	}
 
 	// Close the final peer

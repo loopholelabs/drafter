@@ -2,6 +2,7 @@ package common
 
 import (
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 )
@@ -56,6 +57,9 @@ func (dm *DirtyManager) PreGetDirty(name string) error {
 }
 
 func (dm *DirtyManager) PostGetDirty(name string, blocks []uint) (bool, error) {
+
+	fmt.Printf(" -- -- -- -- PostGetDirty %s blocks %d\n", name, blocks)
+
 	// If there were no dirty blocks, and the VM is stopped, return false (finish doing dirty sync)
 	if len(blocks) == 0 && dm.VMState.CheckSuspendedVM() {
 		err := dm.markReadyDeviceSentDirty(name)
