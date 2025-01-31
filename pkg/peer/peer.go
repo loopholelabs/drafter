@@ -190,7 +190,10 @@ func (peer *Peer) MigrateFrom(ctx context.Context, devices []common.MigrateFromD
 			}
 			err := dg.WaitForCompletion()
 			if peer.log != nil {
-				peer.log.Trace().Err(err).Msg("device migrations completed")
+				if err != nil {
+					peer.log.Trace().Err(err).Msg("device migrations completed")
+				}
+				peer.log.Trace().Msg("device migrations completed")
 			}
 			if err != nil {
 				select {
