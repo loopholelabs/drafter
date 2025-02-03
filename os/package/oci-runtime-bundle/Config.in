@@ -24,4 +24,10 @@ config BR2_PACKAGE_OCI_RUNTIME_BUNDLE_CONTAINER_NAME
     help
       Name to give to the container started by crun
 
+config BR2_PACKAGE_OCI_RUNTIME_BUNDLE_SYSTEMD_INSTALL_DIR
+    string "oci-runtime-bundle-systemd-install-dir"
+    default "/usr/lib/systemd/system"
+    help
+      Directory to place the systemd unit file for the OCI runtime bundle service
+
 endif
