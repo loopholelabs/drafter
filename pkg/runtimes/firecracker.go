@@ -75,23 +75,23 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Resume(resumeTimeout time.Duratio
 		rp.AgentServerHooks,
 		rp.SnapshotLoadConfiguration,
 	)
-	if err == nil {
-		if err == nil {
-			go func() {
-				err := rp.ResumedRunner.Wait()
-				if err != nil {
-					select {
-					case errChan <- err:
-					default:
-					}
-				}
-			}()
-		}
-
+	if err != nil {
+		return err
 	}
 
-	rp.Remote = rp.ResumedRunner.Remote
-	return err
+	rp.Remote = *rp.ResumedRunner.Remote
+
+	go func() {
+		err := rp.ResumedRunner.Wait()
+		if err != nil {
+			select {
+			case errChan <- err:
+			default:
+			}
+		}
+	}()
+
+	return nil
 }
 
 func (rp *FirecrackerRuntimeProvider[L, R, G]) Start(ctx context.Context, rescueCtx context.Context, errChan chan error) error {

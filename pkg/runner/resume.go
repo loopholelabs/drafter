@@ -19,7 +19,7 @@ import (
 )
 
 type ResumedRunner[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] struct {
-	Remote R
+	Remote *R
 
 	Wait  func() error
 	Close func() error
@@ -245,7 +245,7 @@ func (runner *Runner[L, R, G]) Resume(
 		if err != nil {
 			panic(errors.Join(ErrCouldNotAcceptAgent, err))
 		}
-		resumedRunner.Remote = resumedRunner.acceptingAgent.Remote
+		resumedRunner.Remote = &resumedRunner.acceptingAgent.Remote
 	}
 
 	// We intentionally don't call `wg.Add` and `wg.Done` here since we return the process's wait method
