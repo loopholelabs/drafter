@@ -180,6 +180,7 @@ func main() {
 			S3AccessKey: device.S3AccessKey,
 			S3SecretKey: device.S3SecretKey,
 			S3Endpoint:  device.S3Endpoint,
+			S3Secure:    device.S3Secure,
 			S3Bucket:    device.S3Bucket,
 		})
 	}

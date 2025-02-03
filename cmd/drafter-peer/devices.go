@@ -32,6 +32,7 @@ type CompositeDevices struct {
 	S3AccessKey string `json:"s3accesskey"`
 	S3SecretKey string `json:"s3secretkey"`
 	S3Endpoint  string `json:"s3endpoint"`
+	S3Secure    bool   `json:"s3secure"`
 	S3Bucket    string `json:"s3bucket"`
 }
 
