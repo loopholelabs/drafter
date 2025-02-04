@@ -46,6 +46,8 @@ type MigrateFromDevice struct {
 	BlockSize uint32 `json:"blockSize"`
 	Shared    bool   `json:"shared"`
 
+	SharedBase bool `json:"sharedbase"`
+
 	S3Sync      bool   `json:"s3sync"`
 	S3AccessKey string `json:"s3accesskey"`
 	S3SecretKey string `json:"s3secretkey"`
@@ -119,6 +121,8 @@ func CreateSiloDevSchema(i *MigrateFromDevice) (*config.DeviceSchema, error) {
 		ds.System = "sparsefile"
 		ds.Location = i.Overlay
 
+		ds.ROSourceShared = i.SharedBase
+
 		ds.ROSource = &config.DeviceSchema{
 			Name:     i.State,
 			System:   "file",
@@ -179,6 +183,9 @@ func CreateIncomingSiloDevSchema(i *MigrateFromDevice, schema *config.DeviceSche
 
 		ds.System = "sparsefile"
 		ds.Location = i.Overlay
+
+		// If it was shared with us, assume it's going to be shared with future migrations
+		ds.ROSourceShared = i.SharedBase
 
 		ds.ROSource = &config.DeviceSchema{
 			Name:     i.State,
@@ -342,7 +349,7 @@ func MigrateToPipe(ctx context.Context, readers []io.Reader, writers []io.Writer
 	}()
 
 	// Start a migration to the protocol. This will send all schema info etc
-	err := dg.StartMigrationTo(pro)
+	err := dg.StartMigrationTo(pro, true)
 	if err != nil {
 		return err
 	}

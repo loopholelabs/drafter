@@ -28,6 +28,8 @@ type CompositeDevices struct {
 	MakeMigratable bool `json:"makeMigratable"`
 	Shared         bool `json:"shared"`
 
+	SharedBase bool `json:"sharedbase"`
+
 	S3Sync      bool   `json:"s3sync"`
 	S3AccessKey string `json:"s3accesskey"`
 	S3SecretKey string `json:"s3secretkey"`

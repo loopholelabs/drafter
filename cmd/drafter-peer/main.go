@@ -176,6 +176,7 @@ func main() {
 			State:       device.State,
 			BlockSize:   device.BlockSize,
 			Shared:      device.Shared,
+			SharedBase:  device.SharedBase,
 			S3Sync:      device.S3Sync,
 			S3AccessKey: device.S3AccessKey,
 			S3SecretKey: device.S3SecretKey,
