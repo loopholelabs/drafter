@@ -237,6 +237,10 @@ func (peer *Peer) MigrateFrom(ctx context.Context, devices []common.MigrateFromD
 		if hook := hooks.OnLocalAllDevicesRequested; hook != nil {
 			hook()
 		}
+
+		if hooks.OnCompletion != nil {
+			go hooks.OnCompletion()
+		}
 	}
 
 	return nil
