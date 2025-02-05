@@ -58,7 +58,7 @@ func main() {
 
 	serveMetrics := flag.String("metrics", "", "Address to serve metrics from")
 
-	disablePostCopyMigration := flag.Bool("disable-postcopy-migration", false, "Whether to disable post-copy migration")
+	disablePostcopyMigration := flag.Bool("disable-postcopy-migration", false, "Whether to disable post-copy migration")
 
 	flag.Parse()
 
@@ -227,7 +227,7 @@ func main() {
 		panic(err)
 	}
 
-	if !*disablePostCopyMigration {
+	if !*disablePostcopyMigration {
 		select {
 		case <-ctx.Done():
 		case <-ready:
