@@ -58,6 +58,8 @@ func main() {
 
 	serveMetrics := flag.String("metrics", "", "Address to serve metrics from")
 
+	disablePostCopyMigration := flag.Bool("disable-postcopy-migration", false, "Whether to disable post-copy migration")
+
 	flag.Parse()
 
 	var reg *prometheus.Registry
@@ -200,6 +202,7 @@ func main() {
 		log.Info().Str("remote", remoteAddr).Msg("Migrating from")
 	}
 
+	ready := make(chan struct{})
 	err = p.MigrateFrom(ctx, migrateFromDevices, readers, writers,
 		peer.MigrateFromHooks{
 			OnLocalDeviceRequested: func(localDeviceID uint32, name string) {
@@ -211,12 +214,24 @@ func main() {
 			OnLocalAllDevicesRequested: func() {
 				log.Info().Msg("Requested all local devices")
 			},
+			OnCompletion: func() {
+				log.Info().Msg("Finished all migrations")
+
+				close(ready)
+			},
 		},
 	)
 
 	if err != nil {
 		log.Error().Err(err).Msg("Could not migrate peer")
 		panic(err)
+	}
+
+	if !*disablePostCopyMigration {
+		select {
+		case <-ctx.Done():
+		case <-ready:
+		}
 	}
 
 	before := time.Now()
