@@ -148,6 +148,9 @@ func CreateSiloDevSchema(i *MigrateFromDevice) (*config.DeviceSchema, error) {
 				CheckPeriod: "100ms",
 			},
 		}
+		if ds.ROSourceShared {
+			ds.Sync.Config.OnlyDirty = true
+		}
 	}
 	return ds, nil
 }
