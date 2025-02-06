@@ -10,8 +10,8 @@ require (
 	github.com/klauspost/compress v1.17.11
 	github.com/lithammer/shortuuid/v4 v4.2.0
 	github.com/loopholelabs/goroutine-manager v0.1.1
-	github.com/loopholelabs/logging v0.3.1
-	github.com/loopholelabs/silo v0.2.1
+	github.com/loopholelabs/logging v0.3.2
+	github.com/loopholelabs/silo v0.2.2
 	github.com/metal-stack/go-ipam v1.14.7
 	github.com/pojntfx/panrpc/go v0.0.0-20241003051136-b93809e92a15
 	github.com/prometheus/client_golang v1.20.5
@@ -52,7 +52,7 @@ require (
 	github.com/mdlayher/netlink v1.7.2 // indirect
 	github.com/mdlayher/socket v0.5.1 // indirect
 	github.com/minio/md5-simd v1.1.2 // indirect
-	github.com/minio/minio-go/v7 v7.0.83 // indirect
+	github.com/minio/minio-go/v7 v7.0.84 // indirect
 	github.com/mitchellh/go-wordwrap v1.0.1 // indirect
 	github.com/montanaflynn/stats v0.7.1 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect

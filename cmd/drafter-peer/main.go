@@ -227,7 +227,8 @@ func main() {
 		panic(err)
 	}
 
-	if !*disablePostcopyMigration {
+	// If we disable post copy migration, wait here until the data is available.
+	if *disablePostcopyMigration {
 		select {
 		case <-ctx.Done():
 		case <-ready:
