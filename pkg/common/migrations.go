@@ -100,6 +100,7 @@ func CreateSiloDevSchema(i *MigrateFromDevice) (*config.DeviceSchema, error) {
 		BlockSize: fmt.Sprintf("%v", i.BlockSize),
 		Expose:    true,
 		Size:      fmt.Sprintf("%v", stat.Size()),
+		//		Binlog:    path.Join("binlog", i.Name),
 	}
 	if strings.TrimSpace(i.Overlay) == "" || strings.TrimSpace(i.State) == "" {
 		err := os.MkdirAll(filepath.Dir(i.Base), os.ModePerm)
@@ -274,7 +275,7 @@ func MigrateFromPipe(log types.Logger, met metrics.SiloMetrics, vmpath string,
 	// Start a goroutine to do the protocol Handle()
 	go func() {
 		err := pro.Handle()
-		if err != nil && !errors.Is(err, io.EOF) {
+		if err != nil {
 			// This deserves a warning log message, but will result in other errors being returned
 			// so can be ignored here.
 			if log != nil {
@@ -347,9 +348,7 @@ func MigrateToPipe(ctx context.Context, readers []io.Reader, writers []io.Writer
 	// Start a goroutine to do the protocol Handle()
 	go func() {
 		err := pro.Handle()
-		if err != nil && !errors.Is(err, io.EOF) {
-			// Deserves a log, but not critical, as it'll get returned in other errors
-			//			fmt.Printf("ERROR in protocol %v\n", err)
+		if err != nil {
 			protocolCancel()
 		}
 	}()

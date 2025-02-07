@@ -15,6 +15,7 @@ import (
 
 	"github.com/loopholelabs/drafter/pkg/common"
 	"github.com/loopholelabs/logging"
+	"github.com/loopholelabs/logging/types"
 	"github.com/loopholelabs/silo/pkg/storage/migrator"
 	"github.com/stretchr/testify/assert"
 )
@@ -348,7 +349,7 @@ func TestPeer(t *testing.T) {
 func TestPeerEarlyClose(t *testing.T) {
 
 	log := logging.New(logging.Zerolog, "test", os.Stderr)
-	//	log.SetLevel(types.TraceLevel)
+	log.SetLevel(types.DebugLevel)
 
 	devicesInit, devicesFrom, devicesTo, deviceSizes := setupDevices(t)
 
@@ -398,6 +399,7 @@ func TestPeerEarlyClose(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		err := peer.MigrateTo(context.TODO(), devicesTo, 10*time.Second, 10, []io.Reader{r1}, []io.Writer{w2}, hooks)
+		fmt.Printf("MigrateTo returned %v\n", err)
 		// We expect there to be an error here...
 		assert.Error(t, err)
 		wg.Done()
@@ -415,9 +417,11 @@ func TestPeerEarlyClose(t *testing.T) {
 	err = peer2.MigrateFrom(context.TODO(), devicesFrom, []io.Reader{r2}, []io.Writer{w1}, hooks2)
 	assert.NoError(t, err)
 
-	// CLOSE the connection before migration has completed.
+	// CLOSE the connection on the receiving side before migration has completed.
 	r2.Close()
 	w1.Close()
+
+	fmt.Printf("Waiting for wg\n")
 
 	wg.Wait()
 
