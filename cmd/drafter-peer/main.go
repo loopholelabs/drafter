@@ -172,18 +172,19 @@ func main() {
 	migrateFromDevices := []common.MigrateFromDevice{}
 	for _, device := range devices {
 		migrateFromDevices = append(migrateFromDevices, common.MigrateFromDevice{
-			Name:        device.Name,
-			Base:        device.Base,
-			Overlay:     device.Overlay,
-			State:       device.State,
-			BlockSize:   device.BlockSize,
-			Shared:      device.Shared,
-			SharedBase:  device.SharedBase,
-			S3Sync:      device.S3Sync,
-			S3AccessKey: device.S3AccessKey,
-			S3SecretKey: device.S3SecretKey,
-			S3Endpoint:  device.S3Endpoint,
-			S3Bucket:    device.S3Bucket,
+			Name:          device.Name,
+			Base:          device.Base,
+			Overlay:       device.Overlay,
+			State:         device.State,
+			BlockSize:     device.BlockSize,
+			Shared:        device.Shared,
+			SharedBase:    device.SharedBase,
+			S3Sync:        device.S3Sync,
+			S3AccessKey:   device.S3AccessKey,
+			S3SecretKey:   device.S3SecretKey,
+			S3Endpoint:    device.S3Endpoint,
+			S3Bucket:      device.S3Bucket,
+			S3Concurrency: device.S3Concurrency,
 		})
 	}
 
