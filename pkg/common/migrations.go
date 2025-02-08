@@ -52,6 +52,7 @@ type MigrateFromDevice struct {
 	S3AccessKey   string `json:"s3accesskey"`
 	S3SecretKey   string `json:"s3secretkey"`
 	S3Endpoint    string `json:"s3endpoint"`
+	S3Secure      bool   `json:"s3secure"`
 	S3Bucket      string `json:"s3bucket"`
 	S3Concurrency int    `json:"s3concurrency"`
 }
@@ -135,10 +136,10 @@ func CreateSiloDevSchema(i *MigrateFromDevice) (*config.DeviceSchema, error) {
 
 	if i.S3Sync {
 		ds.Sync = &config.SyncS3Schema{
-			Secure:          true,
 			AccessKey:       i.S3AccessKey,
 			SecretKey:       i.S3SecretKey,
 			Endpoint:        i.S3Endpoint,
+			Secure:          i.S3Secure,
 			Bucket:          i.S3Bucket,
 			AutoStart:       true,
 			GrabConcurrency: i.S3Concurrency,
