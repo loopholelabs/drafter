@@ -46,12 +46,15 @@ type MigrateFromDevice struct {
 	BlockSize uint32 `json:"blockSize"`
 	Shared    bool   `json:"shared"`
 
-	S3Sync      bool   `json:"s3sync"`
-	S3AccessKey string `json:"s3accesskey"`
-	S3SecretKey string `json:"s3secretkey"`
-	S3Endpoint  string `json:"s3endpoint"`
-	S3Secure    bool   `json:"s3secure"`
-	S3Bucket    string `json:"s3bucket"`
+	SharedBase bool `json:"sharedbase"`
+
+	S3Sync        bool   `json:"s3sync"`
+	S3AccessKey   string `json:"s3accesskey"`
+	S3SecretKey   string `json:"s3secretkey"`
+	S3Endpoint    string `json:"s3endpoint"`
+	S3Secure      bool   `json:"s3secure"`
+	S3Bucket      string `json:"s3bucket"`
+	S3Concurrency int    `json:"s3concurrency"`
 }
 
 var (
@@ -98,6 +101,7 @@ func CreateSiloDevSchema(i *MigrateFromDevice) (*config.DeviceSchema, error) {
 		BlockSize: fmt.Sprintf("%v", i.BlockSize),
 		Expose:    true,
 		Size:      fmt.Sprintf("%v", stat.Size()),
+		//		Binlog:    path.Join("binlog", i.Name),
 	}
 	if strings.TrimSpace(i.Overlay) == "" || strings.TrimSpace(i.State) == "" {
 		err := os.MkdirAll(filepath.Dir(i.Base), os.ModePerm)
@@ -120,6 +124,8 @@ func CreateSiloDevSchema(i *MigrateFromDevice) (*config.DeviceSchema, error) {
 		ds.System = "sparsefile"
 		ds.Location = i.Overlay
 
+		ds.ROSourceShared = i.SharedBase
+
 		ds.ROSource = &config.DeviceSchema{
 			Name:     i.State,
 			System:   "file",
@@ -130,12 +136,13 @@ func CreateSiloDevSchema(i *MigrateFromDevice) (*config.DeviceSchema, error) {
 
 	if i.S3Sync {
 		ds.Sync = &config.SyncS3Schema{
-			AccessKey: i.S3AccessKey,
-			SecretKey: i.S3SecretKey,
-			Endpoint:  i.S3Endpoint,
-			Secure:    i.S3Secure,
-			Bucket:    i.S3Bucket,
-			AutoStart: true,
+			AccessKey:       i.S3AccessKey,
+			SecretKey:       i.S3SecretKey,
+			Endpoint:        i.S3Endpoint,
+			Secure:          i.S3Secure,
+			Bucket:          i.S3Bucket,
+			AutoStart:       true,
+			GrabConcurrency: i.S3Concurrency,
 			Config: &config.SyncConfigSchema{
 				OnlyDirty:   false,
 				BlockShift:  2,
@@ -143,7 +150,11 @@ func CreateSiloDevSchema(i *MigrateFromDevice) (*config.DeviceSchema, error) {
 				MinChanged:  4,
 				Limit:       256,
 				CheckPeriod: "100ms",
+				Concurrency: i.S3Concurrency,
 			},
+		}
+		if ds.ROSourceShared {
+			ds.Sync.Config.OnlyDirty = true
 		}
 	}
 	return ds, nil
@@ -180,6 +191,9 @@ func CreateIncomingSiloDevSchema(i *MigrateFromDevice, schema *config.DeviceSche
 
 		ds.System = "sparsefile"
 		ds.Location = i.Overlay
+
+		// If it was shared with us, assume it's going to be shared with future migrations
+		ds.ROSourceShared = i.SharedBase
 
 		ds.ROSource = &config.DeviceSchema{
 			Name:     i.State,
@@ -262,7 +276,7 @@ func MigrateFromPipe(log types.Logger, met metrics.SiloMetrics, vmpath string,
 	// Start a goroutine to do the protocol Handle()
 	go func() {
 		err := pro.Handle()
-		if err != nil && !errors.Is(err, io.EOF) {
+		if err != nil {
 			// This deserves a warning log message, but will result in other errors being returned
 			// so can be ignored here.
 			if log != nil {
@@ -335,15 +349,13 @@ func MigrateToPipe(ctx context.Context, readers []io.Reader, writers []io.Writer
 	// Start a goroutine to do the protocol Handle()
 	go func() {
 		err := pro.Handle()
-		if err != nil && !errors.Is(err, io.EOF) {
-			// Deserves a log, but not critical, as it'll get returned in other errors
-			//			fmt.Printf("ERROR in protocol %v\n", err)
+		if err != nil {
 			protocolCancel()
 		}
 	}()
 
 	// Start a migration to the protocol. This will send all schema info etc
-	err := dg.StartMigrationTo(pro)
+	err := dg.StartMigrationTo(pro, true)
 	if err != nil {
 		return err
 	}

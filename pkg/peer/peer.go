@@ -191,14 +191,30 @@ func (peer *Peer) MigrateFrom(ctx context.Context, devices []common.MigrateFromD
 			err := dg.WaitForCompletion()
 			if peer.log != nil {
 				if err != nil {
-					peer.log.Trace().Err(err).Msg("device migrations completed")
+					peer.log.Error().Err(err).Msg("device migrations completed")
 				} else {
-					peer.log.Trace().Msg("device migrations completed")
+					peer.log.Debug().Msg("device migrations completed")
 				}
 			}
 			if err == nil {
-				if hooks.OnCompletion != nil {
-					hooks.OnCompletion()
+				err = dg.WaitForReady()
+				if peer.log != nil {
+					if err != nil {
+						peer.log.Error().Err(err).Msg("device migrations completed and ready")
+					} else {
+						peer.log.Debug().Msg("device migrations completed and ready")
+					}
+				}
+
+				if err == nil {
+					if hooks.OnCompletion != nil {
+						hooks.OnCompletion()
+					}
+				} else {
+					select {
+					case peer.backgroundErr <- err:
+					default:
+					}
 				}
 			} else {
 				select {
@@ -236,6 +252,10 @@ func (peer *Peer) MigrateFrom(ctx context.Context, devices []common.MigrateFromD
 
 		if hook := hooks.OnLocalAllDevicesRequested; hook != nil {
 			hook()
+		}
+
+		if hooks.OnCompletion != nil {
+			go hooks.OnCompletion()
 		}
 	}
 

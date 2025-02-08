@@ -28,12 +28,15 @@ type CompositeDevices struct {
 	MakeMigratable bool `json:"makeMigratable"`
 	Shared         bool `json:"shared"`
 
-	S3Sync      bool   `json:"s3sync"`
-	S3AccessKey string `json:"s3accesskey"`
-	S3SecretKey string `json:"s3secretkey"`
-	S3Endpoint  string `json:"s3endpoint"`
-	S3Secure    bool   `json:"s3secure"`
-	S3Bucket    string `json:"s3bucket"`
+	SharedBase bool `json:"sharedbase"`
+
+	S3Sync        bool   `json:"s3sync"`
+	S3AccessKey   string `json:"s3accesskey"`
+	S3SecretKey   string `json:"s3secretkey"`
+	S3Endpoint    string `json:"s3endpoint"`
+	S3Secure      bool   `json:"s3secure"`
+	S3Bucket      string `json:"s3bucket"`
+	S3Concurrency int    `json:"s3concurrency"`
 }
 
 func decodeDevices(data string) ([]CompositeDevices, error) {

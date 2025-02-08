@@ -112,10 +112,10 @@ github.com/lithammer/shortuuid/v4 v4.2.0 h1:LMFOzVB3996a7b8aBuEXxqOBflbfPQAiVzkI
 github.com/lithammer/shortuuid/v4 v4.2.0/go.mod h1:D5noHZ2oFw/YaKCfGy0YxyE7M0wMbezmMjPdhyEFe6Y=
 github.com/loopholelabs/goroutine-manager v0.1.1 h1:qpN9XcfNKp7aw8YI3YoIisCWZHK7/bAdnXs28ZhkM70=
 github.com/loopholelabs/goroutine-manager v0.1.1/go.mod h1:d0r+/HNqnDR/6AXv4Mbz0dJZ7P0nATksCjkt5WWDsqA=
-github.com/loopholelabs/logging v0.3.1 h1:VA9DF3WrbmvJC1uQJ/XcWgz8KWXydWwe3BdDiMbN2FY=
-github.com/loopholelabs/logging v0.3.1/go.mod h1:uRDUydiqPqKbZkb0WoQ3dfyAcJ2iOMhxdEafZssLVv0=
-github.com/loopholelabs/silo v0.1.9 h1:zZEDoCUsHCTy8N9/uzIXUAojN1b+cDS5Hg84NcLILaE=
-github.com/loopholelabs/silo v0.1.9/go.mod h1:ATzhaQ4LINNwvVy1qubVwD43rfI1926wGLmt+1IZI9w=
+github.com/loopholelabs/logging v0.3.2 h1:JPfQr/YcYoMlEbgwgoslQs/C2He/nPVCAD1FpdNceRo=
+github.com/loopholelabs/logging v0.3.2/go.mod h1:9p5/U/hNxghtUoD6k2Rzx7X4tr4ik3QzhyYUu1m7D58=
+github.com/loopholelabs/silo v0.2.5 h1:lRhEkGb575IyuZ8y5W9ZsBfl1kEyN2N6Bkhi0PPENBg=
+github.com/loopholelabs/silo v0.2.5/go.mod h1:Oxkj2RjqAKa+xHo+7x2EYQ92PWbJAOFdWg44xhrL0Qs=
 github.com/lufia/plan9stats v0.0.0-20240819163618-b1d8f4d146e7 h1:5RK988zAqB3/AN3opGfRpoQgAVqr6/A5+qRTi67VUZY=
 github.com/lufia/plan9stats v0.0.0-20240819163618-b1d8f4d146e7/go.mod h1:ilwx/Dta8jXAgpFYFvSWEMwxmbWXyiUHkd5FwyKhb5k=
 github.com/magiconair/properties v1.8.7 h1:IeQXZAiQcpL9mgcAe1Nu6cX9LLw6ExEHKjN0VQdvPDY=
@@ -138,8 +138,8 @@ github.com/metal-stack/go-ipam v1.14.7 h1:DA+uP72rAqGechwDJ3EzjI/snaMc77lGqoQYsy
 github.com/metal-stack/go-ipam v1.14.7/go.mod h1:YxQhPVl9cXFSs3/DpyYa4qVsYT+aDIlwfCFLt4znTqI=
 github.com/minio/md5-simd v1.1.2 h1:Gdi1DZK69+ZVMoNHRXJyNcxrMA4dSxoYHZSQbirFg34=
 github.com/minio/md5-simd v1.1.2/go.mod h1:MzdKDxYpY2BT9XQFocsiZf/NKVtR7nkE4RoEpN+20RM=
-github.com/minio/minio-go/v7 v7.0.83 h1:W4Kokksvlz3OKf3OqIlzDNKd4MERlC2oN8YptwJ0+GA=
-github.com/minio/minio-go/v7 v7.0.83/go.mod h1:57YXpvc5l3rjPdhqNrDsvVlY0qPI6UTk1bflAe+9doY=
+github.com/minio/minio-go/v7 v7.0.84 h1:D1HVmAF8JF8Bpi6IU4V9vIEj+8pc+xU88EWMs2yed0E=
+github.com/minio/minio-go/v7 v7.0.84/go.mod h1:57YXpvc5l3rjPdhqNrDsvVlY0qPI6UTk1bflAe+9doY=
 github.com/mitchellh/go-wordwrap v1.0.1 h1:TLuKupo69TCn6TQSyGxwI1EblZZEsQ0vMlAFQflz0v0=
 github.com/mitchellh/go-wordwrap v1.0.1/go.mod h1:R62XHJLzvMFRBbcrT7m7WgmE1eOyTSsCt+hzestvNj0=
 github.com/mitchellh/mapstructure v1.5.0 h1:jeMsZIYE/09sWLaz43PL7Gy6RuMjD2eJVyuac5Z2hdY=

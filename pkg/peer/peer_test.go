@@ -15,6 +15,7 @@ import (
 
 	"github.com/loopholelabs/drafter/pkg/common"
 	"github.com/loopholelabs/logging"
+	"github.com/loopholelabs/logging/types"
 	"github.com/loopholelabs/silo/pkg/storage/migrator"
 	"github.com/stretchr/testify/assert"
 )
@@ -211,6 +212,7 @@ func TestPeer(t *testing.T) {
 
 	devicesInit, devicesFrom, devicesTo, deviceSizes := setupDevices(t)
 
+	completion1Called := make(chan struct{})
 	rp := &MockRuntimeProvider{
 		HomePath:    testPeerSource,
 		DoWrites:    true,
@@ -224,6 +226,10 @@ func TestPeer(t *testing.T) {
 		OnLocalDeviceExposed:       func(id uint32, path string) {},
 		OnLocalAllDevicesRequested: func() {},
 		OnXferCustomData:           func(data []byte) {},
+		OnCompletion: func() {
+			fmt.Printf("Completed peer1!\n")
+			close(completion1Called)
+		},
 	}
 
 	err = peer.MigrateFrom(context.TODO(), devicesInit, nil, nil, hooks1)
@@ -231,6 +237,22 @@ func TestPeer(t *testing.T) {
 
 	err = peer.Resume(context.TODO(), 10*time.Second, 10*time.Second)
 	assert.NoError(t, err)
+
+	// Get test deadline context for first completion check
+	deadline1, ok := t.Deadline()
+	if !ok {
+		deadline1 = time.Now().Add(1 * time.Minute) // Fallback if no deadline set
+	}
+	ctx1, cancel1 := context.WithDeadline(context.Background(), deadline1)
+	defer cancel1()
+
+	// Wait for first completion or test deadline
+	select {
+	case <-completion1Called:
+		// OnCompletion was called as expected for peer1
+	case <-ctx1.Done():
+		t.Fatal("OnCompletion was not called before test deadline for peer1")
+	}
 
 	// Now we have a "resumed peer"
 
@@ -263,19 +285,39 @@ func TestPeer(t *testing.T) {
 		wg.Done()
 	}()
 
+	completion2Called := make(chan struct{})
 	hooks2 := MigrateFromHooks{
 		OnLocalDeviceRequested:     func(id uint32, path string) {},
 		OnLocalDeviceExposed:       func(id uint32, path string) {},
 		OnLocalAllDevicesRequested: func() {},
 		OnXferCustomData:           func(data []byte) {},
 		OnCompletion: func() {
-			fmt.Printf("Completed!\n")
+			fmt.Printf("Completed peer2!\n")
+			close(completion2Called)
 		},
 	}
+
 	err = peer2.MigrateFrom(context.TODO(), devicesFrom, []io.Reader{r2}, []io.Writer{w1}, hooks2)
 	assert.NoError(t, err)
 
+	// Wait for migration to complete
 	wg.Wait()
+
+	// Get test deadline context for second completion check
+	deadline2, ok := t.Deadline()
+	if !ok {
+		deadline2 = time.Now().Add(1 * time.Minute) // Fallback if no deadline set
+	}
+	ctx2, cancel2 := context.WithDeadline(context.Background(), deadline2)
+	defer cancel2()
+
+	// Wait for second completion or test deadline
+	select {
+	case <-completion2Called:
+		// OnCompletion was called as expected for peer2
+	case <-ctx2.Done():
+		t.Fatal("OnCompletion was not called before test deadline for peer2")
+	}
 
 	if err == nil && sendingErr == nil {
 		// Make sure everything migrated as expected...
@@ -307,7 +349,7 @@ func TestPeer(t *testing.T) {
 func TestPeerEarlyClose(t *testing.T) {
 
 	log := logging.New(logging.Zerolog, "test", os.Stderr)
-	//	log.SetLevel(types.TraceLevel)
+	log.SetLevel(types.DebugLevel)
 
 	devicesInit, devicesFrom, devicesTo, deviceSizes := setupDevices(t)
 
@@ -357,6 +399,7 @@ func TestPeerEarlyClose(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		err := peer.MigrateTo(context.TODO(), devicesTo, 10*time.Second, 10, []io.Reader{r1}, []io.Writer{w2}, hooks)
+		fmt.Printf("MigrateTo returned %v\n", err)
 		// We expect there to be an error here...
 		assert.Error(t, err)
 		wg.Done()
@@ -374,9 +417,11 @@ func TestPeerEarlyClose(t *testing.T) {
 	err = peer2.MigrateFrom(context.TODO(), devicesFrom, []io.Reader{r2}, []io.Writer{w1}, hooks2)
 	assert.NoError(t, err)
 
-	// CLOSE the connection before migration has completed.
+	// CLOSE the connection on the receiving side before migration has completed.
 	r2.Close()
 	w1.Close()
+
+	fmt.Printf("Waiting for wg\n")
 
 	wg.Wait()
 

@@ -1,4 +1,4 @@
-sudo drafter-peer --netns ark0 --raddr '' --laddr 'localhost:1337' --devices '[
+sudo drafter-peer --netns ark0 --raddr '' --laddr 'localhost:1337' --metrics 'localhost:2112' --devices '[
   {
     "name": "state",
     "base": "image/package/state.bin",
@@ -7,9 +7,9 @@ sudo drafter-peer --netns ark0 --raddr '' --laddr 'localhost:1337' --devices '[
     "blockSize": 1048576,
     "expiry": 1000000000,
     "maxDirtyBlocks": 200,
-    "minCycles": 5,
-    "maxCycles": 20,
-    "cycleThrottle": 500000000,
+    "minCycles": 2,
+    "maxCycles": 3,
+    "cycleThrottle": 100000000,
     "makeMigratable": true,
     "shared": false
   },
@@ -21,9 +21,9 @@ sudo drafter-peer --netns ark0 --raddr '' --laddr 'localhost:1337' --devices '[
     "blockSize": 1048576,
     "expiry": 1000000000,
     "maxDirtyBlocks": 200,
-    "minCycles": 5,
-    "maxCycles": 20,
-    "cycleThrottle": 500000000,
+    "minCycles": 2,
+    "maxCycles": 3,
+    "cycleThrottle": 100000000,
     "makeMigratable": true,
     "shared": false
   },
@@ -35,9 +35,9 @@ sudo drafter-peer --netns ark0 --raddr '' --laddr 'localhost:1337' --devices '[
     "blockSize": 1048576,
     "expiry": 1000000000,
     "maxDirtyBlocks": 200,
-    "minCycles": 5,
-    "maxCycles": 20,
-    "cycleThrottle": 500000000,
+    "minCycles": 2,
+    "maxCycles": 3,
+    "cycleThrottle": 100000000,
     "makeMigratable": true,
     "shared": false
   },
@@ -49,9 +49,9 @@ sudo drafter-peer --netns ark0 --raddr '' --laddr 'localhost:1337' --devices '[
     "blockSize": 1048576,
     "expiry": 1000000000,
     "maxDirtyBlocks": 200,
-    "minCycles": 5,
-    "maxCycles": 20,
-    "cycleThrottle": 500000000,
+    "minCycles": 2,
+    "maxCycles": 3,
+    "cycleThrottle": 100000000,
     "makeMigratable": true,
     "shared": false
   },
@@ -63,9 +63,9 @@ sudo drafter-peer --netns ark0 --raddr '' --laddr 'localhost:1337' --devices '[
     "blockSize": 1048576,
     "expiry": 1000000000,
     "maxDirtyBlocks": 200,
-    "minCycles": 5,
-    "maxCycles": 20,
-    "cycleThrottle": 500000000,
+    "minCycles": 2,
+    "maxCycles": 3,
+    "cycleThrottle": 100000000,
     "makeMigratable": true,
     "shared": false
   },
@@ -77,9 +77,9 @@ sudo drafter-peer --netns ark0 --raddr '' --laddr 'localhost:1337' --devices '[
     "blockSize": 1048576,
     "expiry": 1000000000,
     "maxDirtyBlocks": 200,
-    "minCycles": 5,
-    "maxCycles": 20,
-    "cycleThrottle": 500000000,
+    "minCycles": 2,
+    "maxCycles": 3,
+    "cycleThrottle": 100000000,
     "makeMigratable": true,
     "shared": false
   }

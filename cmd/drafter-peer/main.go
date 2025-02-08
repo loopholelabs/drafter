@@ -58,6 +58,8 @@ func main() {
 
 	serveMetrics := flag.String("metrics", "", "Address to serve metrics from")
 
+	disablePostcopyMigration := flag.Bool("disable-postcopy-migration", false, "Whether to disable post-copy migration")
+
 	flag.Parse()
 
 	var reg *prometheus.Registry
@@ -170,18 +172,20 @@ func main() {
 	migrateFromDevices := []common.MigrateFromDevice{}
 	for _, device := range devices {
 		migrateFromDevices = append(migrateFromDevices, common.MigrateFromDevice{
-			Name:        device.Name,
-			Base:        device.Base,
-			Overlay:     device.Overlay,
-			State:       device.State,
-			BlockSize:   device.BlockSize,
-			Shared:      device.Shared,
-			S3Sync:      device.S3Sync,
-			S3AccessKey: device.S3AccessKey,
-			S3SecretKey: device.S3SecretKey,
-			S3Endpoint:  device.S3Endpoint,
-			S3Secure:    device.S3Secure,
-			S3Bucket:    device.S3Bucket,
+			Name:          device.Name,
+			Base:          device.Base,
+			Overlay:       device.Overlay,
+			State:         device.State,
+			BlockSize:     device.BlockSize,
+			Shared:        device.Shared,
+			SharedBase:    device.SharedBase,
+			S3Sync:        device.S3Sync,
+			S3AccessKey:   device.S3AccessKey,
+			S3SecretKey:   device.S3SecretKey,
+			S3Endpoint:    device.S3Endpoint,
+			S3Secure:      device.S3Secure,
+			S3Bucket:      device.S3Bucket,
+			S3Concurrency: device.S3Concurrency,
 		})
 	}
 
@@ -200,6 +204,7 @@ func main() {
 		log.Info().Str("remote", remoteAddr).Msg("Migrating from")
 	}
 
+	ready := make(chan struct{})
 	err = p.MigrateFrom(ctx, migrateFromDevices, readers, writers,
 		peer.MigrateFromHooks{
 			OnLocalDeviceRequested: func(localDeviceID uint32, name string) {
@@ -211,12 +216,25 @@ func main() {
 			OnLocalAllDevicesRequested: func() {
 				log.Info().Msg("Requested all local devices")
 			},
+			OnCompletion: func() {
+				log.Info().Msg("Finished all migrations")
+
+				close(ready)
+			},
 		},
 	)
 
 	if err != nil {
 		log.Error().Err(err).Msg("Could not migrate peer")
 		panic(err)
+	}
+
+	// If we disable post copy migration, wait here until the data is available.
+	if *disablePostcopyMigration {
+		select {
+		case <-ctx.Done():
+		case <-ready:
+		}
 	}
 
 	before := time.Now()
