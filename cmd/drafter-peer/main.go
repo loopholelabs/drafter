@@ -20,8 +20,6 @@ import (
 	"github.com/loopholelabs/drafter/pkg/snapshotter"
 	"github.com/loopholelabs/logging"
 	"github.com/loopholelabs/logging/types"
-	"github.com/loopholelabs/silo/pkg/storage/metrics"
-	siloprom "github.com/loopholelabs/silo/pkg/storage/metrics/prometheus"
 	"github.com/loopholelabs/silo/pkg/storage/migrator"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
@@ -63,11 +61,8 @@ func main() {
 	flag.Parse()
 
 	var reg *prometheus.Registry
-	var siloMetrics metrics.SiloMetrics
 	if *serveMetrics != "" {
 		reg = prometheus.NewRegistry()
-
-		siloMetrics = siloprom.New(reg, siloprom.DefaultConfig())
 
 		// Add the default go metrics
 		reg.MustRegister(
@@ -148,7 +143,7 @@ func main() {
 
 	p, err := peer.StartPeer(ctx,
 		context.Background(), // Never give up on rescue operations
-		log, siloMetrics, rp,
+		log, reg, rp,
 	)
 
 	if err != nil {

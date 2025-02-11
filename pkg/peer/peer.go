@@ -13,7 +13,9 @@ import (
 	"github.com/loopholelabs/silo/pkg/storage/config"
 	"github.com/loopholelabs/silo/pkg/storage/devicegroup"
 	"github.com/loopholelabs/silo/pkg/storage/metrics"
+	siloprom "github.com/loopholelabs/silo/pkg/storage/metrics/prometheus"
 	"github.com/loopholelabs/silo/pkg/storage/migrator"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 type Peer struct {
@@ -32,6 +34,11 @@ type Peer struct {
 
 	// Errors
 	backgroundErr chan error
+
+	// Metrics
+	metricFlushDataOps    prometheus.Gauge
+	metricFlushDataTimeMS prometheus.Gauge
+	metricVMRunning       prometheus.Gauge
 }
 
 // Callbacks for MigrateTO
@@ -95,14 +102,24 @@ func (peer *Peer) closeDG() error {
 }
 
 func StartPeer(ctx context.Context, rescueCtx context.Context,
-	log types.Logger, met metrics.SiloMetrics, rp runtimes.RuntimeProviderIfc) (*Peer, error) {
+	log types.Logger, reg *prometheus.Registry, rp runtimes.RuntimeProviderIfc) (*Peer, error) {
+
+	met := siloprom.New(reg, siloprom.DefaultConfig())
 
 	peer := &Peer{
 		log:             log,
 		met:             met,
 		runtimeProvider: rp,
 		backgroundErr:   make(chan error, 12),
+		metricFlushDataOps: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: "drafter", Subsystem: "peer", Name: "flush_data_ops", Help: "Flush data ops"}),
+		metricFlushDataTimeMS: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: "drafter", Subsystem: "peer", Name: "flush_data_time_ms", Help: "Flush data time ms"}),
+		metricVMRunning: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: "drafter", Subsystem: "peer", Name: "vm_running", Help: "vm running"}),
 	}
+
+	reg.MustRegister(peer.metricFlushDataOps, peer.metricFlushDataTimeMS, peer.metricVMRunning)
 
 	err := peer.runtimeProvider.Start(ctx, rescueCtx, peer.backgroundErr)
 
@@ -277,6 +294,8 @@ func (peer *Peer) Resume(ctx context.Context, resumeTimeout time.Duration, rescu
 		return err
 	}
 
+	peer.metricVMRunning.Set(1)
+
 	if peer.log != nil {
 		peer.log.Info().Msg("resumed runtime")
 	}
@@ -297,11 +316,30 @@ func (peer *Peer) MigrateTo(ctx context.Context, devices []common.MigrateToDevic
 		peer.log.Info().Msg("peer.MigrateTo")
 	}
 
+	suspend := func(ctx context.Context, timeout time.Duration) error {
+		err := peer.runtimeProvider.Suspend(ctx, timeout)
+		if err == nil {
+			peer.metricVMRunning.Set(0)
+		}
+		return err
+	}
+
+	flushData := func(ctx context.Context) error {
+		ctime := time.Now()
+		err := peer.runtimeProvider.FlushData(ctx)
+		ms := time.Since(ctime).Milliseconds()
+		if err == nil {
+			peer.metricFlushDataTimeMS.Add(float64(ms))
+			peer.metricFlushDataOps.Inc()
+		}
+		return err
+	}
+
 	// This manages the status of the VM - if it's suspended or not.
 	vmState := common.NewVMStateMgr(ctx,
-		peer.runtimeProvider.Suspend,
+		suspend,
 		suspendTimeout,
-		peer.runtimeProvider.FlushData,
+		flushData,
 		hooks.OnBeforeSuspend,
 		hooks.OnAfterSuspend,
 	)
