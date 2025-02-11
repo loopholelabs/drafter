@@ -55,5 +55,5 @@ func (migratableMounter *MigratableMounter) MigrateTo(
 	}()
 
 	vmStateMgr := common.NewDummyVMStateMgr(ctx)
-	return common.MigrateToPipe(ctx, readers, writers, migratableMounter.Dg, concurrency, hooks.OnProgress, vmStateMgr, devices, nil)
+	return common.MigrateToPipe(ctx, readers, writers, migratableMounter.Dg, concurrency, hooks.OnProgress, vmStateMgr, devices, nil, nil)
 }

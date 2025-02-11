@@ -273,6 +273,11 @@ func MigrateFromPipe(log types.Logger, met metrics.SiloMetrics, vmpath string,
 
 	pro := protocol.NewRW(protocolCtx, readers, writers, nil)
 
+	// Add pro to metrics
+	if met != nil {
+		met.AddProtocol("migrateFromPipe", pro)
+	}
+
 	// Start a goroutine to do the protocol Handle()
 	go func() {
 		err := pro.Handle()
@@ -339,7 +344,7 @@ func MigrateFromPipe(log types.Logger, met metrics.SiloMetrics, vmpath string,
  */
 func MigrateToPipe(ctx context.Context, readers []io.Reader, writers []io.Writer,
 	dg *devicegroup.DeviceGroup, concurrency int, onProgress func(p map[string]*migrator.MigrationProgress),
-	vmState *VMStateMgr, devices []MigrateToDevice, getCustomPayload func() []byte) error {
+	vmState *VMStateMgr, devices []MigrateToDevice, getCustomPayload func() []byte, met metrics.SiloMetrics) error {
 
 	protocolCtx, protocolCancel := context.WithCancel(ctx)
 
@@ -353,6 +358,11 @@ func MigrateToPipe(ctx context.Context, readers []io.Reader, writers []io.Writer
 			protocolCancel()
 		}
 	}()
+
+	// Add pro to metrics
+	if met != nil {
+		met.AddProtocol("migrateToPipe", pro)
+	}
 
 	// Start a migration to the protocol. This will send all schema info etc
 	err := dg.StartMigrationTo(pro, true)
