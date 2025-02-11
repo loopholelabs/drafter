@@ -11,7 +11,8 @@ sudo drafter-peer --netns ark0 --raddr '' --laddr 'localhost:1337' --metrics 'lo
     "maxCycles": 3,
     "cycleThrottle": 100000000,
     "makeMigratable": true,
-    "shared": false
+    "shared": false,
+    "sharedbase": true
   },
   {
     "name": "memory",
@@ -25,7 +26,8 @@ sudo drafter-peer --netns ark0 --raddr '' --laddr 'localhost:1337' --metrics 'lo
     "maxCycles": 3,
     "cycleThrottle": 100000000,
     "makeMigratable": true,
-    "shared": false
+    "shared": false,
+    "sharedbase": true
   },
   {
     "name": "kernel",
@@ -39,7 +41,8 @@ sudo drafter-peer --netns ark0 --raddr '' --laddr 'localhost:1337' --metrics 'lo
     "maxCycles": 3,
     "cycleThrottle": 100000000,
     "makeMigratable": true,
-    "shared": false
+    "shared": false,
+    "sharedbase": true
   },
   {
     "name": "disk",
@@ -53,7 +56,8 @@ sudo drafter-peer --netns ark0 --raddr '' --laddr 'localhost:1337' --metrics 'lo
     "maxCycles": 3,
     "cycleThrottle": 100000000,
     "makeMigratable": true,
-    "shared": false
+    "shared": false,
+    "sharedbase": true
   },
   {
     "name": "config",
@@ -67,7 +71,8 @@ sudo drafter-peer --netns ark0 --raddr '' --laddr 'localhost:1337' --metrics 'lo
     "maxCycles": 3,
     "cycleThrottle": 100000000,
     "makeMigratable": true,
-    "shared": false
+    "shared": false,
+    "sharedbase": true
   },
   {
     "name": "oci",
@@ -81,6 +86,7 @@ sudo drafter-peer --netns ark0 --raddr '' --laddr 'localhost:1337' --metrics 'lo
     "maxCycles": 3,
     "cycleThrottle": 100000000,
     "makeMigratable": true,
-    "shared": false
+    "shared": false,
+    "sharedbase": true
   }
 ]'
