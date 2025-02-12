@@ -63,17 +63,17 @@ func (rp *MockRuntimeProvider) Suspend(ctx context.Context, timeout time.Duratio
 
 func (rp *MockRuntimeProvider) FlushData(ctx context.Context) error {
 	fmt.Printf(" ### FlushData %s\n", rp.HomePath)
-	/*
-		for _, devName := range common.KnownNames {
-			fp, err := os.OpenFile(path.Join(rp.HomePath, devName), os.O_RDWR, 0777)
-			assert.NoError(rp.t, err)
 
-			err = fp.Sync()
-			assert.NoError(rp.t, err)
-			err = fp.Close()
-			assert.NoError(rp.t, err)
-		}
-	*/
+	for _, devName := range common.KnownNames {
+		fp, err := os.OpenFile(path.Join(rp.HomePath, devName), os.O_RDWR, 0777)
+		assert.NoError(rp.t, err)
+
+		err = fp.Sync()
+		assert.NoError(rp.t, err)
+		err = fp.Close()
+		assert.NoError(rp.t, err)
+	}
+
 	// Shouldn't need anything here, but may need fs.Sync
 	return nil
 }

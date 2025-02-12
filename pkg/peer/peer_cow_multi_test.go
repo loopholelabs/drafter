@@ -30,7 +30,6 @@ func setupDevicesCow(t *testing.T, num int) ([]common.MigrateToDevice, [][]commo
 			err := os.RemoveAll(fmt.Sprintf("%s_%d", testPeerDirCow, n))
 			assert.NoError(t, err)
 		})
-
 	}
 
 	devicesTo := make([]common.MigrateToDevice, 0)
@@ -58,12 +57,13 @@ func setupDevicesCow(t *testing.T, num int) ([]common.MigrateToDevice, [][]commo
 
 		for i := 0; i < num; i++ {
 			devicesFrom[i] = append(devicesFrom[i], common.MigrateFromDevice{
-				Name:      n,
-				Base:      path.Join(fmt.Sprintf("%s_%d", testPeerDirCow, i), fn),
-				Overlay:   path.Join(fmt.Sprintf("%s_%d", testPeerDirCow, i), fmt.Sprintf("%s.overlay", fn)),
-				State:     path.Join(fmt.Sprintf("%s_%d", testPeerDirCow, i), fmt.Sprintf("%s.state", fn)),
-				BlockSize: 1024 * 1024,
-				Shared:    false,
+				Name:       n,
+				Base:       path.Join(fmt.Sprintf("%s_%d", testPeerDirCow, 0), fn),
+				Overlay:    path.Join(fmt.Sprintf("%s_%d", testPeerDirCow, i), fmt.Sprintf("%s.overlay", fn)),
+				State:      path.Join(fmt.Sprintf("%s_%d", testPeerDirCow, i), fmt.Sprintf("%s.state", fn)),
+				BlockSize:  64 * 1024,
+				Shared:     false,
+				SharedBase: true,
 			})
 		}
 
@@ -82,7 +82,7 @@ func setupDevicesCow(t *testing.T, num int) ([]common.MigrateToDevice, [][]commo
 func TestPeerCowMulti(t *testing.T) {
 
 	log := logging.New(logging.Zerolog, "test", os.Stderr)
-	//	log.SetLevel(types.TraceLevel)
+	// log.SetLevel(types.DebugLevel)
 
 	numMigrations := 5
 
@@ -189,31 +189,6 @@ func TestPeerCowMulti(t *testing.T) {
 				// Check the data is identical
 				assert.Equal(t, hash1, hash2)
 			}
-		}
-
-		// HACK
-
-		hack := false
-
-		if hack {
-			for _, devName := range common.KnownNames {
-				os.Remove(path.Join(fmt.Sprintf("%s_%d", testPeerDirCow, migration+1), devName))
-			}
-
-			nextPeer.Close()
-			nextPeer, err = StartPeer(context.TODO(), context.Background(), log, nil, nil, "cow_test", rp2)
-			assert.NoError(t, err)
-
-			hooks1 := MigrateFromHooks{
-				OnLocalDeviceRequested:     func(id uint32, path string) {},
-				OnLocalDeviceExposed:       func(id uint32, path string) {},
-				OnLocalAllDevicesRequested: func() {},
-				OnXferCustomData:           func(data []byte) {},
-			}
-
-			err = nextPeer.MigrateFrom(context.TODO(), devicesFrom[migration+1], nil, nil, hooks1)
-			assert.NoError(t, err)
-			// END OF HACK
 		}
 
 		// We can resume here, and will start writes again.
