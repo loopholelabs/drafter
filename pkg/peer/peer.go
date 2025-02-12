@@ -104,11 +104,8 @@ func (peer *Peer) closeDG() error {
 func StartPeer(ctx context.Context, rescueCtx context.Context,
 	log types.Logger, reg *prometheus.Registry, rp runtimes.RuntimeProviderIfc) (*Peer, error) {
 
-	met := siloprom.New(reg, siloprom.DefaultConfig())
-
 	peer := &Peer{
 		log:             log,
-		met:             met,
 		runtimeProvider: rp,
 		backgroundErr:   make(chan error, 12),
 		metricFlushDataOps: prometheus.NewGauge(prometheus.GaugeOpts{
@@ -119,7 +116,10 @@ func StartPeer(ctx context.Context, rescueCtx context.Context,
 			Namespace: "drafter", Subsystem: "peer", Name: "vm_running", Help: "vm running"}),
 	}
 
-	reg.MustRegister(peer.metricFlushDataOps, peer.metricFlushDataTimeMS, peer.metricVMRunning)
+	if reg != nil {
+		peer.met = siloprom.New(reg, siloprom.DefaultConfig())
+		reg.MustRegister(peer.metricFlushDataOps, peer.metricFlushDataTimeMS, peer.metricVMRunning)
+	}
 
 	err := peer.runtimeProvider.Start(ctx, rescueCtx, peer.backgroundErr)
 
