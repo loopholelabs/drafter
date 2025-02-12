@@ -171,7 +171,7 @@ func (peer *Peer) MigrateFrom(ctx context.Context, devices []common.MigrateFromD
 		if peer.log != nil {
 			slog = peer.log.SubLogger("silo")
 		}
-		dg, err := common.MigrateFromPipe(slog, peer.met, peer.runtimeProvider.DevicePath(), protocolCtx, readers, writers, tweakRemote, hooks.OnXferCustomData)
+		dg, err := common.MigrateFromPipe(slog, peer.met, peer.instanceID, peer.runtimeProvider.DevicePath(), protocolCtx, readers, writers, tweakRemote, hooks.OnXferCustomData)
 		if err != nil {
 			if peer.log != nil {
 				peer.log.Warn().Err(err).Msg("error migrating from pipe")
@@ -240,7 +240,7 @@ func (peer *Peer) MigrateFrom(ctx context.Context, devices []common.MigrateFromD
 			slog = peer.log.SubLogger("silo")
 		}
 
-		dg, err := common.MigrateFromFS(slog, peer.met, peer.runtimeProvider.DevicePath(), devices, tweakLocal)
+		dg, err := common.MigrateFromFS(slog, peer.met, peer.instanceID, peer.runtimeProvider.DevicePath(), devices, tweakLocal)
 		if err != nil {
 			if peer.log != nil {
 				peer.log.Warn().Err(err).Msg("error migrating from fs")
@@ -338,7 +338,7 @@ func (peer *Peer) MigrateTo(ctx context.Context, devices []common.MigrateToDevic
 		hooks.OnAfterSuspend,
 	)
 
-	err := common.MigrateToPipe(ctx, readers, writers, peer.dg, concurrency, hooks.OnProgress, vmState, devices, hooks.GetXferCustomData, peer.met)
+	err := common.MigrateToPipe(ctx, readers, writers, peer.dg, concurrency, hooks.OnProgress, vmState, devices, hooks.GetXferCustomData, peer.met, peer.instanceID)
 	if err != nil {
 		if peer.log != nil {
 			peer.log.Info().Err(err).Msg("error in peer.MigrateTo")

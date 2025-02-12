@@ -136,7 +136,7 @@ func MigrateFromAndMount(
 	if len(readers) > 0 && len(writers) > 0 {
 		protocolCtx, cancelProtocolCtx := context.WithCancel(migrateFromCtx)
 
-		dg, err := common.MigrateFromPipe(log, met, "", protocolCtx, readers, writers, tweakRemote, hooks.OnXferCustomData)
+		dg, err := common.MigrateFromPipe(log, met, "", "", protocolCtx, readers, writers, tweakRemote, hooks.OnXferCustomData)
 		if err != nil {
 			return nil, err
 		}
@@ -176,7 +176,7 @@ func MigrateFromAndMount(
 			})
 		}
 
-		dg, err := common.MigrateFromFS(log, met, "", newDevices, tweakLocal)
+		dg, err := common.MigrateFromFS(log, met, "", "", newDevices, tweakLocal)
 		if err != nil {
 			return nil, err
 		}

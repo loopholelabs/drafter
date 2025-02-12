@@ -78,7 +78,7 @@ func setupFromFs(t *testing.T) (string, *devicegroup.DeviceGroup) {
 		return s
 	}
 
-	dg, err := MigrateFromFS(nil, nil, tempDirFrom, devices, tweak)
+	dg, err := MigrateFromFS(nil, nil, "", tempDirFrom, devices, tweak)
 	assert.NoError(t, err)
 
 	// Check the devices look ok and contain what we think they should...
@@ -173,7 +173,7 @@ func TestMigrateFromFsThenBetween(t *testing.T) {
 				// cdata is custom xfer data
 			}
 
-			dg2, err = MigrateFromPipe(nil, nil, tempDirTo,
+			dg2, err = MigrateFromPipe(nil, nil, "", tempDirTo,
 				context.TODO(), []io.Reader{r2}, []io.Writer{w1}, tweak, cdh)
 			assert.NoError(t, err)
 
@@ -222,7 +222,7 @@ func TestMigrateFromFsThenBetween(t *testing.T) {
 		}
 
 		err = MigrateToPipe(context.TODO(), []io.Reader{r1}, []io.Writer{w2},
-			dg, 100, progress, vmState, devices, getCustomPayload, nil)
+			dg, 100, progress, vmState, devices, getCustomPayload, nil, "")
 		assert.NoError(t, err)
 
 		// Make sure it all completed

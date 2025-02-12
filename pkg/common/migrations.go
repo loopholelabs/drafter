@@ -209,7 +209,7 @@ func CreateIncomingSiloDevSchema(i *MigrateFromDevice, schema *config.DeviceSche
  * 'migrate' from the local filesystem.
  *
  */
-func MigrateFromFS(log types.Logger, met metrics.SiloMetrics, vmpath string,
+func MigrateFromFS(log types.Logger, met metrics.SiloMetrics, instanceID, vmpath string,
 	devices []MigrateFromDevice, tweak func(index int, name string, schema *config.DeviceSchema) *config.DeviceSchema) (*devicegroup.DeviceGroup, error) {
 	siloDeviceSchemas := make([]*config.DeviceSchema, 0)
 	for i, input := range devices {
@@ -238,7 +238,7 @@ func MigrateFromFS(log types.Logger, met metrics.SiloMetrics, vmpath string,
 	}
 
 	// Create a silo deviceGroup from all the schemas
-	dg, err := devicegroup.NewFromSchema(siloDeviceSchemas, false, slog, met)
+	dg, err := devicegroup.NewFromSchema(instanceID, siloDeviceSchemas, false, slog, met)
 	if err != nil {
 		return nil, err
 	}
@@ -264,7 +264,7 @@ func MigrateFromFS(log types.Logger, met metrics.SiloMetrics, vmpath string,
  * Migrate FROM a pipe
  * NB: You should call dg.WaitForCompletion() later to ensure migrations are finished
  */
-func MigrateFromPipe(log types.Logger, met metrics.SiloMetrics, vmpath string,
+func MigrateFromPipe(log types.Logger, met metrics.SiloMetrics, instanceID string, vmpath string,
 	ctx context.Context, readers []io.Reader, writers []io.Writer, schemaTweak func(index int, name string, schema *config.DeviceSchema) *config.DeviceSchema,
 	cdh func([]byte)) (*devicegroup.DeviceGroup, error) {
 	ready := make(chan bool)
@@ -275,7 +275,7 @@ func MigrateFromPipe(log types.Logger, met metrics.SiloMetrics, vmpath string,
 
 	// Add pro to metrics
 	if met != nil {
-		met.AddProtocol("migrateFromPipe", pro)
+		met.AddProtocol(instanceID, "migrateFromPipe", pro)
 	}
 
 	// Start a goroutine to do the protocol Handle()
@@ -305,7 +305,7 @@ func MigrateFromPipe(log types.Logger, met metrics.SiloMetrics, vmpath string,
 		slog = log.SubLogger("silo")
 	}
 
-	dg, err := devicegroup.NewFromProtocol(protocolCtx, pro, schemaTweak, events, icdh, slog, met)
+	dg, err := devicegroup.NewFromProtocol(protocolCtx, instanceID, pro, schemaTweak, events, icdh, slog, met)
 	if err != nil {
 		return nil, err
 	}
@@ -344,7 +344,7 @@ func MigrateFromPipe(log types.Logger, met metrics.SiloMetrics, vmpath string,
  */
 func MigrateToPipe(ctx context.Context, readers []io.Reader, writers []io.Writer,
 	dg *devicegroup.DeviceGroup, concurrency int, onProgress func(p map[string]*migrator.MigrationProgress),
-	vmState *VMStateMgr, devices []MigrateToDevice, getCustomPayload func() []byte, met metrics.SiloMetrics) error {
+	vmState *VMStateMgr, devices []MigrateToDevice, getCustomPayload func() []byte, met metrics.SiloMetrics, instanceID string) error {
 
 	protocolCtx, protocolCancel := context.WithCancel(ctx)
 
@@ -361,7 +361,7 @@ func MigrateToPipe(ctx context.Context, readers []io.Reader, writers []io.Writer
 
 	// Add pro to metrics
 	if met != nil {
-		met.AddProtocol("migrateToPipe", pro)
+		met.AddProtocol(instanceID, "migrateToPipe", pro)
 	}
 
 	// Start a migration to the protocol. This will send all schema info etc
