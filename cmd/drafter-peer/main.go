@@ -20,6 +20,9 @@ import (
 	"github.com/loopholelabs/drafter/pkg/snapshotter"
 	"github.com/loopholelabs/logging"
 	"github.com/loopholelabs/logging/types"
+	"github.com/loopholelabs/silo/pkg/storage/metrics"
+	siloprom "github.com/loopholelabs/silo/pkg/storage/metrics/prometheus"
+
 	"github.com/loopholelabs/silo/pkg/storage/migrator"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
@@ -60,6 +63,8 @@ func main() {
 
 	flag.Parse()
 
+	var siloMetrics metrics.SiloMetrics
+	var drafterMetrics *common.DrafterMetrics
 	var reg *prometheus.Registry
 	if *serveMetrics != "" {
 		reg = prometheus.NewRegistry()
@@ -69,6 +74,9 @@ func main() {
 			collectors.NewGoCollector(),
 			collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
 		)
+
+		siloMetrics = siloprom.New(reg, siloprom.DefaultConfig())
+		drafterMetrics = common.NewDrafterMetrics(reg)
 
 		http.Handle("/metrics", promhttp.HandlerFor(
 			reg,
@@ -143,7 +151,7 @@ func main() {
 
 	p, err := peer.StartPeer(ctx,
 		context.Background(), // Never give up on rescue operations
-		log, reg, rp,
+		log, siloMetrics, drafterMetrics, rp,
 	)
 
 	if err != nil {

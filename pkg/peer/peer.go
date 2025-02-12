@@ -13,14 +13,13 @@ import (
 	"github.com/loopholelabs/silo/pkg/storage/config"
 	"github.com/loopholelabs/silo/pkg/storage/devicegroup"
 	"github.com/loopholelabs/silo/pkg/storage/metrics"
-	siloprom "github.com/loopholelabs/silo/pkg/storage/metrics/prometheus"
 	"github.com/loopholelabs/silo/pkg/storage/migrator"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 type Peer struct {
-	log types.Logger
-	met metrics.SiloMetrics
+	log  types.Logger
+	met  metrics.SiloMetrics
+	dmet *common.DrafterMetrics
 
 	// Devices
 	dgLock  sync.Mutex
@@ -35,10 +34,7 @@ type Peer struct {
 	// Errors
 	backgroundErr chan error
 
-	// Metrics
-	metricFlushDataOps    prometheus.Gauge
-	metricFlushDataTimeMS prometheus.Gauge
-	metricVMRunning       prometheus.Gauge
+	instanceID string
 }
 
 // Callbacks for MigrateTO
@@ -102,23 +98,14 @@ func (peer *Peer) closeDG() error {
 }
 
 func StartPeer(ctx context.Context, rescueCtx context.Context,
-	log types.Logger, reg *prometheus.Registry, rp runtimes.RuntimeProviderIfc) (*Peer, error) {
+	log types.Logger, met metrics.SiloMetrics, dmet *common.DrafterMetrics, rp runtimes.RuntimeProviderIfc) (*Peer, error) {
 
 	peer := &Peer{
 		log:             log,
+		met:             met,
+		dmet:            dmet,
 		runtimeProvider: rp,
 		backgroundErr:   make(chan error, 12),
-		metricFlushDataOps: prometheus.NewGauge(prometheus.GaugeOpts{
-			Namespace: "drafter", Subsystem: "peer", Name: "flush_data_ops", Help: "Flush data ops"}),
-		metricFlushDataTimeMS: prometheus.NewGauge(prometheus.GaugeOpts{
-			Namespace: "drafter", Subsystem: "peer", Name: "flush_data_time_ms", Help: "Flush data time ms"}),
-		metricVMRunning: prometheus.NewGauge(prometheus.GaugeOpts{
-			Namespace: "drafter", Subsystem: "peer", Name: "vm_running", Help: "vm running"}),
-	}
-
-	if reg != nil {
-		peer.met = siloprom.New(reg, siloprom.DefaultConfig())
-		reg.MustRegister(peer.metricFlushDataOps, peer.metricFlushDataTimeMS, peer.metricVMRunning)
 	}
 
 	err := peer.runtimeProvider.Start(ctx, rescueCtx, peer.backgroundErr)
@@ -294,7 +281,9 @@ func (peer *Peer) Resume(ctx context.Context, resumeTimeout time.Duration, rescu
 		return err
 	}
 
-	peer.metricVMRunning.Set(1)
+	if peer.dmet != nil {
+		peer.dmet.MetricVMRunning.WithLabelValues(peer.instanceID).Set(1)
+	}
 
 	if peer.log != nil {
 		peer.log.Info().Msg("resumed runtime")
@@ -319,7 +308,9 @@ func (peer *Peer) MigrateTo(ctx context.Context, devices []common.MigrateToDevic
 	suspend := func(ctx context.Context, timeout time.Duration) error {
 		err := peer.runtimeProvider.Suspend(ctx, timeout)
 		if err == nil {
-			peer.metricVMRunning.Set(0)
+			if peer.dmet != nil {
+				peer.dmet.MetricVMRunning.WithLabelValues(peer.instanceID).Set(0)
+			}
 		}
 		return err
 	}
@@ -329,8 +320,10 @@ func (peer *Peer) MigrateTo(ctx context.Context, devices []common.MigrateToDevic
 		err := peer.runtimeProvider.FlushData(ctx)
 		ms := time.Since(ctime).Milliseconds()
 		if err == nil {
-			peer.metricFlushDataTimeMS.Add(float64(ms))
-			peer.metricFlushDataOps.Inc()
+			if peer.dmet != nil {
+				peer.dmet.MetricFlushDataTimeMS.WithLabelValues(peer.instanceID).Add(float64(ms))
+				peer.dmet.MetricFlushDataOps.WithLabelValues(peer.instanceID).Inc()
+			}
 		}
 		return err
 	}

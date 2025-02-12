@@ -97,7 +97,7 @@ func TestPeerCowMulti(t *testing.T) {
 		DoWrites:    true,
 		DeviceSizes: deviceSizes,
 	}
-	peer, err := StartPeer(context.TODO(), context.Background(), log, nil, rp)
+	peer, err := StartPeer(context.TODO(), context.Background(), log, nil, nil, rp)
 	assert.NoError(t, err)
 
 	hooks1 := MigrateFromHooks{
@@ -127,7 +127,7 @@ func TestPeerCowMulti(t *testing.T) {
 			DoWrites:    true,
 			DeviceSizes: deviceSizes,
 		}
-		nextPeer, err := StartPeer(context.TODO(), context.Background(), log, nil, rp2)
+		nextPeer, err := StartPeer(context.TODO(), context.Background(), log, nil, nil, rp2)
 		assert.NoError(t, err)
 
 		r1, w1 := io.Pipe()
@@ -201,7 +201,7 @@ func TestPeerCowMulti(t *testing.T) {
 			}
 
 			nextPeer.Close()
-			nextPeer, err = StartPeer(context.TODO(), context.Background(), log, nil, rp2)
+			nextPeer, err = StartPeer(context.TODO(), context.Background(), log, nil, nil, rp2)
 			assert.NoError(t, err)
 
 			hooks1 := MigrateFromHooks{
