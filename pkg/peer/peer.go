@@ -98,12 +98,13 @@ func (peer *Peer) closeDG() error {
 }
 
 func StartPeer(ctx context.Context, rescueCtx context.Context,
-	log types.Logger, met metrics.SiloMetrics, dmet *common.DrafterMetrics, rp runtimes.RuntimeProviderIfc) (*Peer, error) {
+	log types.Logger, met metrics.SiloMetrics, dmet *common.DrafterMetrics, id string, rp runtimes.RuntimeProviderIfc) (*Peer, error) {
 
 	peer := &Peer{
 		log:             log,
 		met:             met,
 		dmet:            dmet,
+		instanceID:      id,
 		runtimeProvider: rp,
 		backgroundErr:   make(chan error, 12),
 	}

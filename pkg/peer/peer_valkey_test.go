@@ -110,7 +110,7 @@ func TestPeerReplayValkey(t *testing.T) {
 		Speed:       1,
 		Log:         log,
 	}
-	peer, err := StartPeer(context.TODO(), context.Background(), log, nil, nil, rp)
+	peer, err := StartPeer(context.TODO(), context.Background(), log, nil, nil, "valkey_test", rp)
 	assert.NoError(t, err)
 
 	hooks1 := MigrateFromHooks{
@@ -156,7 +156,7 @@ func TestPeerReplayValkey(t *testing.T) {
 		Speed:       1,
 		Log:         log,
 	}
-	peer2, err := StartPeer(context.TODO(), context.Background(), log, nil, nil, rp2)
+	peer2, err := StartPeer(context.TODO(), context.Background(), log, nil, nil, "valkey_test", rp2)
 	assert.NoError(t, err)
 
 	r1, w1 := io.Pipe()

@@ -151,7 +151,7 @@ func main() {
 
 	p, err := peer.StartPeer(ctx,
 		context.Background(), // Never give up on rescue operations
-		log, siloMetrics, drafterMetrics, rp,
+		log, siloMetrics, drafterMetrics, "drafter_cli", rp,
 	)
 
 	if err != nil {
