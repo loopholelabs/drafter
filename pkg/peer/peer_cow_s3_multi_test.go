@@ -20,15 +20,15 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-const testPeerDirCow = "test_peer_cow"
+const testPeerDirCowS3 = "test_peer_cow"
 
-func setupDevicesCow(t *testing.T, num int) ([]common.MigrateToDevice, [][]common.MigrateFromDevice, map[string]int) {
+func setupDevicesCowS3(t *testing.T, num int) ([]common.MigrateToDevice, [][]common.MigrateFromDevice, map[string]int) {
 	for n := 0; n < num; n++ {
-		err := os.Mkdir(fmt.Sprintf("%s_%d", testPeerDirCow, n), 0777)
+		err := os.Mkdir(fmt.Sprintf("%s_%d", testPeerDirCowS3, n), 0777)
 		assert.NoError(t, err)
 
 		t.Cleanup(func() {
-			err := os.RemoveAll(fmt.Sprintf("%s_%d", testPeerDirCow, n))
+			err := os.RemoveAll(fmt.Sprintf("%s_%d", testPeerDirCowS3, n))
 			assert.NoError(t, err)
 		})
 	}
@@ -51,7 +51,7 @@ func setupDevicesCow(t *testing.T, num int) ([]common.MigrateToDevice, [][]commo
 		buffer := make([]byte, dataSize)
 		_, err := crand.Read(buffer)
 		assert.NoError(t, err)
-		err = os.WriteFile(path.Join(fmt.Sprintf("%s_%d", testPeerDirCow, 0), fn), buffer, 0777)
+		err = os.WriteFile(path.Join(fmt.Sprintf("%s_%d", testPeerDirCowS3, 0), fn), buffer, 0777)
 		assert.NoError(t, err)
 
 		deviceSizes[n] = dataSize
@@ -59,9 +59,9 @@ func setupDevicesCow(t *testing.T, num int) ([]common.MigrateToDevice, [][]commo
 		for i := 0; i < num; i++ {
 			devicesFrom[i] = append(devicesFrom[i], common.MigrateFromDevice{
 				Name:       n,
-				Base:       path.Join(fmt.Sprintf("%s_%d", testPeerDirCow, 0), fn),
-				Overlay:    path.Join(fmt.Sprintf("%s_%d", testPeerDirCow, i), fmt.Sprintf("%s.overlay", fn)),
-				State:      path.Join(fmt.Sprintf("%s_%d", testPeerDirCow, i), fmt.Sprintf("%s.state", fn)),
+				Base:       path.Join(fmt.Sprintf("%s_%d", testPeerDirCowS3, 0), fn),
+				Overlay:    path.Join(fmt.Sprintf("%s_%d", testPeerDirCowS3, i), fmt.Sprintf("%s.overlay", fn)),
+				State:      path.Join(fmt.Sprintf("%s_%d", testPeerDirCowS3, i), fmt.Sprintf("%s.state", fn)),
 				BlockSize:  64 * 1024,
 				Shared:     false,
 				SharedBase: true,
@@ -80,14 +80,14 @@ func setupDevicesCow(t *testing.T, num int) ([]common.MigrateToDevice, [][]commo
 	return devicesTo, devicesFrom, deviceSizes
 }
 
-func TestPeerCowMulti(t *testing.T) {
+func TestPeerCowS3Multi(t *testing.T) {
 
 	log := logging.New(logging.Zerolog, "test", os.Stderr)
 	// log.SetLevel(types.DebugLevel)
 
 	numMigrations := 5
 
-	devicesTo, devicesFrom, deviceSizes := setupDevicesCow(t, 1+numMigrations)
+	devicesTo, devicesFrom, deviceSizes := setupDevicesCowS3(t, 1+numMigrations)
 
 	for n, s := range deviceSizes {
 		fmt.Printf("Size %s - %d\n", n, s)
@@ -126,7 +126,7 @@ func TestPeerCowMulti(t *testing.T) {
 		// Create a new RuntimeProvider
 		rp2 := &runtimes.MockRuntimeProvider{
 			T:           t,
-			HomePath:    fmt.Sprintf("%s_%d", testPeerDirCow, migration+1),
+			HomePath:    fmt.Sprintf("%s_%d", testPeerDirCowS3, migration+1),
 			DoWrites:    true,
 			DeviceSizes: deviceSizes,
 		}
@@ -178,9 +178,9 @@ func TestPeerCowMulti(t *testing.T) {
 		if err == nil && sendingErr == nil {
 			// Make sure everything migrated as expected...
 			for _, n := range common.KnownNames {
-				buff1, err := os.ReadFile(path.Join(fmt.Sprintf("%s_%d", testPeerDirCow, migration), n))
+				buff1, err := os.ReadFile(path.Join(fmt.Sprintf("%s_%d", testPeerDirCowS3, migration), n))
 				assert.NoError(t, err)
-				buff2, err := os.ReadFile(path.Join(fmt.Sprintf("%s_%d", testPeerDirCow, migration+1), n))
+				buff2, err := os.ReadFile(path.Join(fmt.Sprintf("%s_%d", testPeerDirCowS3, migration+1), n))
 				assert.NoError(t, err)
 
 				// Compare hashes so we don't get tons of output if they do differ.
@@ -204,7 +204,7 @@ func TestPeerCowMulti(t *testing.T) {
 
 		// Make sure we can close the last peer.
 		for _, devName := range common.KnownNames {
-			os.Remove(path.Join(fmt.Sprintf("%s_%d", testPeerDirCow, migration), devName))
+			os.Remove(path.Join(fmt.Sprintf("%s_%d", testPeerDirCowS3, migration), devName))
 		}
 
 		err = lastPeer.Close()
