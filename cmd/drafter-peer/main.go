@@ -19,7 +19,6 @@ import (
 	"github.com/loopholelabs/drafter/pkg/runtimes"
 	"github.com/loopholelabs/drafter/pkg/snapshotter"
 	"github.com/loopholelabs/logging"
-	"github.com/loopholelabs/logging/types"
 	"github.com/loopholelabs/silo/pkg/storage/metrics"
 	siloprom "github.com/loopholelabs/silo/pkg/storage/metrics/prometheus"
 
@@ -98,7 +97,7 @@ func main() {
 
 	// FIXME: Allow tweak from cmdline
 	log := logging.New(logging.Zerolog, "drafter", os.Stderr)
-	log.SetLevel(types.DebugLevel)
+	//	log.SetLevel(types.DebugLevel)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

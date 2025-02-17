@@ -139,9 +139,7 @@ func TestMigrateFromFsThenBetween(t *testing.T) {
 		r1, w1 := io.Pipe()
 		r2, w2 := io.Pipe()
 
-		progress := func(p map[string]*migrator.MigrationProgress) {
-			fmt.Printf("Progress...\n")
-		}
+		progress := func(p map[string]*migrator.MigrationProgress) {}
 
 		devices := []MigrateToDevice{
 			{

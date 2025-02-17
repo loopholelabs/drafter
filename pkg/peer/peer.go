@@ -198,7 +198,7 @@ func (peer *Peer) MigrateFrom(ctx context.Context, devices []common.MigrateFromD
 				if err != nil {
 					peer.log.Error().Err(err).Msg("device migrations completed")
 				} else {
-					peer.log.Debug().Msg("device migrations completed")
+					peer.log.Info().Msg("device migrations completed")
 				}
 			}
 			if err == nil {
@@ -207,7 +207,7 @@ func (peer *Peer) MigrateFrom(ctx context.Context, devices []common.MigrateFromD
 					if err != nil {
 						peer.log.Error().Err(err).Msg("device migrations completed and ready")
 					} else {
-						peer.log.Debug().Msg("device migrations completed and ready")
+						peer.log.Info().Msg("device migrations completed and ready")
 					}
 				}
 

@@ -288,7 +288,11 @@ func MigrateFromPipe(log types.Logger, met metrics.SiloMetrics, instanceID strin
 				log.Warn().Err(err).Msg("protocol handle error")
 			}
 
-			protocolCancel()
+			// EOF is expected, but it shouldn't cancel the context. That should be done externally, once
+			// everything is completed, including alternate sources grab.
+			if err != io.EOF {
+				protocolCancel()
+			}
 		}
 	}()
 

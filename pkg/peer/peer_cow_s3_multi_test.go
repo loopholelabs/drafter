@@ -17,12 +17,20 @@ import (
 	"github.com/loopholelabs/drafter/pkg/runtimes"
 	"github.com/loopholelabs/logging"
 	"github.com/loopholelabs/silo/pkg/storage/migrator"
+	"github.com/loopholelabs/silo/pkg/storage/sources"
+	"github.com/loopholelabs/silo/pkg/testutils"
 	"github.com/stretchr/testify/assert"
 )
 
 const testPeerDirCowS3 = "test_peer_cow"
 
 func setupDevicesCowS3(t *testing.T, num int) ([]common.MigrateToDevice, [][]common.MigrateFromDevice, map[string]int) {
+	s3port := testutils.SetupMinio(t.Cleanup)
+	s3Endpoint := fmt.Sprintf("localhost:%s", s3port)
+
+	err := sources.CreateBucket(false, s3Endpoint, "silosilo", "silosilo", "silosilo")
+	assert.NoError(t, err)
+
 	for n := 0; n < num; n++ {
 		err := os.Mkdir(fmt.Sprintf("%s_%d", testPeerDirCowS3, n), 0777)
 		assert.NoError(t, err)
@@ -58,13 +66,20 @@ func setupDevicesCowS3(t *testing.T, num int) ([]common.MigrateToDevice, [][]com
 
 		for i := 0; i < num; i++ {
 			devicesFrom[i] = append(devicesFrom[i], common.MigrateFromDevice{
-				Name:       n,
-				Base:       path.Join(fmt.Sprintf("%s_%d", testPeerDirCowS3, 0), fn),
-				Overlay:    path.Join(fmt.Sprintf("%s_%d", testPeerDirCowS3, i), fmt.Sprintf("%s.overlay", fn)),
-				State:      path.Join(fmt.Sprintf("%s_%d", testPeerDirCowS3, i), fmt.Sprintf("%s.state", fn)),
-				BlockSize:  64 * 1024,
-				Shared:     false,
-				SharedBase: true,
+				Name:          n,
+				Base:          path.Join(fmt.Sprintf("%s_%d", testPeerDirCowS3, 0), fn),
+				Overlay:       path.Join(fmt.Sprintf("%s_%d", testPeerDirCowS3, i), fmt.Sprintf("%s.overlay", fn)),
+				State:         path.Join(fmt.Sprintf("%s_%d", testPeerDirCowS3, i), fmt.Sprintf("%s.state", fn)),
+				BlockSize:     64 * 1024,
+				Shared:        false,
+				SharedBase:    true,
+				S3Sync:        true,
+				S3AccessKey:   "silosilo",
+				S3SecretKey:   "silosilo",
+				S3Endpoint:    s3Endpoint,
+				S3Secure:      false,
+				S3Bucket:      "silosilo",
+				S3Concurrency: 10,
 			})
 		}
 
@@ -123,6 +138,9 @@ func TestPeerCowS3Multi(t *testing.T) {
 
 	for migration := 0; migration < numMigrations; migration++ {
 
+		// Let some S3 sync go on...
+		time.Sleep(5 * time.Second)
+
 		// Create a new RuntimeProvider
 		rp2 := &runtimes.MockRuntimeProvider{
 			T:           t,
@@ -151,6 +169,12 @@ func TestPeerCowS3Multi(t *testing.T) {
 			err := lastPeer.MigrateTo(context.TODO(), devicesTo, 10*time.Second, 10, []io.Reader{r1}, []io.Writer{w2}, hooks)
 			assert.NoError(t, err)
 			sendingErr = err
+
+			// Close the connection from here...
+			// Close from the sending side
+			r1.Close()
+			w2.Close()
+
 			wg.Done()
 		}()
 
@@ -197,10 +221,6 @@ func TestPeerCowS3Multi(t *testing.T) {
 		// We can resume here, and will start writes again.
 		err = nextPeer.Resume(context.TODO(), 10*time.Second, 10*time.Second)
 		assert.NoError(t, err)
-
-		// Close from receiving side
-		r2.Close()
-		w1.Close()
 
 		// Make sure we can close the last peer.
 		for _, devName := range common.KnownNames {
