@@ -130,6 +130,11 @@ func StartPeer(ctx context.Context, rescueCtx context.Context,
 func (peer *Peer) MigrateFrom(ctx context.Context, devices []common.MigrateFromDevice,
 	readers []io.Reader, writers []io.Writer, hooks MigrateFromHooks) error {
 
+	if peer.dmet != nil {
+		// Set migratingTo to 1 while we are migrating away.
+		peer.dmet.MetricMigratingFrom.WithLabelValues(peer.instanceID).Set(1)
+	}
+
 	if peer.log != nil {
 		peer.log.Info().Msg("started MigrateFrom")
 	}
@@ -189,6 +194,7 @@ func (peer *Peer) MigrateFrom(ctx context.Context, devices []common.MigrateFromD
 		// Monitor the transfer, and report any error if it happens
 		go func() {
 			defer cancelProtocolCtx()
+			defer peer.dmet.MetricMigratingFrom.WithLabelValues(peer.instanceID).Set(0)
 
 			if peer.log != nil {
 				peer.log.Trace().Msg("waiting for device migrations to complete")
@@ -202,7 +208,9 @@ func (peer *Peer) MigrateFrom(ctx context.Context, devices []common.MigrateFromD
 				}
 			}
 			if err == nil {
+				peer.dmet.MetricMigratingFromWaitReady.WithLabelValues(peer.instanceID).Set(1)
 				err = dg.WaitForReady()
+				peer.dmet.MetricMigratingFromWaitReady.WithLabelValues(peer.instanceID).Set(0)
 				if peer.log != nil {
 					if err != nil {
 						peer.log.Error().Err(err).Msg("device migrations completed and ready")
@@ -235,6 +243,8 @@ func (peer *Peer) MigrateFrom(ctx context.Context, devices []common.MigrateFromD
 	//
 
 	if len(readers) == 0 && len(writers) == 0 {
+		defer peer.dmet.MetricMigratingFrom.WithLabelValues(peer.instanceID).Set(0)
+
 		var slog types.Logger
 		if peer.log != nil {
 			slog = peer.log.SubLogger("silo")
@@ -301,6 +311,12 @@ func (peer *Peer) Resume(ctx context.Context, resumeTimeout time.Duration, rescu
 func (peer *Peer) MigrateTo(ctx context.Context, devices []common.MigrateToDevice,
 	suspendTimeout time.Duration, concurrency int, readers []io.Reader, writers []io.Writer,
 	hooks MigrateToHooks) error {
+
+	if peer.dmet != nil {
+		// Set migratingTo to 1 while we are migrating away.
+		peer.dmet.MetricMigratingTo.WithLabelValues(peer.instanceID).Set(1)
+		defer peer.dmet.MetricMigratingTo.WithLabelValues(peer.instanceID).Set(0)
+	}
 
 	if peer.log != nil {
 		peer.log.Info().Msg("peer.MigrateTo")
