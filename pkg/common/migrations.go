@@ -163,7 +163,7 @@ func CreateSiloDevSchema(i *MigrateFromDevice) (*config.DeviceSchema, error) {
 func CreateIncomingSiloDevSchema(i *MigrateFromDevice, schema *config.DeviceSchema) (*config.DeviceSchema, error) {
 	ds := &config.DeviceSchema{
 		Name:      i.Name,
-		BlockSize: fmt.Sprintf("%v", i.BlockSize),
+		BlockSize: schema.BlockSize, // fmt.Sprintf("%v", i.BlockSize),
 		Expose:    true,
 		Size:      schema.Size,
 		Sync:      schema.Sync,
