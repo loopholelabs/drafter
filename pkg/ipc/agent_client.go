@@ -127,14 +127,14 @@ func StartAgentClient[L *AgentClientLocal[G], R AgentClientRemote, G any](
 		select {
 		// Failure case; something failed and the goroutineManager.Context() was cancelled before we got a connection
 		case <-ctx.Done():
+			select {
+			// Happy case; we've got a connection and we want to wait with closing the agent's connections until the ready channel is closed.
+			case <-ready:
+				<-remoteCtx.Done()
+			default:
+			}
+
 			connectedAgentClient.Close() // We ignore errors here since we might interrupt a network connection
-
-		// Happy case; we've got a connection and we want to wait with closing the agent's connections until the ready channel is closed.
-		case <-ready:
-			<-remoteCtx.Done()
-
-			connectedAgentClient.Close() // We ignore errors here since we might interrupt a network connection
-
 			break
 		}
 	})
