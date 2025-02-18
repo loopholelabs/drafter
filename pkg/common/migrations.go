@@ -282,15 +282,15 @@ func MigrateFromPipe(log types.Logger, met metrics.SiloMetrics, instanceID strin
 	go func() {
 		err := pro.Handle()
 		if err != nil {
-			// This deserves a warning log message, but will result in other errors being returned
-			// so can be ignored here.
-			if log != nil {
-				log.Warn().Err(err).Msg("protocol handle error")
-			}
-
 			// EOF is expected, but it shouldn't cancel the context. That should be done externally, once
 			// everything is completed, including alternate sources grab.
 			if err != io.EOF {
+				// This deserves a warning log message, but will result in other errors being returned
+				// so can be ignored here.
+				if log != nil {
+					log.Warn().Err(err).Msg("protocol handle error")
+				}
+
 				protocolCancel()
 			}
 		}
@@ -358,7 +358,7 @@ func MigrateToPipe(ctx context.Context, readers []io.Reader, writers []io.Writer
 	// Start a goroutine to do the protocol Handle()
 	go func() {
 		err := pro.Handle()
-		if err != nil {
+		if err != nil && err != io.EOF {
 			protocolCancel()
 		}
 	}()
