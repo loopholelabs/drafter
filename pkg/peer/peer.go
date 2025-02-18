@@ -2,8 +2,12 @@ package peer
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"io"
+	"os"
+	"path"
 	"sync"
 	"time"
 
@@ -220,6 +224,8 @@ func (peer *Peer) MigrateFrom(ctx context.Context, devices []common.MigrateFromD
 				}
 
 				if err == nil {
+					// peer.showDeviceHashes("MigrateFrom")
+
 					if hooks.OnCompletion != nil {
 						hooks.OnCompletion()
 					}
@@ -366,5 +372,60 @@ func (peer *Peer) MigrateTo(ctx context.Context, devices []common.MigrateToDevic
 		peer.log.Info().Msg("peer.MigrateTo completed successfuly")
 	}
 
+	// peer.showDeviceHashes("MigrateTo")
+
 	return nil
+}
+
+/**
+ * Log all device hashes. Note that this can take a while, as it reads all devices in their entirity.
+ * As such, it should only really be used when you need to verify the data integrity.
+ *
+ */
+func (peer *Peer) showDeviceHashes(where string) {
+
+	// Show some hashes...
+	names := peer.dg.GetAllNames()
+	for _, devname := range names {
+		di := peer.dg.GetDeviceInformationByName(devname)
+		if di != nil {
+			size := di.Size
+			offset := 0
+			buffer := make([]byte, 1024*1024)
+			fp, err := os.Open(path.Join("/dev", di.Exp.Device()))
+			if err != nil {
+				if peer.log != nil {
+					peer.log.Error().Err(err).Msg("couldn't open dev")
+				}
+			} else {
+				hasher := sha256.New()
+				for {
+					if size == 0 {
+						break
+					}
+					n, err := fp.ReadAt(buffer, int64(offset))
+					if err != nil && err != io.EOF {
+						if peer.log != nil {
+							peer.log.Error().Err(err).Msg("error reading dev")
+						}
+						break
+					}
+					hasher.Write(buffer[:n])
+					size -= uint64(n)
+					offset += n
+				}
+				fp.Close()
+
+				hash := hasher.Sum(nil)
+				if peer.log != nil {
+					peer.log.Info().
+						Str("instance_id", peer.instanceID).
+						Str("where", where).
+						Str("name", di.Schema.Name).
+						Str("hash", hex.EncodeToString(hash)).
+						Msg("Device hash")
+				}
+			}
+		}
+	}
 }
