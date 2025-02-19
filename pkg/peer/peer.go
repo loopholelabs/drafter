@@ -198,7 +198,9 @@ func (peer *Peer) MigrateFrom(ctx context.Context, devices []common.MigrateFromD
 		// Monitor the transfer, and report any error if it happens
 		go func() {
 			defer cancelProtocolCtx()
-			defer peer.dmet.MetricMigratingFrom.WithLabelValues(peer.instanceID).Set(0)
+			if peer.dmet != nil {
+				defer peer.dmet.MetricMigratingFrom.WithLabelValues(peer.instanceID).Set(0)
+			}
 
 			if peer.log != nil {
 				peer.log.Trace().Msg("waiting for device migrations to complete")
@@ -212,9 +214,13 @@ func (peer *Peer) MigrateFrom(ctx context.Context, devices []common.MigrateFromD
 				}
 			}
 			if err == nil {
-				peer.dmet.MetricMigratingFromWaitReady.WithLabelValues(peer.instanceID).Set(1)
+				if peer.dmet != nil {
+					peer.dmet.MetricMigratingFromWaitReady.WithLabelValues(peer.instanceID).Set(1)
+				}
 				err = dg.WaitForReady()
-				peer.dmet.MetricMigratingFromWaitReady.WithLabelValues(peer.instanceID).Set(0)
+				if peer.dmet != nil {
+					peer.dmet.MetricMigratingFromWaitReady.WithLabelValues(peer.instanceID).Set(0)
+				}
 				if peer.log != nil {
 					if err != nil {
 						peer.log.Error().Err(err).Msg("device migrations completed and ready")
@@ -224,7 +230,7 @@ func (peer *Peer) MigrateFrom(ctx context.Context, devices []common.MigrateFromD
 				}
 
 				if err == nil {
-					// peer.showDeviceHashes("MigrateFrom")
+					peer.showDeviceHashes("MigrateFrom")
 
 					if hooks.OnCompletion != nil {
 						hooks.OnCompletion()
@@ -249,7 +255,9 @@ func (peer *Peer) MigrateFrom(ctx context.Context, devices []common.MigrateFromD
 	//
 
 	if len(readers) == 0 && len(writers) == 0 {
-		defer peer.dmet.MetricMigratingFrom.WithLabelValues(peer.instanceID).Set(0)
+		if peer.dmet != nil {
+			defer peer.dmet.MetricMigratingFrom.WithLabelValues(peer.instanceID).Set(0)
+		}
 
 		var slog types.Logger
 		if peer.log != nil {
@@ -372,7 +380,7 @@ func (peer *Peer) MigrateTo(ctx context.Context, devices []common.MigrateToDevic
 		peer.log.Info().Msg("peer.MigrateTo completed successfuly")
 	}
 
-	// peer.showDeviceHashes("MigrateTo")
+	peer.showDeviceHashes("MigrateTo")
 
 	return nil
 }
