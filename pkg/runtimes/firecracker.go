@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path"
+	"sync"
 	"time"
 
 	"github.com/loopholelabs/drafter/pkg/common"
@@ -38,9 +39,15 @@ type FirecrackerRuntimeProvider[L ipc.AgentServerLocal, R ipc.AgentServerRemote[
 	AgentServerHooks ipc.AgentServerAcceptHooks[R, G]
 
 	SnapshotLoadConfiguration runner.SnapshotLoadConfiguration
+
+	runningLock sync.Mutex
+	running     bool
 }
 
 func (rp *FirecrackerRuntimeProvider[L, R, G]) Resume(resumeTimeout time.Duration, rescueTimeout time.Duration, errChan chan error) error {
+	rp.runningLock.Lock()
+	defer rp.runningLock.Unlock()
+
 	resumeCtx, resumeCancel := context.WithCancel(context.TODO())
 	rp.resumeCtx = resumeCtx
 	rp.resumeCancel = resumeCancel
@@ -91,6 +98,7 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Resume(resumeTimeout time.Duratio
 		}
 	}()
 
+	rp.running = true
 	return nil
 }
 
@@ -135,13 +143,13 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) GetVMPid() int {
 }
 
 func (rp *FirecrackerRuntimeProvider[L, R, G]) Close() error {
-	// TODO: Correct?
 	if rp.ResumedRunner != nil {
 		if rp.Log != nil {
 			rp.Log.Debug().Msg("Closing resumed runner")
 		}
 
-		err := rp.Suspend(context.TODO(), time.Minute) // TODO
+		// We only need to do this if it hasn't been suspended, but it'll refuse inside Suspend
+		err := rp.Suspend(context.TODO(), time.Minute) // TODO. Timeout
 
 		rp.resumeCancel() // We can cancel this context now
 		rp.hypervisorCancel()
@@ -154,6 +162,8 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Close() error {
 		if err != nil {
 			return err
 		}
+		rp.ResumedRunner = nil // Just to make sure if there's further calls to Close
+
 	} else if rp.Runner != nil {
 		if rp.Log != nil {
 			rp.Log.Debug().Msg("Closing runner")
@@ -171,8 +181,18 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Close() error {
 }
 
 func (rp *FirecrackerRuntimeProvider[L, R, G]) Suspend(ctx context.Context, resumeTimeout time.Duration) error {
+	rp.runningLock.Lock()
+	defer rp.runningLock.Unlock()
+
+	if !rp.running {
+		if rp.Log != nil {
+			rp.Log.Debug().Msg("firecracker Suspend called but vm not running")
+		}
+		return nil
+	}
+
 	if rp.Log != nil {
-		rp.Log.Debug().Msg("resumedPeer.SuspendAndCloseAgentServer")
+		rp.Log.Debug().Msg("firecracker SuspendAndCloseAgentServer")
 	}
 	err := rp.ResumedRunner.SuspendAndCloseAgentServer(
 		ctx,
@@ -180,8 +200,10 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Suspend(ctx context.Context, resu
 	)
 	if err != nil {
 		if rp.Log != nil {
-			rp.Log.Warn().Err(err).Msg("error from resumedPeer.SuspendAndCloseAgentServer")
+			rp.Log.Warn().Err(err).Msg("error from SuspendAndCloseAgentServer")
 		}
+	} else {
+		rp.running = false
 	}
 	return err
 }
