@@ -15,9 +15,7 @@ import (
 
 	"github.com/loopholelabs/drafter/pkg/common"
 	"github.com/loopholelabs/drafter/pkg/ipc"
-	"github.com/loopholelabs/drafter/pkg/runner"
-	"github.com/loopholelabs/drafter/pkg/runtimes"
-	"github.com/loopholelabs/drafter/pkg/snapshotter"
+	rfirecracker "github.com/loopholelabs/drafter/pkg/runtimes/firecracker"
 	"github.com/loopholelabs/drafter/pkg/utils"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 	"golang.org/x/sys/unix"
@@ -98,7 +96,7 @@ func main() {
 	}
 
 	if strings.TrimSpace(configPath) == "" {
-		panic(runtimes.ErrConfigFileNotFound)
+		panic(rfirecracker.ErrConfigFileNotFound)
 	}
 
 	configFile, err := os.Open(configPath)
@@ -107,7 +105,7 @@ func main() {
 	}
 	defer configFile.Close()
 
-	var packageConfig snapshotter.PackageConfiguration
+	var packageConfig rfirecracker.PackageConfiguration
 	if err := json.NewDecoder(configFile).Decode(&packageConfig); err != nil {
 		panic(err)
 	}
@@ -149,11 +147,11 @@ func main() {
 		cancel()
 	}()
 
-	r, err := runner.StartRunner[struct{}, ipc.AgentServerRemote[struct{}]](
+	r, err := rfirecracker.StartRunner[struct{}, ipc.AgentServerRemote[struct{}]](
 		goroutineManager.Context(),
 		context.Background(), // Never give up on rescue operations
 
-		snapshotter.HypervisorConfiguration{
+		rfirecracker.HypervisorConfiguration{
 			FirecrackerBin: firecrackerBin,
 			JailerBin:      jailerBin,
 
@@ -246,7 +244,7 @@ func main() {
 
 		deviceStat, ok := deviceInfo.Sys().(*syscall.Stat_t)
 		if !ok {
-			panic(snapshotter.ErrCouldNotGetDeviceStat)
+			panic(rfirecracker.ErrCouldNotGetDeviceStat)
 		}
 
 		deviceMajor := uint64(deviceStat.Rdev / 256)
@@ -281,7 +279,7 @@ func main() {
 		struct{}{},
 		ipc.AgentServerAcceptHooks[ipc.AgentServerRemote[struct{}], struct{}]{},
 
-		runner.SnapshotLoadConfiguration{
+		rfirecracker.SnapshotLoadConfiguration{
 			ExperimentalMapPrivate: *experimentalMapPrivate,
 
 			ExperimentalMapPrivateStateOutput:  *experimentalMapPrivateStateOutput,

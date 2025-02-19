@@ -15,9 +15,7 @@ import (
 	"github.com/loopholelabs/drafter/pkg/common"
 	"github.com/loopholelabs/drafter/pkg/ipc"
 	"github.com/loopholelabs/drafter/pkg/peer"
-	"github.com/loopholelabs/drafter/pkg/runner"
-	"github.com/loopholelabs/drafter/pkg/runtimes"
-	"github.com/loopholelabs/drafter/pkg/snapshotter"
+	rfirecracker "github.com/loopholelabs/drafter/pkg/runtimes/firecracker"
 	"github.com/loopholelabs/logging"
 	"github.com/loopholelabs/silo/pkg/storage/metrics"
 	siloprom "github.com/loopholelabs/silo/pkg/storage/metrics/prometheus"
@@ -123,9 +121,9 @@ func main() {
 		panic(err)
 	}
 
-	rp := &runtimes.FirecrackerRuntimeProvider[struct{}, ipc.AgentServerRemote[struct{}], struct{}]{
+	rp := &rfirecracker.FirecrackerRuntimeProvider[struct{}, ipc.AgentServerRemote[struct{}], struct{}]{
 		Log: log,
-		HypervisorConfiguration: snapshotter.HypervisorConfiguration{
+		HypervisorConfiguration: rfirecracker.HypervisorConfiguration{
 			FirecrackerBin: firecrackerBin,
 			JailerBin:      jailerBin,
 			ChrootBaseDir:  *chrootBaseDir,
@@ -141,7 +139,7 @@ func main() {
 		MemoryName:       common.DeviceMemoryName,
 		AgentServerLocal: struct{}{},
 		AgentServerHooks: ipc.AgentServerAcceptHooks[ipc.AgentServerRemote[struct{}], struct{}]{},
-		SnapshotLoadConfiguration: runner.SnapshotLoadConfiguration{
+		SnapshotLoadConfiguration: rfirecracker.SnapshotLoadConfiguration{
 			ExperimentalMapPrivate:             *experimentalMapPrivate,
 			ExperimentalMapPrivateStateOutput:  *experimentalMapPrivateStateOutput,
 			ExperimentalMapPrivateMemoryOutput: *experimentalMapPrivateMemoryOutput,

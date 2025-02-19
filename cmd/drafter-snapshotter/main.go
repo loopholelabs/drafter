@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/loopholelabs/drafter/pkg/common"
-	"github.com/loopholelabs/drafter/pkg/snapshotter"
+	rfirecracker "github.com/loopholelabs/drafter/pkg/runtimes/firecracker"
 )
 
 func main() {
@@ -39,9 +39,9 @@ func main() {
 	livenessVSockPort := flag.Int("liveness-vsock-port", 25, "Liveness VSock port")
 	agentVSockPort := flag.Int("agent-vsock-port", 26, "Agent VSock port")
 
-	defDevices := make([]snapshotter.SnapshotDevice, 0)
+	defDevices := make([]rfirecracker.SnapshotDevice, 0)
 	for _, n := range common.KnownNames {
-		sd := snapshotter.SnapshotDevice{
+		sd := rfirecracker.SnapshotDevice{
 			Name:   n,
 			Output: filepath.Join("out", "package", common.DeviceFilenames[n]),
 		}
@@ -63,14 +63,14 @@ func main() {
 	cpuCount := flag.Int("cpu-count", 1, "CPU count")
 	memorySize := flag.Int("memory-size", 1024, "Memory size (in MB)")
 	cpuTemplate := flag.String("cpu-template", "None", "Firecracker CPU template (see https://github.com/firecracker-microvm/firecracker/blob/main/docs/cpu_templates/cpu-templates.md#static-cpu-templates for the options)")
-	bootArgs := flag.String("boot-args", snapshotter.DefaultBootArgs, "Boot/kernel arguments")
+	bootArgs := flag.String("boot-args", rfirecracker.DefaultBootArgs, "Boot/kernel arguments")
 
 	flag.Parse()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	var devices []snapshotter.SnapshotDevice
+	var devices []rfirecracker.SnapshotDevice
 	if err := json.Unmarshal([]byte(*rawDevices), &devices); err != nil {
 		panic(err)
 	}
@@ -93,19 +93,19 @@ func main() {
 		cancel()
 	}()
 
-	err = snapshotter.CreateSnapshot(ctx, devices,
-		snapshotter.VMConfiguration{
+	err = rfirecracker.CreateSnapshot(ctx, devices,
+		rfirecracker.VMConfiguration{
 			CPUCount:    *cpuCount,
 			MemorySize:  *memorySize,
 			CPUTemplate: *cpuTemplate,
 			BootArgs:    *bootArgs,
 		},
-		snapshotter.LivenessConfiguration{
+		rfirecracker.LivenessConfiguration{
 			LivenessVSockPort: uint32(*livenessVSockPort),
 			ResumeTimeout:     *resumeTimeout,
 		},
 
-		snapshotter.HypervisorConfiguration{
+		rfirecracker.HypervisorConfiguration{
 			FirecrackerBin: firecrackerBin,
 			JailerBin:      jailerBin,
 			ChrootBaseDir:  *chrootBaseDir,
@@ -117,11 +117,11 @@ func main() {
 			EnableOutput:   *enableOutput,
 			EnableInput:    *enableInput,
 		},
-		snapshotter.NetworkConfiguration{
+		rfirecracker.NetworkConfiguration{
 			Interface: *iface,
 			MAC:       *mac,
 		},
-		snapshotter.AgentConfiguration{
+		rfirecracker.AgentConfiguration{
 			AgentVSockPort: uint32(*agentVSockPort),
 			ResumeTimeout:  *resumeTimeout,
 		},

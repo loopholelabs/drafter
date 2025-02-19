@@ -1,4 +1,4 @@
-package runtimes
+package firecracker
 
 import (
 	"context"
@@ -11,8 +11,6 @@ import (
 
 	"github.com/loopholelabs/drafter/pkg/common"
 	"github.com/loopholelabs/drafter/pkg/ipc"
-	"github.com/loopholelabs/drafter/pkg/runner"
-	"github.com/loopholelabs/drafter/pkg/snapshotter"
 	"github.com/loopholelabs/logging/types"
 )
 
@@ -24,9 +22,9 @@ var ErrCouldNotResumeRunner = errors.New("could not resume runner")
 type FirecrackerRuntimeProvider[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] struct {
 	Log                     types.Logger
 	Remote                  R
-	Runner                  *runner.Runner[L, R, G]
-	ResumedRunner           *runner.ResumedRunner[L, R, G]
-	HypervisorConfiguration snapshotter.HypervisorConfiguration
+	Runner                  *Runner[L, R, G]
+	ResumedRunner           *ResumedRunner[L, R, G]
+	HypervisorConfiguration HypervisorConfiguration
 	StateName               string
 	MemoryName              string
 
@@ -38,7 +36,7 @@ type FirecrackerRuntimeProvider[L ipc.AgentServerLocal, R ipc.AgentServerRemote[
 	AgentServerLocal L
 	AgentServerHooks ipc.AgentServerAcceptHooks[R, G]
 
-	SnapshotLoadConfiguration runner.SnapshotLoadConfiguration
+	SnapshotLoadConfiguration SnapshotLoadConfiguration
 
 	runningLock sync.Mutex
 	running     bool
@@ -68,7 +66,7 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Resume(resumeTimeout time.Duratio
 	}
 	configFileData = configFileData[:firstZero]
 
-	var packageConfig snapshotter.PackageConfiguration
+	var packageConfig PackageConfiguration
 	if err := json.Unmarshal(configFileData, &packageConfig); err != nil {
 		return errors.Join(ErrCouldNotDecodeConfigFile, err)
 	}
@@ -108,7 +106,7 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Start(ctx context.Context, rescue
 	rp.hypervisorCtx = hypervisorCtx
 	rp.hypervisorCancel = hypervisorCancel
 
-	run, err := runner.StartRunner[L, R](
+	run, err := StartRunner[L, R](
 		hypervisorCtx,
 		rescueCtx,
 		rp.HypervisorConfiguration,

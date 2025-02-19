@@ -1,4 +1,4 @@
-package snapshotter
+package firecracker
 
 import (
 	"context"
@@ -13,12 +13,47 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loopholelabs/drafter/internal/firecracker"
 	iutils "github.com/loopholelabs/drafter/internal/utils"
+
+	"github.com/loopholelabs/drafter/internal/firecracker"
 	"github.com/loopholelabs/drafter/pkg/common"
 	"github.com/loopholelabs/drafter/pkg/ipc"
 	"github.com/loopholelabs/drafter/pkg/utils"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
+)
+
+const (
+	VSockName = "vsock.sock"
+
+	DefaultBootArgs      = "console=ttyS0 panic=1 pci=off modules=ext4 rootfstype=ext4 root=/dev/vda i8042.noaux i8042.nomux i8042.nopnp i8042.dumbkbd rootflags=rw printk.devkmsg=on printk_ratelimit=0 printk_ratelimit_burst=0 clocksource=tsc nokaslr lapic=notscdeadline tsc=unstable"
+	DefaultBootArgsNoPVM = "console=ttyS0 panic=1 pci=off modules=ext4 rootfstype=ext4 root=/dev/vda i8042.noaux i8042.nomux i8042.nopnp i8042.dumbkbd rootflags=rw printk.devkmsg=on printk_ratelimit=0 printk_ratelimit_burst=0 nokaslr"
+)
+
+var (
+	ErrCouldNotGetDeviceStat                 = errors.New("could not get NBD device stat")
+	ErrCouldNotWaitForFirecrackerServer      = errors.New("could not wait for Firecracker server")
+	ErrCouldNotOpenLivenessServer            = errors.New("could not open liveness server")
+	ErrCouldNotChownLivenessServerVSock      = errors.New("could not change ownership of liveness server VSock")
+	ErrCouldNotChownAgentServerVSock         = errors.New("could not change ownership of agent server VSock")
+	ErrCouldNotOpenInputFile                 = errors.New("could not open input file")
+	ErrCouldNotCreateOutputFile              = errors.New("could not create output file")
+	ErrCouldNotCopyFile                      = errors.New("error copying file")
+	ErrCouldNotWritePadding                  = errors.New("could not write padding")
+	ErrCouldNotCopyDeviceFile                = errors.New("could not copy device file")
+	ErrCouldNotStartVM                       = errors.New("could not start VM")
+	ErrCouldNotReceiveAndCloseLivenessServer = errors.New("could not receive and close liveness server")
+	ErrCouldNotAcceptAgentConnection         = errors.New("could not accept agent connection")
+	ErrCouldNotBeforeSuspend                 = errors.New("error before suspend")
+	ErrCouldNotMarshalPackageConfig          = errors.New("could not marshal package configuration")
+	ErrCouldNotOpenPackageConfigFile         = errors.New("could not open package configuration file")
+	ErrCouldNotWritePackageConfig            = errors.New("could not write package configuration")
+	ErrCouldNotChownPackageConfigFile        = errors.New("could not change ownership of package configuration file")
+	ErrCouldNotCreateChrootBaseDirectory     = errors.New("could not create chroot base directory")
+	ErrCouldNotStartFirecrackerServer        = errors.New("could not start firecracker server")
+	ErrCouldNotStartAgentServer              = errors.New("could not start agent server")
+	ErrCouldNotWaitForAcceptingAgent         = errors.New("could not wait for accepting agent")
+	ErrCouldNotCloseAcceptingAgent           = errors.New("could not close accepting agent")
+	ErrCouldNotCreateSnapshot                = errors.New("could not create snapshot")
 )
 
 type PackageConfiguration struct {

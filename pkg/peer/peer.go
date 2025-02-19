@@ -230,7 +230,7 @@ func (peer *Peer) MigrateFrom(ctx context.Context, devices []common.MigrateFromD
 				}
 
 				if err == nil {
-					peer.showDeviceHashes("MigrateFrom")
+					// peer.showDeviceHashes("MigrateFrom")
 
 					if hooks.OnCompletion != nil {
 						hooks.OnCompletion()
@@ -380,7 +380,7 @@ func (peer *Peer) MigrateTo(ctx context.Context, devices []common.MigrateToDevic
 		peer.log.Info().Msg("peer.MigrateTo completed successfuly")
 	}
 
-	peer.showDeviceHashes("MigrateTo")
+	// peer.showDeviceHashes("MigrateTo")
 
 	return nil
 }
