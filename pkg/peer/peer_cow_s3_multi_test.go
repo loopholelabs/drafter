@@ -100,7 +100,10 @@ func TestPeerCowS3Multi(t *testing.T) {
 	log := logging.New(logging.Zerolog, "test", os.Stderr)
 	// log.SetLevel(types.DebugLevel)
 
-	numMigrations := 5
+	numMigrations := 10
+
+	grandTotalBlocksP2P := 0
+	grandTotalBlocksS3 := 0
 
 	devicesTo, devicesFrom, deviceSizes := setupDevicesCowS3(t, 1+numMigrations)
 
@@ -138,8 +141,11 @@ func TestPeerCowS3Multi(t *testing.T) {
 
 	for migration := 0; migration < numMigrations; migration++ {
 
+		// Wait for some random time...
+		waitTime := rand.Intn(15)
+
 		// Let some S3 sync go on...
-		time.Sleep(5 * time.Second)
+		time.Sleep(time.Duration(waitTime) * time.Second)
 
 		// Create a new RuntimeProvider
 		rp2 := &runtimes.MockRuntimeProvider{
@@ -218,6 +224,20 @@ func TestPeerCowS3Multi(t *testing.T) {
 			}
 		}
 
+		// Tot up some data...
+		totalBlocksP2P := 0
+		totalBlocksS3 := 0
+		for _, n := range nextPeer.dg.GetAllNames() {
+			di := nextPeer.dg.GetDeviceInformationByName(n)
+			me := di.From.GetMetrics()
+			totalBlocksP2P += len(me.AvailableP2P)
+			totalBlocksS3 += len(me.AvailableAltSources)
+		}
+
+		fmt.Printf("Migration blocks %d p2p, %d s3\n", totalBlocksP2P, totalBlocksS3)
+		grandTotalBlocksP2P += totalBlocksP2P
+		grandTotalBlocksS3 += totalBlocksS3
+
 		// We can resume here, and will start writes again.
 		err = nextPeer.Resume(context.TODO(), 10*time.Second, 10*time.Second)
 		assert.NoError(t, err)
@@ -238,5 +258,9 @@ func TestPeerCowS3Multi(t *testing.T) {
 	// Close the final peer
 	err = lastPeer.Close()
 	assert.NoError(t, err)
+
+	// We would expect to have migrated data both via P2P, and also via S3.
+	assert.Greater(t, grandTotalBlocksP2P, 0)
+	assert.Greater(t, grandTotalBlocksS3, 0)
 
 }
