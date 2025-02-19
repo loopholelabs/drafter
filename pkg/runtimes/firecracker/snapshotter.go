@@ -106,18 +106,12 @@ type VMConfiguration struct {
 	BootArgs string
 }
 
-func CreateSnapshot(
-	ctx context.Context,
-
-	devices []SnapshotDevice,
-
-	vmConfiguration VMConfiguration,
-	livenessConfiguration LivenessConfiguration,
-
-	hypervisorConfiguration HypervisorConfiguration,
-	networkConfiguration NetworkConfiguration,
+func CreateSnapshot(ctx context.Context, devices []SnapshotDevice,
+	vmConfiguration VMConfiguration, livenessConfiguration LivenessConfiguration,
+	hypervisorConfiguration HypervisorConfiguration, networkConfiguration NetworkConfiguration,
 	agentConfiguration AgentConfiguration,
 ) (errs error) {
+
 	goroutineManager := manager.NewGoroutineManager(
 		ctx,
 		&errs,
@@ -318,39 +312,54 @@ func CreateSnapshot(
 	}
 	agent.Close()
 
-	if err := firecracker.CreateSnapshot(
-		goroutineManager.Context(),
+	err = createFinalSnapshot(goroutineManager.Context(), client, agentConfiguration.AgentVSockPort,
+		server.VMPath, hypervisorConfiguration.UID, hypervisorConfiguration.GID)
 
+	if err != nil {
+		panic(err)
+	}
+	return
+}
+
+/**
+ * Create the final snapshot
+ *
+ */
+func createFinalSnapshot(ctx context.Context, client *http.Client, vsockPort uint32, vmPath string, uid int, gid int) error {
+	err := firecracker.CreateSnapshot(
+		ctx,
 		client,
-
 		common.DeviceStateName,
 		common.DeviceMemoryName,
-
 		firecracker.SnapshotTypeFull,
-	); err != nil {
-		panic(errors.Join(ErrCouldNotCreateSnapshot, err))
+	)
+	if err != nil {
+		return errors.Join(ErrCouldNotCreateSnapshot, err)
 	}
 
 	packageConfig, err := json.Marshal(PackageConfiguration{
-		AgentVSockPort: agentConfiguration.AgentVSockPort,
+		AgentVSockPort: vsockPort,
 	})
 	if err != nil {
-		panic(errors.Join(ErrCouldNotMarshalPackageConfig, err))
+		return errors.Join(ErrCouldNotMarshalPackageConfig, err)
 	}
 
-	outputFile, err := os.OpenFile(filepath.Join(server.VMPath, common.DeviceConfigName), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, os.ModePerm)
+	configFilename := filepath.Join(vmPath, common.DeviceConfigName)
+	outputFile, err := os.OpenFile(configFilename, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, os.ModePerm)
 	if err != nil {
-		panic(errors.Join(ErrCouldNotOpenPackageConfigFile, err))
+		return errors.Join(ErrCouldNotOpenPackageConfigFile, err)
 	}
 	defer outputFile.Close()
 
-	if _, err := outputFile.Write(packageConfig); err != nil {
-		panic(errors.Join(ErrCouldNotWritePackageConfig, err))
+	_, err = outputFile.Write(packageConfig)
+	if err != nil {
+		return errors.Join(ErrCouldNotWritePackageConfig, err)
 	}
 
-	if err := os.Chown(filepath.Join(server.VMPath, common.DeviceConfigName), hypervisorConfiguration.UID, hypervisorConfiguration.GID); err != nil {
-		panic(errors.Join(ErrCouldNotChownPackageConfigFile, err))
+	err = os.Chown(configFilename, uid, gid)
+	if err != nil {
+		return errors.Join(ErrCouldNotChownPackageConfigFile, err)
 	}
 
-	return
+	return nil
 }
