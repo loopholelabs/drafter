@@ -30,8 +30,7 @@ var (
 )
 
 type SnapshotLoadConfiguration struct {
-	ExperimentalMapPrivate bool
-
+	ExperimentalMapPrivate             bool
 	ExperimentalMapPrivateStateOutput  string
 	ExperimentalMapPrivateMemoryOutput string
 }
@@ -40,8 +39,6 @@ type Runner struct {
 	log                     types.Logger
 	VMPath                  string
 	VMPid                   int
-	Wait                    func() error
-	Close                   func() error
 	ongoingResumeWg         sync.WaitGroup
 	firecrackerClient       *http.Client
 	hypervisorConfiguration HypervisorConfiguration
@@ -51,53 +48,64 @@ type Runner struct {
 	rescueCtx               context.Context
 }
 
-func StartRunner(
-	log types.Logger,
-	hypervisorCtx context.Context,
-	rescueCtx context.Context,
-	hypervisorConfiguration HypervisorConfiguration,
-	stateName string,
-	memoryName string,
-) (
-	runner *Runner,
-	errs error,
-) {
-	runner = &Runner{
+func (r *Runner) Wait() error {
+	if r.server != nil {
+		return r.server.Wait()
+	}
+	return nil
+}
+
+func (r *Runner) Close() error {
+	if r.server != nil {
+		err := r.server.Close()
+		if err != nil {
+			return errors.Join(ErrCouldNotCloseServer, err)
+		}
+
+		err = r.server.Wait()
+		if err != nil {
+			return errors.Join(ErrCouldNotWaitForFirecracker, err)
+		}
+
+		err = os.RemoveAll(filepath.Dir(r.VMPath))
+		if err != nil {
+			return errors.Join(ErrCouldNotRemoveVMDir, err)
+		}
+	}
+	return nil
+}
+
+func StartRunner(log types.Logger, hypervisorCtx context.Context, rescueCtx context.Context,
+	hypervisorConfiguration HypervisorConfiguration, stateName string, memoryName string) (*Runner, error) {
+
+	runner := &Runner{
 		log:                     log,
-		Wait:                    func() error { return nil },
-		Close:                   func() error { return nil },
 		hypervisorConfiguration: hypervisorConfiguration,
 		stateName:               stateName,
 		memoryName:              memoryName,
 		rescueCtx:               rescueCtx,
 	}
 
-	goroutineManager := manager.NewGoroutineManager(
-		hypervisorCtx,
-		&errs,
-		manager.GoroutineManagerHooks{},
-	)
-	defer goroutineManager.Wait()
-	defer goroutineManager.StopAllGoroutines()
-	defer goroutineManager.CreateBackgroundPanicCollector()()
-
-	if err := os.MkdirAll(hypervisorConfiguration.ChrootBaseDir, os.ModePerm); err != nil {
-		panic(errors.Join(ErrCouldNotCreateChrootBaseDirectory, err))
+	if log != nil {
+		log.Info().Msg("firecracker starting runner")
 	}
 
-	firecrackerCtx, cancelFirecrackerCtx := context.WithCancel(rescueCtx) // We use `rescueContext` here since this simply intercepts `hypervisorCtx`
+	err := os.MkdirAll(hypervisorConfiguration.ChrootBaseDir, os.ModePerm)
+	if err != nil {
+		return nil, errors.Join(ErrCouldNotCreateChrootBaseDirectory, err)
+	}
+
+	firecrackerCtx, cancelFirecrackerCtx := context.WithCancel(rescueCtx)
+	// We use `rescueContext` here since this simply intercepts `hypervisorCtx`
 	// and then waits for `rescueCtx` or the rescue operation to complete
 	go func() {
-		<-hypervisorCtx.Done() // We use hypervisorCtx, not goroutineManager.goroutineManager.Context() here since this resource outlives the function call
-
+		<-hypervisorCtx.Done()
 		runner.ongoingResumeWg.Wait()
-
 		cancelFirecrackerCtx()
 	}()
 
-	var err error
 	runner.server, err = firecracker.StartFirecrackerServer(
-		firecrackerCtx, // We use firecrackerCtx (which depends on hypervisorCtx, not goroutineManager.goroutineManager.Context()) here since this resource outlives the function call
+		firecrackerCtx,
 		hypervisorConfiguration.FirecrackerBin,
 		hypervisorConfiguration.JailerBin,
 		hypervisorConfiguration.ChrootBaseDir,
@@ -110,35 +118,14 @@ func StartRunner(
 		hypervisorConfiguration.EnableInput,
 	)
 	if err != nil {
-		panic(errors.Join(ErrCouldNotStartFirecrackerServer, err))
+		return nil, errors.Join(ErrCouldNotStartFirecrackerServer, err)
 	}
 
 	runner.VMPath = runner.server.VMPath
 	runner.VMPid = runner.server.VMPid
 
-	// We intentionally don't call `wg.Add` and `wg.Done` here since we return the process's wait method
-	// We still need to `defer handleGoroutinePanic()()` here however so that we catch any errors during this call
-	goroutineManager.StartBackgroundGoroutine(func(_ context.Context) {
-		if err := runner.server.Wait(); err != nil {
-			panic(errors.Join(ErrCouldNotWaitForFirecracker, err))
-		}
-	})
-
-	runner.Wait = runner.server.Wait
-	runner.Close = func() error {
-		if err := runner.server.Close(); err != nil {
-			return errors.Join(ErrCouldNotCloseServer, err)
-		}
-
-		if err := runner.Wait(); err != nil {
-			return errors.Join(ErrCouldNotWaitForFirecracker, err)
-		}
-
-		if err := os.RemoveAll(filepath.Dir(runner.VMPath)); err != nil {
-			return errors.Join(ErrCouldNotRemoveVMDir, err)
-		}
-
-		return nil
+	if log != nil {
+		log.Info().Str("vmpath", runner.VMPath).Int("vmpid", runner.VMPid).Msg("firecracker runner started")
 	}
 
 	runner.firecrackerClient = &http.Client{
@@ -149,7 +136,7 @@ func StartRunner(
 		},
 	}
 
-	return
+	return runner, nil
 }
 
 func Resume[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](

@@ -173,10 +173,6 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Close() error {
 		if err != nil {
 			return err
 		}
-		err = rp.Runner.Wait()
-		if err != nil {
-			return err
-		}
 	}
 	return nil
 }
