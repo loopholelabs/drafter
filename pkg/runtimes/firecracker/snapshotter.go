@@ -29,8 +29,6 @@ const (
 )
 
 var (
-	ErrCouldNotGetDeviceStat             = errors.New("could not get NBD device stat")
-	ErrCouldNotWaitForFirecrackerServer  = errors.New("could not wait for Firecracker server")
 	ErrCouldNotOpenInputFile             = errors.New("could not open input file")
 	ErrCouldNotCreateOutputFile          = errors.New("could not create output file")
 	ErrCouldNotCopyFile                  = errors.New("error copying file")

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"log"
 	"os"
@@ -19,6 +20,10 @@ import (
 	"github.com/loopholelabs/drafter/pkg/utils"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 	"golang.org/x/sys/unix"
+)
+
+var (
+	ErrCouldNotGetDeviceStat = errors.New("could not get NBD device stat")
 )
 
 type SharableDevice struct {
@@ -244,7 +249,7 @@ func main() {
 
 		deviceStat, ok := deviceInfo.Sys().(*syscall.Stat_t)
 		if !ok {
-			panic(rfirecracker.ErrCouldNotGetDeviceStat)
+			panic(ErrCouldNotGetDeviceStat)
 		}
 
 		deviceMajor := uint64(deviceStat.Rdev / 256)

@@ -21,6 +21,12 @@ var (
 	ErrCouldNotReceiveAndCloseLivenessServer = errors.New("could not receive and close liveness server")
 	ErrCouldNotAcceptAgentConnection         = errors.New("could not accept agent connection")
 	ErrCouldNotBeforeSuspend                 = errors.New("error before suspend")
+
+	// TODO Dedup
+	ErrCouldNotChownVSockPath       = errors.New("could not change ownership of vsock path")
+	ErrCouldNotAcceptAgent          = errors.New("could not accept agent")
+	ErrCouldNotCallAfterResumeRPC   = errors.New("could not call AfterResume RPC")
+	ErrCouldNotCallBeforeSuspendRPC = errors.New("could not call BeforeSuspend RPC")
 )
 
 type FirecrackerRPC struct {
