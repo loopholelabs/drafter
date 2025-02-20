@@ -13,10 +13,12 @@ import (
 	"github.com/loopholelabs/drafter/pkg/common"
 	rfirecracker "github.com/loopholelabs/drafter/pkg/runtimes/firecracker"
 	"github.com/loopholelabs/logging"
+	"github.com/loopholelabs/logging/types"
 )
 
 func main() {
 	log := logging.New(logging.Zerolog, "drafter", os.Stderr)
+	log.SetLevel(types.DebugLevel)
 
 	rawFirecrackerBin := flag.String("firecracker-bin", "firecracker", "Firecracker binary")
 	rawJailerBin := flag.String("jailer-bin", "jailer", "Jailer binary (from Firecracker)")

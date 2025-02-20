@@ -29,30 +29,21 @@ const (
 )
 
 var (
-	ErrCouldNotGetDeviceStat                 = errors.New("could not get NBD device stat")
-	ErrCouldNotWaitForFirecrackerServer      = errors.New("could not wait for Firecracker server")
-	ErrCouldNotOpenLivenessServer            = errors.New("could not open liveness server")
-	ErrCouldNotChownLivenessServerVSock      = errors.New("could not change ownership of liveness server VSock")
-	ErrCouldNotChownAgentServerVSock         = errors.New("could not change ownership of agent server VSock")
-	ErrCouldNotOpenInputFile                 = errors.New("could not open input file")
-	ErrCouldNotCreateOutputFile              = errors.New("could not create output file")
-	ErrCouldNotCopyFile                      = errors.New("error copying file")
-	ErrCouldNotWritePadding                  = errors.New("could not write padding")
-	ErrCouldNotCopyDeviceFile                = errors.New("could not copy device file")
-	ErrCouldNotStartVM                       = errors.New("could not start VM")
-	ErrCouldNotReceiveAndCloseLivenessServer = errors.New("could not receive and close liveness server")
-	ErrCouldNotAcceptAgentConnection         = errors.New("could not accept agent connection")
-	ErrCouldNotBeforeSuspend                 = errors.New("error before suspend")
-	ErrCouldNotMarshalPackageConfig          = errors.New("could not marshal package configuration")
-	ErrCouldNotOpenPackageConfigFile         = errors.New("could not open package configuration file")
-	ErrCouldNotWritePackageConfig            = errors.New("could not write package configuration")
-	ErrCouldNotChownPackageConfigFile        = errors.New("could not change ownership of package configuration file")
-	ErrCouldNotCreateChrootBaseDirectory     = errors.New("could not create chroot base directory")
-	ErrCouldNotStartFirecrackerServer        = errors.New("could not start firecracker server")
-	ErrCouldNotStartAgentServer              = errors.New("could not start agent server")
-	ErrCouldNotWaitForAcceptingAgent         = errors.New("could not wait for accepting agent")
-	ErrCouldNotCloseAcceptingAgent           = errors.New("could not close accepting agent")
-	ErrCouldNotCreateSnapshot                = errors.New("could not create snapshot")
+	ErrCouldNotGetDeviceStat             = errors.New("could not get NBD device stat")
+	ErrCouldNotWaitForFirecrackerServer  = errors.New("could not wait for Firecracker server")
+	ErrCouldNotOpenInputFile             = errors.New("could not open input file")
+	ErrCouldNotCreateOutputFile          = errors.New("could not create output file")
+	ErrCouldNotCopyFile                  = errors.New("error copying file")
+	ErrCouldNotWritePadding              = errors.New("could not write padding")
+	ErrCouldNotCopyDeviceFile            = errors.New("could not copy device file")
+	ErrCouldNotStartVM                   = errors.New("could not start VM")
+	ErrCouldNotMarshalPackageConfig      = errors.New("could not marshal package configuration")
+	ErrCouldNotOpenPackageConfigFile     = errors.New("could not open package configuration file")
+	ErrCouldNotWritePackageConfig        = errors.New("could not write package configuration")
+	ErrCouldNotChownPackageConfigFile    = errors.New("could not change ownership of package configuration file")
+	ErrCouldNotCreateChrootBaseDirectory = errors.New("could not create chroot base directory")
+	ErrCouldNotStartFirecrackerServer    = errors.New("could not start firecracker server")
+	ErrCouldNotCreateSnapshot            = errors.New("could not create snapshot")
 )
 
 func CreateSnapshot(log types.Logger, ctx context.Context, devices []SnapshotDevice,
@@ -108,39 +99,21 @@ func CreateSnapshot(log types.Logger, ctx context.Context, devices []SnapshotDev
 		log.Debug().Str("vmpath", server.VMPath).Msg("Firecracker server running")
 	}
 
-	// TODO: Move the RPC bits out of here into their own
-
-	liveness := ipc.NewLivenessServer(
-		filepath.Join(server.VMPath, VSockName),
-		uint32(livenessConfiguration.LivenessVSockPort),
-	)
-
-	livenessVSockPath, err := liveness.Open()
-	if err != nil {
-		return errors.Join(ErrCouldNotOpenLivenessServer, err)
-	}
-	defer liveness.Close()
-
-	err = os.Chown(livenessVSockPath, hypervisorConfiguration.UID, hypervisorConfiguration.GID)
-	if err != nil {
-		return errors.Join(ErrCouldNotChownLivenessServerVSock, err)
+	// Setup RPC bits required here.
+	rpc := &FirecrackerRPC{
+		Log:               log,
+		VMPath:            server.VMPath,
+		UID:               hypervisorConfiguration.UID,
+		GID:               hypervisorConfiguration.GID,
+		LivenessVSockPort: uint32(livenessConfiguration.LivenessVSockPort),
+		AgentVSockPort:    uint32(agentConfiguration.AgentVSockPort),
 	}
 
-	agent, err := ipc.StartAgentServer[struct{}, ipc.AgentServerRemote[struct{}]](
-		filepath.Join(server.VMPath, VSockName),
-		uint32(agentConfiguration.AgentVSockPort),
-		struct{}{},
-	)
-
+	err = rpc.Init()
 	if err != nil {
-		return errors.Join(ErrCouldNotStartAgentServer, err)
+		return err
 	}
-	defer agent.Close()
-
-	err = os.Chown(agent.VSockPath, hypervisorConfiguration.UID, hypervisorConfiguration.GID)
-	if err != nil {
-		return errors.Join(ErrCouldNotChownAgentServerVSock, err)
-	}
+	defer rpc.Close()
 
 	client := &http.Client{
 		Transport: &http.Transport{
@@ -187,56 +160,10 @@ func CreateSnapshot(log types.Logger, ctx context.Context, devices []SnapshotDev
 		log.Info().Msg("Started firecracker VM")
 	}
 
-	// TODO: Move these RPC bits out elsewhere...
-
-	receiveCtx, livenessCancel := context.WithTimeout(ctx, livenessConfiguration.ResumeTimeout)
-	defer livenessCancel()
-
-	err = liveness.ReceiveAndClose(receiveCtx)
+	// Perform the RPC calls here...
+	err = rpc.LivenessAndBeforeSuspendAndClose(ctx, livenessConfiguration.ResumeTimeout, agentConfiguration.ResumeTimeout)
 	if err != nil {
-		return errors.Join(ErrCouldNotReceiveAndCloseLivenessServer, err)
-	}
-
-	var acceptingAgent *ipc.AcceptingAgentServer[struct{}, ipc.AgentServerRemote[struct{}], struct{}]
-	acceptCtx, acceptCancel := context.WithTimeout(ctx, agentConfiguration.ResumeTimeout)
-	defer acceptCancel()
-
-	acceptingAgent, err = agent.Accept(acceptCtx, ctx,
-		ipc.AgentServerAcceptHooks[ipc.AgentServerRemote[struct{}], struct{}]{},
-	)
-
-	if err != nil {
-		return errors.Join(ErrCouldNotAcceptAgentConnection, err)
-	}
-	defer acceptingAgent.Close()
-
-	acceptingAgentErr := make(chan error, 1)
-	go func() {
-		err := acceptingAgent.Wait()
-		if err != nil {
-			// Pass the error back here...
-			acceptingAgentErr <- err
-		}
-	}()
-
-	err = acceptingAgent.Remote.BeforeSuspend(acceptCtx)
-	if err != nil {
-		return errors.Join(ErrCouldNotBeforeSuspend, err)
-	}
-
-	// Connections need to be closed before creating the snapshot
-	liveness.Close()
-	err = acceptingAgent.Close()
-	if err != nil {
-		return errors.Join(ErrCouldNotCloseAcceptingAgent, err)
-	}
-	agent.Close()
-
-	// Check if there was any error
-	select {
-	case err := <-acceptingAgentErr:
 		return err
-	default:
 	}
 
 	err = createFinalSnapshot(ctx, client, agentConfiguration.AgentVSockPort,
