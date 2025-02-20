@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"flag"
-	"log"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -13,9 +12,12 @@ import (
 
 	"github.com/loopholelabs/drafter/pkg/common"
 	rfirecracker "github.com/loopholelabs/drafter/pkg/runtimes/firecracker"
+	"github.com/loopholelabs/logging"
 )
 
 func main() {
+	log := logging.New(logging.Zerolog, "drafter", os.Stderr)
+
 	rawFirecrackerBin := flag.String("firecracker-bin", "firecracker", "Firecracker binary")
 	rawJailerBin := flag.String("jailer-bin", "jailer", "Jailer binary (from Firecracker)")
 
@@ -89,11 +91,11 @@ func main() {
 	signal.Notify(done, os.Interrupt)
 	go func() {
 		<-done
-		log.Println("Exiting gracefully")
+		log.Info().Msg("Exiting gracefully")
 		cancel()
 	}()
 
-	err = rfirecracker.CreateSnapshot(ctx, devices,
+	err = rfirecracker.CreateSnapshot(log, ctx, devices,
 		rfirecracker.VMConfiguration{
 			CPUCount:    *cpuCount,
 			MemorySize:  *memorySize,
@@ -131,5 +133,5 @@ func main() {
 		panic(err)
 	}
 
-	log.Println("Shutting down")
+	log.Info().Msg("Shutting down")
 }

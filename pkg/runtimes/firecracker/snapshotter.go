@@ -13,12 +13,12 @@ import (
 	"strings"
 
 	iutils "github.com/loopholelabs/drafter/internal/utils"
+	"github.com/loopholelabs/logging/types"
 
 	"github.com/loopholelabs/drafter/internal/firecracker"
 	"github.com/loopholelabs/drafter/pkg/common"
 	"github.com/loopholelabs/drafter/pkg/ipc"
 	"github.com/loopholelabs/drafter/pkg/utils"
-	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 )
 
 const (
@@ -55,54 +55,60 @@ var (
 	ErrCouldNotCreateSnapshot                = errors.New("could not create snapshot")
 )
 
-func CreateSnapshot(ctx context.Context, devices []SnapshotDevice,
+func CreateSnapshot(log types.Logger, ctx context.Context, devices []SnapshotDevice,
 	vmConfiguration VMConfiguration, livenessConfiguration LivenessConfiguration,
 	hypervisorConfiguration HypervisorConfiguration, networkConfiguration NetworkConfiguration,
 	agentConfiguration AgentConfiguration,
 ) (errs error) {
+	if log != nil {
+		log.Info().Msg("Creating firecracker VM snapshot")
+		for _, s := range devices {
+			log.Info().Str("input", s.Input).Str("output", s.Output).Str("name", s.Name).Msg("Snapshot device")
+		}
+	}
 
-	goroutineManager := manager.NewGoroutineManager(
-		ctx,
-		&errs,
-		manager.GoroutineManagerHooks{},
-	)
-	defer goroutineManager.Wait()
-	defer goroutineManager.StopAllGoroutines()
-	defer goroutineManager.CreateBackgroundPanicCollector()()
+	if log != nil {
+		log.Debug().Str("base-dir", hypervisorConfiguration.ChrootBaseDir).Msg("Creating ChrootBaseDir")
+	}
 
-	if err := os.MkdirAll(hypervisorConfiguration.ChrootBaseDir, os.ModePerm); err != nil {
-		panic(errors.Join(ErrCouldNotCreateChrootBaseDirectory, err))
+	err := os.MkdirAll(hypervisorConfiguration.ChrootBaseDir, os.ModePerm)
+	if err != nil {
+		return errors.Join(ErrCouldNotCreateChrootBaseDirectory, err)
 	}
 
 	server, err := firecracker.StartFirecrackerServer(
-		goroutineManager.Context(),
-
+		ctx,
 		hypervisorConfiguration.FirecrackerBin,
 		hypervisorConfiguration.JailerBin,
-
 		hypervisorConfiguration.ChrootBaseDir,
-
 		hypervisorConfiguration.UID,
 		hypervisorConfiguration.GID,
-
 		hypervisorConfiguration.NetNS,
 		hypervisorConfiguration.NumaNode,
 		hypervisorConfiguration.CgroupVersion,
-
 		hypervisorConfiguration.EnableOutput,
 		hypervisorConfiguration.EnableInput,
 	)
+
 	if err != nil {
-		panic(errors.Join(ErrCouldNotStartFirecrackerServer, err))
+		return errors.Join(ErrCouldNotStartFirecrackerServer, err)
 	}
 	defer server.Close()
 	defer os.RemoveAll(filepath.Dir(server.VMPath)) // Remove `firecracker/$id`, not just `firecracker/$id/root`
 
-	goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
-		if err := server.Wait(); err != nil {
-			panic(errors.Join(ErrCouldNotWaitForFirecrackerServer, err))
+	serverErr := make(chan error, 1)
+	go func() {
+		err := server.Wait()
+		if err != nil {
+			serverErr <- err
 		}
-	})
+	}()
+
+	if log != nil {
+		log.Debug().Str("vmpath", server.VMPath).Msg("Firecracker server running")
+	}
+
+	// TODO: Move the RPC bits out of here into their own
 
 	liveness := ipc.NewLivenessServer(
 		filepath.Join(server.VMPath, VSockName),
@@ -111,27 +117,29 @@ func CreateSnapshot(ctx context.Context, devices []SnapshotDevice,
 
 	livenessVSockPath, err := liveness.Open()
 	if err != nil {
-		panic(errors.Join(ErrCouldNotOpenLivenessServer, err))
+		return errors.Join(ErrCouldNotOpenLivenessServer, err)
 	}
 	defer liveness.Close()
 
-	if err := os.Chown(livenessVSockPath, hypervisorConfiguration.UID, hypervisorConfiguration.GID); err != nil {
-		panic(errors.Join(ErrCouldNotChownLivenessServerVSock, err))
+	err = os.Chown(livenessVSockPath, hypervisorConfiguration.UID, hypervisorConfiguration.GID)
+	if err != nil {
+		return errors.Join(ErrCouldNotChownLivenessServerVSock, err)
 	}
 
 	agent, err := ipc.StartAgentServer[struct{}, ipc.AgentServerRemote[struct{}]](
 		filepath.Join(server.VMPath, VSockName),
 		uint32(agentConfiguration.AgentVSockPort),
-
 		struct{}{},
 	)
+
 	if err != nil {
-		panic(errors.Join(ErrCouldNotStartAgentServer, err))
+		return errors.Join(ErrCouldNotStartAgentServer, err)
 	}
 	defer agent.Close()
 
-	if err := os.Chown(agent.VSockPath, hypervisorConfiguration.UID, hypervisorConfiguration.GID); err != nil {
-		panic(errors.Join(ErrCouldNotChownAgentServerVSock, err))
+	err = os.Chown(agent.VSockPath, hypervisorConfiguration.UID, hypervisorConfiguration.GID)
+	if err != nil {
+		return errors.Join(ErrCouldNotChownAgentServerVSock, err)
 	}
 
 	client := &http.Client{
@@ -142,132 +150,154 @@ func CreateSnapshot(ctx context.Context, devices []SnapshotDevice,
 		},
 	}
 
-	defer func() {
-		defer goroutineManager.CreateForegroundPanicCollector()()
-
-		if errs != nil {
-			return
-		}
-
-		for _, device := range devices {
-			inputFile, err := os.Open(filepath.Join(server.VMPath, device.Name))
-			if err != nil {
-				panic(errors.Join(ErrCouldNotOpenInputFile, err))
-			}
-			defer inputFile.Close()
-
-			if err := os.MkdirAll(filepath.Dir(device.Output), os.ModePerm); err != nil {
-				panic(errors.Join(common.ErrCouldNotCreateOutputDir, err))
-			}
-
-			outputFile, err := os.OpenFile(device.Output, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, os.ModePerm)
-			if err != nil {
-				panic(errors.Join(ErrCouldNotCreateOutputFile, err))
-			}
-			defer outputFile.Close()
-
-			deviceSize, err := io.Copy(outputFile, inputFile)
-			if err != nil {
-				panic(errors.Join(ErrCouldNotCopyFile, err))
-			}
-
-			if paddingLength := utils.GetBlockDevicePadding(deviceSize); paddingLength > 0 {
-				if _, err := outputFile.Write(make([]byte, paddingLength)); err != nil {
-					panic(errors.Join(ErrCouldNotWritePadding, err))
-				}
-			}
-		}
-	}()
-	// We need to stop the Firecracker process from using the mount before we can unmount it
-	defer server.Close()
-
 	disks := []string{}
 	for _, device := range devices {
 		if strings.TrimSpace(device.Input) != "" {
-			if _, err := iutils.CopyFile(device.Input, filepath.Join(server.VMPath, device.Name), hypervisorConfiguration.UID, hypervisorConfiguration.GID); err != nil {
-				panic(errors.Join(ErrCouldNotCopyDeviceFile, err))
+			_, err := iutils.CopyFile(device.Input, filepath.Join(server.VMPath, device.Name), hypervisorConfiguration.UID, hypervisorConfiguration.GID)
+			if err != nil {
+				return errors.Join(ErrCouldNotCopyDeviceFile, err)
 			}
 		}
-
 		if !slices.Contains(common.KnownNames, device.Name) || device.Name == common.DeviceDiskName {
 			disks = append(disks, device.Name)
 		}
 	}
 
-	if err := firecracker.StartVM(
-		goroutineManager.Context(),
-
+	err = firecracker.StartVM(
+		ctx,
 		client,
-
 		common.DeviceKernelName,
-
 		disks,
-
 		vmConfiguration.CPUCount,
 		vmConfiguration.MemorySize,
 		vmConfiguration.CPUTemplate,
 		vmConfiguration.BootArgs,
-
 		networkConfiguration.Interface,
 		networkConfiguration.MAC,
-
 		VSockName,
 		ipc.VSockCIDGuest,
-	); err != nil {
-		panic(errors.Join(ErrCouldNotStartVM, err))
+	)
+
+	if err != nil {
+		return errors.Join(ErrCouldNotStartVM, err)
 	}
 	defer os.Remove(filepath.Join(server.VMPath, VSockName))
 
-	{
-		receiveCtx, cancel := context.WithTimeout(goroutineManager.Context(), livenessConfiguration.ResumeTimeout)
-		defer cancel()
+	if log != nil {
+		log.Info().Msg("Started firecracker VM")
+	}
 
-		if err := liveness.ReceiveAndClose(receiveCtx); err != nil {
-			panic(errors.Join(ErrCouldNotReceiveAndCloseLivenessServer, err))
-		}
+	// TODO: Move these RPC bits out elsewhere...
+
+	receiveCtx, livenessCancel := context.WithTimeout(ctx, livenessConfiguration.ResumeTimeout)
+	defer livenessCancel()
+
+	err = liveness.ReceiveAndClose(receiveCtx)
+	if err != nil {
+		return errors.Join(ErrCouldNotReceiveAndCloseLivenessServer, err)
 	}
 
 	var acceptingAgent *ipc.AcceptingAgentServer[struct{}, ipc.AgentServerRemote[struct{}], struct{}]
-	{
-		acceptCtx, cancel := context.WithTimeout(goroutineManager.Context(), agentConfiguration.ResumeTimeout)
-		defer cancel()
+	acceptCtx, acceptCancel := context.WithTimeout(ctx, agentConfiguration.ResumeTimeout)
+	defer acceptCancel()
 
-		acceptingAgent, err = agent.Accept(
-			acceptCtx,
-			goroutineManager.Context(),
+	acceptingAgent, err = agent.Accept(acceptCtx, ctx,
+		ipc.AgentServerAcceptHooks[ipc.AgentServerRemote[struct{}], struct{}]{},
+	)
 
-			ipc.AgentServerAcceptHooks[ipc.AgentServerRemote[struct{}], struct{}]{},
-		)
+	if err != nil {
+		return errors.Join(ErrCouldNotAcceptAgentConnection, err)
+	}
+	defer acceptingAgent.Close()
+
+	acceptingAgentErr := make(chan error, 1)
+	go func() {
+		err := acceptingAgent.Wait()
 		if err != nil {
-			panic(errors.Join(ErrCouldNotAcceptAgentConnection, err))
+			// Pass the error back here...
+			acceptingAgentErr <- err
 		}
-		defer acceptingAgent.Close()
+	}()
 
-		goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
-			if err := acceptingAgent.Wait(); err != nil {
-				panic(errors.Join(ErrCouldNotWaitForAcceptingAgent, err))
-			}
-		})
-
-		if err := acceptingAgent.Remote.BeforeSuspend(acceptCtx); err != nil {
-			panic(errors.Join(ErrCouldNotBeforeSuspend, err))
-		}
+	err = acceptingAgent.Remote.BeforeSuspend(acceptCtx)
+	if err != nil {
+		return errors.Join(ErrCouldNotBeforeSuspend, err)
 	}
 
 	// Connections need to be closed before creating the snapshot
 	liveness.Close()
-	if err := acceptingAgent.Close(); err != nil {
-		panic(errors.Join(ErrCouldNotCloseAcceptingAgent, err))
+	err = acceptingAgent.Close()
+	if err != nil {
+		return errors.Join(ErrCouldNotCloseAcceptingAgent, err)
 	}
 	agent.Close()
 
-	err = createFinalSnapshot(goroutineManager.Context(), client, agentConfiguration.AgentVSockPort,
+	// Check if there was any error
+	select {
+	case err := <-acceptingAgentErr:
+		return err
+	default:
+	}
+
+	err = createFinalSnapshot(ctx, client, agentConfiguration.AgentVSockPort,
 		server.VMPath, hypervisorConfiguration.UID, hypervisorConfiguration.GID)
 
 	if err != nil {
-		panic(err)
+		return err
 	}
+
+	err = copySnapshotFiles(devices, server.VMPath)
+	if err != nil {
+		return err
+	}
+
+	// Check for any firecracker server error here...
+	select {
+	case err := <-serverErr:
+		return err
+	default:
+	}
+
 	return
+}
+
+/**
+ * Copy snapshot files
+ *
+ */
+func copySnapshotFiles(devices []SnapshotDevice, vmPath string) error {
+
+	for _, device := range devices {
+		inputFile, err := os.Open(filepath.Join(vmPath, device.Name))
+		if err != nil {
+			return errors.Join(ErrCouldNotOpenInputFile, err)
+		}
+		defer inputFile.Close()
+
+		err = os.MkdirAll(filepath.Dir(device.Output), os.ModePerm)
+		if err != nil {
+			return errors.Join(common.ErrCouldNotCreateOutputDir, err)
+		}
+
+		outputFile, err := os.OpenFile(device.Output, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, os.ModePerm)
+		if err != nil {
+			return errors.Join(ErrCouldNotCreateOutputFile, err)
+		}
+		defer outputFile.Close()
+
+		deviceSize, err := io.Copy(outputFile, inputFile)
+		if err != nil {
+			return errors.Join(ErrCouldNotCopyFile, err)
+		}
+
+		if paddingLength := utils.GetBlockDevicePadding(deviceSize); paddingLength > 0 {
+			_, err := outputFile.Write(make([]byte, paddingLength))
+			if err != nil {
+				return errors.Join(ErrCouldNotWritePadding, err)
+			}
+		}
+	}
+	return nil
 }
 
 /**
