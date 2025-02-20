@@ -21,7 +21,7 @@ var ErrCouldNotResumeRunner = errors.New("could not resume runner")
 
 type FirecrackerRuntimeProvider[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] struct {
 	Log                     types.Logger
-	Runner                  *Runner[L, R, G]
+	Runner                  *Runner
 	ResumedRunner           *ResumedRunner[L, R, G]
 	HypervisorConfiguration HypervisorConfiguration
 	StateName               string
@@ -72,7 +72,8 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Resume(resumeTimeout time.Duratio
 		return errors.Join(ErrCouldNotDecodeConfigFile, err)
 	}
 
-	rp.ResumedRunner, err = rp.Runner.Resume(
+	rp.ResumedRunner, err = Resume[L, R, G](
+		rp.Runner,
 		resumeCtx,
 		resumeTimeout,
 		rescueTimeout,
@@ -107,7 +108,7 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Start(ctx context.Context, rescue
 	rp.hypervisorCtx = hypervisorCtx
 	rp.hypervisorCancel = hypervisorCancel
 
-	run, err := StartRunner[L, R](
+	run, err := StartRunner(
 		rp.Log,
 		hypervisorCtx,
 		rescueCtx,

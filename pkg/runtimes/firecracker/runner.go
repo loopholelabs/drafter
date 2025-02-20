@@ -36,7 +36,7 @@ type SnapshotLoadConfiguration struct {
 	ExperimentalMapPrivateMemoryOutput string
 }
 
-type Runner[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] struct {
+type Runner struct {
 	log                     types.Logger
 	VMPath                  string
 	VMPid                   int
@@ -51,7 +51,7 @@ type Runner[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] struct {
 	rescueCtx               context.Context
 }
 
-func StartRunner[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
+func StartRunner(
 	log types.Logger,
 	hypervisorCtx context.Context,
 	rescueCtx context.Context,
@@ -59,10 +59,10 @@ func StartRunner[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 	stateName string,
 	memoryName string,
 ) (
-	runner *Runner[L, R, G],
+	runner *Runner,
 	errs error,
 ) {
-	runner = &Runner[L, R, G]{
+	runner = &Runner{
 		log:                     log,
 		Wait:                    func() error { return nil },
 		Close:                   func() error { return nil },
@@ -152,7 +152,8 @@ func StartRunner[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 	return
 }
 
-func (runner *Runner[L, R, G]) Resume(
+func Resume[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
+	runner *Runner,
 	ctx context.Context,
 	resumeTimeout time.Duration,
 	rescueTimeout time.Duration,
@@ -407,7 +408,7 @@ type ResumedRunner[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] st
 	snapshotLoadConfiguration SnapshotLoadConfiguration
 	createSnapshot            func(ctx context.Context) error
 
-	runner         *Runner[L, R, G]
+	runner         *Runner
 	agent          *ipc.AgentServer[L, R, G]
 	acceptingAgent *ipc.AcceptingAgentServer[L, R, G]
 	Remote         *R

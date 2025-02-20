@@ -154,7 +154,7 @@ func main() {
 		cancel()
 	}()
 
-	r, err := rfirecracker.StartRunner[struct{}, ipc.AgentServerRemote[struct{}]](
+	r, err := rfirecracker.StartRunner(
 		log,
 		goroutineManager.Context(),
 		context.Background(), // Never give up on rescue operations
@@ -277,7 +277,7 @@ func main() {
 
 	before := time.Now()
 
-	resumedRunner, err := r.Resume(
+	resumedRunner, err := rfirecracker.Resume[struct{}, ipc.AgentServerRemote[struct{}], struct{}](r,
 		goroutineManager.Context(),
 
 		*resumeTimeout,
