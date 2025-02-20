@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
-	"log"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -19,6 +18,7 @@ import (
 	rfirecracker "github.com/loopholelabs/drafter/pkg/runtimes/firecracker"
 	"github.com/loopholelabs/drafter/pkg/utils"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
+	"github.com/loopholelabs/logging"
 	"golang.org/x/sys/unix"
 )
 
@@ -33,6 +33,8 @@ type SharableDevice struct {
 }
 
 func main() {
+	log := logging.New(logging.Zerolog, "drafter", os.Stderr)
+
 	defDevices := make([]SharableDevice, 0)
 	for _, n := range common.KnownNames {
 		defDevices = append(defDevices, SharableDevice{
@@ -147,12 +149,13 @@ func main() {
 			return
 		}
 
-		log.Println("Exiting gracefully")
+		log.Info().Msg("Exiting gracefully")
 
 		cancel()
 	}()
 
 	r, err := rfirecracker.StartRunner[struct{}, ipc.AgentServerRemote[struct{}]](
+		log,
 		goroutineManager.Context(),
 		context.Background(), // Never give up on rescue operations
 
@@ -204,7 +207,7 @@ func main() {
 	})
 
 	for index, device := range devices {
-		log.Println("Requested local device", index, "with name", device.Name)
+		log.Info().Int("index", index).Str("name", device.Name).Msg("Requested local device")
 
 		defer func() {
 			defer goroutineManager.CreateForegroundPanicCollector()()
@@ -240,7 +243,7 @@ func main() {
 			}
 		}
 
-		log.Println("Exposed local device", index, "at", devicePath)
+		log.Info().Int("index", index).Str("devicePath", devicePath).Msg("Exposed local device")
 
 		deviceInfo, err := os.Stat(devicePath)
 		if err != nil {
@@ -310,7 +313,7 @@ func main() {
 		}
 	})
 
-	log.Println("Resumed VM in", time.Since(before), "on", r.VMPath)
+	log.Info().Str("vmpath", r.VMPath).Int64("ms", time.Since(before).Milliseconds()).Msg("Resumed VM")
 
 	bubbleSignals = true
 
@@ -328,7 +331,5 @@ func main() {
 		panic(err)
 	}
 
-	log.Println("Suspend:", time.Since(before))
-
-	log.Println("Shutting down")
+	log.Info().Msg("Shutting down")
 }

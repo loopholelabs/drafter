@@ -18,6 +18,7 @@ import (
 	"github.com/loopholelabs/drafter/pkg/ipc"
 	"github.com/loopholelabs/drafter/pkg/utils"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
+	"github.com/loopholelabs/logging/types"
 )
 
 var (
@@ -36,48 +37,39 @@ type SnapshotLoadConfiguration struct {
 }
 
 type Runner[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] struct {
-	VMPath string
-	VMPid  int
-
-	Wait  func() error
-	Close func() error
-
-	ongoingResumeWg   sync.WaitGroup
-	firecrackerClient *http.Client
-
+	log                     types.Logger
+	VMPath                  string
+	VMPid                   int
+	Wait                    func() error
+	Close                   func() error
+	ongoingResumeWg         sync.WaitGroup
+	firecrackerClient       *http.Client
 	hypervisorConfiguration HypervisorConfiguration
-
-	stateName,
-	memoryName string
-
-	server *firecracker.FirecrackerServer
-
-	rescueCtx context.Context
+	stateName               string
+	memoryName              string
+	server                  *firecracker.FirecrackerServer
+	rescueCtx               context.Context
 }
 
 func StartRunner[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
+	log types.Logger,
 	hypervisorCtx context.Context,
 	rescueCtx context.Context,
-
 	hypervisorConfiguration HypervisorConfiguration,
-
 	stateName string,
 	memoryName string,
 ) (
 	runner *Runner[L, R, G],
-
 	errs error,
 ) {
 	runner = &Runner[L, R, G]{
-		Wait:  func() error { return nil },
-		Close: func() error { return nil },
-
+		log:                     log,
+		Wait:                    func() error { return nil },
+		Close:                   func() error { return nil },
 		hypervisorConfiguration: hypervisorConfiguration,
-
-		stateName:  stateName,
-		memoryName: memoryName,
-
-		rescueCtx: rescueCtx,
+		stateName:               stateName,
+		memoryName:              memoryName,
+		rescueCtx:               rescueCtx,
 	}
 
 	goroutineManager := manager.NewGoroutineManager(
@@ -106,19 +98,14 @@ func StartRunner[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 	var err error
 	runner.server, err = firecracker.StartFirecrackerServer(
 		firecrackerCtx, // We use firecrackerCtx (which depends on hypervisorCtx, not goroutineManager.goroutineManager.Context()) here since this resource outlives the function call
-
 		hypervisorConfiguration.FirecrackerBin,
 		hypervisorConfiguration.JailerBin,
-
 		hypervisorConfiguration.ChrootBaseDir,
-
 		hypervisorConfiguration.UID,
 		hypervisorConfiguration.GID,
-
 		hypervisorConfiguration.NetNS,
 		hypervisorConfiguration.NumaNode,
 		hypervisorConfiguration.CgroupVersion,
-
 		hypervisorConfiguration.EnableOutput,
 		hypervisorConfiguration.EnableInput,
 	)
@@ -167,18 +154,14 @@ func StartRunner[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 
 func (runner *Runner[L, R, G]) Resume(
 	ctx context.Context,
-
 	resumeTimeout time.Duration,
 	rescueTimeout time.Duration,
 	agentVSockPort uint32,
-
 	agentServerLocal L,
 	agentServerHooks ipc.AgentServerAcceptHooks[R, G],
-
 	snapshotLoadConfiguration SnapshotLoadConfiguration,
 ) (
 	resumedRunner *ResumedRunner[L, R, G],
-
 	errs error,
 ) {
 	resumedRunner = &ResumedRunner[L, R, G]{
@@ -419,37 +402,30 @@ func (runner *Runner[L, R, G]) Resume(
 }
 
 type ResumedRunner[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] struct {
-	Remote *R
-
-	Wait  func() error
-	Close func() error
-
+	Wait                      func() error
+	Close                     func() error
 	snapshotLoadConfiguration SnapshotLoadConfiguration
+	createSnapshot            func(ctx context.Context) error
 
-	runner *Runner[L, R, G]
-
+	runner         *Runner[L, R, G]
 	agent          *ipc.AgentServer[L, R, G]
 	acceptingAgent *ipc.AcceptingAgentServer[L, R, G]
-
-	createSnapshot func(ctx context.Context) error
+	Remote         *R
 }
 
 func (resumedRunner *ResumedRunner[L, R, G]) Msync(ctx context.Context) error {
 	if !resumedRunner.snapshotLoadConfiguration.ExperimentalMapPrivate {
-		if err := firecracker.CreateSnapshot(
+		err := firecracker.CreateSnapshot(
 			ctx,
-
 			resumedRunner.runner.firecrackerClient,
-
 			resumedRunner.runner.stateName,
 			"",
-
 			firecracker.SnapshotTypeMsync,
-		); err != nil {
+		)
+		if err != nil {
 			return errors.Join(ErrCouldNotCreateSnapshot, err)
 		}
 	}
-
 	return nil
 }
 

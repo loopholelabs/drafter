@@ -21,7 +21,6 @@ var ErrCouldNotResumeRunner = errors.New("could not resume runner")
 
 type FirecrackerRuntimeProvider[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] struct {
 	Log                     types.Logger
-	Remote                  R
 	Runner                  *Runner[L, R, G]
 	ResumedRunner           *ResumedRunner[L, R, G]
 	HypervisorConfiguration HypervisorConfiguration
@@ -33,13 +32,15 @@ type FirecrackerRuntimeProvider[L ipc.AgentServerLocal, R ipc.AgentServerRemote[
 	resumeCtx        context.Context
 	resumeCancel     context.CancelFunc
 
-	AgentServerLocal L
-	AgentServerHooks ipc.AgentServerAcceptHooks[R, G]
-
 	SnapshotLoadConfiguration SnapshotLoadConfiguration
 
 	runningLock sync.Mutex
 	running     bool
+
+	// RPC Bits
+	Remote           R
+	AgentServerLocal L
+	AgentServerHooks ipc.AgentServerAcceptHooks[R, G]
 }
 
 func (rp *FirecrackerRuntimeProvider[L, R, G]) Resume(resumeTimeout time.Duration, rescueTimeout time.Duration, errChan chan error) error {
@@ -107,6 +108,7 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Start(ctx context.Context, rescue
 	rp.hypervisorCancel = hypervisorCancel
 
 	run, err := StartRunner[L, R](
+		rp.Log,
 		hypervisorCtx,
 		rescueCtx,
 		rp.HypervisorConfiguration,
