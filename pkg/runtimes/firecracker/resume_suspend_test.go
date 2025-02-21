@@ -36,47 +36,33 @@ func TestResumeSuspend(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	r, err := StartRunner(log, ctx, ctx, HypervisorConfiguration{
-		FirecrackerBin: firecrackerBin,
-		JailerBin:      jailerBin,
-		ChrootBaseDir:  resumeTestDir,
-		UID:            0,
-		GID:            0,
-		NetNS:          "ark0",
-		NumaNode:       0,
-		CgroupVersion:  2,
-		EnableOutput:   false,
-		EnableInput:    false,
-	})
-	assert.NoError(t, err)
-
 	devices := []SnapshotDevice{
 		{
 			Name:   "state",
-			Output: path.Join(r.VMPath, "state"),
+			Output: path.Join(resumeTestDir, "state"),
 		},
 		{
 			Name:   "memory",
-			Output: path.Join(r.VMPath, "memory"),
+			Output: path.Join(resumeTestDir, "memory"),
 		},
 		{
 			Name:   "kernel",
 			Input:  path.Join(blueprintDir, "vmlinux"),
-			Output: path.Join(r.VMPath, "kernel"),
+			Output: path.Join(resumeTestDir, "kernel"),
 		},
 		{
 			Name:   "disk",
 			Input:  path.Join(blueprintDir, "rootfs.ext4"),
-			Output: path.Join(r.VMPath, "disk"),
+			Output: path.Join(resumeTestDir, "disk"),
 		},
 		{
 			Name:   "config",
-			Output: path.Join(r.VMPath, "config"),
+			Output: path.Join(resumeTestDir, "config"),
 		},
 		{
 			Name:   "oci",
 			Input:  path.Join(blueprintDir, "oci.ext4"),
-			Output: path.Join(r.VMPath, "oci"),
+			Output: path.Join(resumeTestDir, "oci"),
 		},
 	}
 
@@ -122,15 +108,54 @@ func TestResumeSuspend(t *testing.T) {
 		ExperimentalMapPrivate: false,
 	}
 
-	rr, err := Resume[struct{}, ipc.AgentServerRemote[struct{}], struct{}](r, ctx, 30*time.Second, 30*time.Second,
-		agentVsockPort, agentLocal, agentHooks, snapConfig)
-	assert.NoError(t, err)
+	deviceFiles := []string{
+		"state", "memory", "kernel", "disk", "config", "oci",
+	}
 
-	assert.NotNil(t, rr)
+	devicesAt := resumeTestDir
+	var previousRunner *Runner
 
-	err = rr.SuspendAndCloseAgentServer(ctx, 10*time.Second)
-	assert.NoError(t, err)
+	// Resume and suspend the vm a few times
+	for n := 0; n < 5; n++ {
+		r, err := StartRunner(log, ctx, ctx, HypervisorConfiguration{
+			FirecrackerBin: firecrackerBin,
+			JailerBin:      jailerBin,
+			ChrootBaseDir:  resumeTestDir,
+			UID:            0,
+			GID:            0,
+			NetNS:          "ark0",
+			NumaNode:       0,
+			CgroupVersion:  2,
+			EnableOutput:   false,
+			EnableInput:    false,
+		})
+		assert.NoError(t, err)
 
-	err = r.Close()
-	assert.NoError(t, err)
+		// Copy the devices in from the last place...
+		for _, d := range deviceFiles {
+			os.Link(path.Join(devicesAt, d), path.Join(r.VMPath, d))
+		}
+		devicesAt = r.VMPath
+
+		// Now we can close the previous runner
+		if previousRunner != nil {
+			previousRunner.Close()
+			assert.NoError(t, err)
+		}
+
+		rr, err := Resume[struct{}, ipc.AgentServerRemote[struct{}], struct{}](r, ctx, 30*time.Second, 30*time.Second,
+			agentVsockPort, agentLocal, agentHooks, snapConfig)
+		assert.NoError(t, err)
+
+		assert.NotNil(t, rr)
+
+		// Wait a tiny bit for the VM to do things...
+		time.Sleep(1 * time.Second)
+
+		err = rr.SuspendAndCloseAgentServer(ctx, 10*time.Second)
+		assert.NoError(t, err)
+
+		previousRunner = r
+	}
+
 }
