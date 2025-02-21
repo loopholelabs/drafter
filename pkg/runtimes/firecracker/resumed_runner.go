@@ -13,7 +13,6 @@ import (
 	"github.com/loopholelabs/drafter/pkg/common"
 	"github.com/loopholelabs/drafter/pkg/ipc"
 	"github.com/loopholelabs/drafter/pkg/utils"
-	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 	"github.com/loopholelabs/logging/types"
 )
 
@@ -202,10 +201,6 @@ func (rr *ResumedRunner[L, R, G]) createSnapshot(ctx context.Context) error {
 	return nil
 }
 
-//
-// TODO Under here.
-//
-
 func Resume[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 	runner *Runner,
 	ctx context.Context,
@@ -215,9 +210,12 @@ func Resume[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 	agentServerLocal L,
 	agentServerHooks ipc.AgentServerAcceptHooks[R, G],
 	snapshotLoadConfiguration SnapshotLoadConfiguration,
-) (resumedRunner *ResumedRunner[L, R, G], errs error) {
+) (*ResumedRunner[L, R, G], error) {
+	if runner.log != nil {
+		runner.log.Debug().Msg("Resume resumedRunner")
+	}
 
-	resumedRunner = &ResumedRunner[L, R, G]{
+	resumedRunner := &ResumedRunner[L, R, G]{
 		log: runner.log,
 		rpc: &RunnerRPC[L, R, G]{
 			log: runner.log,
@@ -229,48 +227,24 @@ func Resume[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 	runner.ongoingResumeWg.Add(1)
 	defer runner.ongoingResumeWg.Done()
 
-	suspendOnPanicWithError := false
-
-	goroutineManager := manager.NewGoroutineManager(
-		ctx,
-		&errs,
-		manager.GoroutineManagerHooks{
-			OnAfterRecover: func() {
-				if suspendOnPanicWithError {
-					suspendCtx, cancelSuspendCtx := context.WithTimeout(runner.rescueCtx, rescueTimeout)
-					defer cancelSuspendCtx()
-
-					err := resumedRunner.rpc.Close()
-					if err != nil {
-						errs = err
-					}
-
-					// If a resume failed, flush the snapshot so that we can re-try
-					if err := resumedRunner.createSnapshot(suspendCtx); err != nil {
-						errs = errors.Join(errs, ErrCouldNotCreateRecoverySnapshot, err)
-					}
-				}
-			},
-		},
-	)
-	defer goroutineManager.Wait()
-	defer goroutineManager.StopAllGoroutines()
-	defer goroutineManager.CreateBackgroundPanicCollector()()
-
-	// We intentionally don't call `wg.Add` and `wg.Done` here since we return the process's wait method
-	// We still need to `defer handleGoroutinePanic()()` here however so that we catch any errors during this call
-	goroutineManager.StartBackgroundGoroutine(func(_ context.Context) {
-		if err := runner.server.Wait(); err != nil {
-			panic(errors.Join(ErrCouldNotWaitForFirecracker, err))
+	// Monitor for any error from the runner
+	runnerErr := make(chan error, 1)
+	go func() {
+		err := runner.Wait()
+		if err != nil {
+			runnerErr <- err
 		}
-	})
+	}()
 
 	err := resumedRunner.rpc.Start(runner.server.VMPath, uint32(agentVSockPort), agentServerLocal, runner.hypervisorConfiguration.UID, runner.hypervisorConfiguration.GID)
 	if err != nil {
+		if runner.log != nil {
+			runner.log.Error().Err(err).Msg("Resume resumedRunner failed to start rpc")
+		}
 		return nil, err
 	}
 
-	resumeSnapshotAndAcceptCtx, cancelResumeSnapshotAndAcceptCtx := context.WithTimeout(goroutineManager.Context(), resumeTimeout)
+	resumeSnapshotAndAcceptCtx, cancelResumeSnapshotAndAcceptCtx := context.WithTimeout(ctx, resumeTimeout)
 	defer cancelResumeSnapshotAndAcceptCtx()
 
 	err = firecracker.ResumeSnapshot(
@@ -282,30 +256,57 @@ func Resume[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 	)
 
 	if err != nil {
+		if runner.log != nil {
+			runner.log.Error().Err(err).Msg("Resume resumedRunner failed to resume snapshot")
+		}
 		return nil, errors.Join(ErrCouldNotResumeSnapshot, err)
 	}
 
-	suspendOnPanicWithError = true
+	// Set something up to do a snapshot if anything fails, so that we can retry etc
+	recoverSnapshot := func() {
+		suspendCtx, cancelSuspendCtx := context.WithTimeout(runner.rescueCtx, rescueTimeout)
+		defer cancelSuspendCtx()
+
+		err := resumedRunner.rpc.Close()
+		if err != nil {
+			if runner.log != nil {
+				runner.log.Error().Err(err).Msg("Resume resumedRunner failed to recover")
+			}
+		}
+
+		// If a resume failed, flush the snapshot so that we can re-try
+		if err := resumedRunner.createSnapshot(suspendCtx); err != nil {
+			if runner.log != nil {
+				runner.log.Error().Err(err).Msg("Resume resumedRunner failed to recover snapshot")
+			}
+		}
+	}
 
 	// Accept RPC connection
-	err = resumedRunner.rpc.Accept(resumeSnapshotAndAcceptCtx, ctx, agentServerHooks)
+	rpcErr := make(chan error, 1)
+	err = resumedRunner.rpc.Accept(resumeSnapshotAndAcceptCtx, ctx, agentServerHooks, rpcErr)
 	if err != nil {
+		recoverSnapshot()
 		return nil, err
 	}
-
-	// We intentionally don't call `wg.Add` and `wg.Done` here since we return the process's wait method
-	// We still need to `defer handleGoroutinePanic()()` here however so that we catch any errors during this call
-	goroutineManager.StartBackgroundGoroutine(func(_ context.Context) {
-		if err := resumedRunner.rpc.acceptingAgent.Wait(); err != nil {
-			panic(errors.Join(ErrCouldNotWaitForAcceptingAgent, err))
-		}
-	})
 
 	// Call after resume RPC
-	err = resumedRunner.rpc.AfterResume(goroutineManager.Context(), resumeTimeout)
+	err = resumedRunner.rpc.AfterResume(ctx, resumeTimeout)
 	if err != nil {
+		recoverSnapshot()
 		return nil, err
 	}
 
-	return
+	// Check if there was any error from the runner, or from the rpc and if so return it.
+	select {
+	case err := <-runnerErr:
+		recoverSnapshot()
+		return nil, err
+	case err := <-rpcErr:
+		recoverSnapshot()
+		return nil, err
+	default:
+	}
+
+	return resumedRunner, nil
 }
