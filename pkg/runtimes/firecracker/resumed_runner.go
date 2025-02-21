@@ -31,9 +31,7 @@ type SnapshotLoadConfiguration struct {
 type ResumedRunner[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] struct {
 	log                       types.Logger
 	snapshotLoadConfiguration SnapshotLoadConfiguration
-	createSnapshot            func(ctx context.Context) error
-
-	runner *Runner
+	runner                    *Runner
 
 	// TODO: Switch to interface here, chase away generics
 	rpc *RunnerRPC[L, R, G]
@@ -91,25 +89,116 @@ func (rr *ResumedRunner[L, R, G]) Msync(ctx context.Context) error {
 	return nil
 }
 
-func (resumedRunner *ResumedRunner[L, R, G]) SuspendAndCloseAgentServer(ctx context.Context, suspendTimeout time.Duration) error {
+func (rr *ResumedRunner[L, R, G]) SuspendAndCloseAgentServer(ctx context.Context, suspendTimeout time.Duration) error {
 	suspendCtx, cancelSuspendCtx := context.WithTimeout(ctx, suspendTimeout)
 	defer cancelSuspendCtx()
 
-	err := resumedRunner.rpc.BeforeSuspend(suspendCtx)
+	err := rr.rpc.BeforeSuspend(suspendCtx)
 	if err != nil {
 		return err
 	}
 
-	err = resumedRunner.rpc.Close()
+	err = rr.rpc.Close()
 	if err != nil {
 		return err
 	}
 
-	err = resumedRunner.createSnapshot(suspendCtx)
+	err = rr.createSnapshot(suspendCtx)
 	if err != nil {
 		return errors.Join(ErrCouldNotCreateSnapshot, err)
 	}
 
+	return nil
+}
+
+func (rr *ResumedRunner[L, R, G]) createSnapshot(ctx context.Context) error {
+	if rr.log != nil {
+		rr.log.Debug().Msg("resumedRunner createSnapshot")
+	}
+
+	stateCopyName := shortuuid.New()
+	memoryCopyName := shortuuid.New()
+
+	if rr.snapshotLoadConfiguration.ExperimentalMapPrivate {
+		err := firecracker.CreateSnapshot(
+			ctx,
+			rr.runner.firecrackerClient,
+			// We need to write the state and memory to a separate file since we can't truncate an `mmap`ed file
+			stateCopyName,
+			memoryCopyName,
+			firecracker.SnapshotTypeFull,
+		)
+		if err != nil {
+			return errors.Join(ErrCouldNotCreateSnapshot, err)
+		}
+	} else {
+		err := firecracker.CreateSnapshot(
+			ctx,
+			rr.runner.firecrackerClient,
+			rr.runner.stateName,
+			"",
+			firecracker.SnapshotTypeMsyncAndState,
+		)
+		if err != nil {
+			return errors.Join(ErrCouldNotCreateSnapshot, err)
+		}
+	}
+
+	if rr.snapshotLoadConfiguration.ExperimentalMapPrivate {
+		err := rr.runner.server.Close()
+		if err != nil {
+			return errors.Join(ErrCouldNotCloseServer, err)
+		}
+
+		err = rr.runner.Wait()
+		if err != nil {
+			return errors.Join(ErrCouldNotWaitForFirecracker, err)
+		}
+
+		for _, device := range [][3]string{
+			{rr.runner.stateName, stateCopyName, rr.snapshotLoadConfiguration.ExperimentalMapPrivateStateOutput},
+			{rr.runner.memoryName, memoryCopyName, rr.snapshotLoadConfiguration.ExperimentalMapPrivateMemoryOutput},
+		} {
+			inputFile, err := os.Open(filepath.Join(rr.runner.server.VMPath, device[1]))
+			if err != nil {
+				return errors.Join(ErrCouldNotOpenInputFile, err)
+			}
+			defer inputFile.Close()
+
+			outputPath := device[2]
+			addPadding := true
+
+			if outputPath == "" {
+				outputPath = filepath.Join(rr.runner.server.VMPath, device[0])
+				addPadding = false
+			}
+
+			err = os.MkdirAll(filepath.Dir(outputPath), os.ModePerm)
+			if err != nil {
+				panic(errors.Join(common.ErrCouldNotCreateOutputDir, err))
+			}
+
+			outputFile, err := os.OpenFile(outputPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, os.ModePerm)
+			if err != nil {
+				return errors.Join(common.ErrCouldNotOpenOutputFile, err)
+			}
+			defer outputFile.Close()
+
+			deviceSize, err := io.Copy(outputFile, inputFile)
+			if err != nil {
+				return errors.Join(ErrCouldNotCopyFile, err)
+			}
+
+			// We need to add a padding like the snapshotter if we're writing to a file instead of a block device
+			if addPadding {
+				if paddingLength := utils.GetBlockDevicePadding(deviceSize); paddingLength > 0 {
+					if _, err := outputFile.Write(make([]byte, paddingLength)); err != nil {
+						return errors.Join(ErrCouldNotWritePadding, err)
+					}
+				}
+			}
+		}
+	}
 	return nil
 }
 
@@ -126,10 +215,8 @@ func Resume[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 	agentServerLocal L,
 	agentServerHooks ipc.AgentServerAcceptHooks[R, G],
 	snapshotLoadConfiguration SnapshotLoadConfiguration,
-) (
-	resumedRunner *ResumedRunner[L, R, G],
-	errs error,
-) {
+) (resumedRunner *ResumedRunner[L, R, G], errs error) {
+
 	resumedRunner = &ResumedRunner[L, R, G]{
 		log: runner.log,
 		rpc: &RunnerRPC[L, R, G]{
@@ -143,93 +230,6 @@ func Resume[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 	defer runner.ongoingResumeWg.Done()
 
 	suspendOnPanicWithError := false
-
-	resumedRunner.createSnapshot = func(ctx context.Context) error {
-		stateCopyName := shortuuid.New()
-		memoryCopyName := shortuuid.New()
-
-		if snapshotLoadConfiguration.ExperimentalMapPrivate {
-			err := firecracker.CreateSnapshot(
-				ctx,
-				runner.firecrackerClient,
-				// We need to write the state and memory to a separate file since we can't truncate an `mmap`ed file
-				stateCopyName,
-				memoryCopyName,
-				firecracker.SnapshotTypeFull,
-			)
-			if err != nil {
-				return errors.Join(ErrCouldNotCreateSnapshot, err)
-			}
-		} else {
-			err := firecracker.CreateSnapshot(
-				ctx,
-				runner.firecrackerClient,
-				runner.stateName,
-				"",
-				firecracker.SnapshotTypeMsyncAndState,
-			)
-			if err != nil {
-				return errors.Join(ErrCouldNotCreateSnapshot, err)
-			}
-		}
-
-		if snapshotLoadConfiguration.ExperimentalMapPrivate {
-			err := runner.server.Close()
-			if err != nil {
-				return errors.Join(ErrCouldNotCloseServer, err)
-			}
-
-			err = runner.Wait()
-			if err != nil {
-				return errors.Join(ErrCouldNotWaitForFirecracker, err)
-			}
-
-			for _, device := range [][3]string{
-				{runner.stateName, stateCopyName, snapshotLoadConfiguration.ExperimentalMapPrivateStateOutput},
-				{runner.memoryName, memoryCopyName, snapshotLoadConfiguration.ExperimentalMapPrivateMemoryOutput},
-			} {
-				inputFile, err := os.Open(filepath.Join(runner.server.VMPath, device[1]))
-				if err != nil {
-					return errors.Join(ErrCouldNotOpenInputFile, err)
-				}
-				defer inputFile.Close()
-
-				outputPath := device[2]
-				addPadding := true
-
-				if outputPath == "" {
-					outputPath = filepath.Join(runner.server.VMPath, device[0])
-					addPadding = false
-				}
-
-				err = os.MkdirAll(filepath.Dir(outputPath), os.ModePerm)
-				if err != nil {
-					panic(errors.Join(common.ErrCouldNotCreateOutputDir, err))
-				}
-
-				outputFile, err := os.OpenFile(outputPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, os.ModePerm)
-				if err != nil {
-					return errors.Join(common.ErrCouldNotOpenOutputFile, err)
-				}
-				defer outputFile.Close()
-
-				deviceSize, err := io.Copy(outputFile, inputFile)
-				if err != nil {
-					return errors.Join(ErrCouldNotCopyFile, err)
-				}
-
-				// We need to add a padding like the snapshotter if we're writing to a file instead of a block device
-				if addPadding {
-					if paddingLength := utils.GetBlockDevicePadding(deviceSize); paddingLength > 0 {
-						if _, err := outputFile.Write(make([]byte, paddingLength)); err != nil {
-							return errors.Join(ErrCouldNotWritePadding, err)
-						}
-					}
-				}
-			}
-		}
-		return nil
-	}
 
 	goroutineManager := manager.NewGoroutineManager(
 		ctx,
@@ -272,28 +272,28 @@ func Resume[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 		agentServerLocal,
 	)
 	if err != nil {
-		panic(errors.Join(ErrCouldNotStartAgentServer, err))
+		return nil, errors.Join(ErrCouldNotStartAgentServer, err)
 	}
 
-	if err := os.Chown(resumedRunner.rpc.agent.VSockPath, runner.hypervisorConfiguration.UID, runner.hypervisorConfiguration.GID); err != nil {
-		panic(errors.Join(ErrCouldNotChownVSockPath, err))
+	err = os.Chown(resumedRunner.rpc.agent.VSockPath, runner.hypervisorConfiguration.UID, runner.hypervisorConfiguration.GID)
+	if err != nil {
+		return nil, errors.Join(ErrCouldNotChownVSockPath, err)
 	}
 
 	{
 		resumeSnapshotAndAcceptCtx, cancelResumeSnapshotAndAcceptCtx := context.WithTimeout(goroutineManager.Context(), resumeTimeout)
 		defer cancelResumeSnapshotAndAcceptCtx()
 
-		if err := firecracker.ResumeSnapshot(
+		err := firecracker.ResumeSnapshot(
 			resumeSnapshotAndAcceptCtx,
-
 			runner.firecrackerClient,
-
 			runner.stateName,
 			runner.memoryName,
-
 			!snapshotLoadConfiguration.ExperimentalMapPrivate,
-		); err != nil {
-			panic(errors.Join(ErrCouldNotResumeSnapshot, err))
+		)
+
+		if err != nil {
+			return nil, errors.Join(ErrCouldNotResumeSnapshot, err)
 		}
 
 		suspendOnPanicWithError = true
@@ -304,7 +304,7 @@ func Resume[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 			agentServerHooks,
 		)
 		if err != nil {
-			panic(errors.Join(ErrCouldNotAcceptAgent, err))
+			return nil, errors.Join(ErrCouldNotAcceptAgent, err)
 		}
 		resumedRunner.rpc.Remote = &resumedRunner.rpc.acceptingAgent.Remote
 	}
