@@ -131,21 +131,8 @@ func (rr *ResumedRunner[L, R, G]) createSnapshot(ctx context.Context) error {
 		if err != nil {
 			return errors.Join(ErrCouldNotCreateSnapshot, err)
 		}
-	} else {
-		err := firecracker.CreateSnapshot(
-			ctx,
-			rr.runner.firecrackerClient,
-			rr.runner.stateName,
-			"",
-			firecracker.SnapshotTypeMsyncAndState,
-		)
-		if err != nil {
-			return errors.Join(ErrCouldNotCreateSnapshot, err)
-		}
-	}
 
-	if rr.snapshotLoadConfiguration.ExperimentalMapPrivate {
-		err := rr.runner.server.Close()
+		err = rr.runner.server.Close()
 		if err != nil {
 			return errors.Join(ErrCouldNotCloseServer, err)
 		}
@@ -198,7 +185,20 @@ func (rr *ResumedRunner[L, R, G]) createSnapshot(ctx context.Context) error {
 				}
 			}
 		}
+
+	} else {
+		err := firecracker.CreateSnapshot(
+			ctx,
+			rr.runner.firecrackerClient,
+			rr.runner.stateName,
+			"",
+			firecracker.SnapshotTypeMsyncAndState,
+		)
+		if err != nil {
+			return errors.Join(ErrCouldNotCreateSnapshot, err)
+		}
 	}
+
 	return nil
 }
 
@@ -265,48 +265,32 @@ func Resume[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 		}
 	})
 
-	var err error
-	resumedRunner.rpc.agent, err = ipc.StartAgentServer[L, R](
-		filepath.Join(runner.server.VMPath, VSockName),
-		uint32(agentVSockPort),
-		agentServerLocal,
+	err := resumedRunner.rpc.Start(runner.server.VMPath, uint32(agentVSockPort), agentServerLocal, runner.hypervisorConfiguration.UID, runner.hypervisorConfiguration.GID)
+	if err != nil {
+		return nil, err
+	}
+
+	resumeSnapshotAndAcceptCtx, cancelResumeSnapshotAndAcceptCtx := context.WithTimeout(goroutineManager.Context(), resumeTimeout)
+	defer cancelResumeSnapshotAndAcceptCtx()
+
+	err = firecracker.ResumeSnapshot(
+		resumeSnapshotAndAcceptCtx,
+		runner.firecrackerClient,
+		runner.stateName,
+		runner.memoryName,
+		!snapshotLoadConfiguration.ExperimentalMapPrivate,
 	)
+
 	if err != nil {
-		return nil, errors.Join(ErrCouldNotStartAgentServer, err)
+		return nil, errors.Join(ErrCouldNotResumeSnapshot, err)
 	}
 
-	err = os.Chown(resumedRunner.rpc.agent.VSockPath, runner.hypervisorConfiguration.UID, runner.hypervisorConfiguration.GID)
+	suspendOnPanicWithError = true
+
+	// Accept RPC connection
+	err = resumedRunner.rpc.Accept(resumeSnapshotAndAcceptCtx, ctx, agentServerHooks)
 	if err != nil {
-		return nil, errors.Join(ErrCouldNotChownVSockPath, err)
-	}
-
-	{
-		resumeSnapshotAndAcceptCtx, cancelResumeSnapshotAndAcceptCtx := context.WithTimeout(goroutineManager.Context(), resumeTimeout)
-		defer cancelResumeSnapshotAndAcceptCtx()
-
-		err := firecracker.ResumeSnapshot(
-			resumeSnapshotAndAcceptCtx,
-			runner.firecrackerClient,
-			runner.stateName,
-			runner.memoryName,
-			!snapshotLoadConfiguration.ExperimentalMapPrivate,
-		)
-
-		if err != nil {
-			return nil, errors.Join(ErrCouldNotResumeSnapshot, err)
-		}
-
-		suspendOnPanicWithError = true
-
-		resumedRunner.rpc.acceptingAgent, err = resumedRunner.rpc.agent.Accept(
-			resumeSnapshotAndAcceptCtx,
-			ctx,
-			agentServerHooks,
-		)
-		if err != nil {
-			return nil, errors.Join(ErrCouldNotAcceptAgent, err)
-		}
-		resumedRunner.rpc.Remote = &resumedRunner.rpc.acceptingAgent.Remote
+		return nil, err
 	}
 
 	// We intentionally don't call `wg.Add` and `wg.Done` here since we return the process's wait method

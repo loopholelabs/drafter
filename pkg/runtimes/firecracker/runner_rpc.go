@@ -3,6 +3,8 @@ package firecracker
 import (
 	"context"
 	"errors"
+	"os"
+	"path"
 	"time"
 	"unsafe"
 
@@ -15,6 +17,38 @@ type RunnerRPC[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] struct
 	agent          *ipc.AgentServer[L, R, G]
 	acceptingAgent *ipc.AcceptingAgentServer[L, R, G]
 	Remote         *R
+}
+
+func (rrpc *RunnerRPC[L, R, G]) Start(vmPath string, vsockPort uint32, agentServerLocal L, uid int, gid int) error {
+	var err error
+	rrpc.agent, err = ipc.StartAgentServer[L, R](
+		path.Join(vmPath, VSockName),
+		vsockPort,
+		agentServerLocal,
+	)
+	if err != nil {
+		return errors.Join(ErrCouldNotStartAgentServer, err)
+	}
+
+	err = os.Chown(rrpc.agent.VSockPath, uid, gid)
+	if err != nil {
+		return errors.Join(ErrCouldNotChownVSockPath, err)
+	}
+	return nil
+}
+
+func (rrpc *RunnerRPC[L, R, G]) Accept(acceptCtx context.Context, remoteCtx context.Context, agentServerHooks ipc.AgentServerAcceptHooks[R, G]) error {
+	var err error
+	rrpc.acceptingAgent, err = rrpc.agent.Accept(
+		acceptCtx,
+		remoteCtx,
+		agentServerHooks,
+	)
+	if err != nil {
+		return errors.Join(ErrCouldNotAcceptAgent, err)
+	}
+	rrpc.Remote = &rrpc.acceptingAgent.Remote
+	return nil
 }
 
 func (rrpc *RunnerRPC[L, R, G]) Close() error {
