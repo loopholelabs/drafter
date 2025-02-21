@@ -175,9 +175,6 @@ func main() {
 			EnableOutput: *enableOutput,
 			EnableInput:  *enableInput,
 		},
-
-		common.DeviceStateName,
-		common.DeviceMemoryName,
 	)
 
 	defer func() {

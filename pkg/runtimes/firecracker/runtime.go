@@ -113,8 +113,6 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Start(ctx context.Context, rescue
 		hypervisorCtx,
 		rescueCtx,
 		rp.HypervisorConfiguration,
-		rp.StateName,
-		rp.MemoryName,
 	)
 	if err == nil {
 		rp.Runner = run

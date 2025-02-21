@@ -32,6 +32,9 @@ type ResumedRunner[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] st
 	snapshotLoadConfiguration SnapshotLoadConfiguration
 	runner                    *Runner
 
+	stateName  string
+	memoryName string
+
 	// TODO: Switch to interface here, chase away generics
 	rpc *RunnerRPC[L, R, G]
 }
@@ -74,7 +77,7 @@ func (rr *ResumedRunner[L, R, G]) Msync(ctx context.Context) error {
 		err := firecracker.CreateSnapshot(
 			ctx,
 			rr.runner.firecrackerClient,
-			rr.runner.stateName,
+			rr.stateName,
 			"",
 			firecracker.SnapshotTypeMsync,
 		)
@@ -142,8 +145,8 @@ func (rr *ResumedRunner[L, R, G]) createSnapshot(ctx context.Context) error {
 		}
 
 		for _, device := range [][3]string{
-			{rr.runner.stateName, stateCopyName, rr.snapshotLoadConfiguration.ExperimentalMapPrivateStateOutput},
-			{rr.runner.memoryName, memoryCopyName, rr.snapshotLoadConfiguration.ExperimentalMapPrivateMemoryOutput},
+			{rr.stateName, stateCopyName, rr.snapshotLoadConfiguration.ExperimentalMapPrivateStateOutput},
+			{rr.memoryName, memoryCopyName, rr.snapshotLoadConfiguration.ExperimentalMapPrivateMemoryOutput},
 		} {
 			inputFile, err := os.Open(filepath.Join(rr.runner.server.VMPath, device[1]))
 			if err != nil {
@@ -189,7 +192,7 @@ func (rr *ResumedRunner[L, R, G]) createSnapshot(ctx context.Context) error {
 		err := firecracker.CreateSnapshot(
 			ctx,
 			rr.runner.firecrackerClient,
-			rr.runner.stateName,
+			rr.stateName,
 			"",
 			firecracker.SnapshotTypeMsyncAndState,
 		)
@@ -222,6 +225,8 @@ func Resume[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 		},
 		snapshotLoadConfiguration: snapshotLoadConfiguration,
 		runner:                    runner,
+		stateName:                 common.DeviceStateName,
+		memoryName:                common.DeviceMemoryName,
 	}
 
 	runner.ongoingResumeWg.Add(1)
@@ -250,8 +255,8 @@ func Resume[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 	err = firecracker.ResumeSnapshot(
 		resumeSnapshotAndAcceptCtx,
 		runner.firecrackerClient,
-		runner.stateName,
-		runner.memoryName,
+		resumedRunner.stateName,
+		resumedRunner.memoryName,
 		!snapshotLoadConfiguration.ExperimentalMapPrivate,
 	)
 

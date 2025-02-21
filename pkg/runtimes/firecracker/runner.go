@@ -26,8 +26,6 @@ type Runner struct {
 	ongoingResumeWg         sync.WaitGroup
 	firecrackerClient       *http.Client
 	hypervisorConfiguration HypervisorConfiguration
-	stateName               string
-	memoryName              string
 	server                  *firecracker.FirecrackerServer
 	rescueCtx               context.Context
 }
@@ -60,13 +58,11 @@ func (r *Runner) Close() error {
 }
 
 func StartRunner(log types.Logger, hypervisorCtx context.Context, rescueCtx context.Context,
-	hypervisorConfiguration HypervisorConfiguration, stateName string, memoryName string) (*Runner, error) {
+	hypervisorConfiguration HypervisorConfiguration) (*Runner, error) {
 
 	runner := &Runner{
 		log:                     log,
 		hypervisorConfiguration: hypervisorConfiguration,
-		stateName:               stateName,
-		memoryName:              memoryName,
 		rescueCtx:               rescueCtx,
 	}
 
