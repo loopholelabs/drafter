@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"time"
-	"unsafe"
 
 	"github.com/lithammer/shortuuid/v4"
 	"github.com/loopholelabs/drafter/internal/firecracker"
@@ -15,6 +14,7 @@ import (
 	"github.com/loopholelabs/drafter/pkg/ipc"
 	"github.com/loopholelabs/drafter/pkg/utils"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
+	"github.com/loopholelabs/logging/types"
 )
 
 var (
@@ -29,6 +29,7 @@ type SnapshotLoadConfiguration struct {
 }
 
 type ResumedRunner[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] struct {
+	log                       types.Logger
 	snapshotLoadConfiguration SnapshotLoadConfiguration
 	createSnapshot            func(ctx context.Context) error
 
@@ -39,21 +40,82 @@ type ResumedRunner[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] st
 }
 
 func (rr *ResumedRunner[L, R, G]) Close() error {
+	if rr.log != nil {
+		rr.log.Info().Msg("closing resumed runner")
+	}
 	err := rr.rpc.Close()
 	if err != nil {
+		if rr.log != nil {
+			rr.log.Error().Err(err).Msg("error closing resumed runner (rpc.Close)")
+		}
 		return err
 	}
 
 	err = rr.rpc.Wait()
 	if err != nil {
+		if rr.log != nil {
+			rr.log.Error().Err(err).Msg("error closing resumed runner (rpc.Wait)")
+		}
 		return errors.Join(ErrCouldNotWaitForAcceptingAgent, err)
 	}
 	return nil
 }
 
 func (rr *ResumedRunner[L, R, G]) Wait() error {
+	if rr.log != nil {
+		rr.log.Info().Msg("waiting for resumed runner")
+	}
 	return rr.rpc.Wait()
 }
+
+func (rr *ResumedRunner[L, R, G]) Msync(ctx context.Context) error {
+	if rr.log != nil {
+		rr.log.Info().Msg("resumed runner Msync")
+	}
+
+	if !rr.snapshotLoadConfiguration.ExperimentalMapPrivate {
+		err := firecracker.CreateSnapshot(
+			ctx,
+			rr.runner.firecrackerClient,
+			rr.runner.stateName,
+			"",
+			firecracker.SnapshotTypeMsync,
+		)
+		if err != nil {
+			if rr.log != nil {
+				rr.log.Error().Err(err).Msg("error in resumed runner Msync")
+			}
+			return errors.Join(ErrCouldNotCreateSnapshot, err)
+		}
+	}
+	return nil
+}
+
+func (resumedRunner *ResumedRunner[L, R, G]) SuspendAndCloseAgentServer(ctx context.Context, suspendTimeout time.Duration) error {
+	suspendCtx, cancelSuspendCtx := context.WithTimeout(ctx, suspendTimeout)
+	defer cancelSuspendCtx()
+
+	err := resumedRunner.rpc.BeforeSuspend(suspendCtx)
+	if err != nil {
+		return err
+	}
+
+	err = resumedRunner.rpc.Close()
+	if err != nil {
+		return err
+	}
+
+	err = resumedRunner.createSnapshot(suspendCtx)
+	if err != nil {
+		return errors.Join(ErrCouldNotCreateSnapshot, err)
+	}
+
+	return nil
+}
+
+//
+// TODO Under here.
+//
 
 func Resume[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 	runner *Runner,
@@ -69,60 +131,56 @@ func Resume[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 	errs error,
 ) {
 	resumedRunner = &ResumedRunner[L, R, G]{
-		rpc: &RunnerRPC[L, R, G]{},
-
+		log: runner.log,
+		rpc: &RunnerRPC[L, R, G]{
+			log: runner.log,
+		},
 		snapshotLoadConfiguration: snapshotLoadConfiguration,
-
-		runner: runner,
+		runner:                    runner,
 	}
 
 	runner.ongoingResumeWg.Add(1)
 	defer runner.ongoingResumeWg.Done()
 
-	var (
-		suspendOnPanicWithError = false
-	)
+	suspendOnPanicWithError := false
 
 	resumedRunner.createSnapshot = func(ctx context.Context) error {
-		var (
-			stateCopyName  = shortuuid.New()
-			memoryCopyName = shortuuid.New()
-		)
+		stateCopyName := shortuuid.New()
+		memoryCopyName := shortuuid.New()
+
 		if snapshotLoadConfiguration.ExperimentalMapPrivate {
-			if err := firecracker.CreateSnapshot(
+			err := firecracker.CreateSnapshot(
 				ctx,
-
 				runner.firecrackerClient,
-
 				// We need to write the state and memory to a separate file since we can't truncate an `mmap`ed file
 				stateCopyName,
 				memoryCopyName,
-
 				firecracker.SnapshotTypeFull,
-			); err != nil {
+			)
+			if err != nil {
 				return errors.Join(ErrCouldNotCreateSnapshot, err)
 			}
 		} else {
-			if err := firecracker.CreateSnapshot(
+			err := firecracker.CreateSnapshot(
 				ctx,
-
 				runner.firecrackerClient,
-
 				runner.stateName,
 				"",
-
 				firecracker.SnapshotTypeMsyncAndState,
-			); err != nil {
+			)
+			if err != nil {
 				return errors.Join(ErrCouldNotCreateSnapshot, err)
 			}
 		}
 
 		if snapshotLoadConfiguration.ExperimentalMapPrivate {
-			if err := runner.server.Close(); err != nil {
+			err := runner.server.Close()
+			if err != nil {
 				return errors.Join(ErrCouldNotCloseServer, err)
 			}
 
-			if err := runner.Wait(); err != nil {
+			err = runner.Wait()
+			if err != nil {
 				return errors.Join(ErrCouldNotWaitForFirecracker, err)
 			}
 
@@ -136,16 +194,16 @@ func Resume[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 				}
 				defer inputFile.Close()
 
-				var (
-					outputPath = device[2]
-					addPadding = true
-				)
+				outputPath := device[2]
+				addPadding := true
+
 				if outputPath == "" {
 					outputPath = filepath.Join(runner.server.VMPath, device[0])
 					addPadding = false
 				}
 
-				if err := os.MkdirAll(filepath.Dir(outputPath), os.ModePerm); err != nil {
+				err = os.MkdirAll(filepath.Dir(outputPath), os.ModePerm)
+				if err != nil {
 					panic(errors.Join(common.ErrCouldNotCreateOutputDir, err))
 				}
 
@@ -170,7 +228,6 @@ func Resume[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 				}
 			}
 		}
-
 		return nil
 	}
 
@@ -244,7 +301,6 @@ func Resume[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 		resumedRunner.rpc.acceptingAgent, err = resumedRunner.rpc.agent.Accept(
 			resumeSnapshotAndAcceptCtx,
 			ctx,
-
 			agentServerHooks,
 		)
 		if err != nil {
@@ -261,61 +317,11 @@ func Resume[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 		}
 	})
 
-	{
-		afterResumeCtx, cancelAfterResumeCtx := context.WithTimeout(goroutineManager.Context(), resumeTimeout)
-		defer cancelAfterResumeCtx()
-
-		// This is a safe type cast because R is constrained by ipc.AgentServerRemote, so this specific AfterResume field
-		// must be defined or there will be a compile-time error.
-		// The Go Generics system can't catch this here however, it can only catch it once the type is concrete, so we need to manually cast.
-		remote := *(*ipc.AgentServerRemote[G])(unsafe.Pointer(&resumedRunner.rpc.acceptingAgent.Remote))
-		if err := remote.AfterResume(afterResumeCtx); err != nil {
-			panic(errors.Join(ErrCouldNotCallAfterResumeRPC, err))
-		}
+	// Call after resume RPC
+	err = resumedRunner.rpc.AfterResume(goroutineManager.Context(), resumeTimeout)
+	if err != nil {
+		return nil, err
 	}
+
 	return
-}
-
-func (resumedRunner *ResumedRunner[L, R, G]) Msync(ctx context.Context) error {
-	if !resumedRunner.snapshotLoadConfiguration.ExperimentalMapPrivate {
-		err := firecracker.CreateSnapshot(
-			ctx,
-			resumedRunner.runner.firecrackerClient,
-			resumedRunner.runner.stateName,
-			"",
-			firecracker.SnapshotTypeMsync,
-		)
-		if err != nil {
-			return errors.Join(ErrCouldNotCreateSnapshot, err)
-		}
-	}
-	return nil
-}
-
-func (resumedRunner *ResumedRunner[L, R, G]) SuspendAndCloseAgentServer(ctx context.Context, suspendTimeout time.Duration) error {
-	suspendCtx, cancelSuspendCtx := context.WithTimeout(ctx, suspendTimeout)
-	defer cancelSuspendCtx()
-
-	// This `nil` check is required since `SuspendAndCloseAgentServer` can be run even if a runner resume failed
-	if resumedRunner.rpc.Remote != nil {
-		// This is a safe type cast because R is constrained by ipc.AgentServerRemote, so this specific BeforeSuspend field
-		// must be defined or there will be a compile-time error.
-		// The Go Generics system can't catch this here however, it can only catch it once the type is concrete, so we need to manually cast.
-		remote := *(*ipc.AgentServerRemote[G])(unsafe.Pointer(&resumedRunner.rpc.acceptingAgent.Remote))
-		if err := remote.BeforeSuspend(suspendCtx); err != nil {
-			return errors.Join(ErrCouldNotCallBeforeSuspendRPC, err)
-		}
-	}
-
-	err := resumedRunner.rpc.Close()
-	if err != nil {
-		return err
-	}
-
-	err = resumedRunner.createSnapshot(suspendCtx)
-	if err != nil {
-		return errors.Join(ErrCouldNotCreateSnapshot, err)
-	}
-
-	return nil
 }
