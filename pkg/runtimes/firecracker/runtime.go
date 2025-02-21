@@ -86,7 +86,7 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Resume(resumeTimeout time.Duratio
 		return err
 	}
 
-	rp.Remote = *rp.ResumedRunner.Remote
+	rp.Remote = *rp.ResumedRunner.rpc.Remote
 
 	go func() {
 		err := rp.ResumedRunner.Wait()

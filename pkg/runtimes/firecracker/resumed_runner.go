@@ -22,22 +22,37 @@ var (
 	ErrCouldNotCreateRecoverySnapshot = errors.New("could not create recovery snapshot")
 )
 
-type ResumedRunner[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] struct {
-	Wait                      func() error
-	Close                     func() error
-	snapshotLoadConfiguration SnapshotLoadConfiguration
-	createSnapshot            func(ctx context.Context) error
-
-	runner         *Runner
-	agent          *ipc.AgentServer[L, R, G]
-	acceptingAgent *ipc.AcceptingAgentServer[L, R, G]
-	Remote         *R
-}
-
 type SnapshotLoadConfiguration struct {
 	ExperimentalMapPrivate             bool
 	ExperimentalMapPrivateStateOutput  string
 	ExperimentalMapPrivateMemoryOutput string
+}
+
+type ResumedRunner[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] struct {
+	snapshotLoadConfiguration SnapshotLoadConfiguration
+	createSnapshot            func(ctx context.Context) error
+
+	runner *Runner
+
+	// TODO: Switch to interface here, chase away generics
+	rpc *RunnerRPC[L, R, G]
+}
+
+func (rr *ResumedRunner[L, R, G]) Close() error {
+	err := rr.rpc.Close()
+	if err != nil {
+		return err
+	}
+
+	err = rr.rpc.Wait()
+	if err != nil {
+		return errors.Join(ErrCouldNotWaitForAcceptingAgent, err)
+	}
+	return nil
+}
+
+func (rr *ResumedRunner[L, R, G]) Wait() error {
+	return rr.rpc.Wait()
 }
 
 func Resume[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
@@ -54,8 +69,7 @@ func Resume[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 	errs error,
 ) {
 	resumedRunner = &ResumedRunner[L, R, G]{
-		Wait:  func() error { return nil },
-		Close: func() error { return nil },
+		rpc: &RunnerRPC[L, R, G]{},
 
 		snapshotLoadConfiguration: snapshotLoadConfiguration,
 
@@ -169,14 +183,9 @@ func Resume[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 					suspendCtx, cancelSuspendCtx := context.WithTimeout(runner.rescueCtx, rescueTimeout)
 					defer cancelSuspendCtx()
 
-					// Connections need to be closed before creating the snapshot
-					if resumedRunner.acceptingAgent != nil {
-						if e := resumedRunner.acceptingAgent.Close(); e != nil {
-							errs = errors.Join(errs, ErrCouldNotCloseAcceptingAgent, e)
-						}
-					}
-					if resumedRunner.agent != nil {
-						resumedRunner.agent.Close()
+					err := resumedRunner.rpc.Close()
+					if err != nil {
+						errs = err
 					}
 
 					// If a resume failed, flush the snapshot so that we can re-try
@@ -200,23 +209,16 @@ func Resume[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 	})
 
 	var err error
-	resumedRunner.agent, err = ipc.StartAgentServer[L, R](
+	resumedRunner.rpc.agent, err = ipc.StartAgentServer[L, R](
 		filepath.Join(runner.server.VMPath, VSockName),
 		uint32(agentVSockPort),
-
 		agentServerLocal,
 	)
 	if err != nil {
 		panic(errors.Join(ErrCouldNotStartAgentServer, err))
 	}
 
-	resumedRunner.Close = func() error {
-		resumedRunner.agent.Close()
-
-		return nil
-	}
-
-	if err := os.Chown(resumedRunner.agent.VSockPath, runner.hypervisorConfiguration.UID, runner.hypervisorConfiguration.GID); err != nil {
+	if err := os.Chown(resumedRunner.rpc.agent.VSockPath, runner.hypervisorConfiguration.UID, runner.hypervisorConfiguration.GID); err != nil {
 		panic(errors.Join(ErrCouldNotChownVSockPath, err))
 	}
 
@@ -239,7 +241,7 @@ func Resume[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 
 		suspendOnPanicWithError = true
 
-		resumedRunner.acceptingAgent, err = resumedRunner.agent.Accept(
+		resumedRunner.rpc.acceptingAgent, err = resumedRunner.rpc.agent.Accept(
 			resumeSnapshotAndAcceptCtx,
 			ctx,
 
@@ -248,31 +250,16 @@ func Resume[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 		if err != nil {
 			panic(errors.Join(ErrCouldNotAcceptAgent, err))
 		}
-		resumedRunner.Remote = &resumedRunner.acceptingAgent.Remote
+		resumedRunner.rpc.Remote = &resumedRunner.rpc.acceptingAgent.Remote
 	}
 
 	// We intentionally don't call `wg.Add` and `wg.Done` here since we return the process's wait method
 	// We still need to `defer handleGoroutinePanic()()` here however so that we catch any errors during this call
 	goroutineManager.StartBackgroundGoroutine(func(_ context.Context) {
-		if err := resumedRunner.acceptingAgent.Wait(); err != nil {
+		if err := resumedRunner.rpc.acceptingAgent.Wait(); err != nil {
 			panic(errors.Join(ErrCouldNotWaitForAcceptingAgent, err))
 		}
 	})
-
-	resumedRunner.Wait = resumedRunner.acceptingAgent.Wait
-	resumedRunner.Close = func() error {
-		if err := resumedRunner.acceptingAgent.Close(); err != nil {
-			return errors.Join(ErrCouldNotCloseAcceptingAgent, err)
-		}
-
-		resumedRunner.agent.Close()
-
-		if err := resumedRunner.Wait(); err != nil {
-			return errors.Join(ErrCouldNotWaitForAcceptingAgent, err)
-		}
-
-		return nil
-	}
 
 	{
 		afterResumeCtx, cancelAfterResumeCtx := context.WithTimeout(goroutineManager.Context(), resumeTimeout)
@@ -281,12 +268,11 @@ func Resume[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 		// This is a safe type cast because R is constrained by ipc.AgentServerRemote, so this specific AfterResume field
 		// must be defined or there will be a compile-time error.
 		// The Go Generics system can't catch this here however, it can only catch it once the type is concrete, so we need to manually cast.
-		remote := *(*ipc.AgentServerRemote[G])(unsafe.Pointer(&resumedRunner.acceptingAgent.Remote))
+		remote := *(*ipc.AgentServerRemote[G])(unsafe.Pointer(&resumedRunner.rpc.acceptingAgent.Remote))
 		if err := remote.AfterResume(afterResumeCtx); err != nil {
 			panic(errors.Join(ErrCouldNotCallAfterResumeRPC, err))
 		}
 	}
-
 	return
 }
 
@@ -311,30 +297,23 @@ func (resumedRunner *ResumedRunner[L, R, G]) SuspendAndCloseAgentServer(ctx cont
 	defer cancelSuspendCtx()
 
 	// This `nil` check is required since `SuspendAndCloseAgentServer` can be run even if a runner resume failed
-	if resumedRunner.Remote != nil {
+	if resumedRunner.rpc.Remote != nil {
 		// This is a safe type cast because R is constrained by ipc.AgentServerRemote, so this specific BeforeSuspend field
 		// must be defined or there will be a compile-time error.
 		// The Go Generics system can't catch this here however, it can only catch it once the type is concrete, so we need to manually cast.
-		remote := *(*ipc.AgentServerRemote[G])(unsafe.Pointer(&resumedRunner.acceptingAgent.Remote))
+		remote := *(*ipc.AgentServerRemote[G])(unsafe.Pointer(&resumedRunner.rpc.acceptingAgent.Remote))
 		if err := remote.BeforeSuspend(suspendCtx); err != nil {
 			return errors.Join(ErrCouldNotCallBeforeSuspendRPC, err)
 		}
 	}
 
-	// Connections need to be closed before creating the snapshot
-	// This `nil` check is required since `SuspendAndCloseAgentServer` can be run even if a runner resume failed
-	if resumedRunner.acceptingAgent != nil {
-		if err := resumedRunner.acceptingAgent.Close(); err != nil {
-			return errors.Join(ErrCouldNotCloseAcceptingAgent, err)
-		}
+	err := resumedRunner.rpc.Close()
+	if err != nil {
+		return err
 	}
 
-	// This `nil` check is required since `SuspendAndCloseAgentServer` can be run even if a runner resume failed
-	if resumedRunner.agent != nil {
-		resumedRunner.agent.Close()
-	}
-
-	if err := resumedRunner.createSnapshot(suspendCtx); err != nil {
+	err = resumedRunner.createSnapshot(suspendCtx)
+	if err != nil {
 		return errors.Join(ErrCouldNotCreateSnapshot, err)
 	}
 
