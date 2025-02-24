@@ -101,6 +101,12 @@ func (peer *Peer) closeDG() error {
 	return err
 }
 
+func (peer *Peer) GetDG() *devicegroup.DeviceGroup {
+	peer.dgLock.Lock()
+	defer peer.dgLock.Unlock()
+	return peer.dg
+}
+
 func StartPeer(ctx context.Context, rescueCtx context.Context,
 	log types.Logger, met metrics.SiloMetrics, dmet *common.DrafterMetrics, id string, rp runtimes.RuntimeProviderIfc) (*Peer, error) {
 

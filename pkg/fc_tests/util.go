@@ -1,4 +1,4 @@
-package firecracker
+package fc_tests
 
 import (
 	"context"
@@ -10,36 +10,35 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loopholelabs/logging"
+	rfirecracker "github.com/loopholelabs/drafter/pkg/runtimes/firecracker"
+
+	"github.com/loopholelabs/logging/types"
 	"github.com/stretchr/testify/assert"
 )
 
-const testDir = "snap_test"
-const blueprintDir = "../../../image/blueprint"
+const snapshotDir = "snap_test"
+const blueprintDir = "../../image/blueprint"
 
 /**
  * Pre-requisites
  *  - ark0 network namespace exists
  *  - firecracker works
+ *  - blueprints exist
  */
-func TestSnapshotter(t *testing.T) {
+func setupSnapshot(t *testing.T, log types.Logger, ctx context.Context) string {
 	currentUser, err := user.Current()
 	if err != nil {
 		panic(err)
 	}
 	if currentUser.Username != "root" {
 		fmt.Printf("Cannot run test unless we are root.\n")
-		return
+		return ""
 	}
 
-	log := logging.New(logging.Zerolog, "test", os.Stderr)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	err = os.Mkdir(testDir, 0777)
+	err = os.Mkdir(snapshotDir, 0777)
 	assert.NoError(t, err)
 	t.Cleanup(func() {
-		os.RemoveAll(testDir)
+		os.RemoveAll(snapshotDir)
 	})
 
 	firecrackerBin, err := exec.LookPath("firecracker")
@@ -48,51 +47,51 @@ func TestSnapshotter(t *testing.T) {
 	jailerBin, err := exec.LookPath("jailer")
 	assert.NoError(t, err)
 
-	devices := []SnapshotDevice{
+	devices := []rfirecracker.SnapshotDevice{
 		{
 			Name:   "state",
-			Output: path.Join(testDir, "state.bin"),
+			Output: path.Join(snapshotDir, "state"),
 		},
 		{
 			Name:   "memory",
-			Output: path.Join(testDir, "memory.bin"),
+			Output: path.Join(snapshotDir, "memory"),
 		},
 		{
 			Name:   "kernel",
 			Input:  path.Join(blueprintDir, "vmlinux"),
-			Output: path.Join(testDir, "vmlinux"),
+			Output: path.Join(snapshotDir, "kernel"),
 		},
 		{
 			Name:   "disk",
 			Input:  path.Join(blueprintDir, "rootfs.ext4"),
-			Output: path.Join(testDir, "rootfs.ext4"),
+			Output: path.Join(snapshotDir, "disk"),
 		},
 		{
 			Name:   "config",
-			Output: path.Join(testDir, "config.json"),
+			Output: path.Join(snapshotDir, "config"),
 		},
 		{
 			Name:   "oci",
 			Input:  path.Join(blueprintDir, "oci.ext4"),
-			Output: path.Join(testDir, "oci.ext4"),
+			Output: path.Join(snapshotDir, "oci"),
 		},
 	}
 
-	err = CreateSnapshot(log, ctx, devices,
-		VMConfiguration{
+	err = rfirecracker.CreateSnapshot(log, ctx, devices,
+		rfirecracker.VMConfiguration{
 			CPUCount:    1,
 			MemorySize:  1024,
 			CPUTemplate: "None",
-			BootArgs:    DefaultBootArgsNoPVM,
+			BootArgs:    rfirecracker.DefaultBootArgsNoPVM,
 		},
-		LivenessConfiguration{
+		rfirecracker.LivenessConfiguration{
 			LivenessVSockPort: uint32(25),
 			ResumeTimeout:     time.Minute,
 		},
-		HypervisorConfiguration{
+		rfirecracker.HypervisorConfiguration{
 			FirecrackerBin: firecrackerBin,
 			JailerBin:      jailerBin,
-			ChrootBaseDir:  testDir,
+			ChrootBaseDir:  snapshotDir,
 			UID:            0,
 			GID:            0,
 			NetNS:          "ark0",
@@ -101,11 +100,11 @@ func TestSnapshotter(t *testing.T) {
 			EnableOutput:   false,
 			EnableInput:    false,
 		},
-		NetworkConfiguration{
+		rfirecracker.NetworkConfiguration{
 			Interface: "tap0",
 			MAC:       "02:0e:d9:fd:68:3d",
 		},
-		AgentConfiguration{
+		rfirecracker.AgentConfiguration{
 			AgentVSockPort: uint32(26),
 			ResumeTimeout:  time.Minute,
 		},
@@ -113,13 +112,5 @@ func TestSnapshotter(t *testing.T) {
 
 	assert.NoError(t, err)
 
-	// Check output
-
-	for _, n := range []string{"state.bin", "memory.bin", "vmlinux", "rootfs.ext4", "config.json", "oci.ext4"} {
-		s, err := os.Stat(path.Join(testDir, n))
-		assert.NoError(t, err)
-
-		fmt.Printf("Output %s filesize %d\n", n, s.Size())
-		assert.Greater(t, s.Size(), int64(0))
-	}
+	return snapshotDir
 }

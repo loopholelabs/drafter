@@ -113,7 +113,7 @@ func TestPeerCowS3Multi(t *testing.T) {
 
 	rp := &runtimes.MockRuntimeProvider{
 		T:           t,
-		HomePath:    fmt.Sprintf("%s_%d", testPeerDirCow, 0),
+		HomePath:    fmt.Sprintf("%s_%d", testPeerDirCowS3, 0),
 		DoWrites:    true,
 		DeviceSizes: deviceSizes,
 	}

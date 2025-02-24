@@ -112,7 +112,7 @@ func (rrpc *RunnerRPC[L, R, G]) AfterResume(ctx context.Context, resumeTimeout t
 	defer cancelAfterResumeCtx()
 
 	if rrpc.log != nil {
-		rrpc.log.Debug().Msg("runnerRPC afterResume")
+		rrpc.log.Info().Int64("timeout_ms", resumeTimeout.Milliseconds()).Msg("runnerRPC afterResume")
 	}
 
 	// This is a safe type cast because R is constrained by ipc.AgentServerRemote, so this specific AfterResume field

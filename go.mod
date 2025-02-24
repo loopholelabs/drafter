@@ -11,7 +11,7 @@ require (
 	github.com/lithammer/shortuuid/v4 v4.2.0
 	github.com/loopholelabs/goroutine-manager v0.1.1
 	github.com/loopholelabs/logging v0.3.2
-	github.com/loopholelabs/silo v0.2.9
+	github.com/loopholelabs/silo v0.2.10
 	github.com/metal-stack/go-ipam v1.14.7
 	github.com/pojntfx/panrpc/go v0.0.0-20250114165542-9cc31cf01885
 	github.com/prometheus/client_golang v1.20.5
