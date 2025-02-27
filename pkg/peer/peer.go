@@ -1,0 +1,445 @@
+package peer
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
+	"io"
+	"os"
+	"path"
+	"sync"
+	"time"
+
+	"github.com/loopholelabs/drafter/pkg/common"
+	"github.com/loopholelabs/drafter/pkg/runtimes"
+	"github.com/loopholelabs/logging/types"
+	"github.com/loopholelabs/silo/pkg/storage/config"
+	"github.com/loopholelabs/silo/pkg/storage/devicegroup"
+	"github.com/loopholelabs/silo/pkg/storage/metrics"
+	"github.com/loopholelabs/silo/pkg/storage/migrator"
+)
+
+type Peer struct {
+	log  types.Logger
+	met  metrics.SiloMetrics
+	dmet *common.DrafterMetrics
+
+	// Devices
+	dgLock  sync.Mutex
+	dg      *devicegroup.DeviceGroup
+	devices []common.MigrateFromDevice
+
+	// Runtime
+	runtimeProvider runtimes.RuntimeProviderIfc
+	VMPath          string
+	VMPid           int
+
+	// Errors
+	backgroundErr chan error
+
+	instanceID string
+}
+
+// Callbacks for MigrateTO
+type MigrateToHooks struct {
+	OnBeforeSuspend          func()
+	OnAfterSuspend           func()
+	OnAllMigrationsCompleted func()
+	OnProgress               func(p map[string]*migrator.MigrationProgress)
+	GetXferCustomData        func() []byte
+}
+
+// Callbacks for MigrateFrom
+type MigrateFromHooks struct {
+	OnLocalDeviceRequested func(localDeviceID uint32, name string)
+	OnLocalDeviceExposed   func(localDeviceID uint32, path string)
+	OnCompletion           func()
+
+	OnLocalAllDevicesRequested func()
+
+	OnXferCustomData func([]byte)
+}
+
+func (peer *Peer) Close() error {
+	if peer.log != nil {
+		peer.log.Debug().Msg("Peer.Close")
+	}
+
+	// Try to close the runtimeProvider first
+	errRuntime := peer.runtimeProvider.Close()
+	if errRuntime != nil {
+		peer.log.Error().Err(errRuntime).Msg("Error closing runtime")
+	}
+
+	if peer.log != nil {
+		peer.log.Debug().Msg("Closing dg")
+	}
+	errDG := peer.closeDG()
+	// Return
+	return errors.Join(errRuntime, errDG)
+}
+
+func (peer *Peer) BackgroundErr() chan error {
+	return peer.backgroundErr
+}
+
+func (peer *Peer) setDG(dg *devicegroup.DeviceGroup) {
+	peer.dgLock.Lock()
+	peer.dg = dg
+	peer.dgLock.Unlock()
+}
+
+func (peer *Peer) closeDG() error {
+	var err error
+	peer.dgLock.Lock()
+	if peer.dg != nil {
+		err = peer.dg.CloseAll()
+		peer.dg = nil
+	}
+	peer.dgLock.Unlock()
+	return err
+}
+
+func (peer *Peer) GetDG() *devicegroup.DeviceGroup {
+	peer.dgLock.Lock()
+	defer peer.dgLock.Unlock()
+	return peer.dg
+}
+
+func StartPeer(ctx context.Context, rescueCtx context.Context,
+	log types.Logger, met metrics.SiloMetrics, dmet *common.DrafterMetrics, id string, rp runtimes.RuntimeProviderIfc) (*Peer, error) {
+
+	peer := &Peer{
+		log:             log,
+		met:             met,
+		dmet:            dmet,
+		instanceID:      id,
+		runtimeProvider: rp,
+		backgroundErr:   make(chan error, 12),
+	}
+
+	err := peer.runtimeProvider.Start(ctx, rescueCtx, peer.backgroundErr)
+
+	if err != nil {
+		if log != nil {
+			log.Warn().Err(err).Msg("error starting runtime")
+		}
+		return nil, err
+	}
+
+	peer.VMPath = peer.runtimeProvider.DevicePath()
+	peer.VMPid = peer.runtimeProvider.GetVMPid()
+
+	if log != nil {
+		log.Info().Str("vmpath", peer.VMPath).Int("vmpid", peer.VMPid).Msg("started peer runtime")
+	}
+	return peer, nil
+}
+
+func (peer *Peer) MigrateFrom(ctx context.Context, devices []common.MigrateFromDevice,
+	readers []io.Reader, writers []io.Writer, hooks MigrateFromHooks) error {
+
+	if peer.dmet != nil {
+		// Set migratingTo to 1 while we are migrating away.
+		peer.dmet.MetricMigratingFrom.WithLabelValues(peer.instanceID).Set(1)
+	}
+
+	if peer.log != nil {
+		peer.log.Info().Msg("started MigrateFrom")
+	}
+
+	tweakRemote := func(index int, name string, schema *config.DeviceSchema) *config.DeviceSchema {
+
+		for _, d := range devices {
+			if d.Name == schema.Name {
+				newSchema, err := common.CreateIncomingSiloDevSchema(&d, schema)
+				if err == nil {
+					if peer.log != nil {
+						peer.log.Debug().Str("schema", string(newSchema.EncodeAsBlock())).Msg("incoming schema")
+					}
+					return newSchema
+				}
+			}
+		}
+
+		// FIXME: Error. We didn't find the local device, or couldn't set it up.
+		if peer.log != nil {
+			peer.log.Error().Str("name", name).Msg("unknown device name")
+			// We should probably relay an error here...
+		}
+
+		return schema
+	}
+
+	tweakLocal := func(index int, name string, schema *config.DeviceSchema) *config.DeviceSchema {
+		return schema
+	}
+
+	peer.devices = devices
+
+	// Migrate the devices from a protocol
+	if len(readers) > 0 && len(writers) > 0 {
+		protocolCtx, cancelProtocolCtx := context.WithCancel(ctx)
+
+		var slog types.Logger
+		if peer.log != nil {
+			slog = peer.log.SubLogger("silo")
+		}
+		dg, err := common.MigrateFromPipe(slog, peer.met, peer.instanceID, peer.runtimeProvider.DevicePath(), protocolCtx, readers, writers, tweakRemote, hooks.OnXferCustomData)
+		if err != nil {
+			if peer.log != nil {
+				peer.log.Warn().Err(err).Msg("error migrating from pipe")
+			}
+			return err
+		}
+
+		// Save dg for future migrations, AND for things like reading config
+		peer.setDG(dg)
+
+		if peer.log != nil {
+			peer.log.Info().Msg("migrated from pipe successfully")
+		}
+
+		// Monitor the transfer, and report any error if it happens
+		go func() {
+			defer cancelProtocolCtx()
+			if peer.dmet != nil {
+				defer peer.dmet.MetricMigratingFrom.WithLabelValues(peer.instanceID).Set(0)
+			}
+
+			if peer.log != nil {
+				peer.log.Trace().Msg("waiting for device migrations to complete")
+			}
+			err := dg.WaitForCompletion()
+			if peer.log != nil {
+				if err != nil {
+					peer.log.Error().Err(err).Msg("device migrations completed")
+				} else {
+					peer.log.Info().Msg("device migrations completed")
+				}
+			}
+			if err == nil {
+				if peer.dmet != nil {
+					peer.dmet.MetricMigratingFromWaitReady.WithLabelValues(peer.instanceID).Set(1)
+				}
+				err = dg.WaitForReady()
+				if peer.dmet != nil {
+					peer.dmet.MetricMigratingFromWaitReady.WithLabelValues(peer.instanceID).Set(0)
+				}
+				if peer.log != nil {
+					if err != nil {
+						peer.log.Error().Err(err).Msg("device migrations completed and ready")
+					} else {
+						peer.log.Info().Msg("device migrations completed and ready")
+					}
+				}
+
+				if err == nil {
+					// peer.showDeviceHashes("MigrateFrom")
+
+					if hooks.OnCompletion != nil {
+						hooks.OnCompletion()
+					}
+				} else {
+					select {
+					case peer.backgroundErr <- err:
+					default:
+					}
+				}
+			} else {
+				select {
+				case peer.backgroundErr <- err:
+				default:
+				}
+			}
+		}()
+	}
+
+	//
+	// IF all devices are local
+	//
+
+	if len(readers) == 0 && len(writers) == 0 {
+		if peer.dmet != nil {
+			defer peer.dmet.MetricMigratingFrom.WithLabelValues(peer.instanceID).Set(0)
+		}
+
+		var slog types.Logger
+		if peer.log != nil {
+			slog = peer.log.SubLogger("silo")
+		}
+
+		dg, err := common.MigrateFromFS(slog, peer.met, peer.instanceID, peer.runtimeProvider.DevicePath(), devices, tweakLocal)
+		if err != nil {
+			if peer.log != nil {
+				peer.log.Warn().Err(err).Msg("error migrating from fs")
+			}
+			return err
+		}
+
+		// Save dg for later usage, when we want to migrate from here etc
+		peer.setDG(dg)
+
+		if peer.log != nil {
+			peer.log.Info().Msg("migrated from fs successfully")
+		}
+
+		if hook := hooks.OnLocalAllDevicesRequested; hook != nil {
+			hook()
+		}
+
+		if hooks.OnCompletion != nil {
+			go hooks.OnCompletion()
+		}
+	}
+
+	return nil
+}
+
+func (peer *Peer) Resume(ctx context.Context, resumeTimeout time.Duration, rescueTimeout time.Duration) error {
+
+	if peer.log != nil {
+		peer.log.Trace().Msg("resuming runtime")
+	}
+
+	err := peer.runtimeProvider.Resume(resumeTimeout, rescueTimeout, peer.backgroundErr)
+
+	if err != nil {
+		if peer.log != nil {
+			peer.log.Warn().Err(err).Msg("could not resume runtime")
+		}
+		return err
+	}
+
+	if peer.dmet != nil {
+		peer.dmet.MetricVMRunning.WithLabelValues(peer.instanceID).Set(1)
+	}
+
+	if peer.log != nil {
+		peer.log.Info().Msg("resumed runtime")
+	}
+
+	return nil
+}
+
+/**
+ * MigrateTo migrates to a remote VM.
+ *
+ *
+ */
+func (peer *Peer) MigrateTo(ctx context.Context, devices []common.MigrateToDevice,
+	suspendTimeout time.Duration, concurrency int, readers []io.Reader, writers []io.Writer,
+	hooks MigrateToHooks) error {
+
+	if peer.dmet != nil {
+		// Set migratingTo to 1 while we are migrating away.
+		peer.dmet.MetricMigratingTo.WithLabelValues(peer.instanceID).Set(1)
+		defer peer.dmet.MetricMigratingTo.WithLabelValues(peer.instanceID).Set(0)
+	}
+
+	if peer.log != nil {
+		peer.log.Info().Msg("peer.MigrateTo")
+	}
+
+	suspend := func(ctx context.Context, timeout time.Duration) error {
+		err := peer.runtimeProvider.Suspend(ctx, timeout)
+		if err == nil {
+			if peer.dmet != nil {
+				peer.dmet.MetricVMRunning.WithLabelValues(peer.instanceID).Set(0)
+			}
+		}
+		return err
+	}
+
+	flushData := func(ctx context.Context) error {
+		ctime := time.Now()
+		err := peer.runtimeProvider.FlushData(ctx)
+		ms := time.Since(ctime).Milliseconds()
+		if err == nil {
+			if peer.dmet != nil {
+				peer.dmet.MetricFlushDataTimeMS.WithLabelValues(peer.instanceID).Add(float64(ms))
+				peer.dmet.MetricFlushDataOps.WithLabelValues(peer.instanceID).Inc()
+			}
+		}
+		return err
+	}
+
+	// This manages the status of the VM - if it's suspended or not.
+	vmState := common.NewVMStateMgr(ctx,
+		suspend,
+		suspendTimeout,
+		flushData,
+		hooks.OnBeforeSuspend,
+		hooks.OnAfterSuspend,
+	)
+
+	err := common.MigrateToPipe(ctx, readers, writers, peer.dg, concurrency, hooks.OnProgress, vmState, devices, hooks.GetXferCustomData, peer.met, peer.instanceID)
+	if err != nil {
+		if peer.log != nil {
+			peer.log.Info().Err(err).Msg("error in peer.MigrateTo")
+		}
+		return err
+	}
+
+	if peer.log != nil {
+		peer.log.Info().Msg("peer.MigrateTo completed successfuly")
+	}
+
+	// peer.showDeviceHashes("MigrateTo")
+
+	return nil
+}
+
+/**
+ * Log all device hashes. Note that this can take a while, as it reads all devices in their entirity.
+ * As such, it should only really be used when you need to verify the data integrity.
+ *
+ */
+func (peer *Peer) showDeviceHashes(where string) {
+
+	// Show some hashes...
+	names := peer.dg.GetAllNames()
+	for _, devname := range names {
+		di := peer.dg.GetDeviceInformationByName(devname)
+		if di != nil {
+			size := di.Size
+			offset := 0
+			buffer := make([]byte, 1024*1024)
+			fp, err := os.Open(path.Join("/dev", di.Exp.Device()))
+			if err != nil {
+				if peer.log != nil {
+					peer.log.Error().Err(err).Msg("couldn't open dev")
+				}
+			} else {
+				hasher := sha256.New()
+				for {
+					if size == 0 {
+						break
+					}
+					n, err := fp.ReadAt(buffer, int64(offset))
+					if err != nil && err != io.EOF {
+						if peer.log != nil {
+							peer.log.Error().Err(err).Msg("error reading dev")
+						}
+						break
+					}
+					hasher.Write(buffer[:n])
+					size -= uint64(n)
+					offset += n
+				}
+				fp.Close()
+
+				hash := hasher.Sum(nil)
+				if peer.log != nil {
+					peer.log.Info().
+						Str("instance_id", peer.instanceID).
+						Str("where", where).
+						Str("name", di.Schema.Name).
+						Str("hash", hex.EncodeToString(hash)).
+						Msg("Device hash")
+				}
+			}
+		}
+	}
+}

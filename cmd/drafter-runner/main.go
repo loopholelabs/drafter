@@ -3,8 +3,8 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
-	"log"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -13,14 +13,17 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/loopholelabs/drafter/pkg/common"
 	"github.com/loopholelabs/drafter/pkg/ipc"
-	"github.com/loopholelabs/drafter/pkg/packager"
-	"github.com/loopholelabs/drafter/pkg/peer"
-	"github.com/loopholelabs/drafter/pkg/runner"
-	"github.com/loopholelabs/drafter/pkg/snapshotter"
+	rfirecracker "github.com/loopholelabs/drafter/pkg/runtimes/firecracker"
 	"github.com/loopholelabs/drafter/pkg/utils"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
+	"github.com/loopholelabs/logging"
 	"golang.org/x/sys/unix"
+)
+
+var (
+	ErrCouldNotGetDeviceStat = errors.New("could not get NBD device stat")
 )
 
 type SharableDevice struct {
@@ -30,41 +33,17 @@ type SharableDevice struct {
 }
 
 func main() {
-	defaultDevices, err := json.Marshal([]SharableDevice{
-		{
-			Name:   packager.StateName,
-			Path:   filepath.Join("out", "package", "state.bin"),
-			Shared: false,
-		},
-		{
-			Name:   packager.MemoryName,
-			Path:   filepath.Join("out", "package", "memory.bin"),
-			Shared: false,
-		},
+	log := logging.New(logging.Zerolog, "drafter", os.Stderr)
 
-		{
-			Name:   packager.KernelName,
-			Path:   filepath.Join("out", "package", "vmlinux"),
+	defDevices := make([]SharableDevice, 0)
+	for _, n := range common.KnownNames {
+		defDevices = append(defDevices, SharableDevice{
+			Name:   n,
+			Path:   filepath.Join("out", "package", common.DeviceFilenames[n]),
 			Shared: false,
-		},
-		{
-			Name:   packager.DiskName,
-			Path:   filepath.Join("out", "package", "rootfs.ext4"),
-			Shared: false,
-		},
-
-		{
-			Name:   packager.ConfigName,
-			Path:   filepath.Join("out", "package", "config.json"),
-			Shared: false,
-		},
-
-		{
-			Name:   "oci",
-			Path:   filepath.Join("out", "blueprint", "oci.ext4"),
-			Shared: false,
-		},
-	})
+		})
+	}
+	defaultDevices, err := json.Marshal(defDevices)
 	if err != nil {
 		panic(err)
 	}
@@ -116,7 +95,7 @@ func main() {
 
 	configPath := ""
 	for _, device := range devices {
-		if device.Name == packager.ConfigName {
+		if device.Name == common.DeviceConfigName {
 			configPath = device.Path
 
 			break
@@ -124,7 +103,7 @@ func main() {
 	}
 
 	if strings.TrimSpace(configPath) == "" {
-		panic(peer.ErrConfigFileNotFound)
+		panic(rfirecracker.ErrConfigFileNotFound)
 	}
 
 	configFile, err := os.Open(configPath)
@@ -133,7 +112,7 @@ func main() {
 	}
 	defer configFile.Close()
 
-	var packageConfig snapshotter.PackageConfiguration
+	var packageConfig rfirecracker.PackageConfiguration
 	if err := json.NewDecoder(configFile).Decode(&packageConfig); err != nil {
 		panic(err)
 	}
@@ -170,16 +149,17 @@ func main() {
 			return
 		}
 
-		log.Println("Exiting gracefully")
+		log.Info().Msg("Exiting gracefully")
 
 		cancel()
 	}()
 
-	r, err := runner.StartRunner[struct{}, ipc.AgentServerRemote[struct{}]](
+	r, err := rfirecracker.StartRunner(
+		log,
 		goroutineManager.Context(),
 		context.Background(), // Never give up on rescue operations
 
-		snapshotter.HypervisorConfiguration{
+		rfirecracker.HypervisorConfiguration{
 			FirecrackerBin: firecrackerBin,
 			JailerBin:      jailerBin,
 
@@ -195,9 +175,6 @@ func main() {
 			EnableOutput: *enableOutput,
 			EnableInput:  *enableInput,
 		},
-
-		packager.StateName,
-		packager.MemoryName,
 	)
 
 	defer func() {
@@ -227,7 +204,7 @@ func main() {
 	})
 
 	for index, device := range devices {
-		log.Println("Requested local device", index, "with name", device.Name)
+		log.Info().Int("index", index).Str("name", device.Name).Msg("Requested local device")
 
 		defer func() {
 			defer goroutineManager.CreateForegroundPanicCollector()()
@@ -263,7 +240,7 @@ func main() {
 			}
 		}
 
-		log.Println("Exposed local device", index, "at", devicePath)
+		log.Info().Int("index", index).Str("devicePath", devicePath).Msg("Exposed local device")
 
 		deviceInfo, err := os.Stat(devicePath)
 		if err != nil {
@@ -272,7 +249,7 @@ func main() {
 
 		deviceStat, ok := deviceInfo.Sys().(*syscall.Stat_t)
 		if !ok {
-			panic(snapshotter.ErrCouldNotGetDeviceStat)
+			panic(ErrCouldNotGetDeviceStat)
 		}
 
 		deviceMajor := uint64(deviceStat.Rdev / 256)
@@ -297,7 +274,7 @@ func main() {
 
 	before := time.Now()
 
-	resumedRunner, err := r.Resume(
+	resumedRunner, err := rfirecracker.Resume[struct{}, ipc.AgentServerRemote[struct{}], struct{}](r,
 		goroutineManager.Context(),
 
 		*resumeTimeout,
@@ -307,7 +284,7 @@ func main() {
 		struct{}{},
 		ipc.AgentServerAcceptHooks[ipc.AgentServerRemote[struct{}], struct{}]{},
 
-		runner.SnapshotLoadConfiguration{
+		rfirecracker.SnapshotLoadConfiguration{
 			ExperimentalMapPrivate: *experimentalMapPrivate,
 
 			ExperimentalMapPrivateStateOutput:  *experimentalMapPrivateStateOutput,
@@ -333,7 +310,7 @@ func main() {
 		}
 	})
 
-	log.Println("Resumed VM in", time.Since(before), "on", r.VMPath)
+	log.Info().Str("vmpath", r.VMPath).Int64("ms", time.Since(before).Milliseconds()).Msg("Resumed VM")
 
 	bubbleSignals = true
 
@@ -351,7 +328,5 @@ func main() {
 		panic(err)
 	}
 
-	log.Println("Suspend:", time.Since(before))
-
-	log.Println("Shutting down")
+	log.Info().Msg("Shutting down")
 }

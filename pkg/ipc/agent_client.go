@@ -2,10 +2,10 @@ package ipc
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"sync"
 
-	"github.com/fxamacker/cbor/v2"
 	"github.com/loopholelabs/drafter/internal/vsock"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 	"github.com/pojntfx/panrpc/go/pkg/rpc"
@@ -127,19 +127,19 @@ func StartAgentClient[L *AgentClientLocal[G], R AgentClientRemote, G any](
 		select {
 		// Failure case; something failed and the goroutineManager.Context() was cancelled before we got a connection
 		case <-ctx.Done():
+			select {
+			// Happy case; we've got a connection and we want to wait with closing the agent's connections until the ready channel is closed.
+			case <-ready:
+				<-remoteCtx.Done()
+			default:
+			}
+
 			connectedAgentClient.Close() // We ignore errors here since we might interrupt a network connection
-
-		// Happy case; we've got a connection and we want to wait with closing the agent's connections until the ready channel is closed.
-		case <-ready:
-			<-remoteCtx.Done()
-
-			connectedAgentClient.Close() // We ignore errors here since we might interrupt a network connection
-
 			break
 		}
 	})
 
-	registry := rpc.NewRegistry[R, cbor.RawMessage](
+	registry := rpc.NewRegistry[R, json.RawMessage](
 		agentClientLocal,
 
 		&rpc.RegistryHooks{
@@ -157,29 +157,29 @@ func StartAgentClient[L *AgentClientLocal[G], R AgentClientRemote, G any](
 		// We don't `defer conn.Close` here since Firecracker handles resetting active VSock connections for us
 		defer cancelLinkCtx(nil)
 
-		encoder := cbor.NewEncoder(conn)
-		decoder := cbor.NewDecoder(conn)
+		encoder := json.NewEncoder(conn)
+		decoder := json.NewDecoder(conn)
 
 		if err := registry.LinkStream(
 			linkCtx,
 
-			func(v rpc.Message[cbor.RawMessage]) error {
+			func(v rpc.Message[json.RawMessage]) error {
 				return encoder.Encode(v)
 			},
-			func(v *rpc.Message[cbor.RawMessage]) error {
+			func(v *rpc.Message[json.RawMessage]) error {
 				return decoder.Decode(v)
 			},
 
-			func(v any) (cbor.RawMessage, error) {
-				b, err := cbor.Marshal(v)
+			func(v any) (json.RawMessage, error) {
+				b, err := json.Marshal(v)
 				if err != nil {
 					return nil, errors.Join(ErrCouldNotMarshalJSON, err)
 				}
 
-				return cbor.RawMessage(b), nil
+				return json.RawMessage(b), nil
 			},
-			func(data cbor.RawMessage, v any) error {
-				if err := cbor.Unmarshal([]byte(data), v); err != nil {
+			func(data json.RawMessage, v any) error {
+				if err := json.Unmarshal([]byte(data), v); err != nil {
 					return errors.Join(ErrCouldNotUnmarshalJSON, err)
 				}
 
