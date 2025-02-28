@@ -398,8 +398,8 @@ $ sudo drafter-peer --netns ark0 --raddr '' --laddr '' --devices '[
   {
     "name": "state",
     "base": "out/package/state.bin",
-    "overlay": "",
-    "state": "",
+    "overlay": "out/overlay/state.bin",
+    "state": "out/state/state.bin",
     "blockSize": 65536,
     "expiry": 1000000000,
     "maxDirtyBlocks": 200,
@@ -407,13 +407,21 @@ $ sudo drafter-peer --netns ark0 --raddr '' --laddr '' --devices '[
     "maxCycles": 20,
     "cycleThrottle": 500000000,
     "makeMigratable": true,
-    "shared": false
+    "shared": false,
+    "sharedbase": false,
+    "s3sync": false,
+    "s3accesskey": "",
+    "s3secretkey": "",
+    "s3endpoint": "",
+    "s3secure": false,
+    "s3bucket": "",
+    "s3concurrency": 0
   },
   {
     "name": "memory",
     "base": "out/package/memory.bin",
-    "overlay": "",
-    "state": "",
+    "overlay": "out/overlay/memory.bin",
+    "state": "out/state/memory.bin",
     "blockSize": 65536,
     "expiry": 1000000000,
     "maxDirtyBlocks": 200,
@@ -421,13 +429,21 @@ $ sudo drafter-peer --netns ark0 --raddr '' --laddr '' --devices '[
     "maxCycles": 20,
     "cycleThrottle": 500000000,
     "makeMigratable": true,
-    "shared": false
+    "shared": false,
+    "sharedbase": false,
+    "s3sync": false,
+    "s3accesskey": "",
+    "s3secretkey": "",
+    "s3endpoint": "",
+    "s3secure": false,
+    "s3bucket": "",
+    "s3concurrency": 0
   },
   {
     "name": "kernel",
     "base": "out/package/vmlinux",
-    "overlay": "",
-    "state": "",
+    "overlay": "out/overlay/vmlinux",
+    "state": "out/state/vmlinux",
     "blockSize": 65536,
     "expiry": 1000000000,
     "maxDirtyBlocks": 200,
@@ -435,13 +451,21 @@ $ sudo drafter-peer --netns ark0 --raddr '' --laddr '' --devices '[
     "maxCycles": 20,
     "cycleThrottle": 500000000,
     "makeMigratable": true,
-    "shared": false
+    "shared": false,
+    "sharedbase": false,
+    "s3sync": false,
+    "s3accesskey": "",
+    "s3secretkey": "",
+    "s3endpoint": "",
+    "s3secure": false,
+    "s3bucket": "",
+    "s3concurrency": 0
   },
   {
     "name": "disk",
     "base": "out/package/rootfs.ext4",
-    "overlay": "",
-    "state": "",
+    "overlay": "out/overlay/rootfs.ext4",
+    "state": "out/state/rootfs.ext4",
     "blockSize": 65536,
     "expiry": 1000000000,
     "maxDirtyBlocks": 200,
@@ -449,13 +473,21 @@ $ sudo drafter-peer --netns ark0 --raddr '' --laddr '' --devices '[
     "maxCycles": 20,
     "cycleThrottle": 500000000,
     "makeMigratable": true,
-    "shared": false
+    "shared": false,
+    "sharedbase": false,
+    "s3sync": false,
+    "s3accesskey": "",
+    "s3secretkey": "",
+    "s3endpoint": "",
+    "s3secure": false,
+    "s3bucket": "",
+    "s3concurrency": 0
   },
   {
     "name": "config",
     "base": "out/package/config.json",
-    "overlay": "",
-    "state": "",
+    "overlay": "out/overlay/config.json",
+    "state": "out/state/config.json",
     "blockSize": 65536,
     "expiry": 1000000000,
     "maxDirtyBlocks": 200,
@@ -463,13 +495,21 @@ $ sudo drafter-peer --netns ark0 --raddr '' --laddr '' --devices '[
     "maxCycles": 20,
     "cycleThrottle": 500000000,
     "makeMigratable": true,
-    "shared": false
+    "shared": false,
+    "sharedbase": false,
+    "s3sync": false,
+    "s3accesskey": "",
+    "s3secretkey": "",
+    "s3endpoint": "",
+    "s3secure": false,
+    "s3bucket": "",
+    "s3concurrency": 0
   },
   {
     "name": "oci",
     "base": "out/package/oci.ext4",
-    "overlay": "",
-    "state": "",
+    "overlay": "out/overlay/oci.ext4",
+    "state": "out/state/oci.ext4",
     "blockSize": 65536,
     "expiry": 1000000000,
     "maxDirtyBlocks": 200,
@@ -477,7 +517,15 @@ $ sudo drafter-peer --netns ark0 --raddr '' --laddr '' --devices '[
     "maxCycles": 20,
     "cycleThrottle": 500000000,
     "makeMigratable": true,
-    "shared": false
+    "shared": false,
+    "sharedbase": false,
+    "s3sync": false,
+    "s3accesskey": "",
+    "s3secretkey": "",
+    "s3endpoint": "",
+    "s3secure": false,
+    "s3bucket": "",
+    "s3concurrency": 0
   }
 ]'
 ```
@@ -507,7 +555,15 @@ $ sudo drafter-peer --netns ark0 --raddr '' --laddr '' --devices '[
     "maxCycles": 20,
     "cycleThrottle": 500000000,
     "makeMigratable": true,
-    "shared": false
+    "shared": false,
+    "sharedbase": false,
+    "s3sync": false,
+    "s3accesskey": "",
+    "s3secretkey": "",
+    "s3endpoint": "",
+    "s3secure": false,
+    "s3bucket": "",
+    "s3concurrency": 0
   },
   {
     "name": "memory",
@@ -521,7 +577,15 @@ $ sudo drafter-peer --netns ark0 --raddr '' --laddr '' --devices '[
     "maxCycles": 20,
     "cycleThrottle": 500000000,
     "makeMigratable": true,
-    "shared": false
+    "shared": false,
+    "sharedbase": false,
+    "s3sync": false,
+    "s3accesskey": "",
+    "s3secretkey": "",
+    "s3endpoint": "",
+    "s3secure": false,
+    "s3bucket": "",
+    "s3concurrency": 0
   },
   {
     "name": "kernel",
@@ -535,7 +599,15 @@ $ sudo drafter-peer --netns ark0 --raddr '' --laddr '' --devices '[
     "maxCycles": 20,
     "cycleThrottle": 500000000,
     "makeMigratable": true,
-    "shared": false
+    "shared": false,
+    "sharedbase": false,
+    "s3sync": false,
+    "s3accesskey": "",
+    "s3secretkey": "",
+    "s3endpoint": "",
+    "s3secure": false,
+    "s3bucket": "",
+    "s3concurrency": 0
   },
   {
     "name": "disk",
@@ -549,7 +621,15 @@ $ sudo drafter-peer --netns ark0 --raddr '' --laddr '' --devices '[
     "maxCycles": 20,
     "cycleThrottle": 500000000,
     "makeMigratable": true,
-    "shared": false
+    "shared": false,
+    "sharedbase": false,
+    "s3sync": false,
+    "s3accesskey": "",
+    "s3secretkey": "",
+    "s3endpoint": "",
+    "s3secure": false,
+    "s3bucket": "",
+    "s3concurrency": 0
   },
   {
     "name": "config",
@@ -563,7 +643,15 @@ $ sudo drafter-peer --netns ark0 --raddr '' --laddr '' --devices '[
     "maxCycles": 20,
     "cycleThrottle": 500000000,
     "makeMigratable": true,
-    "shared": false
+    "shared": false,
+    "sharedbase": false,
+    "s3sync": false,
+    "s3accesskey": "",
+    "s3secretkey": "",
+    "s3endpoint": "",
+    "s3secure": false,
+    "s3bucket": "",
+    "s3concurrency": 0
   },
   {
     "name": "oci",
@@ -577,7 +665,15 @@ $ sudo drafter-peer --netns ark0 --raddr '' --laddr '' --devices '[
     "maxCycles": 20,
     "cycleThrottle": 500000000,
     "makeMigratable": true,
-    "shared": false
+    "shared": false,
+    "sharedbase": false,
+    "s3sync": false,
+    "s3accesskey": "",
+    "s3secretkey": "",
+    "s3endpoint": "",
+    "s3secure": false,
+    "s3bucket": "",
+    "s3concurrency": 0
   }
 ]'
 ```
@@ -598,7 +694,15 @@ $ sudo drafter-peer --netns ark1 --raddr '' --laddr '' --devices '[
     "maxCycles": 20,
     "cycleThrottle": 500000000,
     "makeMigratable": true,
-    "shared": false
+    "shared": false,
+    "sharedbase": false,
+    "s3sync": false,
+    "s3accesskey": "",
+    "s3secretkey": "",
+    "s3endpoint": "",
+    "s3secure": false,
+    "s3bucket": "",
+    "s3concurrency": 0
   },
   {
     "name": "memory",
@@ -612,7 +716,15 @@ $ sudo drafter-peer --netns ark1 --raddr '' --laddr '' --devices '[
     "maxCycles": 20,
     "cycleThrottle": 500000000,
     "makeMigratable": true,
-    "shared": false
+    "shared": false,
+    "sharedbase": false,
+    "s3sync": false,
+    "s3accesskey": "",
+    "s3secretkey": "",
+    "s3endpoint": "",
+    "s3secure": false,
+    "s3bucket": "",
+    "s3concurrency": 0
   },
   {
     "name": "kernel",
@@ -626,7 +738,15 @@ $ sudo drafter-peer --netns ark1 --raddr '' --laddr '' --devices '[
     "maxCycles": 20,
     "cycleThrottle": 500000000,
     "makeMigratable": true,
-    "shared": false
+    "shared": false,
+    "sharedbase": false,
+    "s3sync": false,
+    "s3accesskey": "",
+    "s3secretkey": "",
+    "s3endpoint": "",
+    "s3secure": false,
+    "s3bucket": "",
+    "s3concurrency": 0
   },
   {
     "name": "disk",
@@ -640,7 +760,15 @@ $ sudo drafter-peer --netns ark1 --raddr '' --laddr '' --devices '[
     "maxCycles": 20,
     "cycleThrottle": 500000000,
     "makeMigratable": true,
-    "shared": false
+    "shared": false,
+    "sharedbase": false,
+    "s3sync": false,
+    "s3accesskey": "",
+    "s3secretkey": "",
+    "s3endpoint": "",
+    "s3secure": false,
+    "s3bucket": "",
+    "s3concurrency": 0
   },
   {
     "name": "config",
@@ -654,7 +782,15 @@ $ sudo drafter-peer --netns ark1 --raddr '' --laddr '' --devices '[
     "maxCycles": 20,
     "cycleThrottle": 500000000,
     "makeMigratable": true,
-    "shared": false
+    "shared": false,
+    "sharedbase": false,
+    "s3sync": false,
+    "s3accesskey": "",
+    "s3secretkey": "",
+    "s3endpoint": "",
+    "s3secure": false,
+    "s3bucket": "",
+    "s3concurrency": 0
   },
   {
     "name": "oci",
@@ -668,7 +804,15 @@ $ sudo drafter-peer --netns ark1 --raddr '' --laddr '' --devices '[
     "maxCycles": 20,
     "cycleThrottle": 500000000,
     "makeMigratable": true,
-    "shared": false
+    "shared": false,
+    "sharedbase": false,
+    "s3sync": false,
+    "s3accesskey": "",
+    "s3secretkey": "",
+    "s3endpoint": "",
+    "s3secure": false,
+    "s3bucket": "",
+    "s3concurrency": 0
   }
 ]'
 ```
@@ -726,7 +870,15 @@ $ sudo drafter-peer --netns ark0 --raddr '' --laddr 'localhost:1337' --devices '
     "maxCycles": 20,
     "cycleThrottle": 500000000,
     "makeMigratable": true,
-    "shared": false
+    "shared": false,
+    "sharedbase": false,
+    "s3sync": false,
+    "s3accesskey": "",
+    "s3secretkey": "",
+    "s3endpoint": "",
+    "s3secure": false,
+    "s3bucket": "",
+    "s3concurrency": 0
   },
   {
     "name": "memory",
@@ -740,7 +892,15 @@ $ sudo drafter-peer --netns ark0 --raddr '' --laddr 'localhost:1337' --devices '
     "maxCycles": 20,
     "cycleThrottle": 500000000,
     "makeMigratable": true,
-    "shared": false
+    "shared": false,
+    "sharedbase": false,
+    "s3sync": false,
+    "s3accesskey": "",
+    "s3secretkey": "",
+    "s3endpoint": "",
+    "s3secure": false,
+    "s3bucket": "",
+    "s3concurrency": 0
   },
   {
     "name": "kernel",
@@ -754,7 +914,15 @@ $ sudo drafter-peer --netns ark0 --raddr '' --laddr 'localhost:1337' --devices '
     "maxCycles": 20,
     "cycleThrottle": 500000000,
     "makeMigratable": true,
-    "shared": false
+    "shared": false,
+    "sharedbase": false,
+    "s3sync": false,
+    "s3accesskey": "",
+    "s3secretkey": "",
+    "s3endpoint": "",
+    "s3secure": false,
+    "s3bucket": "",
+    "s3concurrency": 0
   },
   {
     "name": "disk",
@@ -768,7 +936,15 @@ $ sudo drafter-peer --netns ark0 --raddr '' --laddr 'localhost:1337' --devices '
     "maxCycles": 20,
     "cycleThrottle": 500000000,
     "makeMigratable": true,
-    "shared": false
+    "shared": false,
+    "sharedbase": false,
+    "s3sync": false,
+    "s3accesskey": "",
+    "s3secretkey": "",
+    "s3endpoint": "",
+    "s3secure": false,
+    "s3bucket": "",
+    "s3concurrency": 0
   },
   {
     "name": "config",
@@ -782,7 +958,15 @@ $ sudo drafter-peer --netns ark0 --raddr '' --laddr 'localhost:1337' --devices '
     "maxCycles": 20,
     "cycleThrottle": 500000000,
     "makeMigratable": true,
-    "shared": false
+    "shared": false,
+    "sharedbase": false,
+    "s3sync": false,
+    "s3accesskey": "",
+    "s3secretkey": "",
+    "s3endpoint": "",
+    "s3secure": false,
+    "s3bucket": "",
+    "s3concurrency": 0
   },
   {
     "name": "oci",
@@ -796,7 +980,15 @@ $ sudo drafter-peer --netns ark0 --raddr '' --laddr 'localhost:1337' --devices '
     "maxCycles": 20,
     "cycleThrottle": 500000000,
     "makeMigratable": true,
-    "shared": false
+    "shared": false,
+    "sharedbase": false,
+    "s3sync": false,
+    "s3accesskey": "",
+    "s3secretkey": "",
+    "s3endpoint": "",
+    "s3secure": false,
+    "s3bucket": "",
+    "s3concurrency": 0
   }
 ]'
 ```
@@ -828,7 +1020,15 @@ $ sudo drafter-peer --netns ark1 --raddr 'localhost:1337' --laddr '' --devices '
     "maxCycles": 20,
     "cycleThrottle": 500000000,
     "makeMigratable": true,
-    "shared": false
+    "shared": false,
+    "sharedbase": false,
+    "s3sync": false,
+    "s3accesskey": "",
+    "s3secretkey": "",
+    "s3endpoint": "",
+    "s3secure": false,
+    "s3bucket": "",
+    "s3concurrency": 0
   },
   {
     "name": "memory",
@@ -842,7 +1042,15 @@ $ sudo drafter-peer --netns ark1 --raddr 'localhost:1337' --laddr '' --devices '
     "maxCycles": 20,
     "cycleThrottle": 500000000,
     "makeMigratable": true,
-    "shared": false
+    "shared": false,
+    "sharedbase": false,
+    "s3sync": false,
+    "s3accesskey": "",
+    "s3secretkey": "",
+    "s3endpoint": "",
+    "s3secure": false,
+    "s3bucket": "",
+    "s3concurrency": 0
   },
   {
     "name": "kernel",
@@ -856,7 +1064,15 @@ $ sudo drafter-peer --netns ark1 --raddr 'localhost:1337' --laddr '' --devices '
     "maxCycles": 20,
     "cycleThrottle": 500000000,
     "makeMigratable": true,
-    "shared": false
+    "shared": false,
+    "sharedbase": false,
+    "s3sync": false,
+    "s3accesskey": "",
+    "s3secretkey": "",
+    "s3endpoint": "",
+    "s3secure": false,
+    "s3bucket": "",
+    "s3concurrency": 0
   },
   {
     "name": "disk",
@@ -870,7 +1086,15 @@ $ sudo drafter-peer --netns ark1 --raddr 'localhost:1337' --laddr '' --devices '
     "maxCycles": 20,
     "cycleThrottle": 500000000,
     "makeMigratable": true,
-    "shared": false
+    "shared": false,
+    "sharedbase": false,
+    "s3sync": false,
+    "s3accesskey": "",
+    "s3secretkey": "",
+    "s3endpoint": "",
+    "s3secure": false,
+    "s3bucket": "",
+    "s3concurrency": 0
   },
   {
     "name": "config",
@@ -884,7 +1108,15 @@ $ sudo drafter-peer --netns ark1 --raddr 'localhost:1337' --laddr '' --devices '
     "maxCycles": 20,
     "cycleThrottle": 500000000,
     "makeMigratable": true,
-    "shared": false
+    "shared": false,
+    "sharedbase": false,
+    "s3sync": false,
+    "s3accesskey": "",
+    "s3secretkey": "",
+    "s3endpoint": "",
+    "s3secure": false,
+    "s3bucket": "",
+    "s3concurrency": 0
   },
   {
     "name": "oci",
@@ -898,7 +1130,15 @@ $ sudo drafter-peer --netns ark1 --raddr 'localhost:1337' --laddr '' --devices '
     "maxCycles": 20,
     "cycleThrottle": 500000000,
     "makeMigratable": true,
-    "shared": false
+    "shared": false,
+    "sharedbase": false,
+    "s3sync": false,
+    "s3accesskey": "",
+    "s3secretkey": "",
+    "s3endpoint": "",
+    "s3secure": false,
+    "s3bucket": "",
+    "s3concurrency": 0
   }
 ]'
 ```
@@ -952,27 +1192,27 @@ To make getting started with Drafter as a library easier, take a look at the fol
 $ drafter-nat --help
 Usage of drafter-nat:
   -allow-incoming-traffic
-        Whether to allow incoming traffic to the namespaces (at host-veth-internal-ip:port) (default true)
+    	Whether to allow incoming traffic to the namespaces (at host-veth-internal-ip:port) (default true)
   -blocked-subnet-cidr string
-        CIDR to block for the namespace (default "10.0.15.0/24")
+    	CIDR to block for the namespace (default "10.0.15.0/24")
   -host-interface string
-        Host gateway interface (default "wlp0s20f3")
+    	Host gateway interface (default "wlp0s20f3")
   -host-veth-cidr string
-        CIDR for the veths outside the namespace (default "10.0.8.0/22")
+    	CIDR for the veths outside the namespace (default "10.0.8.0/22")
   -namespace-interface string
-        Name for the interface inside the namespace (default "tap0")
+    	Name for the interface inside the namespace (default "tap0")
   -namespace-interface-gateway string
-        Gateway for the interface inside the namespace (default "172.16.0.1")
+    	Gateway for the interface inside the namespace (default "172.16.0.1")
   -namespace-interface-ip string
-        IP for the interface inside the namespace (default "172.16.0.2")
+    	IP for the interface inside the namespace (default "172.16.0.2")
   -namespace-interface-mac string
-        MAC address for the interface inside the namespace (default "02:0e:d9:fd:68:3d")
+    	MAC address for the interface inside the namespace (default "02:0e:d9:fd:68:3d")
   -namespace-interface-netmask uint
-        Netmask for the interface inside the namespace (default 30)
+    	Netmask for the interface inside the namespace (default 30)
   -namespace-prefix string
-        Prefix for the namespace IDs (default "ark")
+    	Prefix for the namespace IDs (default "ark")
   -namespace-veth-cidr string
-        CIDR for the veths inside the namespace (default "10.0.15.0/24")
+    	CIDR for the veths inside the namespace (default "10.0.15.0/24")
 ```
 
 #### Forwarder
@@ -981,9 +1221,9 @@ Usage of drafter-nat:
 $ drafter-forwarder --help
 Usage of drafter-forwarder:
   -host-veth-cidr string
-        CIDR for the veths outside the namespace (default "10.0.8.0/22")
+    	CIDR for the veths outside the namespace (default "10.0.8.0/22")
   -port-forwards string
-        Port forwards configuration (wildcard IPs like 0.0.0.0 are not valid, be explicit) (default "[{\"netns\":\"ark0\",\"internalPort\":\"6379\",\"protocol\":\"tcp\",\"externalAddr\":\"127.0.0.1:3333\"}]")
+    	Port forwards configuration (wildcard IPs like 0.0.0.0 are not valid, be explicit) (default "[{\"netns\":\"ark0\",\"internalPort\":\"6379\",\"protocol\":\"tcp\",\"externalAddr\":\"127.0.0.1:3333\"}]")
 ```
 
 #### Agent
@@ -992,15 +1232,15 @@ Usage of drafter-forwarder:
 $ drafter-agent --help
 Usage of drafter-agent:
   -after-resume-cmd string
-        Command to run after the VM has been resumed (leave empty to disable)
+    	Command to run after the VM has been resumed (leave empty to disable)
   -before-suspend-cmd string
-        Command to run before the VM is suspended (leave empty to disable)
+    	Command to run before the VM is suspended (leave empty to disable)
   -shell-cmd string
-        Shell to use to run the before suspend and after resume commands (default "sh")
+    	Shell to use to run the before suspend and after resume commands (default "sh")
   -vsock-port uint
-        VSock port (default 26)
+    	VSock port (default 26)
   -vsock-timeout duration
-        VSock dial timeout (default 1m0s)
+    	VSock dial timeout (default 1m0s)
 ```
 
 #### Liveness
@@ -1009,9 +1249,9 @@ Usage of drafter-agent:
 $ drafter-liveness --help
 Usage of drafter-liveness:
   -vsock-port int
-        VSock port (default 25)
+    	VSock port (default 25)
   -vsock-timeout duration
-        VSock dial timeout (default 1m0s)
+    	VSock dial timeout (default 1m0s)
 ```
 
 #### Snapshotter
@@ -1020,45 +1260,45 @@ Usage of drafter-liveness:
 $ drafter-snapshotter --help
 Usage of drafter-snapshotter:
   -agent-vsock-port int
-        Agent VSock port (default 26)
+    	Agent VSock port (default 26)
   -boot-args string
-        Boot/kernel arguments (default "console=ttyS0 panic=1 pci=off modules=ext4 rootfstype=ext4 root=/dev/vda i8042.noaux i8042.nomux i8042.nopnp i8042.dumbkbd rootflags=rw printk.devkmsg=on printk_ratelimit=0 printk_ratelimit_burst=0")
+    	Boot/kernel arguments (default "console=ttyS0 panic=1 pci=off modules=ext4 rootfstype=ext4 root=/dev/vda i8042.noaux i8042.nomux i8042.nopnp i8042.dumbkbd rootflags=rw printk.devkmsg=on printk_ratelimit=0 printk_ratelimit_burst=0 clocksource=tsc nokaslr lapic=notscdeadline tsc=unstable")
   -cgroup-version int
-        Cgroup version to use for Jailer (default 2)
+    	Cgroup version to use for Jailer (default 2)
   -chroot-base-dir string
-        chroot base directory (default "out/vms")
+    	chroot base directory (default "out/vms")
   -cpu-count int
-        CPU count (default 1)
+    	CPU count (default 1)
   -cpu-template string
-        Firecracker CPU template (see https://github.com/firecracker-microvm/firecracker/blob/main/docs/cpu_templates/cpu-templates.md#static-cpu-templates for the options) (default "None")
+    	Firecracker CPU template (see https://github.com/firecracker-microvm/firecracker/blob/main/docs/cpu_templates/cpu-templates.md#static-cpu-templates for the options) (default "None")
   -devices string
-        Devices configuration (default "[{\"name\":\"state\",\"input\":\"\",\"output\":\"out/package/state.bin\"},{\"name\":\"memory\",\"input\":\"\",\"output\":\"out/package/memory.bin\"},{\"name\":\"kernel\",\"input\":\"out/blueprint/vmlinux\",\"output\":\"out/package/vmlinux\"},{\"name\":\"disk\",\"input\":\"out/blueprint/rootfs.ext4\",\"output\":\"out/package/rootfs.ext4\"},{\"name\":\"config\",\"input\":\"\",\"output\":\"out/package/config.json\"},{\"name\":\"oci\",\"input\":\"out/blueprint/oci.ext4\",\"output\":\"out/package/oci.ext4\"}]")
+    	Devices configuration (default "[{\"name\":\"kernel\",\"input\":\"\",\"output\":\"out/blueprint/vmlinux\"},{\"name\":\"disk\",\"input\":\"\",\"output\":\"out/blueprint/rootfs.ext4\"},{\"name\":\"state\",\"input\":\"\",\"output\":\"out/package/state.bin\"},{\"name\":\"memory\",\"input\":\"\",\"output\":\"out/package/memory.bin\"},{\"name\":\"config\",\"input\":\"\",\"output\":\"out/package/config.json\"}]")
   -enable-input
-        Whether to enable VM stdin
+    	Whether to enable VM stdin
   -enable-output
-        Whether to enable VM stdout and stderr (default true)
+    	Whether to enable VM stdout and stderr (default true)
   -firecracker-bin string
-        Firecracker binary (default "firecracker")
+    	Firecracker binary (default "firecracker")
   -gid int
-        Group ID for the Firecracker process
+    	Group ID for the Firecracker process
   -interface string
-        Name of the interface in the network namespace to use (default "tap0")
+    	Name of the interface in the network namespace to use (default "tap0")
   -jailer-bin string
-        Jailer binary (from Firecracker) (default "jailer")
+    	Jailer binary (from Firecracker) (default "jailer")
   -liveness-vsock-port int
-        Liveness VSock port (default 25)
+    	Liveness VSock port (default 25)
   -mac string
-        MAC of the interface in the network namespace to use (default "02:0e:d9:fd:68:3d")
+    	MAC of the interface in the network namespace to use (default "02:0e:d9:fd:68:3d")
   -memory-size int
-        Memory size (in MB) (default 1024)
+    	Memory size (in MB) (default 1024)
   -netns string
-        Network namespace to run Firecracker in (default "ark0")
+    	Network namespace to run Firecracker in (default "ark0")
   -numa-node int
-        NUMA node to run Firecracker in
+    	NUMA node to run Firecracker in
   -resume-timeout duration
-        Maximum amount of time to wait for agent and liveness to resume (default 1m0s)
+    	Maximum amount of time to wait for agent and liveness to resume (default 1m0s)
   -uid int
-        User ID for the Firecracker process
+    	User ID for the Firecracker process
 ```
 
 #### Packager
@@ -1067,11 +1307,11 @@ Usage of drafter-snapshotter:
 $ drafter-packager --help
 Usage of drafter-packager:
   -devices string
-        Devices configuration (default "[{\"name\":\"state\",\"path\":\"out/package/state.bin\"},{\"name\":\"memory\",\"path\":\"out/package/memory.bin\"},{\"name\":\"kernel\",\"path\":\"out/package/vmlinux\"},{\"name\":\"disk\",\"path\":\"out/package/rootfs.ext4\"},{\"name\":\"config\",\"path\":\"out/package/config.json\"},{\"name\":\"oci\",\"path\":\"out/blueprint/oci.ext4\"}]")
+    	Devices configuration (default "[{\"name\":\"kernel\",\"path\":\"out/package/vmlinux\"},{\"name\":\"disk\",\"path\":\"out/package/rootfs.ext4\"},{\"name\":\"state\",\"path\":\"out/package/state.bin\"},{\"name\":\"memory\",\"path\":\"out/package/memory.bin\"},{\"name\":\"config\",\"path\":\"out/package/config.json\"}]")
   -extract
-        Whether to extract or archive
+    	Whether to extract or archive
   -package-path string
-        Path to package file (default "out/app.tar.zst")
+    	Path to package file (default "out/app.tar.zst")
 ```
 
 #### Runner
@@ -1084,7 +1324,7 @@ Usage of drafter-runner:
   -chroot-base-dir string
     	chroot base directory (default "out/vms")
   -devices string
-    	Devices configuration (default "[{\"name\":\"state\",\"path\":\"out/package/state.bin\",\"shared\":false},{\"name\":\"memory\",\"path\":\"out/package/memory.bin\",\"shared\":false},{\"name\":\"kernel\",\"path\":\"out/package/vmlinux\",\"shared\":false},{\"name\":\"disk\",\"path\":\"out/package/rootfs.ext4\",\"shared\":false},{\"name\":\"config\",\"path\":\"out/package/config.json\",\"shared\":false},{\"name\":\"oci\",\"path\":\"out/blueprint/oci.ext4\",\"shared\":false}]")
+    	Devices configuration (default "[{\"name\":\"kernel\",\"path\":\"out/package/vmlinux\",\"shared\":false},{\"name\":\"disk\",\"path\":\"out/package/rootfs.ext4\",\"shared\":false},{\"name\":\"state\",\"path\":\"out/package/state.bin\",\"shared\":false},{\"name\":\"memory\",\"path\":\"out/package/memory.bin\",\"shared\":false},{\"name\":\"config\",\"path\":\"out/package/config.json\",\"shared\":false}]")
   -enable-input
     	Whether to enable VM stdin
   -enable-output
@@ -1119,19 +1359,20 @@ Usage of drafter-runner:
 $ drafter-registry --help
 Usage of drafter-registry:
   -concurrency int
-        Number of concurrent workers to use in migrations (default 4096)
+    	Number of concurrent workers to use in migrations (default 1024)
   -devices string
-        Devices configuration (default "[{\"name\":\"state\",\"input\":\"out/package/state.bin\",\"blockSize\":65536},{\"name\":\"memory\",\"input\":\"out/package/memory.bin\",\"blockSize\":65536},{\"name\":\"kernel\",\"input\":\"out/package/vmlinux\",\"blockSize\":65536},{\"name\":\"disk\",\"input\":\"out/package/rootfs.ext4\",\"blockSize\":65536},{\"name\":\"config\",\"input\":\"out/package/config.json\",\"blockSize\":65536},{\"name\":\"oci\",\"input\":\"out/blueprint/oci.ext4\",\"blockSize\":65536}]")
+    	Devices configuration (default "[{\"name\":\"kernel\",\"input\":\"out/package/vmlinux\",\"blockSize\":65536},{\"name\":\"disk\",\"input\":\"out/package/rootfs.ext4\",\"blockSize\":65536},{\"name\":\"state\",\"input\":\"out/package/state.bin\",\"blockSize\":65536},{\"name\":\"memory\",\"input\":\"out/package/memory.bin\",\"blockSize\":65536},{\"name\":\"config\",\"input\":\"out/package/config.json\",\"blockSize\":65536}]")
   -laddr string
-        Address to listen on (default ":1600")
+    	Address to listen on (default ":1600")
 ```
 
 #### Mounter
 
 ```shell
-$ Usage of drafter-mounter:
+$ drafter-mounter --help
+Usage of drafter-mounter:
   -concurrency int
-    	Number of concurrent workers to use in migrations (default 4096)
+    	Number of concurrent workers to use in migrations (default 1024)
   -devices string
     	Devices configuration (default "[{\"name\":\"state\",\"base\":\"out/package/state.bin\",\"overlay\":\"out/overlay/state.bin\",\"state\":\"out/state/state.bin\",\"blockSize\":65536,\"expiry\":1000000000,\"maxDirtyBlocks\":200,\"minCycles\":5,\"maxCycles\":20,\"cycleThrottle\":500000000,\"makeMigratable\":true},{\"name\":\"memory\",\"base\":\"out/package/memory.bin\",\"overlay\":\"out/overlay/memory.bin\",\"state\":\"out/state/memory.bin\",\"blockSize\":65536,\"expiry\":1000000000,\"maxDirtyBlocks\":200,\"minCycles\":5,\"maxCycles\":20,\"cycleThrottle\":500000000,\"makeMigratable\":true},{\"name\":\"kernel\",\"base\":\"out/package/vmlinux\",\"overlay\":\"out/overlay/vmlinux\",\"state\":\"out/state/vmlinux\",\"blockSize\":65536,\"expiry\":1000000000,\"maxDirtyBlocks\":200,\"minCycles\":5,\"maxCycles\":20,\"cycleThrottle\":500000000,\"makeMigratable\":true},{\"name\":\"disk\",\"base\":\"out/package/rootfs.ext4\",\"overlay\":\"out/overlay/rootfs.ext4\",\"state\":\"out/state/rootfs.ext4\",\"blockSize\":65536,\"expiry\":1000000000,\"maxDirtyBlocks\":200,\"minCycles\":5,\"maxCycles\":20,\"cycleThrottle\":500000000,\"makeMigratable\":true},{\"name\":\"config\",\"base\":\"out/package/config.json\",\"overlay\":\"out/overlay/config.json\",\"state\":\"out/state/config.json\",\"blockSize\":65536,\"expiry\":1000000000,\"maxDirtyBlocks\":200,\"minCycles\":5,\"maxCycles\":20,\"cycleThrottle\":500000000,\"makeMigratable\":true},{\"name\":\"oci\",\"base\":\"out/package/oci.ext4\",\"overlay\":\"out/overlay/oci.ext4\",\"state\":\"out/state/oci.ext4\",\"blockSize\":65536,\"expiry\":1000000000,\"maxDirtyBlocks\":200,\"minCycles\":5,\"maxCycles\":20,\"cycleThrottle\":500000000,\"makeMigratable\":true}]")
   -laddr string
@@ -1143,15 +1384,18 @@ $ Usage of drafter-mounter:
 #### Peer
 
 ```shell
-$ Usage of drafter-peer:
+$ drafter-peer --help
+Usage of drafter-peer:
   -cgroup-version int
     	Cgroup version to use for Jailer (default 2)
   -chroot-base-dir string
     	chroot base directory (default "out/vms")
   -concurrency int
-    	Number of concurrent workers to use in migrations (default 4096)
+    	Number of concurrent workers to use in migrations (default 1024)
   -devices string
-    	Devices configuration (default "[{\"name\":\"state\",\"base\":\"out/package/state.bin\",\"overlay\":\"out/overlay/state.bin\",\"state\":\"out/state/state.bin\",\"blockSize\":65536,\"expiry\":1000000000,\"maxDirtyBlocks\":200,\"minCycles\":5,\"maxCycles\":20,\"cycleThrottle\":500000000,\"makeMigratable\":true,\"shared\":false},{\"name\":\"memory\",\"base\":\"out/package/memory.bin\",\"overlay\":\"out/overlay/memory.bin\",\"state\":\"out/state/memory.bin\",\"blockSize\":65536,\"expiry\":1000000000,\"maxDirtyBlocks\":200,\"minCycles\":5,\"maxCycles\":20,\"cycleThrottle\":500000000,\"makeMigratable\":true,\"shared\":false},{\"name\":\"kernel\",\"base\":\"out/package/vmlinux\",\"overlay\":\"out/overlay/vmlinux\",\"state\":\"out/state/vmlinux\",\"blockSize\":65536,\"expiry\":1000000000,\"maxDirtyBlocks\":200,\"minCycles\":5,\"maxCycles\":20,\"cycleThrottle\":500000000,\"makeMigratable\":true,\"shared\":false},{\"name\":\"disk\",\"base\":\"out/package/rootfs.ext4\",\"overlay\":\"out/overlay/rootfs.ext4\",\"state\":\"out/state/rootfs.ext4\",\"blockSize\":65536,\"expiry\":1000000000,\"maxDirtyBlocks\":200,\"minCycles\":5,\"maxCycles\":20,\"cycleThrottle\":500000000,\"makeMigratable\":true,\"shared\":false},{\"name\":\"config\",\"base\":\"out/package/config.json\",\"overlay\":\"out/overlay/config.json\",\"state\":\"out/state/config.json\",\"blockSize\":65536,\"expiry\":1000000000,\"maxDirtyBlocks\":200,\"minCycles\":5,\"maxCycles\":20,\"cycleThrottle\":500000000,\"makeMigratable\":true,\"shared\":false},{\"name\":\"oci\",\"base\":\"out/package/oci.ext4\",\"overlay\":\"out/overlay/oci.ext4\",\"state\":\"out/state/oci.ext4\",\"blockSize\":65536,\"expiry\":1000000000,\"maxDirtyBlocks\":200,\"minCycles\":5,\"maxCycles\":20,\"cycleThrottle\":500000000,\"makeMigratable\":true,\"shared\":false}]")
+    	Devices configuration (default "[{\"name\":\"state\",\"base\":\"out/package/state.bin\",\"overlay\":\"out/overlay/state.bin\",\"state\":\"out/state/state.bin\",\"blockSize\":65536,\"expiry\":1000000000,\"maxDirtyBlocks\":200,\"minCycles\":5,\"maxCycles\":20,\"cycleThrottle\":500000000,\"makeMigratable\":true,\"shared\":false,\"sharedbase\":false,\"s3sync\":false,\"s3accesskey\":\"\",\"s3secretkey\":\"\",\"s3endpoint\":\"\",\"s3secure\":false,\"s3bucket\":\"\",\"s3concurrency\":0},{\"name\":\"memory\",\"base\":\"out/package/memory.bin\",\"overlay\":\"out/overlay/memory.bin\",\"state\":\"out/state/memory.bin\",\"blockSize\":65536,\"expiry\":1000000000,\"maxDirtyBlocks\":200,\"minCycles\":5,\"maxCycles\":20,\"cycleThrottle\":500000000,\"makeMigratable\":true,\"shared\":false,\"sharedbase\":false,\"s3sync\":false,\"s3accesskey\":\"\",\"s3secretkey\":\"\",\"s3endpoint\":\"\",\"s3secure\":false,\"s3bucket\":\"\",\"s3concurrency\":0},{\"name\":\"kernel\",\"base\":\"out/package/vmlinux\",\"overlay\":\"out/overlay/vmlinux\",\"state\":\"out/state/vmlinux\",\"blockSize\":65536,\"expiry\":1000000000,\"maxDirtyBlocks\":200,\"minCycles\":5,\"maxCycles\":20,\"cycleThrottle\":500000000,\"makeMigratable\":true,\"shared\":false,\"sharedbase\":false,\"s3sync\":false,\"s3accesskey\":\"\",\"s3secretkey\":\"\",\"s3endpoint\":\"\",\"s3secure\":false,\"s3bucket\":\"\",\"s3concurrency\":0},{\"name\":\"disk\",\"base\":\"out/package/rootfs.ext4\",\"overlay\":\"out/overlay/rootfs.ext4\",\"state\":\"out/state/rootfs.ext4\",\"blockSize\":65536,\"expiry\":1000000000,\"maxDirtyBlocks\":200,\"minCycles\":5,\"maxCycles\":20,\"cycleThrottle\":500000000,\"makeMigratable\":true,\"shared\":false,\"sharedbase\":false,\"s3sync\":false,\"s3accesskey\":\"\",\"s3secretkey\":\"\",\"s3endpoint\":\"\",\"s3secure\":false,\"s3bucket\":\"\",\"s3concurrency\":0},{\"name\":\"config\",\"base\":\"out/package/config.json\",\"overlay\":\"out/overlay/config.json\",\"state\":\"out/state/config.json\",\"blockSize\":65536,\"expiry\":1000000000,\"maxDirtyBlocks\":200,\"minCycles\":5,\"maxCycles\":20,\"cycleThrottle\":500000000,\"makeMigratable\":true,\"shared\":false,\"sharedbase\":false,\"s3sync\":false,\"s3accesskey\":\"\",\"s3secretkey\":\"\",\"s3endpoint\":\"\",\"s3secure\":false,\"s3bucket\":\"\",\"s3concurrency\":0},{\"name\":\"oci\",\"base\":\"out/package/oci.ext4\",\"overlay\":\"out/overlay/oci.ext4\",\"state\":\"out/state/oci.ext4\",\"blockSize\":65536,\"expiry\":1000000000,\"maxDirtyBlocks\":200,\"minCycles\":5,\"maxCycles\":20,\"cycleThrottle\":500000000,\"makeMigratable\":true,\"shared\":false,\"sharedbase\":false,\"s3sync\":false,\"s3accesskey\":\"\",\"s3secretkey\":\"\",\"s3endpoint\":\"\",\"s3secure\":false,\"s3bucket\":\"\",\"s3concurrency\":0}]")
+  -disable-postcopy-migration
+    	Whether to disable post-copy migration
   -enable-input
     	Whether to enable VM stdin
   -enable-output
@@ -1170,6 +1414,8 @@ $ Usage of drafter-peer:
     	Jailer binary (from Firecracker) (default "jailer")
   -laddr string
     	Local address to listen on (leave empty to disable) (default "localhost:1337")
+  -metrics string
+    	Address to serve metrics from
   -netns string
     	Network namespace to run Firecracker in (default "ark0")
   -numa-node int
@@ -1190,9 +1436,9 @@ $ Usage of drafter-peer:
 $ drafter-terminator --help
 Usage of drafter-terminator:
   -devices string
-        Devices configuration (default "[{\"name\":\"state\",\"output\":\"out/package/state.bin\"},{\"name\":\"memory\",\"output\":\"out/package/memory.bin\"},{\"name\":\"kernel\",\"output\":\"out/package/vmlinux\"},{\"name\":\"disk\",\"output\":\"out/package/rootfs.ext4\"},{\"name\":\"config\",\"output\":\"out/package/config.json\"},{\"name\":\"oci\",\"output\":\"out/package/oci.ext4\"}]")
+    	Devices configuration (default "[{\"name\":\"kernel\",\"output\":\"out/package/vmlinux\"},{\"name\":\"disk\",\"output\":\"out/package/rootfs.ext4\"},{\"name\":\"state\",\"output\":\"out/package/state.bin\"},{\"name\":\"memory\",\"output\":\"out/package/memory.bin\"},{\"name\":\"config\",\"output\":\"out/package/config.json\"}]")
   -raddr string
-        Remote address to connect to (default "localhost:1337")
+    	Remote address to connect to (default "localhost:1337")
 ```
 
 </details>
@@ -1215,8 +1461,8 @@ Adding additional disks to a VM instance is as easy as adding them to the `--dev
 
 ```json
 {
-  "name": "state",
-  "base": "/tmp/mydisk.ext4",
+  "name": "mydisk",
+  "base": "tmp/mydisk.ext4",
   "overlay": "out/instance-0/overlay/mydisk.ext4",
   "state": "out/instance-0/state/mydisk.ext4",
   "blockSize": 65536,
@@ -1224,8 +1470,18 @@ Adding additional disks to a VM instance is as easy as adding them to the `--dev
   "maxDirtyBlocks": 200,
   "minCycles": 5,
   "maxCycles": 20,
-  "cycleThrottle": 500000000
-}
+  "cycleThrottle": 500000000,
+  "makeMigratable": true,
+  "shared": false,
+  "sharedbase": false,
+  "s3sync": false,
+  "s3accesskey": "",
+  "s3secretkey": "",
+  "s3endpoint": "",
+  "s3secure": false,
+  "s3bucket": "",
+  "s3concurrency": 0
+},
 ```
 
 Disks aren't mounted automatically; to find and mount them, use the `lsblk` and `mount` commands in the guest VM. If you want to mount the disks at boot time, you can modify `/etc/fstab` and add a line like so (assuming that the disk has the label `mydisk`):
