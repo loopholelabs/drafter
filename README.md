@@ -534,7 +534,7 @@ $ sudo drafter-peer --netns ark0 --raddr '' --laddr '' --devices '[
 
 </details>
 
-#### Creating Multiple Independent VM Instances from a Single VM Package
+#### Creating Multiple Independent VM Instances from a Single VM Package with Copy-on-Write (CoW)
 
 <details>
   <summary>Expand section</summary>
@@ -1159,6 +1159,43 @@ On the destination, after all devices have been migrated, you should see logs li
 # ...
 2024/06/24 13:55:16 Resumed VM in 60.026997ms on out/vms/firecracker/39zY39Y9Gs8N4wPMs5WoLe/root
 ```
+
+If you're not happy with migration performance, encounter resource contention issues, or want to optimize for something other than minimal downtime, here are configuration options for `drafter-peer`:
+
+- `--disable-postcopy-migration`: Prevents the instance from resuming on the destination before all data is locally available. This reduces total migration time but increases downtime.
+
+- `--concurrency`: Sets concurrent workers for migrations (default 1024). Lower values reduce CPU usage but may increase migration time and downtime, especially in high-latency environments.
+
+You can also disable pre-copy migration. Pre-copy migration minimizes downtime by transferring most data to the destination first, then synchronizing changed data until changes between cycles reach an acceptable level. While this reduces downtime, the extra cycles can increase total migration time. To disable pre-copy migration, modify each device in `--devices`:
+
+```json
+{
+  "name": "oci",
+  // ...
+  "maxDirtyBlocks": 0,
+  "minCycles": 0,
+  "maxCycles": 0,
+  "cycleThrottle": 0
+}
+```
+
+For bandwidth issues between hosts, consider S3-assisted migrations. This continuously synchronizes bulk data to an S3-compatible store as the instance runs. The destination fetches most data from S3, with only recent changes transferred through the P2P connection. Configure this by extending each device in `--devices`:
+
+```json
+{
+  "name": "oci",
+  // ...
+  "s3sync": true,
+  "s3accesskey": "myaccesskey",
+  "s3secretkey": "mysecretkeykey",
+  "s3endpoint": "s3.us-west-2.amazonaws.com",
+  "s3secure": true,
+  "s3bucket": "pojntfx-test-plan-instance",
+  "s3concurrency": 1024
+}
+```
+
+Note that S3 configuration is only required when first starting a peer; future peers in a migration chain receive this configuration automatically.
 
 **🚀 That's it!** You've successfully created, snapshotted, started and live migrated your first service with Drafter. We can't wait to see what you're going to build next! Be sure to take a look at the [reference](#reference) (the [registry](#registry), [mounter](#mounter) and [terminator](#terminator) components can be quite helpful when working with live migration), [examples](#examples) and [frequently asked questions](#faq) for more information.
 
