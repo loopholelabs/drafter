@@ -22,7 +22,7 @@ jobs:
           - id: test
             src: .
             os: golang:bookworm
-            flags: -e '-v /tmp/ccache:/root/.cache/go-build --privileged --cap-add=ALL -v /lib/modules:/lib/modules:ro -v /dev:/dev'
+            flags: -e '-v /tmp/ccache:/root/.cache/go-build --privileged --cap-add=ALL -v /lib/modules:/lib/modules:ro -v /dev:/dev -v /var/run/docker.sock:/var/run/docker.sock --network host'
             cmd: ./Hydrunfile test
             dst: out/nonexistent
             runner: depot-ubuntu-22.04-32
