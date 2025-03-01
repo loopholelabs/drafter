@@ -4,6 +4,13 @@ set -e
 
 # Test
 if [ "$1" = "test" ]; then
+  # Install native dependencies
+  apt update
+  apt install -y kmod make
+
+  # Configure environment
+  modprobe nbd
+
   # Configure Git
   git config --global --add safe.directory '*'
 
