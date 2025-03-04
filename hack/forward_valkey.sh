@@ -1,3 +1,7 @@
+#!/bin/bash
+
+set -ex
+
 sudo drafter-forwarder --port-forwards '[
   {
     "netns": "ark0",

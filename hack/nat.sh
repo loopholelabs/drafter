@@ -1,1 +1,5 @@
-sudo drafter-nat --host-interface wlp0s20f3
+#!/bin/bash
+
+set -ex
+
+sudo drafter-nat --host-interface wlp195s0
