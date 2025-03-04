@@ -1,9 +1,13 @@
+#!/bin/bash
+
+set -ex
+
 sudo drafter-peer --netns ark0 --raddr '' --laddr 'localhost:1337' --metrics 'localhost:2112' --devices '[
   {
     "name": "state",
-    "base": "image/package/state.bin",
-    "overlay": "image/instance-0/overlay/state.bin",
-    "state": "image/instance-0/state/state.bin",
+    "base": "out/package/state.bin",
+    "overlay": "out/instance-0/overlay/state.bin",
+    "state": "out/instance-0/state/state.bin",
     "blockSize": 1048576,
     "expiry": 1000000000,
     "maxDirtyBlocks": 200,
@@ -16,9 +20,9 @@ sudo drafter-peer --netns ark0 --raddr '' --laddr 'localhost:1337' --metrics 'lo
   },
   {
     "name": "memory",
-    "base": "image/package/memory.bin",
-    "overlay": "image/instance-0/overlay/memory.bin",
-    "state": "image/instance-0/state/memory.bin",
+    "base": "out/package/memory.bin",
+    "overlay": "out/instance-0/overlay/memory.bin",
+    "state": "out/instance-0/state/memory.bin",
     "blockSize": 1048576,
     "expiry": 1000000000,
     "maxDirtyBlocks": 200,
@@ -31,9 +35,9 @@ sudo drafter-peer --netns ark0 --raddr '' --laddr 'localhost:1337' --metrics 'lo
   },
   {
     "name": "kernel",
-    "base": "image/package/vmlinux",
-    "overlay": "image/instance-0/overlay/vmlinux",
-    "state": "image/instance-0/state/vmlinux",
+    "base": "out/package/vmlinux",
+    "overlay": "out/instance-0/overlay/vmlinux",
+    "state": "out/instance-0/state/vmlinux",
     "blockSize": 1048576,
     "expiry": 1000000000,
     "maxDirtyBlocks": 200,
@@ -46,9 +50,9 @@ sudo drafter-peer --netns ark0 --raddr '' --laddr 'localhost:1337' --metrics 'lo
   },
   {
     "name": "disk",
-    "base": "image/package/rootfs.ext4",
-    "overlay": "image/instance-0/overlay/rootfs.ext4",
-    "state": "image/instance-0/state/rootfs.ext4",
+    "base": "out/package/rootfs.ext4",
+    "overlay": "out/instance-0/overlay/rootfs.ext4",
+    "state": "out/instance-0/state/rootfs.ext4",
     "blockSize": 1048576,
     "expiry": 1000000000,
     "maxDirtyBlocks": 200,
@@ -61,9 +65,9 @@ sudo drafter-peer --netns ark0 --raddr '' --laddr 'localhost:1337' --metrics 'lo
   },
   {
     "name": "config",
-    "base": "image/package/config.json",
-    "overlay": "image/instance-0/overlay/config.json",
-    "state": "image/instance-0/state/config.json",
+    "base": "out/package/config.json",
+    "overlay": "out/instance-0/overlay/config.json",
+    "state": "out/instance-0/state/config.json",
     "blockSize": 1048576,
     "expiry": 1000000000,
     "maxDirtyBlocks": 200,
@@ -76,9 +80,9 @@ sudo drafter-peer --netns ark0 --raddr '' --laddr 'localhost:1337' --metrics 'lo
   },
   {
     "name": "oci",
-    "base": "image/package/oci.ext4",
-    "overlay": "image/instance-0/overlay/oci.ext4",
-    "state": "image/instance-0/state/oci.ext4",
+    "base": "out/package/oci.ext4",
+    "overlay": "out/instance-0/overlay/oci.ext4",
+    "state": "out/instance-0/state/oci.ext4",
     "blockSize": 1048576,
     "expiry": 1000000000,
     "maxDirtyBlocks": 200,

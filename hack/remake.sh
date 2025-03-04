@@ -1,9 +1,13 @@
-make
-sudo make install
+#!/bin/bash
+
+set -ex
+
+make -j$(nproc)
+sudo make install j$(nproc)
 sudo killall drafter-peer
 sudo killall firecracker
-sudo rm -rf image/instance-*
+sudo rm -rf out/instance-*
 
-#mkdir image/instance-1
-#mkdir image/instance-1/state
-#mkdir image/instance-1/overlay
+#mkdir out/instance-1
+#mkdir out/instance-1/state
+#mkdir out/instance-1/overlay

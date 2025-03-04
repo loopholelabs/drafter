@@ -17,7 +17,7 @@ import (
 )
 
 const snapshotDir = "snap_test"
-const blueprintDir = "../../image/blueprint"
+const blueprintDir = "../../out/blueprint"
 
 /**
  * Pre-requisites
