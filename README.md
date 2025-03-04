@@ -1160,11 +1160,10 @@ On the destination, after all devices have been migrated, you should see logs li
 2024/06/24 13:55:16 Resumed VM in 60.026997ms on out/vms/firecracker/39zY39Y9Gs8N4wPMs5WoLe/root
 ```
 
-If you're not happy with migration performance, encounter resource contention issues, or want to optimize for something other than minimal downtime, here are configuration options for `drafter-peer`:
+If you're not happy with migration performance, encounter resource contention (e.g. CPU or memory pressure) issues, or want to optimize for something other than minimal downtime, here are configuration options for `drafter-peer`:
 
 - `--disable-postcopy-migration`: Prevents the instance from resuming on the destination before all data is locally available. This reduces total migration time but increases downtime.
-
-- `--concurrency`: Sets concurrent workers for migrations (default 1024). Lower values reduce CPU usage but may increase migration time and downtime, especially in high-latency environments.
+- `--concurrency`: Sets concurrent workers for migrations (default 1024). Lower values reduce CPU and memory usage but may increase migration time and downtime, especially in high-latency environments.
 
 You can also disable pre-copy migration. Pre-copy migration minimizes downtime by transferring most data to the destination first, then synchronizing changed data until changes between cycles reach an acceptable level. While this reduces downtime, the extra cycles can increase total migration time. To disable pre-copy migration, modify each device in `--devices`:
 
