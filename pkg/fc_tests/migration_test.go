@@ -62,13 +62,8 @@ func setupDevicesCowS3(t *testing.T, log types.Logger) ([]common.MigrateToDevice
 func getDevicesFrom(t *testing.T, snapDir string, s3Endpoint string, i int) []common.MigrateFromDevice {
 	devicesFrom := make([]common.MigrateFromDevice, 0)
 
-	err := os.Mkdir(fmt.Sprintf("%s_%d", testPeerDirCowS3, i), 0777)
+	err := os.Mkdir(path.Join(testPeerDirCowS3, fmt.Sprintf("migration_%d", i)), 0777)
 	assert.NoError(t, err)
-
-	t.Cleanup(func() {
-		err := os.RemoveAll(fmt.Sprintf("%s_%d", testPeerDirCowS3, i))
-		assert.NoError(t, err)
-	})
 
 	for _, n := range append(common.KnownNames, "oci") {
 		// Create some initial devices...
@@ -77,8 +72,8 @@ func getDevicesFrom(t *testing.T, snapDir string, s3Endpoint string, i int) []co
 		dev := common.MigrateFromDevice{
 			Name:       n,
 			Base:       path.Join(snapDir, n),
-			Overlay:    path.Join(fmt.Sprintf("%s_%d", testPeerDirCowS3, i), fmt.Sprintf("%s.overlay", fn)),
-			State:      path.Join(fmt.Sprintf("%s_%d", testPeerDirCowS3, i), fmt.Sprintf("%s.state", fn)),
+			Overlay:    path.Join(path.Join(testPeerDirCowS3, fmt.Sprintf("migration_%d", i), fmt.Sprintf("%s.overlay", fn)),
+			State:      path.Join(path.Join(testPeerDirCowS3, fmt.Sprintf("migration_%d", i), fmt.Sprintf("%s.state", fn)),
 			BlockSize:  1024 * 1024,
 			Shared:     false,
 			SharedBase: true,
