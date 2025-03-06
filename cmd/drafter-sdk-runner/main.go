@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/firecracker-microvm/firecracker-go-sdk"
-	"github.com/firecracker-microvm/firecracker-go-sdk/client/models"
 	"github.com/lithammer/shortuuid/v4"
 	"github.com/otiai10/copy"
 	"github.com/sirupsen/logrus"
@@ -20,11 +19,7 @@ func main() {
 
 	config := firecracker.Config{
 		LogLevel: "Debug",
-		MachineCfg: models.MachineConfiguration{
-			VcpuCount:  firecracker.Int64(1),
-			MemSizeMib: firecracker.Int64(512),
-		},
-		NetNS: "/var/run/netns/ark0",
+		NetNS:    "/var/run/netns/ark0",
 		JailerCfg: &firecracker.JailerConfig{
 			UID:            firecracker.Int(0),
 			GID:            firecracker.Int(0),
