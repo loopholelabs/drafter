@@ -10,6 +10,7 @@ type Drive struct {
 	PathOnHost   string `json:"path_on_host"`
 	IsRootDevice bool   `json:"is_root_device"`
 	IsReadOnly   bool   `json:"is_read_only"`
+	IOEngine     string `json:"io_engine"`
 }
 
 type MachineConfig struct {

@@ -63,6 +63,7 @@ func main() {
 	}
 
 	rawDevices := flag.String("devices", string(defaultDevices), "Devices configuration")
+	ioEngine := flag.String("io-engine", "Async", "Firecracker IO engine")
 
 	cpuCount := flag.Int("cpu-count", 1, "CPU count")
 	memorySize := flag.Int("memory-size", 1024, "Memory size (in MB)")
@@ -97,7 +98,7 @@ func main() {
 		cancel()
 	}()
 
-	err = rfirecracker.CreateSnapshot(log, ctx, devices,
+	err = rfirecracker.CreateSnapshot(log, ctx, devices, *ioEngine,
 		rfirecracker.VMConfiguration{
 			CPUCount:    *cpuCount,
 			MemorySize:  *memorySize,

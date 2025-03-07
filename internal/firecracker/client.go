@@ -75,6 +75,7 @@ func StartVM(
 	kernelPath string,
 
 	disks []string,
+	ioEngine string,
 
 	cpuCount int,
 	memorySize int,
@@ -110,6 +111,7 @@ func StartVM(
 				PathOnHost:   disk,
 				IsRootDevice: false,
 				IsReadOnly:   false,
+				IOEngine:     ioEngine,
 			},
 			path.Join("drives", disk),
 		); err != nil {

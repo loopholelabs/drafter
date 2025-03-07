@@ -44,7 +44,7 @@ var (
 	ErrCouldNotCreateSnapshot            = errors.New("could not create snapshot")
 )
 
-func CreateSnapshot(log types.Logger, ctx context.Context, devices []SnapshotDevice,
+func CreateSnapshot(log types.Logger, ctx context.Context, devices []SnapshotDevice, ioEngine string,
 	vmConfiguration VMConfiguration, livenessConfiguration LivenessConfiguration,
 	hypervisorConfiguration HypervisorConfiguration, networkConfiguration NetworkConfiguration,
 	agentConfiguration AgentConfiguration,
@@ -139,6 +139,7 @@ func CreateSnapshot(log types.Logger, ctx context.Context, devices []SnapshotDev
 		client,
 		common.DeviceKernelName,
 		disks,
+		ioEngine,
 		vmConfiguration.CPUCount,
 		vmConfiguration.MemorySize,
 		vmConfiguration.CPUTemplate,
