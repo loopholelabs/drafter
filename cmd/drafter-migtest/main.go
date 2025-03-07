@@ -23,9 +23,10 @@ import (
 	"github.com/loopholelabs/silo/pkg/testutils"
 )
 
-const snapshotDir = "snap_test"
+const createSnapshotDir = "snap_test"
 
 var blueprintsDir *string
+var snapshotsDir *string
 
 const testPeerDirCowS3 = "test_peer_cow"
 const enableS3 = false
@@ -33,12 +34,13 @@ const performHashChecks = false
 
 func main() {
 	defer func() {
-		os.RemoveAll(snapshotDir)
+		os.RemoveAll(createSnapshotDir)
 		os.RemoveAll(testPeerDirCowS3)
 	}()
 	iterations := flag.Int("num", 10, "number of iterations")
 	sleepTime := flag.Duration("sleep", 5*time.Second, "sleep inbetween resume/suspend")
 	blueprintsDir = flag.String("blueprints", "blueprints", "blueprints dir")
+	snapshotsDir = flag.String("snapshot", "", "snapshot dir")
 
 	flag.Parse()
 
@@ -53,7 +55,7 @@ func main() {
 	grandTotalBlocksP2P := 0
 	grandTotalBlocksS3 := 0
 
-	devicesTo, snapDir, s3Endpoint := setupDevicesCowS3(log)
+	devicesTo, snapDir, s3Endpoint := setupDevicesCowS3(log, *snapshotsDir)
 
 	firecrackerBin, err := exec.LookPath("firecracker")
 	if err != nil {
@@ -282,7 +284,7 @@ func main() {
 	}
 }
 
-func setupDevicesCowS3(log types.Logger) ([]common.MigrateToDevice, string, string) {
+func setupDevicesCowS3(log types.Logger, snapDir string) ([]common.MigrateToDevice, string, string) {
 	s3Endpoint := ""
 
 	if enableS3 {
@@ -300,7 +302,9 @@ func setupDevicesCowS3(log types.Logger) ([]common.MigrateToDevice, string, stri
 	devicesTo := make([]common.MigrateToDevice, 0)
 
 	// create package files
-	snapDir := setupSnapshot(log, context.Background())
+	if snapDir == "" {
+		snapDir = setupSnapshot(log, context.Background())
+	}
 
 	for _, n := range append(common.KnownNames, "oci") {
 		devicesTo = append(devicesTo, common.MigrateToDevice{
@@ -358,7 +362,7 @@ func getDevicesFrom(snapDir string, s3Endpoint string, i int) []common.MigrateFr
  *  - blueprints exist
  */
 func setupSnapshot(log types.Logger, ctx context.Context) string {
-	err := os.Mkdir(snapshotDir, 0777)
+	err := os.Mkdir(createSnapshotDir, 0777)
 	if err != nil {
 		panic(err)
 	}
@@ -376,30 +380,30 @@ func setupSnapshot(log types.Logger, ctx context.Context) string {
 	devices := []rfirecracker.SnapshotDevice{
 		{
 			Name:   "state",
-			Output: path.Join(snapshotDir, "state"),
+			Output: path.Join(createSnapshotDir, "state"),
 		},
 		{
 			Name:   "memory",
-			Output: path.Join(snapshotDir, "memory"),
+			Output: path.Join(createSnapshotDir, "memory"),
 		},
 		{
 			Name:   "kernel",
 			Input:  path.Join(*blueprintsDir, "vmlinux"),
-			Output: path.Join(snapshotDir, "kernel"),
+			Output: path.Join(createSnapshotDir, "kernel"),
 		},
 		{
 			Name:   "disk",
 			Input:  path.Join(*blueprintsDir, "rootfs.ext4"),
-			Output: path.Join(snapshotDir, "disk"),
+			Output: path.Join(createSnapshotDir, "disk"),
 		},
 		{
 			Name:   "config",
-			Output: path.Join(snapshotDir, "config"),
+			Output: path.Join(createSnapshotDir, "config"),
 		},
 		{
 			Name:   "oci",
 			Input:  path.Join(*blueprintsDir, "oci.ext4"),
-			Output: path.Join(snapshotDir, "oci"),
+			Output: path.Join(createSnapshotDir, "oci"),
 		},
 	}
 
@@ -417,7 +421,7 @@ func setupSnapshot(log types.Logger, ctx context.Context) string {
 		rfirecracker.HypervisorConfiguration{
 			FirecrackerBin: firecrackerBin,
 			JailerBin:      jailerBin,
-			ChrootBaseDir:  snapshotDir,
+			ChrootBaseDir:  createSnapshotDir,
 			UID:            0,
 			GID:            0,
 			NetNS:          "ark0",
@@ -440,5 +444,5 @@ func setupSnapshot(log types.Logger, ctx context.Context) string {
 		panic(err)
 	}
 
-	return snapshotDir
+	return createSnapshotDir
 }
