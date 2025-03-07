@@ -1,8 +1,6 @@
 module github.com/loopholelabs/drafter
 
-go 1.24
-
-toolchain go1.24.0
+go 1.23.0
 
 require (
 	github.com/coreos/go-iptables v0.8.0
@@ -12,7 +10,7 @@ require (
 	github.com/loopholelabs/goroutine-manager v0.1.1
 	github.com/loopholelabs/logging v0.3.2
 	github.com/loopholelabs/silo v0.2.10
-	github.com/metal-stack/go-ipam v1.14.9
+	github.com/metal-stack/go-ipam v1.14.8
 	github.com/pojntfx/panrpc/go v0.0.0-20250114165542-9cc31cf01885
 	github.com/prometheus/client_golang v1.21.1
 	github.com/stretchr/testify v1.10.0
