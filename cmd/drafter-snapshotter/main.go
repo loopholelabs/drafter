@@ -63,7 +63,7 @@ func main() {
 	}
 
 	rawDevices := flag.String("devices", string(defaultDevices), "Devices configuration")
-	ioEngine := flag.String("io-engine", "Async", "Firecracker IO engine")
+	ioEngine := flag.String("io-engine", "Async", `Firecracker IO engine (either "Async" or "Sync")`)
 
 	cpuCount := flag.Int("cpu-count", 1, "CPU count")
 	memorySize := flag.Int("memory-size", 1024, "Memory size (in MB)")
