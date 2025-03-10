@@ -36,6 +36,7 @@ var networkNamespace *string
 var destinationAddr *string
 var listenAddr *string
 var start *bool
+var waitForComplete *bool
 
 var testPeerDirCowS3 *string
 
@@ -61,7 +62,7 @@ func main() {
 	networkNamespace = flag.String("netns", "ark0", "Network namespace")
 	destinationAddr = flag.String("dest", "", "destination address")
 	listenAddr = flag.String("listen", "", "listen address")
-
+	waitForComplete = flag.Bool("wait", true, "wait for complete")
 	usePVM = flag.Bool("pvm", false, "use PVM boot args and T2A CPU template")
 
 	flag.Parse()
@@ -211,12 +212,22 @@ func main() {
 		devicesFrom := getDevicesFrom(snapDir, s3Endpoint, migration+1)
 		err = nextPeer.MigrateFrom(context.TODO(), devicesFrom, []io.Reader{conn}, []io.Writer{conn}, hooks2)
 
-		completedWg.Wait()
+		if *waitForComplete {
+			completedWg.Wait()
 
-		// We can resume here safely
-		err = nextPeer.Resume(context.TODO(), 10*time.Second, 10*time.Second)
-		if err != nil {
-			panic(err)
+			// We can resume here safely
+			err = nextPeer.Resume(context.TODO(), 10*time.Second, 10*time.Second)
+			if err != nil {
+				panic(err)
+			}
+		} else {
+			// We can resume here safely
+			err = nextPeer.Resume(context.TODO(), 10*time.Second, 10*time.Second)
+			if err != nil {
+				panic(err)
+			}
+			completedWg.Wait()
+
 		}
 
 		// Resumed. Now sleep for a bit, and send it on.
