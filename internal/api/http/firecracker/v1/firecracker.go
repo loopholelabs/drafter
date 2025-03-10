@@ -1,16 +1,23 @@
 package v1
 
+type IOEngine string
+
+const (
+	IOEngineSync  IOEngine = "Sync"
+	IOEngineAsync IOEngine = "Async"
+)
+
 type BootSource struct {
 	KernelImagePath string `json:"kernel_image_path"`
 	BootArgs        string `json:"boot_args"`
 }
 
 type Drive struct {
-	DriveID      string `json:"drive_id"`
-	PathOnHost   string `json:"path_on_host"`
-	IsRootDevice bool   `json:"is_root_device"`
-	IsReadOnly   bool   `json:"is_read_only"`
-	IOEngine     string `json:"io_engine"`
+	DriveID      string   `json:"drive_id"`
+	PathOnHost   string   `json:"path_on_host"`
+	IsRootDevice bool     `json:"is_root_device"`
+	IsReadOnly   bool     `json:"is_read_only"`
+	IOEngine     IOEngine `json:"io_engine"`
 }
 
 type MachineConfig struct {

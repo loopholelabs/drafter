@@ -75,7 +75,7 @@ func StartVM(
 	kernelPath string,
 
 	disks []string,
-	ioEngine string,
+	ioEngine v1.IOEngine,
 
 	cpuCount int,
 	memorySize int,

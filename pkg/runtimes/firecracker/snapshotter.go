@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strings"
 
+	v1 "github.com/loopholelabs/drafter/internal/api/http/firecracker/v1"
 	iutils "github.com/loopholelabs/drafter/internal/utils"
 	"github.com/loopholelabs/logging/types"
 
@@ -44,7 +45,7 @@ var (
 	ErrCouldNotCreateSnapshot            = errors.New("could not create snapshot")
 )
 
-func CreateSnapshot(log types.Logger, ctx context.Context, devices []SnapshotDevice, ioEngine string,
+func CreateSnapshot(log types.Logger, ctx context.Context, devices []SnapshotDevice, ioEngineSync bool,
 	vmConfiguration VMConfiguration, livenessConfiguration LivenessConfiguration,
 	hypervisorConfiguration HypervisorConfiguration, networkConfiguration NetworkConfiguration,
 	agentConfiguration AgentConfiguration,
@@ -132,6 +133,11 @@ func CreateSnapshot(log types.Logger, ctx context.Context, devices []SnapshotDev
 		if !slices.Contains(common.KnownNames, device.Name) || device.Name == common.DeviceDiskName {
 			disks = append(disks, device.Name)
 		}
+	}
+
+	ioEngine := v1.IOEngineAsync
+	if ioEngineSync {
+		ioEngine = v1.IOEngineSync
 	}
 
 	err = firecracker.StartVM(

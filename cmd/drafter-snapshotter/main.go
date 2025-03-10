@@ -63,7 +63,7 @@ func main() {
 	}
 
 	rawDevices := flag.String("devices", string(defaultDevices), "Devices configuration")
-	ioEngine := flag.String("io-engine", "Async", `Firecracker IO engine (either "Async" or "Sync")`)
+	ioEngineSync := flag.Bool("io-engine-sync", false, "Whether to use the synchronous Firecracker IO engine instead of the default asynchronous one")
 
 	cpuCount := flag.Int("cpu-count", 1, "CPU count")
 	memorySize := flag.Int("memory-size", 1024, "Memory size (in MB)")
@@ -98,7 +98,7 @@ func main() {
 		cancel()
 	}()
 
-	err = rfirecracker.CreateSnapshot(log, ctx, devices, *ioEngine,
+	err = rfirecracker.CreateSnapshot(log, ctx, devices, *ioEngineSync,
 		rfirecracker.VMConfiguration{
 			CPUCount:    *cpuCount,
 			MemorySize:  *memorySize,
