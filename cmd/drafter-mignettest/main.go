@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -19,32 +20,33 @@ import (
 	"github.com/loopholelabs/logging"
 	"github.com/loopholelabs/logging/types"
 	"github.com/loopholelabs/silo/pkg/storage/migrator"
-	"github.com/loopholelabs/silo/pkg/storage/sources"
-	"github.com/loopholelabs/silo/pkg/testutils"
 )
-
-const createSnapshotDir = "snap_test"
 
 var cpuTemplate = "None"
 var bootArgs = rfirecracker.DefaultBootArgsNoPVM
 
+// Configuration
 var blueprintsDir *string
 var snapshotsDir *string
-
 var networkNamespace *string
 
 var destinationAddr *string
 var listenAddr *string
+
 var start *bool
 var waitForComplete *bool
-
-var testPeerDirCowS3 *string
-
+var testDirectory *string
 var usePVM *bool
+var sleepTime *time.Duration
+var iterations *int
 
-const enableS3 = false
-const performHashChecks = false
+var s3sync *bool
+var s3endpoint *string
+var s3bucket *string
+var s3accesskey *string
+var s3secretkey *string
 
+// main()
 func main() {
 	log := logging.New(logging.Zerolog, "test", os.Stderr)
 	//log.SetLevel(types.DebugLevel)
@@ -53,17 +55,23 @@ func main() {
 		//		os.RemoveAll(createSnapshotDir)
 		//		os.RemoveAll(testPeerDirCowS3)
 	}()
-	iterations := flag.Int("num", 10, "number of iterations")
-	sleepTime := flag.Duration("sleep", 5*time.Second, "sleep inbetween resume/suspend")
+	iterations = flag.Int("num", 10, "number of iterations")
+	sleepTime = flag.Duration("sleep", 5*time.Second, "sleep inbetween resume/suspend")
 	blueprintsDir = flag.String("blueprints", "", "blueprints dir")
 	snapshotsDir = flag.String("snapshot", "", "snapshot dir")
 	start = flag.Bool("start", false, "start here")
-	testPeerDirCowS3 = flag.String("dir", "test", "test dir")
+	testDirectory = flag.String("dir", "test", "test dir")
 	networkNamespace = flag.String("netns", "ark0", "Network namespace")
 	destinationAddr = flag.String("dest", "", "destination address")
 	listenAddr = flag.String("listen", "", "listen address")
 	waitForComplete = flag.Bool("wait", true, "wait for complete")
 	usePVM = flag.Bool("pvm", false, "use PVM boot args and T2A CPU template")
+
+	s3sync = flag.Bool("s3sync", false, "Use S3 to speed up migrations")
+	s3endpoint = flag.String("s3endpoint", "", "S3 endpoint")
+	s3bucket = flag.String("s3bucket", "", "S3 bucket")
+	s3accesskey = flag.String("s3accesskey", "", "S3 access key")
+	s3secretkey = flag.String("s3secretkey", "", "S3 secret key")
 
 	flag.Parse()
 
@@ -81,16 +89,15 @@ func main() {
 			MaxCycles:      1,
 			CycleThrottle:  100 * time.Millisecond,
 		})
-
 	}
 
 	// create package files
-	snapDir := *snapshotsDir
 	if *blueprintsDir != "" {
-		snapDir = setupSnapshot(log, context.Background())
+		err := setupSnapshot(log, context.Background(), *snapshotsDir, *blueprintsDir)
+		if err != nil {
+			panic(err)
+		}
 	}
-
-	s3Endpoint := setupDevicesCowS3(log)
 
 	firecrackerBin, err := exec.LookPath("firecracker")
 	if err != nil {
@@ -102,13 +109,13 @@ func main() {
 		panic(err)
 	}
 
-	err = os.Mkdir(*testPeerDirCowS3, 0777)
+	err = os.Mkdir(*testDirectory, 0777)
 	if err != nil {
 		panic(err)
 	}
 
 	if *start {
-		myPeer, err := setupFirstPeer(log, firecrackerBin, jailerBin, snapDir, s3Endpoint)
+		myPeer, err := setupFirstPeer(log, firecrackerBin, jailerBin, *snapshotsDir)
 		if err != nil {
 			panic(err)
 		}
@@ -166,109 +173,11 @@ func main() {
 			panic(err)
 		}
 
-		// Receive an incoming VM, run it for a bit, then send it on...
-
-		// Create a new RuntimeProvider
-		rp2 := &rfirecracker.FirecrackerRuntimeProvider[struct{}, ipc.AgentServerRemote[struct{}], struct{}]{
-			Log: log,
-			HypervisorConfiguration: rfirecracker.HypervisorConfiguration{
-				FirecrackerBin: firecrackerBin,
-				JailerBin:      jailerBin,
-				ChrootBaseDir:  *testPeerDirCowS3,
-				UID:            0,
-				GID:            0,
-				NetNS:          *networkNamespace,
-				NumaNode:       0,
-				CgroupVersion:  2,
-				EnableOutput:   true,
-				EnableInput:    false,
-			},
-			StateName:        common.DeviceStateName,
-			MemoryName:       common.DeviceMemoryName,
-			AgentServerLocal: struct{}{},
-			AgentServerHooks: ipc.AgentServerAcceptHooks[ipc.AgentServerRemote[struct{}], struct{}]{},
-			SnapshotLoadConfiguration: rfirecracker.SnapshotLoadConfiguration{
-				ExperimentalMapPrivate: false,
-			},
-		}
-
-		nextPeer, err := peer.StartPeer(context.TODO(), context.Background(), log, nil, nil, "cow_test", rp2)
+		err = handleConnection(migration, conn, log, firecrackerBin, jailerBin, devicesTo)
 		if err != nil {
-			panic(err)
-		}
-
-		var completedWg sync.WaitGroup
-		completedWg.Add(1)
-		hooks2 := peer.MigrateFromHooks{
-			OnLocalDeviceRequested:     func(id uint32, path string) {},
-			OnLocalDeviceExposed:       func(id uint32, path string) {},
-			OnLocalAllDevicesRequested: func() {},
-			OnXferCustomData:           func(data []byte) {},
-			OnCompletion: func() {
-				fmt.Printf("Completed!\n")
-				completedWg.Done()
-			},
-		}
-		devicesFrom := getDevicesFrom(snapDir, s3Endpoint, migration+1)
-		err = nextPeer.MigrateFrom(context.TODO(), devicesFrom, []io.Reader{conn}, []io.Writer{conn}, hooks2)
-
-		if *waitForComplete {
-			completedWg.Wait()
-
-			// We can resume here safely
-			err = nextPeer.Resume(context.TODO(), 10*time.Second, 10*time.Second)
-			if err != nil {
-				panic(err)
-			}
-		} else {
-			// We can resume here safely
-			err = nextPeer.Resume(context.TODO(), 10*time.Second, 10*time.Second)
-			if err != nil {
-				panic(err)
-			}
-			completedWg.Wait()
-
-		}
-
-		// Resumed. Now sleep for a bit, and send it on.
-
-		time.Sleep(*sleepTime)
-
-		toConn, err := net.Dial("tcp", *destinationAddr)
-		if err != nil {
-			// Could not connect, assume the other end has gone, so lets shutdown
-			fmt.Printf("Connect error %v\n", err)
-			err = nextPeer.Close()
-			if err != nil {
-				panic(err)
-			}
+			log.Error().Err(err).Msg("Error handling connection")
 			return
 		}
-
-		hooks := peer.MigrateToHooks{
-			OnBeforeSuspend:          func() {},
-			OnAfterSuspend:           func() {},
-			OnAllMigrationsCompleted: func() {},
-			OnProgress:               func(p map[string]*migrator.MigrationProgress) {},
-			GetXferCustomData:        func() []byte { return []byte{} },
-		}
-
-		ctime := time.Now()
-		err = nextPeer.MigrateTo(context.TODO(), devicesTo, 10*time.Second, 10, []io.Reader{toConn}, []io.Writer{toConn}, hooks)
-		if err != nil {
-			panic(err)
-		}
-
-		// Close the connection from here...
-		toConn.Close()
-
-		err = nextPeer.Close()
-		if err != nil {
-			panic(err)
-		}
-
-		fmt.Printf("MIGRATION %d TO completed in %dms\n", migration, time.Since(ctime).Milliseconds())
-
 		migration++
 
 		if migration == *iterations {
@@ -279,13 +188,116 @@ func main() {
 
 }
 
-func setupFirstPeer(log types.Logger, firecrackerBin string, jailerBin string, snapDir string, s3Endpoint string) (*peer.Peer, error) {
+// handleConnection
+func handleConnection(migration int, conn net.Conn, log types.Logger, firecrackerBin string, jailerBin string, devicesTo []common.MigrateToDevice) error {
+	// Receive an incoming VM, run it for a bit, then send it on...
+
+	// Create a new RuntimeProvider
+	rp2 := &rfirecracker.FirecrackerRuntimeProvider[struct{}, ipc.AgentServerRemote[struct{}], struct{}]{
+		Log: log,
+		HypervisorConfiguration: rfirecracker.HypervisorConfiguration{
+			FirecrackerBin: firecrackerBin,
+			JailerBin:      jailerBin,
+			ChrootBaseDir:  *testDirectory,
+			UID:            0,
+			GID:            0,
+			NetNS:          *networkNamespace,
+			NumaNode:       0,
+			CgroupVersion:  2,
+			EnableOutput:   true,
+			EnableInput:    false,
+		},
+		StateName:        common.DeviceStateName,
+		MemoryName:       common.DeviceMemoryName,
+		AgentServerLocal: struct{}{},
+		AgentServerHooks: ipc.AgentServerAcceptHooks[ipc.AgentServerRemote[struct{}], struct{}]{},
+		SnapshotLoadConfiguration: rfirecracker.SnapshotLoadConfiguration{
+			ExperimentalMapPrivate: false,
+		},
+	}
+
+	nextPeer, err := peer.StartPeer(context.TODO(), context.Background(), log, nil, nil, "cow_test", rp2)
+	if err != nil {
+		return err
+	}
+
+	var completedWg sync.WaitGroup
+	completedWg.Add(1)
+	hooks2 := peer.MigrateFromHooks{
+		OnLocalDeviceRequested:     func(id uint32, path string) {},
+		OnLocalDeviceExposed:       func(id uint32, path string) {},
+		OnLocalAllDevicesRequested: func() {},
+		OnXferCustomData:           func(data []byte) {},
+		OnCompletion: func() {
+			log.Info().Msg("migration completed")
+			completedWg.Done()
+		},
+	}
+	devicesFrom := getDevicesFrom(*snapshotsDir, migration+1)
+	err = nextPeer.MigrateFrom(context.TODO(), devicesFrom, []io.Reader{conn}, []io.Writer{conn}, hooks2)
+
+	if *waitForComplete {
+		completedWg.Wait()
+
+		// We can resume here safely
+		err = nextPeer.Resume(context.TODO(), 10*time.Second, 10*time.Second)
+		if err != nil {
+			return err
+		}
+	} else {
+		// We can resume here safely
+		err = nextPeer.Resume(context.TODO(), 10*time.Second, 10*time.Second)
+		if err != nil {
+			return err
+		}
+		completedWg.Wait()
+	}
+
+	// Resumed. Now sleep for a bit, and send it on.
+
+	time.Sleep(*sleepTime)
+
+	toConn, err := net.Dial("tcp", *destinationAddr)
+	if err != nil {
+		// Could not connect, assume the other end has gone, so lets shutdown
+		closeErr := nextPeer.Close()
+		return errors.Join(err, closeErr)
+	}
+
+	hooks := peer.MigrateToHooks{
+		OnBeforeSuspend:          func() {},
+		OnAfterSuspend:           func() {},
+		OnAllMigrationsCompleted: func() {},
+		OnProgress:               func(p map[string]*migrator.MigrationProgress) {},
+		GetXferCustomData:        func() []byte { return []byte{} },
+	}
+
+	ctime := time.Now()
+	err = nextPeer.MigrateTo(context.TODO(), devicesTo, 10*time.Second, 10, []io.Reader{toConn}, []io.Writer{toConn}, hooks)
+	if err != nil {
+		return err
+	}
+
+	// Close the connection from here...
+	toConn.Close()
+
+	err = nextPeer.Close()
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("MIGRATION %d TO completed in %dms\n", migration, time.Since(ctime).Milliseconds())
+	return nil
+}
+
+// setupFirstPeer starts the first peer from a snapshot dir.
+func setupFirstPeer(log types.Logger, firecrackerBin string, jailerBin string, snapDir string) (*peer.Peer, error) {
 	rp := &rfirecracker.FirecrackerRuntimeProvider[struct{}, ipc.AgentServerRemote[struct{}], struct{}]{
 		Log: log,
 		HypervisorConfiguration: rfirecracker.HypervisorConfiguration{
 			FirecrackerBin: firecrackerBin,
 			JailerBin:      jailerBin,
-			ChrootBaseDir:  *testPeerDirCowS3,
+			ChrootBaseDir:  *testDirectory,
 			UID:            0,
 			GID:            0,
 			NetNS:          *networkNamespace,
@@ -315,7 +327,7 @@ func setupFirstPeer(log types.Logger, firecrackerBin string, jailerBin string, s
 		OnXferCustomData:           func(data []byte) {},
 	}
 
-	devicesFrom := getDevicesFrom(snapDir, s3Endpoint, 0)
+	devicesFrom := getDevicesFrom(snapDir, 0)
 	err = myPeer.MigrateFrom(context.TODO(), devicesFrom, nil, nil, hooks1)
 	if err != nil {
 		return nil, err
@@ -330,28 +342,10 @@ func setupFirstPeer(log types.Logger, firecrackerBin string, jailerBin string, s
 	return myPeer, nil
 }
 
-func setupDevicesCowS3(log types.Logger) string {
-	s3Endpoint := ""
-
-	if enableS3 {
-		cleanup := func(func()) {}
-
-		s3port := testutils.SetupMinioWithExpiry(cleanup, 120*time.Minute)
-		s3Endpoint = fmt.Sprintf("localhost:%s", s3port)
-
-		err := sources.CreateBucket(false, s3Endpoint, "silosilo", "silosilo", "silosilo")
-		if err != nil {
-			panic(err)
-		}
-	}
-
-	return s3Endpoint
-}
-
-func getDevicesFrom(snapDir string, s3Endpoint string, i int) []common.MigrateFromDevice {
+func getDevicesFrom(snapDir string, i int) []common.MigrateFromDevice {
 	devicesFrom := make([]common.MigrateFromDevice, 0)
 
-	err := os.Mkdir(path.Join(*testPeerDirCowS3, fmt.Sprintf("migration_%d", i)), 0777)
+	err := os.Mkdir(path.Join(*testDirectory, fmt.Sprintf("migration_%d", i)), 0777)
 	if err != nil {
 		panic(err)
 	}
@@ -363,115 +357,23 @@ func getDevicesFrom(snapDir string, s3Endpoint string, i int) []common.MigrateFr
 		dev := common.MigrateFromDevice{
 			Name:       n,
 			Base:       path.Join(snapDir, n),
-			Overlay:    path.Join(*testPeerDirCowS3, fmt.Sprintf("migration_%d", i), fmt.Sprintf("%s.overlay", fn)),
-			State:      path.Join(*testPeerDirCowS3, fmt.Sprintf("migration_%d", i), fmt.Sprintf("%s.state", fn)),
+			Overlay:    path.Join(*testDirectory, fmt.Sprintf("migration_%d", i), fmt.Sprintf("%s.overlay", fn)),
+			State:      path.Join(*testDirectory, fmt.Sprintf("migration_%d", i), fmt.Sprintf("%s.state", fn)),
 			BlockSize:  1024 * 1024,
 			Shared:     false,
 			SharedBase: true,
 		}
 
-		if enableS3 && (n == common.DeviceMemoryName || n == common.DeviceDiskName) {
+		if *s3sync && (n == common.DeviceMemoryName || n == common.DeviceDiskName) {
 			dev.S3Sync = true
-			dev.S3AccessKey = "silosilo"
-			dev.S3SecretKey = "silosilo"
-			dev.S3Endpoint = s3Endpoint
-			dev.S3Secure = false
-			dev.S3Bucket = "silosilo"
+			dev.S3AccessKey = *s3accesskey
+			dev.S3SecretKey = *s3secretkey
+			dev.S3Endpoint = *s3endpoint
+			dev.S3Secure = true
+			dev.S3Bucket = *s3bucket
 			dev.S3Concurrency = 10
 		}
 		devicesFrom = append(devicesFrom, dev)
 	}
 	return devicesFrom
-}
-
-/**
- * Pre-requisites
- *  - ark0 network namespace exists
- *  - firecracker works
- *  - blueprints exist
- */
-func setupSnapshot(log types.Logger, ctx context.Context) string {
-	err := os.Mkdir(createSnapshotDir, 0777)
-	if err != nil {
-		panic(err)
-	}
-
-	firecrackerBin, err := exec.LookPath("firecracker")
-	if err != nil {
-		panic(err)
-	}
-
-	jailerBin, err := exec.LookPath("jailer")
-	if err != nil {
-		panic(err)
-	}
-
-	devices := []rfirecracker.SnapshotDevice{
-		{
-			Name:   "state",
-			Output: path.Join(createSnapshotDir, "state"),
-		},
-		{
-			Name:   "memory",
-			Output: path.Join(createSnapshotDir, "memory"),
-		},
-		{
-			Name:   "kernel",
-			Input:  path.Join(*blueprintsDir, "vmlinux"),
-			Output: path.Join(createSnapshotDir, "kernel"),
-		},
-		{
-			Name:   "disk",
-			Input:  path.Join(*blueprintsDir, "rootfs.ext4"),
-			Output: path.Join(createSnapshotDir, "disk"),
-		},
-		{
-			Name:   "config",
-			Output: path.Join(createSnapshotDir, "config"),
-		},
-		{
-			Name:   "oci",
-			Input:  path.Join(*blueprintsDir, "oci.ext4"),
-			Output: path.Join(createSnapshotDir, "oci"),
-		},
-	}
-
-	err = rfirecracker.CreateSnapshot(log, ctx, devices,
-		rfirecracker.VMConfiguration{
-			CPUCount:    1,
-			MemorySize:  1024,
-			CPUTemplate: cpuTemplate,
-			BootArgs:    bootArgs,
-		},
-		rfirecracker.LivenessConfiguration{
-			LivenessVSockPort: uint32(25),
-			ResumeTimeout:     time.Minute,
-		},
-		rfirecracker.HypervisorConfiguration{
-			FirecrackerBin: firecrackerBin,
-			JailerBin:      jailerBin,
-			ChrootBaseDir:  createSnapshotDir,
-			UID:            0,
-			GID:            0,
-			NetNS:          *networkNamespace,
-			NumaNode:       0,
-			CgroupVersion:  2,
-			EnableOutput:   true,
-			EnableInput:    false,
-		},
-		rfirecracker.NetworkConfiguration{
-			Interface: "tap0",
-			MAC:       "02:0e:d9:fd:68:3d",
-		},
-		rfirecracker.AgentConfiguration{
-			AgentVSockPort: uint32(26),
-			ResumeTimeout:  time.Minute,
-		},
-	)
-
-	if err != nil {
-		panic(err)
-	}
-
-	return createSnapshotDir
 }
