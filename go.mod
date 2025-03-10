@@ -1,7 +1,6 @@
 module github.com/loopholelabs/drafter
 
 go 1.23
-
 toolchain go1.23.2
 
 require (
@@ -18,7 +17,7 @@ require (
 	github.com/stretchr/testify v1.10.0
 	github.com/vishvananda/netlink v1.3.0
 	github.com/vishvananda/netns v0.0.5
-	golang.org/x/sys v0.30.0
+	golang.org/x/sys v0.31.0
 	k8s.io/utils v0.0.0-20241210054802-24370beab758
 )
 
