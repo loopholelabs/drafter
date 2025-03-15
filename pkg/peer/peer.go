@@ -5,12 +5,14 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path"
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/loopholelabs/drafter/pkg/common"
 	"github.com/loopholelabs/drafter/pkg/runtimes"
 	"github.com/loopholelabs/logging/types"
@@ -63,7 +65,7 @@ type MigrateFromHooks struct {
 
 func (peer *Peer) Close() error {
 	if peer.log != nil {
-		peer.log.Debug().Msg("Peer.Close")
+		peer.log.Info().Str("id", peer.instanceID).Msg("Peer.Close")
 	}
 
 	// Try to close the runtimeProvider first
@@ -77,6 +79,12 @@ func (peer *Peer) Close() error {
 	}
 	errDG := peer.closeDG()
 	// Return
+
+	// Remove this from metrics
+	if peer.met != nil {
+		peer.met.RemoveAllID(peer.instanceID)
+	}
+
 	return errors.Join(errRuntime, errDG)
 }
 
@@ -114,7 +122,7 @@ func StartPeer(ctx context.Context, rescueCtx context.Context,
 		log:             log,
 		met:             met,
 		dmet:            dmet,
-		instanceID:      id,
+		instanceID:      fmt.Sprintf("%s-%s", uuid.NewString(), id),
 		runtimeProvider: rp,
 		backgroundErr:   make(chan error, 12),
 	}
