@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path"
@@ -18,12 +19,20 @@ import (
 	rfirecracker "github.com/loopholelabs/drafter/pkg/runtimes/firecracker"
 	"github.com/loopholelabs/logging"
 	"github.com/loopholelabs/logging/types"
+	"github.com/loopholelabs/silo/pkg/storage/metrics"
+	siloprom "github.com/loopholelabs/silo/pkg/storage/metrics/prometheus"
 	"github.com/loopholelabs/silo/pkg/storage/migrator"
 	"github.com/loopholelabs/silo/pkg/storage/sources"
 	"github.com/loopholelabs/silo/pkg/testutils"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 const createSnapshotDir = "snap_test"
+
+const cpuTemplate = "None"
+const bootArgs = rfirecracker.DefaultBootArgsNoPVM
 
 var blueprintsDir *string
 var snapshotsDir *string
@@ -31,6 +40,8 @@ var snapshotsDir *string
 const testPeerDirCowS3 = "test_peer_cow"
 const enableS3 = false
 const performHashChecks = false
+
+var serveMetrics *string
 
 func main() {
 	defer func() {
@@ -41,8 +52,37 @@ func main() {
 	sleepTime := flag.Duration("sleep", 5*time.Second, "sleep inbetween resume/suspend")
 	blueprintsDir = flag.String("blueprints", "blueprints", "blueprints dir")
 	snapshotsDir = flag.String("snapshot", "", "snapshot dir")
+	serveMetrics = flag.String("metrics", "", "metrics")
 
 	flag.Parse()
+
+	var siloMetrics metrics.SiloMetrics
+	var drafterMetrics *common.DrafterMetrics
+	var reg *prometheus.Registry
+	if *serveMetrics != "" {
+		reg = prometheus.NewRegistry()
+
+		// Add the default go metrics
+		reg.MustRegister(
+			collectors.NewGoCollector(),
+			collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
+		)
+
+		siloMetrics = siloprom.New(reg, siloprom.DefaultConfig())
+		drafterMetrics = common.NewDrafterMetrics(reg)
+
+		http.Handle("/metrics", promhttp.HandlerFor(
+			reg,
+			promhttp.HandlerOpts{
+				// Opt into OpenMetrics to support exemplars.
+				EnableOpenMetrics: true,
+				// Pass custom registry
+				Registry: reg,
+			},
+		))
+
+		go http.ListenAndServe(*serveMetrics, nil)
+	}
 
 	err := os.Mkdir(testPeerDirCowS3, 0777)
 	if err != nil {
@@ -90,7 +130,7 @@ func main() {
 		},
 	}
 
-	myPeer, err := peer.StartPeer(context.TODO(), context.Background(), log, nil, nil, "cow_test", rp)
+	myPeer, err := peer.StartPeer(context.TODO(), context.Background(), log, siloMetrics, drafterMetrics, "cow_test", rp)
 	if err != nil {
 		panic(err)
 	}
@@ -148,7 +188,7 @@ func main() {
 			},
 		}
 
-		nextPeer, err := peer.StartPeer(context.TODO(), context.Background(), log, nil, nil, "cow_test", rp2)
+		nextPeer, err := peer.StartPeer(context.TODO(), context.Background(), log, siloMetrics, drafterMetrics, "cow_test", rp2)
 		if err != nil {
 			panic(err)
 		}
@@ -411,8 +451,8 @@ func setupSnapshot(log types.Logger, ctx context.Context) string {
 		rfirecracker.VMConfiguration{
 			CPUCount:    1,
 			MemorySize:  1024,
-			CPUTemplate: "T2A",
-			BootArgs:    rfirecracker.DefaultBootArgs,
+			CPUTemplate: cpuTemplate,
+			BootArgs:    bootArgs,
 		},
 		rfirecracker.LivenessConfiguration{
 			LivenessVSockPort: uint32(25),
