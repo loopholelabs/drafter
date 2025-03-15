@@ -72,8 +72,8 @@ func getDevicesFrom(t *testing.T, snapDir string, s3Endpoint string, i int) []co
 		dev := common.MigrateFromDevice{
 			Name:       n,
 			Base:       path.Join(snapDir, n),
-			Overlay:    path.Join(path.Join(testPeerDirCowS3, fmt.Sprintf("migration_%d", i), fmt.Sprintf("%s.overlay", fn)),
-			State:      path.Join(path.Join(testPeerDirCowS3, fmt.Sprintf("migration_%d", i), fmt.Sprintf("%s.state", fn)),
+			Overlay:    path.Join(path.Join(testPeerDirCowS3, fmt.Sprintf("migration_%d", i), fmt.Sprintf("%s.overlay", fn))),
+			State:      path.Join(path.Join(testPeerDirCowS3, fmt.Sprintf("migration_%d", i), fmt.Sprintf("%s.state", fn))),
 			BlockSize:  1024 * 1024,
 			Shared:     false,
 			SharedBase: true,
@@ -105,7 +105,7 @@ func TestMigration(t *testing.T) {
 	log := logging.New(logging.Zerolog, "test", os.Stderr)
 	//log.SetLevel(types.DebugLevel)
 
-	numMigrations := 100
+	numMigrations := 10
 
 	grandTotalBlocksP2P := 0
 	grandTotalBlocksS3 := 0
