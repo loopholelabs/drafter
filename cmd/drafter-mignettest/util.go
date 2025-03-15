@@ -64,7 +64,7 @@ func setupSnapshot(log types.Logger, ctx context.Context, snapDir string, blueDi
 		},
 	}
 
-	err = rfirecracker.CreateSnapshot(log, ctx, devices,
+	err = rfirecracker.CreateSnapshot(log, ctx, devices, true,
 		rfirecracker.VMConfiguration{
 			CPUCount:    1,
 			MemorySize:  1024,
