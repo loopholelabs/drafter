@@ -3,7 +3,6 @@ package firecracker
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -260,8 +259,6 @@ func Resume[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 		resumedRunner.memoryName,
 		!snapshotLoadConfiguration.ExperimentalMapPrivate,
 	)
-
-	fmt.Printf("Call to firecracker ResumeSnapshot completed.\n")
 
 	if err != nil {
 		if runner.log != nil {
