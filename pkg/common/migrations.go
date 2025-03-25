@@ -127,10 +127,11 @@ func CreateSiloDevSchema(i *MigrateFromDevice) (*config.DeviceSchema, error) {
 		ds.ROSourceShared = i.SharedBase
 
 		ds.ROSource = &config.DeviceSchema{
-			Name:     i.State,
-			System:   "file",
-			Location: i.Base,
-			Size:     fmt.Sprintf("%v", stat.Size()),
+			Name:      i.State,
+			BlockSize: fmt.Sprintf("%v", i.BlockSize),
+			System:    "file",
+			Location:  i.Base,
+			Size:      fmt.Sprintf("%v", stat.Size()),
 		}
 	}
 
