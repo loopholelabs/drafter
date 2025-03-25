@@ -15,6 +15,7 @@ import (
 	"github.com/loopholelabs/drafter/pkg/common"
 	"github.com/loopholelabs/drafter/pkg/ipc"
 	"github.com/loopholelabs/drafter/pkg/peer"
+	"github.com/loopholelabs/drafter/pkg/runtimes"
 	rfirecracker "github.com/loopholelabs/drafter/pkg/runtimes/firecracker"
 	"github.com/loopholelabs/logging"
 	"github.com/loopholelabs/silo/pkg/storage/metrics"
@@ -25,6 +26,22 @@ import (
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
+
+type OCIServerRemote struct {
+	ApplySpecOverrides func(ctx context.Context, overrides string) error
+	StartContainer     func(ctx context.Context) error
+}
+
+type MTUServerRemote struct {
+	SetMTU func(ctx context.Context, mtu int) error
+}
+
+type GuestRemote struct {
+	MTU MTUServerRemote
+	OCI OCIServerRemote
+}
+
+type GuestRemoteType = GuestRemote
 
 func main() {
 
@@ -57,6 +74,10 @@ func main() {
 	serveMetrics := flag.String("metrics", "", "Address to serve metrics from")
 
 	disablePostcopyMigration := flag.Bool("disable-postcopy-migration", false, "Whether to disable post-copy migration")
+
+	ociAgent := flag.Bool("oci-agent", false, "oci agent")
+	ociSpecOverrides := flag.String("oci-spec-overrides", "", "oci spec overrides")
+	mtu := flag.Int("mtu", 0, "guest mtu")
 
 	flag.Parse()
 
@@ -121,34 +142,55 @@ func main() {
 		panic(err)
 	}
 
+	hypervisorConfig := rfirecracker.HypervisorConfiguration{
+		FirecrackerBin: firecrackerBin,
+		JailerBin:      jailerBin,
+		ChrootBaseDir:  *chrootBaseDir,
+		UID:            *uid,
+		GID:            *gid,
+		NetNS:          *netns,
+		NumaNode:       *numaNode,
+		CgroupVersion:  *cgroupVersion,
+		EnableOutput:   *enableOutput,
+		EnableInput:    *enableInput,
+	}
+	snapshotLoadConfig := rfirecracker.SnapshotLoadConfiguration{
+		ExperimentalMapPrivate:             *experimentalMapPrivate,
+		ExperimentalMapPrivateStateOutput:  *experimentalMapPrivateStateOutput,
+		ExperimentalMapPrivateMemoryOutput: *experimentalMapPrivateMemoryOutput,
+	}
+
+	rpoci := &rfirecracker.FirecrackerRuntimeProvider[struct{}, ipc.AgentServerRemote[GuestRemoteType], GuestRemoteType]{
+		Log:                       log,
+		HypervisorConfiguration:   hypervisorConfig,
+		StateName:                 common.DeviceStateName,
+		MemoryName:                common.DeviceMemoryName,
+		AgentServerLocal:          struct{}{},
+		AgentServerHooks:          ipc.AgentServerAcceptHooks[ipc.AgentServerRemote[GuestRemoteType], GuestRemoteType]{},
+		SnapshotLoadConfiguration: snapshotLoadConfig,
+	}
+
 	rp := &rfirecracker.FirecrackerRuntimeProvider[struct{}, ipc.AgentServerRemote[struct{}], struct{}]{
-		Log: log,
-		HypervisorConfiguration: rfirecracker.HypervisorConfiguration{
-			FirecrackerBin: firecrackerBin,
-			JailerBin:      jailerBin,
-			ChrootBaseDir:  *chrootBaseDir,
-			UID:            *uid,
-			GID:            *gid,
-			NetNS:          *netns,
-			NumaNode:       *numaNode,
-			CgroupVersion:  *cgroupVersion,
-			EnableOutput:   *enableOutput,
-			EnableInput:    *enableInput,
-		},
-		StateName:        common.DeviceStateName,
-		MemoryName:       common.DeviceMemoryName,
-		AgentServerLocal: struct{}{},
-		AgentServerHooks: ipc.AgentServerAcceptHooks[ipc.AgentServerRemote[struct{}], struct{}]{},
-		SnapshotLoadConfiguration: rfirecracker.SnapshotLoadConfiguration{
-			ExperimentalMapPrivate:             *experimentalMapPrivate,
-			ExperimentalMapPrivateStateOutput:  *experimentalMapPrivateStateOutput,
-			ExperimentalMapPrivateMemoryOutput: *experimentalMapPrivateMemoryOutput,
-		},
+		Log:                       log,
+		HypervisorConfiguration:   hypervisorConfig,
+		StateName:                 common.DeviceStateName,
+		MemoryName:                common.DeviceMemoryName,
+		AgentServerLocal:          struct{}{},
+		AgentServerHooks:          ipc.AgentServerAcceptHooks[ipc.AgentServerRemote[struct{}], struct{}]{},
+		SnapshotLoadConfiguration: snapshotLoadConfig,
+	}
+
+	var runtime runtimes.RuntimeProviderIfc
+
+	if *ociAgent {
+		runtime = rpoci
+	} else {
+		runtime = rp
 	}
 
 	p, err := peer.StartPeer(ctx,
 		context.Background(), // Never give up on rescue operations
-		log, siloMetrics, drafterMetrics, "drafter_cli", rp,
+		log, siloMetrics, drafterMetrics, "drafter_cli", runtime,
 	)
 
 	if err != nil {
@@ -247,6 +289,40 @@ func main() {
 	}
 
 	log.Info().Int64("ms", time.Since(before).Milliseconds()).Str("path", p.VMPath).Msg("Resumed VM")
+
+	// If the VM has OCI rpc stuff, lets call them to start the container inside.
+	if *ociAgent && *ociSpecOverrides != "" {
+
+		if log != nil {
+			log.Info().Int("mtu", *mtu).Msg("setting MTU")
+		}
+
+		err = rpoci.Remote.GuestService.MTU.SetMTU(ctx, *mtu)
+		if err != nil {
+			if log != nil {
+				log.Error().Err(err).Msg("could not set mtu")
+			}
+		}
+
+		if log != nil {
+			log.Info().Str("spec", *ociSpecOverrides).Msg("Calling ApplySpecOverrides")
+		}
+		err = rpoci.Remote.GuestService.OCI.ApplySpecOverrides(ctx, *ociSpecOverrides)
+		if err != nil {
+			if log != nil {
+				log.Error().Err(err).Msg("could not apply spec overrides")
+			}
+		}
+		err = rpoci.Remote.GuestService.OCI.StartContainer(ctx)
+		if err != nil {
+			if log != nil {
+				log.Error().Err(err).Msg("could not start container")
+			}
+		}
+		if log != nil {
+			log.Info().Msg("Called start container")
+		}
+	}
 
 	if strings.TrimSpace(*laddr) != "" {
 
