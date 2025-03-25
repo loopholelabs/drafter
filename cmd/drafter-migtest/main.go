@@ -31,8 +31,8 @@ import (
 
 const createSnapshotDir = "snap_test"
 
-const cpuTemplate = "None"
-const bootArgs = rfirecracker.DefaultBootArgsNoPVM
+var cpuTemplate = "None"
+var bootArgs = rfirecracker.DefaultBootArgsNoPVM
 
 var blueprintsDir *string
 var snapshotsDir *string
@@ -42,6 +42,7 @@ const enableS3 = false
 const performHashChecks = false
 
 var serveMetrics *string
+var usePVM *bool
 
 func main() {
 	defer func() {
@@ -53,8 +54,14 @@ func main() {
 	blueprintsDir = flag.String("blueprints", "blueprints", "blueprints dir")
 	snapshotsDir = flag.String("snapshot", "", "snapshot dir")
 	serveMetrics = flag.String("metrics", "", "metrics")
+	usePVM = flag.Bool("pvm", false, "use PVM boot args and T2A CPU template")
 
 	flag.Parse()
+
+	if *usePVM {
+		cpuTemplate = "T2A"
+		bootArgs = rfirecracker.DefaultBootArgs
+	}
 
 	var siloMetrics metrics.SiloMetrics
 	var drafterMetrics *common.DrafterMetrics
