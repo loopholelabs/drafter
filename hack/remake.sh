@@ -3,7 +3,7 @@
 set -ex
 
 make -j$(nproc)
-sudo make install j$(nproc)
+sudo make install -j$(nproc)
 sudo killall drafter-peer
 sudo killall firecracker
 sudo rm -rf out/instance-*
