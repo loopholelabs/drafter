@@ -120,8 +120,8 @@ github.com/loopholelabs/goroutine-manager v0.1.1 h1:qpN9XcfNKp7aw8YI3YoIisCWZHK7
 github.com/loopholelabs/goroutine-manager v0.1.1/go.mod h1:d0r+/HNqnDR/6AXv4Mbz0dJZ7P0nATksCjkt5WWDsqA=
 github.com/loopholelabs/logging v0.3.2 h1:JPfQr/YcYoMlEbgwgoslQs/C2He/nPVCAD1FpdNceRo=
 github.com/loopholelabs/logging v0.3.2/go.mod h1:9p5/U/hNxghtUoD6k2Rzx7X4tr4ik3QzhyYUu1m7D58=
-github.com/loopholelabs/silo v0.2.11 h1:evHGY7hSY4+MLgmiOXQl2A09M8hsVE4qMFCJpVgYh5I=
-github.com/loopholelabs/silo v0.2.11/go.mod h1:JASDS1bHBHZYT9uJgqPExVPuhKhqDyOUn7ZfNDtyPZc=
+github.com/loopholelabs/silo v0.2.12 h1:Dc7fuDohppo+uSywr+XOnYu+ThWVj6wGfUnle7dpCdY=
+github.com/loopholelabs/silo v0.2.12/go.mod h1:JASDS1bHBHZYT9uJgqPExVPuhKhqDyOUn7ZfNDtyPZc=
 github.com/lufia/plan9stats v0.0.0-20240909124753-873cd0166683 h1:7UMa6KCCMjZEMDtTVdcGu0B1GmmC7QJKiCCjyTAWQy0=
 github.com/lufia/plan9stats v0.0.0-20240909124753-873cd0166683/go.mod h1:ilwx/Dta8jXAgpFYFvSWEMwxmbWXyiUHkd5FwyKhb5k=
 github.com/magiconair/properties v1.8.9 h1:nWcCbLq1N2v/cpNsy5WvQ37Fb+YElfq20WJ/a8RkpQM=
