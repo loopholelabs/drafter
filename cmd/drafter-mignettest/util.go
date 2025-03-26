@@ -18,7 +18,7 @@ import (
  *  - firecracker works
  *  - blueprints exist
  */
-func setupSnapshot(log types.Logger, ctx context.Context, snapDir string, blueDir string) error {
+func setupSnapshot(log types.Logger, ctx context.Context, snapDir string, blueDir string, cpuCount int, memSize int) error {
 	err := os.Mkdir(snapDir, 0777)
 	if err != nil {
 		return err
@@ -66,8 +66,8 @@ func setupSnapshot(log types.Logger, ctx context.Context, snapDir string, blueDi
 
 	err = rfirecracker.CreateSnapshot(log, ctx, devices, true,
 		rfirecracker.VMConfiguration{
-			CPUCount:    1,
-			MemorySize:  1024,
+			CPUCount:    cpuCount,
+			MemorySize:  memSize,
 			CPUTemplate: cpuTemplate,
 			BootArgs:    bootArgs,
 		},

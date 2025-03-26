@@ -43,11 +43,16 @@ const performHashChecks = false
 
 var serveMetrics *string
 var usePVM *bool
+var keepfiles *bool
+var cpuCount *int
+var memorySize *int
 
 func main() {
 	defer func() {
-		os.RemoveAll(createSnapshotDir)
-		os.RemoveAll(testPeerDirCowS3)
+		if !*keepfiles {
+			os.RemoveAll(createSnapshotDir)
+			os.RemoveAll(testPeerDirCowS3)
+		}
 	}()
 	iterations := flag.Int("num", 10, "number of iterations")
 	sleepTime := flag.Duration("sleep", 5*time.Second, "sleep inbetween resume/suspend")
@@ -55,6 +60,9 @@ func main() {
 	snapshotsDir = flag.String("snapshot", "", "snapshot dir")
 	serveMetrics = flag.String("metrics", "", "metrics")
 	usePVM = flag.Bool("pvm", false, "use PVM boot args and T2A CPU template")
+	keepfiles = flag.Bool("keepfiles", false, "do not cleanup files")
+	cpuCount = flag.Int("cpus", 1, "CPUs")
+	memorySize = flag.Int("mem", 1024, "Memory size in MB")
 
 	flag.Parse()
 
@@ -456,14 +464,14 @@ func setupSnapshot(log types.Logger, ctx context.Context) string {
 
 	err = rfirecracker.CreateSnapshot(log, ctx, devices, true,
 		rfirecracker.VMConfiguration{
-			CPUCount:    1,
-			MemorySize:  1024,
+			CPUCount:    *cpuCount,
+			MemorySize:  *memorySize,
 			CPUTemplate: cpuTemplate,
 			BootArgs:    bootArgs,
 		},
 		rfirecracker.LivenessConfiguration{
 			LivenessVSockPort: uint32(25),
-			ResumeTimeout:     time.Minute,
+			ResumeTimeout:     time.Minute * 10,
 		},
 		rfirecracker.HypervisorConfiguration{
 			FirecrackerBin: firecrackerBin,
@@ -483,7 +491,7 @@ func setupSnapshot(log types.Logger, ctx context.Context) string {
 		},
 		rfirecracker.AgentConfiguration{
 			AgentVSockPort: uint32(26),
-			ResumeTimeout:  time.Minute,
+			ResumeTimeout:  time.Minute * 10,
 		},
 	)
 

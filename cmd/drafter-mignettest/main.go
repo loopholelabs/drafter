@@ -46,6 +46,9 @@ var s3bucket *string
 var s3accesskey *string
 var s3secretkey *string
 
+var cpuCount *int
+var memSize *int
+
 // main()
 func main() {
 	log := logging.New(logging.Zerolog, "test", os.Stderr)
@@ -73,6 +76,9 @@ func main() {
 	s3accesskey = flag.String("s3accesskey", "", "S3 access key")
 	s3secretkey = flag.String("s3secretkey", "", "S3 secret key")
 
+	cpuCount = flag.Int("cpus", 1, "CPUs")
+	memSize = flag.Int("mem", 1024, "Memory size in MB")
+
 	flag.Parse()
 
 	if *usePVM {
@@ -93,7 +99,7 @@ func main() {
 
 	// create package files
 	if *blueprintsDir != "" {
-		err := setupSnapshot(log, context.Background(), *snapshotsDir, *blueprintsDir)
+		err := setupSnapshot(log, context.Background(), *snapshotsDir, *blueprintsDir, *cpuCount, *memSize)
 		if err != nil {
 			panic(err)
 		}

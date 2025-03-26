@@ -94,9 +94,9 @@ func main() {
 		for _, d := range deviceFiles {
 			src := path.Join(devicesAt, d)
 			dst := path.Join(r.VMPath, d)
-			hash := calcHash(src)
+			//			hash := calcHash(src)
 			os.Link(src, dst)
-			fmt.Printf("Device hash %x (%s)\n", hash, d)
+			//			fmt.Printf("Device hash %x (%s)\n", hash, d)
 		}
 		devicesAt = r.VMPath
 
@@ -209,10 +209,10 @@ func setupSnapshot(log types.Logger, ctx context.Context) string {
 
 	err = rfirecracker.CreateSnapshot(log, ctx, devices, true,
 		rfirecracker.VMConfiguration{
-			CPUCount:    1,
+			CPUCount:    4,
 			MemorySize:  1024,
-			CPUTemplate: "T2A",
-			BootArgs:    rfirecracker.DefaultBootArgs,
+			CPUTemplate: "None", //"T2A",
+			BootArgs:    rfirecracker.DefaultBootArgsNoPVM,
 		},
 		rfirecracker.LivenessConfiguration{
 			LivenessVSockPort: uint32(25),
@@ -227,7 +227,7 @@ func setupSnapshot(log types.Logger, ctx context.Context) string {
 			NetNS:          "ark0",
 			NumaNode:       0,
 			CgroupVersion:  2,
-			EnableOutput:   false,
+			EnableOutput:   true,
 			EnableInput:    false,
 		},
 		rfirecracker.NetworkConfiguration{
