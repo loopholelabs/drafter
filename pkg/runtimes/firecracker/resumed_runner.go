@@ -287,19 +287,25 @@ func Resume[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 		}
 	}
 
-	// Accept RPC connection
 	rpcErr := make(chan error, 1)
-	err = resumedRunner.rpc.Accept(resumeSnapshotAndAcceptCtx, ctx, agentServerHooks, rpcErr)
-	if err != nil {
-		recoverSnapshot()
-		return nil, err
-	}
-
-	// Call after resume RPC
-	err = resumedRunner.rpc.AfterResume(ctx, resumeTimeout)
-	if err != nil {
-		recoverSnapshot()
-		return nil, err
+	numRetries := 3
+	for {
+		// Accept RPC connection
+		rpcErr = make(chan error, 1)
+		err = resumedRunner.rpc.Accept(resumeSnapshotAndAcceptCtx, ctx, agentServerHooks, rpcErr)
+		if err == nil {
+			// Call after resume RPC
+			err = resumedRunner.rpc.AfterResume(ctx, resumeTimeout)
+			if err == nil {
+				break
+			}
+		}
+		runner.log.Info().Msg("Resume resumedRunner failed to call AfterResume. Retrying...")
+		if numRetries == 0 {
+			recoverSnapshot()
+			return nil, err
+		}
+		numRetries--
 	}
 
 	// Check if there was any error from the runner, or from the rpc and if so return it.
