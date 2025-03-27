@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -237,12 +238,22 @@ func copySnapshotFiles(devices []SnapshotDevice, vmPath string) error {
  *
  */
 func createFinalSnapshot(ctx context.Context, client *http.Client, vsockPort uint32, vmPath string, uid int, gid int) error {
-	err := firecracker.CreateSnapshot(
+	/*
+		err := firecracker.CreateSnapshot(
+			ctx,
+			client,
+			common.DeviceStateName,
+			common.DeviceMemoryName,
+			firecracker.SnapshotTypeFull,
+		)
+	*/
+
+	err := firecracker.CreateSnapshotSDK(
 		ctx,
-		client,
+		path.Join(vmPath, firecracker.FirecrackerSocketName),
 		common.DeviceStateName,
 		common.DeviceMemoryName,
-		firecracker.SnapshotTypeFull,
+		firecracker.SDKSnapshotTypeFull,
 	)
 	if err != nil {
 		return errors.Join(ErrCouldNotCreateSnapshot, err)
