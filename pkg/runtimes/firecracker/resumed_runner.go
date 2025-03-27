@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"time"
 
@@ -74,12 +75,12 @@ func (rr *ResumedRunner[L, R, G]) Msync(ctx context.Context) error {
 	}
 
 	if !rr.snapshotLoadConfiguration.ExperimentalMapPrivate {
-		err := firecracker.CreateSnapshot(
+		err := firecracker.CreateSnapshotSDK(
 			ctx,
-			rr.runner.firecrackerClient,
+			path.Join(rr.runner.VMPath, firecracker.FirecrackerSocketName),
 			rr.stateName,
 			"",
-			firecracker.SnapshotTypeMsync,
+			firecracker.SDKSnapshotTypeMsync,
 		)
 		if err != nil {
 			if rr.log != nil {
@@ -122,13 +123,13 @@ func (rr *ResumedRunner[L, R, G]) createSnapshot(ctx context.Context) error {
 	memoryCopyName := shortuuid.New()
 
 	if rr.snapshotLoadConfiguration.ExperimentalMapPrivate {
-		err := firecracker.CreateSnapshot(
+		err := firecracker.CreateSnapshotSDK(
 			ctx,
-			rr.runner.firecrackerClient,
+			path.Join(rr.runner.VMPath, firecracker.FirecrackerSocketName),
 			// We need to write the state and memory to a separate file since we can't truncate an `mmap`ed file
 			stateCopyName,
 			memoryCopyName,
-			firecracker.SnapshotTypeFull,
+			firecracker.SDKSnapshotTypeFull,
 		)
 		if err != nil {
 			return errors.Join(ErrCouldNotCreateSnapshot, err)
@@ -189,12 +190,12 @@ func (rr *ResumedRunner[L, R, G]) createSnapshot(ctx context.Context) error {
 		}
 
 	} else {
-		err := firecracker.CreateSnapshot(
+		err := firecracker.CreateSnapshotSDK(
 			ctx,
-			rr.runner.firecrackerClient,
+			path.Join(rr.runner.VMPath, firecracker.FirecrackerSocketName),
 			rr.stateName,
 			"",
-			firecracker.SnapshotTypeMsyncAndState,
+			firecracker.SDKSnapshotTypeMsyncAndState,
 		)
 		if err != nil {
 			return errors.Join(ErrCouldNotCreateSnapshot, err)
@@ -252,12 +253,11 @@ func Resume[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 	resumeSnapshotAndAcceptCtx, cancelResumeSnapshotAndAcceptCtx := context.WithTimeout(ctx, resumeTimeout)
 	defer cancelResumeSnapshotAndAcceptCtx()
 
-	err = firecracker.ResumeSnapshot(
+	err = firecracker.ResumeSnapshotSDK(
 		resumeSnapshotAndAcceptCtx,
-		runner.firecrackerClient,
+		path.Join(runner.VMPath, firecracker.FirecrackerSocketName),
 		resumedRunner.stateName,
 		resumedRunner.memoryName,
-		!snapshotLoadConfiguration.ExperimentalMapPrivate,
 	)
 
 	if err != nil {
