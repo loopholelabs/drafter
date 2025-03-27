@@ -65,8 +65,8 @@ func main() {
 	rawDevices := flag.String("devices", string(defaultDevices), "Devices configuration")
 	ioEngineSync := flag.Bool("io-engine-sync", false, "Whether to use the synchronous Firecracker IO engine instead of the default asynchronous one")
 
-	cpuCount := flag.Int("cpu-count", 1, "CPU count")
-	memorySize := flag.Int("memory-size", 1024, "Memory size (in MB)")
+	cpuCount := flag.Int64("cpu-count", 1, "CPU count")
+	memorySize := flag.Int64("memory-size", 1024, "Memory size (in MB)")
 	cpuTemplate := flag.String("cpu-template", "None", "Firecracker CPU template (see https://github.com/firecracker-microvm/firecracker/blob/main/docs/cpu_templates/cpu-templates.md#static-cpu-templates for the options)")
 	bootArgs := flag.String("boot-args", rfirecracker.DefaultBootArgs, "Boot/kernel arguments")
 

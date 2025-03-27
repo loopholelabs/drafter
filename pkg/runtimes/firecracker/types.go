@@ -45,8 +45,8 @@ type NetworkConfiguration struct {
 }
 
 type VMConfiguration struct {
-	CPUCount    int
-	MemorySize  int
+	CPUCount    int64
+	MemorySize  int64
 	CPUTemplate string
 
 	BootArgs string

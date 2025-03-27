@@ -13,7 +13,6 @@ import (
 	"slices"
 	"strings"
 
-	v1 "github.com/loopholelabs/drafter/internal/api/http/firecracker/v1"
 	iutils "github.com/loopholelabs/drafter/internal/utils"
 	"github.com/loopholelabs/logging/types"
 
@@ -136,14 +135,14 @@ func CreateSnapshot(log types.Logger, ctx context.Context, devices []SnapshotDev
 		}
 	}
 
-	ioEngine := v1.IOEngineAsync
+	ioEngine := firecracker.SDKIOEngineAsync
 	if ioEngineSync {
-		ioEngine = v1.IOEngineSync
+		ioEngine = firecracker.SDKIOEngineSync
 	}
 
-	err = firecracker.StartVM(
+	err = firecracker.StartVMSDK(
 		ctx,
-		client,
+		path.Join(server.VMPath, firecracker.FirecrackerSocketName),
 		common.DeviceKernelName,
 		disks,
 		ioEngine,

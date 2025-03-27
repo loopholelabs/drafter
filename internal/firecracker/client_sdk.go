@@ -9,9 +9,31 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+var (
+	ErrCouldNotSetBootSource        = errors.New("could not set boot source")
+	ErrCouldNotSetDrive             = errors.New("could not set drive")
+	ErrCouldNotSetMachineConfig     = errors.New("could not set machine config")
+	ErrCouldNotSetVSock             = errors.New("could not set vsock")
+	ErrCouldNotSetNetworkInterfaces = errors.New("could not set network interfaces")
+	ErrCouldNotStartInstance        = errors.New("could not start instance")
+	ErrCouldNotStopInstance         = errors.New("could not stop instance")
+	ErrCouldNotPauseInstance        = errors.New("could not pause instance")
+	ErrCouldNotCreateSnapshot       = errors.New("could not create snapshot")
+	ErrCouldNotResumeSnapshot       = errors.New("could not resume snapshot")
+	ErrCouldNotFlushSnapshot        = errors.New("could not flush snapshot")
+	ErrUnknownSnapshotType          = errors.New("could not work with unknown snapshot type")
+	ErrCouldNotMarshalJSON          = errors.New("could not marshal JSON")
+	ErrCouldNotCreateHTTPRequest    = errors.New("could not create HTTP request")
+	ErrCouldNotReadHTTPResponse     = errors.New("could not read HTTP response")
+	ErrHTTPResponseFailed           = errors.New("response status of HTTP request code indicates failure")
+)
+
 const SDKSnapshotTypeFull = "Full"
 const SDKSnapshotTypeMsync = "Msync"
 const SDKSnapshotTypeMsyncAndState = "MsyncAndState"
+
+var SDKIOEngineSync = "Sync"
+var SDKIOEngineAsync = "Async"
 
 var statePaused = "Paused"
 var stateRunning = "Running"
@@ -73,4 +95,91 @@ func CreateSnapshotSDK(ctx context.Context, socketPath string, statePath string,
 	})
 
 	return err
+}
+
+func StartVMSDK(
+	ctx context.Context,
+	socketPath string,
+	kernelPath string,
+	disks []string,
+	ioEngine string,
+	cpuCount int64,
+	memorySize int64,
+	cpuTemplate string,
+	bootArgs string,
+	hostInterface string,
+	hostMAC string,
+	vsockPath string,
+	vsockCID int64,
+) error {
+
+	logger := logrus.New()
+	log := logger.WithField("subsystem", "firecracker")
+
+	log.WithField("socketPath", socketPath).Info("Creating snapshot")
+
+	client := sdk.NewClient(socketPath, log, true)
+
+	_, err := client.PutGuestBootSource(ctx, &models.BootSource{
+		KernelImagePath: &kernelPath,
+		BootArgs:        bootArgs,
+	})
+	if err != nil {
+		return err
+	}
+
+	boolFalse := false
+
+	for _, disk := range disks {
+		_, err := client.PutGuestDriveByID(ctx, disk, &models.Drive{
+			DriveID:      &disk,
+			IoEngine:     &ioEngine,
+			PathOnHost:   &disk,
+			IsRootDevice: &boolFalse,
+			IsReadOnly:   &boolFalse,
+		})
+		if err != nil {
+			return errors.Join(ErrCouldNotSetDrive, err)
+		}
+	}
+
+	_, err = client.PutMachineConfiguration(ctx, &models.MachineConfiguration{
+		VcpuCount:   &cpuCount,
+		MemSizeMib:  &memorySize,
+		CPUTemplate: models.CPUTemplate(cpuTemplate).Pointer(),
+	})
+	if err != nil {
+		return err
+	}
+
+	_, err = client.PutGuestVsock(ctx, &models.Vsock{
+		GuestCid: &vsockCID,
+		UdsPath:  &vsockPath,
+	})
+
+	if err != nil {
+		return errors.Join(ErrCouldNotSetVSock, err)
+	}
+
+	_, err = client.PutGuestNetworkInterfaceByID(ctx, hostInterface, &models.NetworkInterface{
+		IfaceID:     &hostInterface,
+		GuestMac:    hostMAC,
+		HostDevName: &hostInterface,
+	})
+
+	if err != nil {
+		return errors.Join(ErrCouldNotSetNetworkInterfaces, err)
+	}
+
+	actionInstanceStart := "InstanceStart"
+
+	_, err = client.CreateSyncAction(ctx, &models.InstanceActionInfo{
+		ActionType: &actionInstanceStart,
+	})
+
+	if err != nil {
+		return errors.Join(ErrCouldNotStartInstance, err)
+	}
+
+	return nil
 }
