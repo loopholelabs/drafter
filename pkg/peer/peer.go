@@ -10,6 +10,7 @@ import (
 	"os"
 	"path"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -41,6 +42,14 @@ type Peer struct {
 	backgroundErr chan error
 
 	instanceID string
+
+	inMigrateFrom       atomic.Bool
+	inMigrateFromActive atomic.Bool
+	inResume            atomic.Bool
+	inMigrateTo         atomic.Bool
+	hasResumed          atomic.Bool
+	hasClosed           atomic.Bool
+	hasSuspended        atomic.Bool
 }
 
 // Callbacks for MigrateTO
@@ -65,6 +74,27 @@ type MigrateFromHooks struct {
 
 func (peer *Peer) Close() error {
 	if peer.log != nil {
+		if peer.hasClosed.Load() {
+			peer.log.Error().Msg("Close called but hasClosed true")
+		}
+		if peer.inMigrateFrom.Load() {
+			peer.log.Error().Msg("Close called while inMigrateFrom true")
+		}
+		if peer.inMigrateFromActive.Load() {
+			peer.log.Error().Msg("Close called while inMigrateFrom true")
+		}
+		if peer.inMigrateTo.Load() {
+			peer.log.Error().Msg("Close called but inMigrateTo true")
+		}
+		if peer.inResume.Load() {
+			peer.log.Error().Msg("Close called while inResume true")
+		}
+		if !peer.hasSuspended.Load() {
+			peer.log.Error().Msg("Close called but hasSuspended false")
+		}
+	}
+
+	if peer.log != nil {
 		peer.log.Info().Str("id", peer.instanceID).Msg("Peer.Close")
 	}
 
@@ -83,6 +113,10 @@ func (peer *Peer) Close() error {
 	// Remove this from metrics
 	if peer.met != nil {
 		peer.met.RemoveAllID(peer.instanceID)
+	}
+
+	if errRuntime == nil && errDG == nil {
+		peer.hasClosed.Store(true)
 	}
 
 	return errors.Join(errRuntime, errDG)
@@ -147,6 +181,29 @@ func StartPeer(ctx context.Context, rescueCtx context.Context,
 
 func (peer *Peer) MigrateFrom(ctx context.Context, devices []common.MigrateFromDevice,
 	readers []io.Reader, writers []io.Writer, hooks MigrateFromHooks) error {
+	if peer.log != nil {
+		if peer.inMigrateFrom.Load() {
+			peer.log.Error().Msg("MigrateFrom called while inMigrateFrom true")
+		}
+		if peer.inMigrateFromActive.Load() {
+			peer.log.Error().Msg("MigrateFrom called while inMigrateFrom true")
+		}
+		if peer.inMigrateTo.Load() {
+			peer.log.Error().Msg("MigrateFrom called but inMigrateTo true")
+		}
+		if peer.inResume.Load() {
+			peer.log.Error().Msg("MigrateFrom called while inResume true")
+		}
+		if peer.hasClosed.Load() {
+			peer.log.Error().Msg("MigrateFrom called but hasClosed true")
+		}
+		if peer.hasResumed.Load() {
+			peer.log.Error().Msg("MigrateFrom called but hasResumed true")
+		}
+	}
+	peer.inMigrateFrom.Store(true)
+	defer peer.inMigrateFrom.Store(false)
+	peer.inMigrateFromActive.Store(true)
 
 	if peer.dmet != nil {
 		// Set migratingTo to 1 while we are migrating away.
@@ -211,6 +268,7 @@ func (peer *Peer) MigrateFrom(ctx context.Context, devices []common.MigrateFromD
 
 		// Monitor the transfer, and report any error if it happens
 		go func() {
+			defer peer.inMigrateFromActive.Store(false)
 			defer cancelProtocolCtx()
 			if peer.dmet != nil {
 				defer peer.dmet.MetricMigratingFrom.WithLabelValues(peer.instanceID).Set(0)
@@ -293,6 +351,8 @@ func (peer *Peer) MigrateFrom(ctx context.Context, devices []common.MigrateFromD
 			peer.log.Info().Msg("migrated from fs successfully")
 		}
 
+		peer.inMigrateFromActive.Store(false)
+
 		if hook := hooks.OnLocalAllDevicesRequested; hook != nil {
 			hook()
 		}
@@ -306,6 +366,25 @@ func (peer *Peer) MigrateFrom(ctx context.Context, devices []common.MigrateFromD
 }
 
 func (peer *Peer) Resume(ctx context.Context, resumeTimeout time.Duration, rescueTimeout time.Duration) error {
+	if peer.log != nil {
+		if peer.inMigrateFrom.Load() {
+			peer.log.Error().Msg("Resume called but inMigrateFrom true")
+		}
+		if peer.inResume.Load() {
+			peer.log.Error().Msg("Resume called but inResume true")
+		}
+		if peer.inMigrateTo.Load() {
+			peer.log.Error().Msg("Resume called but inMigrateTo true")
+		}
+		if peer.hasClosed.Load() {
+			peer.log.Error().Msg("Resume called but hasClosed true")
+		}
+		if peer.hasResumed.Load() {
+			peer.log.Error().Msg("Resume called but hasResumed true")
+		}
+	}
+	peer.inResume.Store(true)
+	defer peer.inResume.Store(false)
 
 	if peer.log != nil {
 		peer.log.Trace().Msg("resuming runtime")
@@ -328,6 +407,8 @@ func (peer *Peer) Resume(ctx context.Context, resumeTimeout time.Duration, rescu
 		peer.log.Info().Msg("resumed runtime")
 	}
 
+	peer.hasResumed.Store(true)
+
 	return nil
 }
 
@@ -339,6 +420,32 @@ func (peer *Peer) Resume(ctx context.Context, resumeTimeout time.Duration, rescu
 func (peer *Peer) MigrateTo(ctx context.Context, devices []common.MigrateToDevice,
 	suspendTimeout time.Duration, concurrency int, readers []io.Reader, writers []io.Writer,
 	hooks MigrateToHooks) error {
+
+	if peer.log != nil {
+		if peer.inMigrateFrom.Load() {
+			peer.log.Error().Msg("MigrateTo called but inMigrateFrom true")
+		}
+		if peer.inMigrateFromActive.Load() {
+			peer.log.Error().Msg("MigrateTo called but inMigrateFromActive true")
+		}
+		if peer.inResume.Load() {
+			peer.log.Error().Msg("MigrateTo called but inResume true")
+		}
+		if peer.inMigrateTo.Load() {
+			peer.log.Error().Msg("MigrateTo called but inMigrateTo true")
+		}
+		if peer.hasClosed.Load() {
+			peer.log.Error().Msg("MigrateTo called but hasClosed true")
+		}
+		if !peer.hasResumed.Load() {
+			peer.log.Error().Msg("MigrateTo called but hasResumed false")
+		}
+		if peer.hasSuspended.Load() {
+			peer.log.Error().Msg("MigrateTo called but hasSuspended true")
+		}
+	}
+	peer.inMigrateTo.Store(true)
+	defer peer.inMigrateTo.Store(false)
 
 	if peer.dmet != nil {
 		// Set migratingTo to 1 while we are migrating away.
@@ -395,6 +502,8 @@ func (peer *Peer) MigrateTo(ctx context.Context, devices []common.MigrateToDevic
 	}
 
 	// peer.showDeviceHashes("MigrateTo")
+
+	peer.hasSuspended.Store(true)
 
 	return nil
 }
