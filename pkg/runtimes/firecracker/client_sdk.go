@@ -16,16 +16,11 @@ var (
 	ErrCouldNotSetVSock             = errors.New("could not set vsock")
 	ErrCouldNotSetNetworkInterfaces = errors.New("could not set network interfaces")
 	ErrCouldNotStartInstance        = errors.New("could not start instance")
-	ErrCouldNotStopInstance         = errors.New("could not stop instance")
-	ErrCouldNotPauseInstance        = errors.New("could not pause instance")
-	ErrCouldNotCreateSnapshot       = errors.New("could not create snapshot")
-	ErrCouldNotResumeSnapshot       = errors.New("could not resume snapshot")
-	ErrCouldNotFlushSnapshot        = errors.New("could not flush snapshot")
-	ErrUnknownSnapshotType          = errors.New("could not work with unknown snapshot type")
-	ErrCouldNotMarshalJSON          = errors.New("could not marshal JSON")
-	ErrCouldNotCreateHTTPRequest    = errors.New("could not create HTTP request")
-	ErrCouldNotReadHTTPResponse     = errors.New("could not read HTTP response")
-	ErrHTTPResponseFailed           = errors.New("response status of HTTP request code indicates failure")
+
+	// ErrCouldNotStopInstance         = errors.New("could not stop instance")
+	// ErrCouldNotPauseInstance     = errors.New("could not pause instance")
+	// ErrCouldNotFlushSnapshot     = errors.New("could not flush snapshot")
+	// ErrUnknownSnapshotType       = errors.New("could not work with unknown snapshot type")
 )
 
 const SDKSnapshotTypeFull = "Full"
@@ -35,11 +30,15 @@ const SDKSnapshotTypeMsyncAndState = "MsyncAndState"
 var SDKIOEngineSync = "Sync"
 var SDKIOEngineAsync = "Async"
 
-var statePaused = "Paused"
-var stateRunning = "Running"
+var SDKVMStatePaused = "Paused"
+var SDKVMStateRunning = "Running"
 
 var backendTypeFile = "File"
 
+/**
+ * Resume from a snapshot.
+ *
+ */
 func ResumeSnapshotSDK(ctx context.Context, socketPath string, statePath string, memoryPath string) error {
 
 	logger := logrus.New()
@@ -81,7 +80,7 @@ func CreateSnapshotSDK(ctx context.Context, socketPath string, statePath string,
 
 	if snapshotType != SDKSnapshotTypeMsync {
 		_, err := client.PatchVM(ctx, &models.VM{
-			State: &statePaused,
+			State: &SDKVMStatePaused,
 		})
 		if err != nil {
 			return err
@@ -97,21 +96,14 @@ func CreateSnapshotSDK(ctx context.Context, socketPath string, statePath string,
 	return err
 }
 
-func StartVMSDK(
-	ctx context.Context,
-	socketPath string,
-	kernelPath string,
-	disks []string,
-	ioEngine string,
-	cpuCount int64,
-	memorySize int64,
-	cpuTemplate string,
-	bootArgs string,
-	hostInterface string,
-	hostMAC string,
-	vsockPath string,
-	vsockCID int64,
-) error {
+/**
+ * Start VM
+ *
+ */
+func StartVMSDK(ctx context.Context, socketPath string, kernelPath string,
+	disks []string, ioEngine string, cpuCount int64, memorySize int64,
+	cpuTemplate string, bootArgs string, hostInterface string,
+	hostMAC string, vsockPath string, vsockCID int64) error {
 
 	logger := logrus.New()
 	log := logger.WithField("subsystem", "firecracker")
@@ -125,7 +117,7 @@ func StartVMSDK(
 		BootArgs:        bootArgs,
 	})
 	if err != nil {
-		return err
+		return errors.Join(ErrCouldNotSetBootSource, err)
 	}
 
 	boolFalse := false
@@ -149,7 +141,7 @@ func StartVMSDK(
 		CPUTemplate: models.CPUTemplate(cpuTemplate).Pointer(),
 	})
 	if err != nil {
-		return err
+		return errors.Join(ErrCouldNotSetMachineConfig, err)
 	}
 
 	_, err = client.PutGuestVsock(ctx, &models.Vsock{
