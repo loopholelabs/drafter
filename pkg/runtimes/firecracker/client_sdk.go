@@ -26,14 +26,12 @@ var (
 const SDKSnapshotTypeFull = "Full"
 const SDKSnapshotTypeMsync = "Msync"
 const SDKSnapshotTypeMsyncAndState = "MsyncAndState"
-
-var SDKIOEngineSync = "Sync"
-var SDKIOEngineAsync = "Async"
-
-var SDKVMStatePaused = "Paused"
-var SDKVMStateRunning = "Running"
-
-var backendTypeFile = "File"
+const SDKActionInstanceStart = "InstanceStart"
+const SDKIOEngineSync = "Sync"
+const SDKIOEngineAsync = "Async"
+const SDKVMStatePaused = "Paused"
+const SDKVMStateRunning = "Running"
+const SDKBackendTypeFile = "File"
 
 /**
  * Resume from a snapshot.
@@ -51,7 +49,7 @@ func ResumeSnapshotSDK(ctx context.Context, socketPath string, statePath string,
 	_, err := client.LoadSnapshot(ctx, &models.SnapshotLoadParams{
 		EnableDiffSnapshots: false,
 		MemBackend: &models.MemoryBackend{
-			BackendType: &backendTypeFile,
+			BackendType: sdk.String(SDKBackendTypeFile),
 			BackendPath: &memoryPath,
 		},
 		ResumeVM:     true,
@@ -80,7 +78,7 @@ func CreateSnapshotSDK(ctx context.Context, socketPath string, statePath string,
 
 	if snapshotType != SDKSnapshotTypeMsync {
 		_, err := client.PatchVM(ctx, &models.VM{
-			State: &SDKVMStatePaused,
+			State: sdk.String(SDKVMStatePaused),
 		})
 		if err != nil {
 			return err
@@ -120,15 +118,13 @@ func StartVMSDK(ctx context.Context, socketPath string, kernelPath string,
 		return errors.Join(ErrCouldNotSetBootSource, err)
 	}
 
-	boolFalse := false
-
 	for _, disk := range disks {
 		_, err := client.PutGuestDriveByID(ctx, disk, &models.Drive{
 			DriveID:      &disk,
 			IoEngine:     &ioEngine,
 			PathOnHost:   &disk,
-			IsRootDevice: &boolFalse,
-			IsReadOnly:   &boolFalse,
+			IsRootDevice: sdk.Bool(false),
+			IsReadOnly:   sdk.Bool(false),
 		})
 		if err != nil {
 			return errors.Join(ErrCouldNotSetDrive, err)
@@ -163,10 +159,8 @@ func StartVMSDK(ctx context.Context, socketPath string, kernelPath string,
 		return errors.Join(ErrCouldNotSetNetworkInterfaces, err)
 	}
 
-	actionInstanceStart := "InstanceStart"
-
 	_, err = client.CreateSyncAction(ctx, &models.InstanceActionInfo{
-		ActionType: &actionInstanceStart,
+		ActionType: sdk.String(SDKActionInstanceStart),
 	})
 
 	if err != nil {
