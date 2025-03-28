@@ -135,12 +135,12 @@ func CreateSnapshot(log types.Logger, ctx context.Context, devices []SnapshotDev
 		}
 	}
 
-	ioEngine := firecracker.SDKIOEngineAsync
+	ioEngine := SDKIOEngineAsync
 	if ioEngineSync {
-		ioEngine = firecracker.SDKIOEngineSync
+		ioEngine = SDKIOEngineSync
 	}
 
-	err = firecracker.StartVMSDK(
+	err = StartVMSDK(
 		ctx,
 		path.Join(server.VMPath, firecracker.FirecrackerSocketName),
 		common.DeviceKernelName,
@@ -247,12 +247,12 @@ func createFinalSnapshot(ctx context.Context, client *http.Client, vsockPort uin
 		)
 	*/
 
-	err := firecracker.CreateSnapshotSDK(
+	err := CreateSnapshotSDK(
 		ctx,
 		path.Join(vmPath, firecracker.FirecrackerSocketName),
 		common.DeviceStateName,
 		common.DeviceMemoryName,
-		firecracker.SDKSnapshotTypeFull,
+		SDKSnapshotTypeFull,
 	)
 	if err != nil {
 		return errors.Join(ErrCouldNotCreateSnapshot, err)

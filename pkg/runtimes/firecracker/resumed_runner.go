@@ -75,12 +75,12 @@ func (rr *ResumedRunner[L, R, G]) Msync(ctx context.Context) error {
 	}
 
 	if !rr.snapshotLoadConfiguration.ExperimentalMapPrivate {
-		err := firecracker.CreateSnapshotSDK(
+		err := CreateSnapshotSDK(
 			ctx,
 			path.Join(rr.runner.VMPath, firecracker.FirecrackerSocketName),
 			rr.stateName,
 			"",
-			firecracker.SDKSnapshotTypeMsync,
+			SDKSnapshotTypeMsync,
 		)
 		if err != nil {
 			if rr.log != nil {
@@ -123,13 +123,13 @@ func (rr *ResumedRunner[L, R, G]) createSnapshot(ctx context.Context) error {
 	memoryCopyName := shortuuid.New()
 
 	if rr.snapshotLoadConfiguration.ExperimentalMapPrivate {
-		err := firecracker.CreateSnapshotSDK(
+		err := CreateSnapshotSDK(
 			ctx,
 			path.Join(rr.runner.VMPath, firecracker.FirecrackerSocketName),
 			// We need to write the state and memory to a separate file since we can't truncate an `mmap`ed file
 			stateCopyName,
 			memoryCopyName,
-			firecracker.SDKSnapshotTypeFull,
+			SDKSnapshotTypeFull,
 		)
 		if err != nil {
 			return errors.Join(ErrCouldNotCreateSnapshot, err)
@@ -190,12 +190,12 @@ func (rr *ResumedRunner[L, R, G]) createSnapshot(ctx context.Context) error {
 		}
 
 	} else {
-		err := firecracker.CreateSnapshotSDK(
+		err := CreateSnapshotSDK(
 			ctx,
 			path.Join(rr.runner.VMPath, firecracker.FirecrackerSocketName),
 			rr.stateName,
 			"",
-			firecracker.SDKSnapshotTypeMsyncAndState,
+			SDKSnapshotTypeMsyncAndState,
 		)
 		if err != nil {
 			return errors.Join(ErrCouldNotCreateSnapshot, err)
@@ -253,7 +253,7 @@ func Resume[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 	resumeSnapshotAndAcceptCtx, cancelResumeSnapshotAndAcceptCtx := context.WithTimeout(ctx, resumeTimeout)
 	defer cancelResumeSnapshotAndAcceptCtx()
 
-	err = firecracker.ResumeSnapshotSDK(
+	err = ResumeSnapshotSDK(
 		resumeSnapshotAndAcceptCtx,
 		path.Join(runner.VMPath, firecracker.FirecrackerSocketName),
 		resumedRunner.stateName,
