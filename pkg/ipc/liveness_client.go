@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/loopholelabs/drafter/internal/vsock"
+	"github.com/loopholelabs/drafter/pkg/runtimes/firecracker/vsock"
 )
 
 var (

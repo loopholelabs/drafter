@@ -9,14 +9,11 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/loopholelabs/drafter/internal/firecracker"
 	"github.com/loopholelabs/logging/types"
 )
 
 var (
-	ErrCouldNotWaitForFirecracker = errors.New("could not wait for firecracker")
-	ErrCouldNotCloseServer        = errors.New("could not close server")
-	ErrCouldNotRemoveVMDir        = errors.New("could not remove VM directory")
+	ErrCouldNotRemoveVMDir = errors.New("could not remove VM directory")
 )
 
 type Runner struct {
@@ -26,7 +23,7 @@ type Runner struct {
 	ongoingResumeWg         sync.WaitGroup
 	firecrackerClient       *http.Client
 	hypervisorConfiguration HypervisorConfiguration
-	server                  *firecracker.FirecrackerServer
+	server                  *FirecrackerServer
 	rescueCtx               context.Context
 }
 
@@ -84,7 +81,7 @@ func StartRunner(log types.Logger, hypervisorCtx context.Context, rescueCtx cont
 		cancelFirecrackerCtx()
 	}()
 
-	runner.server, err = firecracker.StartFirecrackerServer(
+	runner.server, err = StartFirecrackerServer(
 		firecrackerCtx,
 		hypervisorConfiguration.FirecrackerBin,
 		hypervisorConfiguration.JailerBin,
@@ -111,7 +108,7 @@ func StartRunner(log types.Logger, hypervisorCtx context.Context, rescueCtx cont
 	runner.firecrackerClient = &http.Client{
 		Transport: &http.Transport{
 			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-				return (&net.Dialer{}).DialContext(ctx, "unix", filepath.Join(runner.VMPath, firecracker.FirecrackerSocketName))
+				return (&net.Dialer{}).DialContext(ctx, "unix", filepath.Join(runner.VMPath, FirecrackerSocketName))
 			},
 		},
 	}

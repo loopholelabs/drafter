@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/lithammer/shortuuid/v4"
-	"github.com/loopholelabs/drafter/internal/firecracker"
 	"github.com/loopholelabs/drafter/pkg/common"
 	"github.com/loopholelabs/drafter/pkg/ipc"
 	"github.com/loopholelabs/drafter/pkg/utils"
@@ -77,7 +76,7 @@ func (rr *ResumedRunner[L, R, G]) Msync(ctx context.Context) error {
 	if !rr.snapshotLoadConfiguration.ExperimentalMapPrivate {
 		err := CreateSnapshotSDK(
 			ctx,
-			path.Join(rr.runner.VMPath, firecracker.FirecrackerSocketName),
+			path.Join(rr.runner.VMPath, FirecrackerSocketName),
 			rr.stateName,
 			"",
 			SDKSnapshotTypeMsync,
@@ -125,7 +124,7 @@ func (rr *ResumedRunner[L, R, G]) createSnapshot(ctx context.Context) error {
 	if rr.snapshotLoadConfiguration.ExperimentalMapPrivate {
 		err := CreateSnapshotSDK(
 			ctx,
-			path.Join(rr.runner.VMPath, firecracker.FirecrackerSocketName),
+			path.Join(rr.runner.VMPath, FirecrackerSocketName),
 			// We need to write the state and memory to a separate file since we can't truncate an `mmap`ed file
 			stateCopyName,
 			memoryCopyName,
@@ -192,7 +191,7 @@ func (rr *ResumedRunner[L, R, G]) createSnapshot(ctx context.Context) error {
 	} else {
 		err := CreateSnapshotSDK(
 			ctx,
-			path.Join(rr.runner.VMPath, firecracker.FirecrackerSocketName),
+			path.Join(rr.runner.VMPath, FirecrackerSocketName),
 			rr.stateName,
 			"",
 			SDKSnapshotTypeMsyncAndState,
@@ -255,7 +254,7 @@ func Resume[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 
 	err = ResumeSnapshotSDK(
 		resumeSnapshotAndAcceptCtx,
-		path.Join(runner.VMPath, firecracker.FirecrackerSocketName),
+		path.Join(runner.VMPath, FirecrackerSocketName),
 		resumedRunner.stateName,
 		resumedRunner.memoryName,
 	)

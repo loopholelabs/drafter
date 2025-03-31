@@ -71,19 +71,10 @@ func (fs *FirecrackerServer) Close() error {
 	return fs.Wait()
 }
 
-func StartFirecrackerServer(
-	ctx context.Context,
-	firecrackerBin string,
-	jailerBin string,
-	chrootBaseDir string,
-	uid int,
-	gid int,
-	netns string,
-	numaNode int,
-	cgroupVersion int,
-	enableOutput bool,
-	enableInput bool,
-) (server *FirecrackerServer, errs error) {
+func StartFirecrackerServer(ctx context.Context, firecrackerBin string, jailerBin string,
+	chrootBaseDir string, uid int, gid int, netns string, numaNode int,
+	cgroupVersion int, enableOutput bool, enableInput bool) (server *FirecrackerServer, errs error) {
+
 	server = &FirecrackerServer{
 		Wait: func() error {
 			return nil

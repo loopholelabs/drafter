@@ -6,7 +6,7 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/loopholelabs/drafter/internal/vsock"
+	"github.com/loopholelabs/drafter/pkg/runtimes/firecracker/vsock"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 	"github.com/pojntfx/panrpc/go/pkg/rpc"
 )

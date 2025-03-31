@@ -16,7 +16,6 @@ import (
 	iutils "github.com/loopholelabs/drafter/internal/utils"
 	"github.com/loopholelabs/logging/types"
 
-	"github.com/loopholelabs/drafter/internal/firecracker"
 	"github.com/loopholelabs/drafter/pkg/common"
 	"github.com/loopholelabs/drafter/pkg/ipc"
 	"github.com/loopholelabs/drafter/pkg/utils"
@@ -41,7 +40,6 @@ var (
 	ErrCouldNotWritePackageConfig        = errors.New("could not write package configuration")
 	ErrCouldNotChownPackageConfigFile    = errors.New("could not change ownership of package configuration file")
 	ErrCouldNotCreateChrootBaseDirectory = errors.New("could not create chroot base directory")
-	ErrCouldNotStartFirecrackerServer    = errors.New("could not start firecracker server")
 	ErrCouldNotCreateSnapshot            = errors.New("could not create snapshot")
 )
 
@@ -66,7 +64,7 @@ func CreateSnapshot(log types.Logger, ctx context.Context, devices []SnapshotDev
 		return errors.Join(ErrCouldNotCreateChrootBaseDirectory, err)
 	}
 
-	server, err := firecracker.StartFirecrackerServer(
+	server, err := StartFirecrackerServer(
 		ctx,
 		hypervisorConfiguration.FirecrackerBin,
 		hypervisorConfiguration.JailerBin,
@@ -117,7 +115,7 @@ func CreateSnapshot(log types.Logger, ctx context.Context, devices []SnapshotDev
 	client := &http.Client{
 		Transport: &http.Transport{
 			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-				return (&net.Dialer{}).DialContext(ctx, "unix", filepath.Join(server.VMPath, firecracker.FirecrackerSocketName))
+				return (&net.Dialer{}).DialContext(ctx, "unix", filepath.Join(server.VMPath, FirecrackerSocketName))
 			},
 		},
 	}
@@ -142,7 +140,7 @@ func CreateSnapshot(log types.Logger, ctx context.Context, devices []SnapshotDev
 
 	err = StartVMSDK(
 		ctx,
-		path.Join(server.VMPath, firecracker.FirecrackerSocketName),
+		path.Join(server.VMPath, FirecrackerSocketName),
 		common.DeviceKernelName,
 		disks,
 		ioEngine,
@@ -237,19 +235,9 @@ func copySnapshotFiles(devices []SnapshotDevice, vmPath string) error {
  *
  */
 func createFinalSnapshot(ctx context.Context, client *http.Client, vsockPort uint32, vmPath string, uid int, gid int) error {
-	/*
-		err := firecracker.CreateSnapshot(
-			ctx,
-			client,
-			common.DeviceStateName,
-			common.DeviceMemoryName,
-			firecracker.SnapshotTypeFull,
-		)
-	*/
-
 	err := CreateSnapshotSDK(
 		ctx,
-		path.Join(vmPath, firecracker.FirecrackerSocketName),
+		path.Join(vmPath, FirecrackerSocketName),
 		common.DeviceStateName,
 		common.DeviceMemoryName,
 		SDKSnapshotTypeFull,
