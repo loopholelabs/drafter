@@ -38,33 +38,50 @@ type FirecrackerServer struct {
 	VMPath string
 	VMPid  int
 
-	Wait  func() error
-	Close func() error
+	Wait func() error
+
+	closed        bool
+	closeLock     sync.Mutex
+	socketCreated bool
+
+	cmd *exec.Cmd
+}
+
+func (fs *FirecrackerServer) Close() error {
+	if !fs.socketCreated {
+		return nil
+	}
+	if fs.cmd.Process != nil {
+		fs.closeLock.Lock()
+
+		// We can't trust `cmd.Process != nil` - without this check we could get `os.ErrProcessDone` here on the second `Kill()` call
+		if !fs.closed {
+			fs.closed = true
+			if err := fs.cmd.Process.Kill(); err != nil {
+				fs.closeLock.Unlock()
+				return err
+			}
+		}
+		fs.closeLock.Unlock()
+	}
+	return fs.Wait()
 }
 
 func StartFirecrackerServer(
 	ctx context.Context,
-
 	firecrackerBin string,
 	jailerBin string,
-
 	chrootBaseDir string,
-
 	uid int,
 	gid int,
-
 	netns string,
 	numaNode int,
 	cgroupVersion int,
-
 	enableOutput bool,
 	enableInput bool,
 ) (server *FirecrackerServer, errs error) {
 	server = &FirecrackerServer{
 		Wait: func() error {
-			return nil
-		},
-		Close: func() error {
 			return nil
 		},
 	}
@@ -100,7 +117,7 @@ func StartFirecrackerServer(
 		panic(errors.Join(ErrCouldNotReadNUMACPUList, err))
 	}
 
-	cmd := exec.CommandContext(
+	server.cmd = exec.CommandContext(
 		ctx, // We use ctx, not goroutineManager.Context() here since this resource outlives the function call
 		jailerBin,
 		"--chroot-base-dir",
@@ -127,36 +144,33 @@ func StartFirecrackerServer(
 	)
 
 	if enableOutput {
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
+		server.cmd.Stdout = os.Stdout
+		server.cmd.Stderr = os.Stderr
 	}
 
 	if enableInput {
-		cmd.Stdin = os.Stdin
+		server.cmd.Stdin = os.Stdin
 	} else {
 		// Don't forward CTRL-C etc. signals from parent to child process
 		// We can't enable this if we set the cmd stdin or we deadlock
-		cmd.SysProcAttr = &unix.SysProcAttr{
+		server.cmd.SysProcAttr = &unix.SysProcAttr{
 			Setpgid: true,
 			Pgid:    0,
 		}
 	}
 
-	if err := cmd.Start(); err != nil {
+	if err := server.cmd.Start(); err != nil {
 		panic(errors.Join(ErrCouldNotStartFirecrackerServer, err))
 	}
-	server.VMPid = cmd.Process.Pid
-
-	var closeLock sync.Mutex
-	closed := false
+	server.VMPid = server.cmd.Process.Pid
 
 	// We can only run this once since `cmd.Wait()` releases resources after the first call
 	server.Wait = sync.OnceValue(func() error {
-		if err := cmd.Wait(); err != nil {
-			closeLock.Lock()
-			defer closeLock.Unlock()
+		if err := server.cmd.Wait(); err != nil {
+			server.closeLock.Lock()
+			defer server.closeLock.Unlock()
 
-			if closed && (err.Error() == errSignalKilled.Error()) { // Don't treat killed errors as errors if we killed the process
+			if server.closed && (err.Error() == errSignalKilled.Error()) { // Don't treat killed errors as errors if we killed the process
 				return nil
 			}
 
@@ -196,40 +210,19 @@ func StartFirecrackerServer(
 		}
 	})
 
-	socketCreated := false
+	server.socketCreated = false
 
 	socketPath := filepath.Join(server.VMPath, FirecrackerSocketName)
 	for ev := range watcher.Event {
 		if filepath.Clean(ev.Name) == filepath.Clean(socketPath) {
-			socketCreated = true
+			server.socketCreated = true
 
 			break
 		}
 	}
 
-	if !socketCreated {
+	if !server.socketCreated {
 		panic(ErrNoSocketCreated)
-	}
-
-	server.Close = func() error {
-		if cmd.Process != nil {
-			closeLock.Lock()
-
-			// We can't trust `cmd.Process != nil` - without this check we could get `os.ErrProcessDone` here on the second `Kill()` call
-			if !closed {
-				closed = true
-
-				if err := cmd.Process.Kill(); err != nil {
-					closeLock.Unlock()
-
-					return err
-				}
-			}
-
-			closeLock.Unlock()
-		}
-
-		return server.Wait()
 	}
 
 	return
