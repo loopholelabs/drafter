@@ -47,6 +47,10 @@ type FirecrackerServer struct {
 	cmd *exec.Cmd
 }
 
+/**
+ * Close the server
+ *
+ */
 func (fs *FirecrackerServer) Close() error {
 	if !fs.socketCreated {
 		return nil
@@ -99,24 +103,25 @@ func StartFirecrackerServer(
 
 	server.VMPath = filepath.Join(chrootBaseDir, "firecracker", id, "root")
 	if err := os.MkdirAll(server.VMPath, os.ModePerm); err != nil {
-		panic(errors.Join(ErrCouldNotCreateVMPathDirectory, err))
+		return nil, errors.Join(ErrCouldNotCreateVMPathDirectory, err)
 	}
 
 	watcher, err := inotify.NewWatcher()
 	if err != nil {
-		panic(errors.Join(ErrCouldNotCreateInotifyWatcher, err))
+		return nil, errors.Join(ErrCouldNotCreateInotifyWatcher, err)
 	}
 	defer watcher.Close()
 
 	if err := watcher.AddWatch(server.VMPath, inotify.InCreate); err != nil {
-		panic(errors.Join(ErrCouldNotAddInotifyWatch, err))
+		return nil, errors.Join(ErrCouldNotAddInotifyWatch, err)
 	}
 
 	cpus, err := os.ReadFile(filepath.Join("/sys", "devices", "system", "node", fmt.Sprintf("node%v", numaNode), "cpulist"))
 	if err != nil {
-		panic(errors.Join(ErrCouldNotReadNUMACPUList, err))
+		return nil, errors.Join(ErrCouldNotReadNUMACPUList, err)
 	}
 
+	// Create the command
 	server.cmd = exec.CommandContext(
 		ctx, // We use ctx, not goroutineManager.Context() here since this resource outlives the function call
 		jailerBin,
@@ -159,8 +164,9 @@ func StartFirecrackerServer(
 		}
 	}
 
-	if err := server.cmd.Start(); err != nil {
-		panic(errors.Join(ErrCouldNotStartFirecrackerServer, err))
+	err = server.cmd.Start()
+	if err != nil {
+		return nil, errors.Join(ErrCouldNotStartFirecrackerServer, err)
 	}
 	server.VMPid = server.cmd.Process.Pid
 
@@ -216,13 +222,12 @@ func StartFirecrackerServer(
 	for ev := range watcher.Event {
 		if filepath.Clean(ev.Name) == filepath.Clean(socketPath) {
 			server.socketCreated = true
-
 			break
 		}
 	}
 
 	if !server.socketCreated {
-		panic(ErrNoSocketCreated)
+		return nil, ErrNoSocketCreated
 	}
 
 	return
