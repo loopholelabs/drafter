@@ -83,6 +83,47 @@ func StartFirecrackerServer(ctx context.Context, firecrackerBin string, jailerBi
 		},
 	}
 
+	id := shortuuid.New()
+
+	server.VMPath = filepath.Join(chrootBaseDir, "firecracker", id, "root")
+	if err := os.MkdirAll(server.VMPath, os.ModePerm); err != nil {
+		return nil, errors.Join(ErrCouldNotCreateVMPathDirectory, err)
+	}
+
+	jBuilder := sdk.NewJailerCommandBuilder()
+	jBuilder = jBuilder.WithBin(jailerBin).
+		WithChrootBaseDir(chrootBaseDir).
+		WithUID(uid).
+		WithGID(gid).
+		WithNetNS(filepath.Join("/var", "run", "netns", netns)).
+		WithCgroupVersion(fmt.Sprintf("%v", cgroupVersion)).
+		WithNumaNode(numaNode).
+		WithID(id).
+		WithExecFile(firecrackerBin).
+		WithFirecrackerArgs("--api-sock", FirecrackerSocketName)
+
+	if enableOutput {
+		jBuilder = jBuilder.
+			WithStdout(os.Stdout).
+			WithStderr(os.Stderr)
+	}
+	if enableInput {
+		jBuilder = jBuilder.
+			WithStdin(os.Stdin)
+	}
+
+	// Create the command
+	server.cmd = jBuilder.Build(ctx)
+
+	if !enableInput {
+		// Don't forward CTRL-C etc. signals from parent to child process
+		// We can't enable this if we set the cmd stdin or we deadlock
+		server.cmd.SysProcAttr = &unix.SysProcAttr{
+			Setpgid: true,
+			Pgid:    0,
+		}
+	}
+
 	goroutineManager := manager.NewGoroutineManager(
 		ctx,
 		&errs,
@@ -92,13 +133,6 @@ func StartFirecrackerServer(ctx context.Context, firecrackerBin string, jailerBi
 	defer goroutineManager.StopAllGoroutines()
 	defer goroutineManager.CreateBackgroundPanicCollector()()
 
-	id := shortuuid.New()
-
-	server.VMPath = filepath.Join(chrootBaseDir, "firecracker", id, "root")
-	if err := os.MkdirAll(server.VMPath, os.ModePerm); err != nil {
-		return nil, errors.Join(ErrCouldNotCreateVMPathDirectory, err)
-	}
-
 	watcher, err := inotify.NewWatcher()
 	if err != nil {
 		return nil, errors.Join(ErrCouldNotCreateInotifyWatcher, err)
@@ -107,41 +141,6 @@ func StartFirecrackerServer(ctx context.Context, firecrackerBin string, jailerBi
 
 	if err := watcher.AddWatch(server.VMPath, inotify.InCreate); err != nil {
 		return nil, errors.Join(ErrCouldNotAddInotifyWatch, err)
-	}
-
-	jBuilder := sdk.NewJailerCommandBuilder()
-	args := jBuilder.WithBin(jailerBin).
-		WithChrootBaseDir(chrootBaseDir).
-		WithUID(uid).
-		WithGID(gid).
-		WithNetNS(filepath.Join("/var", "run", "netns", netns)).
-		WithCgroupVersion(fmt.Sprintf("%v", cgroupVersion)).
-		WithNumaNode(numaNode).
-		WithID(id).
-		WithExecFile(firecrackerBin).
-		WithFirecrackerArgs("--api-sock", FirecrackerSocketName).Args()
-
-	// Create the command
-	server.cmd = exec.CommandContext(
-		ctx, // We use ctx, not goroutineManager.Context() here since this resource outlives the function call
-		jailerBin,
-		args...,
-	)
-
-	if enableOutput {
-		server.cmd.Stdout = os.Stdout
-		server.cmd.Stderr = os.Stderr
-	}
-
-	if enableInput {
-		server.cmd.Stdin = os.Stdin
-	} else {
-		// Don't forward CTRL-C etc. signals from parent to child process
-		// We can't enable this if we set the cmd stdin or we deadlock
-		server.cmd.SysProcAttr = &unix.SysProcAttr{
-			Setpgid: true,
-			Pgid:    0,
-		}
 	}
 
 	err = server.cmd.Start()
