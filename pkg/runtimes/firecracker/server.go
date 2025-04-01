@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"sync"
 
+	sdk "github.com/firecracker-microvm/firecracker-go-sdk"
+
 	"github.com/lithammer/shortuuid/v4"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 	"golang.org/x/sys/unix"
@@ -107,36 +109,23 @@ func StartFirecrackerServer(ctx context.Context, firecrackerBin string, jailerBi
 		return nil, errors.Join(ErrCouldNotAddInotifyWatch, err)
 	}
 
-	cpus, err := os.ReadFile(filepath.Join("/sys", "devices", "system", "node", fmt.Sprintf("node%v", numaNode), "cpulist"))
-	if err != nil {
-		return nil, errors.Join(ErrCouldNotReadNUMACPUList, err)
-	}
+	jBuilder := sdk.NewJailerCommandBuilder()
+	args := jBuilder.WithBin(jailerBin).
+		WithChrootBaseDir(chrootBaseDir).
+		WithUID(uid).
+		WithGID(gid).
+		WithNetNS(filepath.Join("/var", "run", "netns", netns)).
+		WithCgroupVersion(fmt.Sprintf("%v", cgroupVersion)).
+		WithNumaNode(numaNode).
+		WithID(id).
+		WithExecFile(firecrackerBin).
+		WithFirecrackerArgs("--api-sock", FirecrackerSocketName).Args()
 
 	// Create the command
 	server.cmd = exec.CommandContext(
 		ctx, // We use ctx, not goroutineManager.Context() here since this resource outlives the function call
 		jailerBin,
-		"--chroot-base-dir",
-		chrootBaseDir,
-		"--uid",
-		fmt.Sprintf("%v", uid),
-		"--gid",
-		fmt.Sprintf("%v", gid),
-		"--netns",
-		filepath.Join("/var", "run", "netns", netns),
-		"--cgroup-version",
-		fmt.Sprintf("%v", cgroupVersion),
-		"--cgroup",
-		fmt.Sprintf("cpuset.mems=%v", numaNode),
-		"--cgroup",
-		fmt.Sprintf("cpuset.cpus=%s", cpus),
-		"--id",
-		id,
-		"--exec-file",
-		firecrackerBin,
-		"--",
-		"--api-sock",
-		FirecrackerSocketName,
+		args...,
 	)
 
 	if enableOutput {

@@ -16,11 +16,6 @@ var (
 	ErrCouldNotSetVSock             = errors.New("could not set vsock")
 	ErrCouldNotSetNetworkInterfaces = errors.New("could not set network interfaces")
 	ErrCouldNotStartInstance        = errors.New("could not start instance")
-
-	// ErrCouldNotStopInstance         = errors.New("could not stop instance")
-	// ErrCouldNotPauseInstance     = errors.New("could not pause instance")
-	// ErrCouldNotFlushSnapshot     = errors.New("could not flush snapshot")
-	// ErrUnknownSnapshotType       = errors.New("could not work with unknown snapshot type")
 )
 
 const SDKSnapshotTypeFull = "Full"
