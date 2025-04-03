@@ -75,72 +75,18 @@ type FirecrackerServer struct {
 }
 
 /**
- * Close the server
- *
- */
-func (fs *FirecrackerServer) Close() error {
-	if fs.log != nil {
-		fs.log.Info().Str("VMPath", fs.VMPath).Msg("Firecracker server closing")
-	}
-
-	if fs.cmd.Process != nil {
-		fs.closeLock.Lock()
-
-		if !fs.closed {
-			fs.closed = true
-			err := fs.cmd.Process.Kill()
-			if err != nil {
-				fs.closeLock.Unlock()
-				return err
-			}
-		}
-		fs.closeLock.Unlock()
-	}
-
-	// Wait for the process to exit
-	fs.cmdWg.Wait()
-
-	// We killed it! We expect this
-	if fs.cmdErr.Error() == errSignalKilled.Error() {
-		return nil
-	}
-
-	// Something else bad happened
-	return fs.cmdErr
-}
-
-/**
- * Wait for the firecracker command to exit, and return any error
- *
- */
-func (fs *FirecrackerServer) Wait() error {
-	fs.cmdWg.Wait()
-	err := fs.cmdErr
-
-	if err != nil {
-		fs.closeLock.Lock()
-		defer fs.closeLock.Unlock()
-		if fs.closed && (err.Error() == errSignalKilled.Error()) { // Don't treat killed errors as errors if we killed the process
-			return nil
-		}
-		return errors.Join(ErrFirecrackerExited, err)
-	}
-	return nil
-}
-
-/**
  * Start a new firecracker server
  *
  */
 func StartFirecrackerServer(ctx context.Context, log loggingtypes.Logger, firecrackerBin string, jailerBin string,
 	chrootBaseDir string, uid int, gid int, netns string, numaNode int,
-	cgroupVersion int, enableOutput bool, enableInput bool) (server *FirecrackerServer, errs error) {
+	cgroupVersion int, enableOutput bool, enableInput bool) (*FirecrackerServer, error) {
 
 	if log != nil {
 		log.Info().Msg("Starting firecracker server")
 	}
 
-	server = &FirecrackerServer{
+	server := &FirecrackerServer{
 		cmdErrCh: make(chan error, 1),
 		log:      log,
 	}
@@ -264,6 +210,60 @@ func StartFirecrackerServer(ctx context.Context, log loggingtypes.Logger, firecr
 			return server, nil
 		}
 	}
+}
+
+/**
+ * Close the server
+ *
+ */
+func (fs *FirecrackerServer) Close() error {
+	if fs.log != nil {
+		fs.log.Info().Str("VMPath", fs.VMPath).Msg("Firecracker server closing")
+	}
+
+	if fs.cmd.Process != nil {
+		fs.closeLock.Lock()
+
+		if !fs.closed {
+			fs.closed = true
+			err := fs.cmd.Process.Kill()
+			if err != nil {
+				fs.closeLock.Unlock()
+				return err
+			}
+		}
+		fs.closeLock.Unlock()
+	}
+
+	// Wait for the process to exit
+	fs.cmdWg.Wait()
+
+	// We killed it! We expect this
+	if fs.cmdErr.Error() == errSignalKilled.Error() {
+		return nil
+	}
+
+	// Something else bad happened
+	return fs.cmdErr
+}
+
+/**
+ * Wait for the firecracker command to exit, and return any error
+ *
+ */
+func (fs *FirecrackerServer) Wait() error {
+	fs.cmdWg.Wait()
+	err := fs.cmdErr
+
+	if err != nil {
+		fs.closeLock.Lock()
+		defer fs.closeLock.Unlock()
+		if fs.closed && (err.Error() == errSignalKilled.Error()) { // Don't treat killed errors as errors if we killed the process
+			return nil
+		}
+		return errors.Join(ErrFirecrackerExited, err)
+	}
+	return nil
 }
 
 /**

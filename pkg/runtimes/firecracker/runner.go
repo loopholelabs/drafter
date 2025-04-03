@@ -3,8 +3,6 @@ package firecracker
 import (
 	"context"
 	"errors"
-	"net"
-	"net/http"
 	"os"
 	"path/filepath"
 	"sync"
@@ -21,7 +19,6 @@ type Runner struct {
 	VMPath                  string
 	VMPid                   int
 	ongoingResumeWg         sync.WaitGroup
-	firecrackerClient       *http.Client
 	hypervisorConfiguration HypervisorConfiguration
 	server                  *FirecrackerServer
 	rescueCtx               context.Context
@@ -99,14 +96,6 @@ func StartRunner(log types.Logger, hypervisorCtx context.Context, rescueCtx cont
 
 	if log != nil {
 		log.Info().Str("vmpath", runner.VMPath).Int("vmpid", runner.VMPid).Msg("firecracker runner started")
-	}
-
-	runner.firecrackerClient = &http.Client{
-		Transport: &http.Transport{
-			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-				return (&net.Dialer{}).DialContext(ctx, "unix", filepath.Join(runner.VMPath, FirecrackerSocketName))
-			},
-		},
 	}
 
 	return runner, nil
