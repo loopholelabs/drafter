@@ -5,10 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"net"
-	"net/http"
 	"os"
-	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -113,14 +110,6 @@ func CreateSnapshot(log types.Logger, ctx context.Context, devices []SnapshotDev
 	}
 	defer rpc.Close()
 
-	client := &http.Client{
-		Transport: &http.Transport{
-			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-				return (&net.Dialer{}).DialContext(ctx, "unix", filepath.Join(server.VMPath, FirecrackerSocketName))
-			},
-		},
-	}
-
 	disks := []string{}
 	for _, device := range devices {
 		if strings.TrimSpace(device.Input) != "" {
@@ -139,9 +128,8 @@ func CreateSnapshot(log types.Logger, ctx context.Context, devices []SnapshotDev
 		ioEngine = SDKIOEngineSync
 	}
 
-	err = StartVMSDK(
+	err = server.StartVM(
 		ctx,
-		path.Join(server.VMPath, FirecrackerSocketName),
 		common.DeviceKernelName,
 		disks,
 		ioEngine,
@@ -170,7 +158,7 @@ func CreateSnapshot(log types.Logger, ctx context.Context, devices []SnapshotDev
 		return err
 	}
 
-	err = createFinalSnapshot(ctx, client, agentConfiguration.AgentVSockPort,
+	err = createFinalSnapshot(ctx, server, agentConfiguration.AgentVSockPort,
 		server.VMPath, hypervisorConfiguration.UID, hypervisorConfiguration.GID)
 
 	if err != nil {
@@ -235,10 +223,9 @@ func copySnapshotFiles(devices []SnapshotDevice, vmPath string) error {
  * Create the final snapshot
  *
  */
-func createFinalSnapshot(ctx context.Context, client *http.Client, vsockPort uint32, vmPath string, uid int, gid int) error {
-	err := CreateSnapshotSDK(
+func createFinalSnapshot(ctx context.Context, server *FirecrackerServer, vsockPort uint32, vmPath string, uid int, gid int) error {
+	err := server.CreateSnapshot(
 		ctx,
-		path.Join(vmPath, FirecrackerSocketName),
 		common.DeviceStateName,
 		common.DeviceMemoryName,
 		SDKSnapshotTypeFull,
