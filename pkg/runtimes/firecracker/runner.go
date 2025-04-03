@@ -41,11 +41,6 @@ func (r *Runner) Close() error {
 			return errors.Join(ErrCouldNotCloseServer, err)
 		}
 
-		err = r.server.Wait()
-		if err != nil {
-			return errors.Join(ErrCouldNotWaitForFirecracker, err)
-		}
-
 		err = os.RemoveAll(filepath.Dir(r.VMPath))
 		if err != nil {
 			return errors.Join(ErrCouldNotRemoveVMDir, err)

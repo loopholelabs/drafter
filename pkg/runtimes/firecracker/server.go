@@ -46,11 +46,10 @@ type FirecrackerServer struct {
 	closeLock     sync.Mutex
 	socketCreated bool
 
-	cmd    *exec.Cmd
-	cmdWg  sync.WaitGroup
-	cmdErr error
-
-	Wait func() error
+	cmd      *exec.Cmd
+	cmdWg    sync.WaitGroup
+	cmdErr   error
+	cmdErrCh chan error
 }
 
 /**
@@ -88,6 +87,25 @@ func (fs *FirecrackerServer) Close() error {
 }
 
 /**
+ * Wait for the firecracker command to exit, and return any error
+ *
+ */
+func (fs *FirecrackerServer) Wait() error {
+	fs.cmdWg.Wait()
+	err := fs.cmdErr
+
+	if err != nil {
+		fs.closeLock.Lock()
+		defer fs.closeLock.Unlock()
+		if fs.closed && (err.Error() == errSignalKilled.Error()) { // Don't treat killed errors as errors if we killed the process
+			return nil
+		}
+		return errors.Join(ErrFirecrackerExited, err)
+	}
+	return nil
+}
+
+/**
  * Start a new firecracker server
  *
  */
@@ -100,9 +118,7 @@ func StartFirecrackerServer(ctx context.Context, log loggingtypes.Logger, firecr
 	}
 
 	server = &FirecrackerServer{
-		Wait: func() error {
-			return nil
-		},
+		cmdErrCh: make(chan error, 1),
 	}
 
 	id := shortuuid.New()
@@ -172,6 +188,13 @@ func StartFirecrackerServer(ctx context.Context, log loggingtypes.Logger, firecr
 	go func() {
 		server.cmdErr = server.cmd.Wait()
 		server.cmdWg.Done()
+		server.closeLock.Lock()
+		defer server.closeLock.Unlock()
+		if server.closed && (server.cmdErr.Error() == errSignalKilled.Error()) { // Don't treat killed errors as errors if we killed the process
+			server.cmdErrCh <- nil
+		} else {
+			server.cmdErrCh <- server.cmdErr
+		}
 	}()
 
 	if log != nil {
@@ -179,25 +202,6 @@ func StartFirecrackerServer(ctx context.Context, log loggingtypes.Logger, firecr
 	}
 
 	// TODO: Tidy up under here...
-
-	// We can only run this once since `cmd.Wait()` releases resources after the first call
-	server.Wait = sync.OnceValue(func() error {
-		server.cmdWg.Wait()
-		err := server.cmdErr
-
-		if err != nil {
-			server.closeLock.Lock()
-			defer server.closeLock.Unlock()
-
-			if server.closed && (err.Error() == errSignalKilled.Error()) { // Don't treat killed errors as errors if we killed the process
-				return nil
-			}
-
-			return errors.Join(ErrFirecrackerExited, err)
-		}
-
-		return nil
-	})
 
 	goroutineManager := manager.NewGoroutineManager(
 		ctx,
@@ -207,17 +211,6 @@ func StartFirecrackerServer(ctx context.Context, log loggingtypes.Logger, firecr
 	defer goroutineManager.Wait()
 	defer goroutineManager.StopAllGoroutines()
 	defer goroutineManager.CreateBackgroundPanicCollector()()
-
-	// It is safe to start a background goroutine here since we return a wait function
-	// Despite returning a wait function, we still need to start this goroutine however so that any errors
-	// we get as we're polling the socket path directory are caught
-	// It's important that we start this _after_ calling `cmd.Start`, otherwise our process would be nil
-	goroutineManager.StartBackgroundGoroutine(func(_ context.Context) {
-		err := server.Wait()
-		if err != nil {
-			panic(errors.Join(ErrCouldNotWaitForFirecracker, err))
-		}
-	})
 
 	goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
 		// Cause the `range Watcher.Event` loop to break if context is cancelled, e.g. when command errors
@@ -251,6 +244,13 @@ func StartFirecrackerServer(ctx context.Context, log loggingtypes.Logger, firecr
 
 	if !server.socketCreated {
 		return nil, ErrNoSocketCreated
+	}
+
+	// TODO: Add more to this select...
+	select {
+	case e := <-server.cmdErrCh: // The cmd exited already. Return it as an error here.
+		return nil, e
+	default:
 	}
 
 	return
