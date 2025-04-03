@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	sdk "github.com/firecracker-microvm/firecracker-go-sdk"
+	loggingtypes "github.com/loopholelabs/logging/types"
 
 	"github.com/lithammer/shortuuid/v4"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
@@ -37,16 +38,19 @@ const (
 )
 
 type FirecrackerServer struct {
+	log    loggingtypes.Logger
 	VMPath string
 	VMPid  int
-
-	Wait func() error
 
 	closed        bool
 	closeLock     sync.Mutex
 	socketCreated bool
 
-	cmd *exec.Cmd
+	cmd    *exec.Cmd
+	cmdWg  sync.WaitGroup
+	cmdErr error
+
+	Wait func() error
 }
 
 /**
@@ -60,10 +64,10 @@ func (fs *FirecrackerServer) Close() error {
 	if fs.cmd.Process != nil {
 		fs.closeLock.Lock()
 
-		// We can't trust `cmd.Process != nil` - without this check we could get `os.ErrProcessDone` here on the second `Kill()` call
 		if !fs.closed {
 			fs.closed = true
-			if err := fs.cmd.Process.Kill(); err != nil {
+			err := fs.cmd.Process.Kill()
+			if err != nil {
 				fs.closeLock.Unlock()
 				return err
 			}
@@ -73,9 +77,17 @@ func (fs *FirecrackerServer) Close() error {
 	return fs.Wait()
 }
 
-func StartFirecrackerServer(ctx context.Context, firecrackerBin string, jailerBin string,
+/**
+ * Start a new firecracker server
+ *
+ */
+func StartFirecrackerServer(ctx context.Context, log loggingtypes.Logger, firecrackerBin string, jailerBin string,
 	chrootBaseDir string, uid int, gid int, netns string, numaNode int,
 	cgroupVersion int, enableOutput bool, enableInput bool) (server *FirecrackerServer, errs error) {
+
+	if log != nil {
+		log.Info().Msg("Starting firecracker server")
+	}
 
 	server = &FirecrackerServer{
 		Wait: func() error {
@@ -86,12 +98,17 @@ func StartFirecrackerServer(ctx context.Context, firecrackerBin string, jailerBi
 	id := shortuuid.New()
 
 	server.VMPath = filepath.Join(chrootBaseDir, "firecracker", id, "root")
-	if err := os.MkdirAll(server.VMPath, os.ModePerm); err != nil {
+	err := os.MkdirAll(server.VMPath, os.ModePerm)
+	if err != nil {
 		return nil, errors.Join(ErrCouldNotCreateVMPathDirectory, err)
 	}
 
-	jBuilder := sdk.NewJailerCommandBuilder()
-	jBuilder = jBuilder.WithBin(jailerBin).
+	if log != nil {
+		log.Debug().Str("VMPath", server.VMPath).Msg("firecracker VMPath created")
+	}
+
+	jBuilder := sdk.NewJailerCommandBuilder().
+		WithBin(jailerBin).
 		WithChrootBaseDir(chrootBaseDir).
 		WithUID(uid).
 		WithGID(gid).
@@ -124,6 +141,35 @@ func StartFirecrackerServer(ctx context.Context, firecrackerBin string, jailerBi
 		}
 	}
 
+	watcher, err := inotify.NewWatcher()
+	if err != nil {
+		return nil, errors.Join(ErrCouldNotCreateInotifyWatcher, err)
+	}
+	defer watcher.Close()
+
+	err = watcher.AddWatch(server.VMPath, inotify.InCreate)
+	if err != nil {
+		return nil, errors.Join(ErrCouldNotAddInotifyWatch, err)
+	}
+
+	err = server.cmd.Start()
+	if err != nil {
+		return nil, errors.Join(ErrCouldNotStartFirecrackerServer, err)
+	}
+	server.VMPid = server.cmd.Process.Pid
+	// Wait for the process to finish, and report any error
+	server.cmdWg.Add(1)
+	go func() {
+		server.cmdErr = server.cmd.Wait()
+		server.cmdWg.Done()
+	}()
+
+	if log != nil {
+		log.Debug().Int("VMPid", server.VMPid).Msg("Started firecracker server")
+	}
+
+	// TODO: Tidy up under here...
+
 	goroutineManager := manager.NewGoroutineManager(
 		ctx,
 		&errs,
@@ -133,25 +179,12 @@ func StartFirecrackerServer(ctx context.Context, firecrackerBin string, jailerBi
 	defer goroutineManager.StopAllGoroutines()
 	defer goroutineManager.CreateBackgroundPanicCollector()()
 
-	watcher, err := inotify.NewWatcher()
-	if err != nil {
-		return nil, errors.Join(ErrCouldNotCreateInotifyWatcher, err)
-	}
-	defer watcher.Close()
-
-	if err := watcher.AddWatch(server.VMPath, inotify.InCreate); err != nil {
-		return nil, errors.Join(ErrCouldNotAddInotifyWatch, err)
-	}
-
-	err = server.cmd.Start()
-	if err != nil {
-		return nil, errors.Join(ErrCouldNotStartFirecrackerServer, err)
-	}
-	server.VMPid = server.cmd.Process.Pid
-
 	// We can only run this once since `cmd.Wait()` releases resources after the first call
 	server.Wait = sync.OnceValue(func() error {
-		if err := server.cmd.Wait(); err != nil {
+		server.cmdWg.Wait()
+		err := server.cmdErr
+
+		if err != nil {
 			server.closeLock.Lock()
 			defer server.closeLock.Unlock()
 
@@ -170,7 +203,8 @@ func StartFirecrackerServer(ctx context.Context, firecrackerBin string, jailerBi
 	// we get as we're polling the socket path directory are caught
 	// It's important that we start this _after_ calling `cmd.Start`, otherwise our process would be nil
 	goroutineManager.StartBackgroundGoroutine(func(_ context.Context) {
-		if err := server.Wait(); err != nil {
+		err := server.Wait()
+		if err != nil {
 			panic(errors.Join(ErrCouldNotWaitForFirecracker, err))
 		}
 	})

@@ -83,6 +83,7 @@ func StartRunner(log types.Logger, hypervisorCtx context.Context, rescueCtx cont
 
 	runner.server, err = StartFirecrackerServer(
 		firecrackerCtx,
+		log,
 		hypervisorConfiguration.FirecrackerBin,
 		hypervisorConfiguration.JailerBin,
 		hypervisorConfiguration.ChrootBaseDir,

@@ -66,6 +66,7 @@ func CreateSnapshot(log types.Logger, ctx context.Context, devices []SnapshotDev
 
 	server, err := StartFirecrackerServer(
 		ctx,
+		log,
 		hypervisorConfiguration.FirecrackerBin,
 		hypervisorConfiguration.JailerBin,
 		hypervisorConfiguration.ChrootBaseDir,
