@@ -8,14 +8,15 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sync"
+	"time"
 
 	sdk "github.com/firecracker-microvm/firecracker-go-sdk"
 	loggingtypes "github.com/loopholelabs/logging/types"
+	"github.com/sirupsen/logrus"
 
 	"github.com/lithammer/shortuuid/v4"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 	"golang.org/x/sys/unix"
-	"k8s.io/utils/inotify"
 )
 
 var (
@@ -42,9 +43,8 @@ type FirecrackerServer struct {
 	VMPath string
 	VMPid  int
 
-	closed        bool
-	closeLock     sync.Mutex
-	socketCreated bool
+	closed    bool
+	closeLock sync.Mutex
 
 	cmd      *exec.Cmd
 	cmdWg    sync.WaitGroup
@@ -57,9 +57,10 @@ type FirecrackerServer struct {
  *
  */
 func (fs *FirecrackerServer) Close() error {
-	if !fs.socketCreated {
-		return nil
+	if fs.log != nil {
+		fs.log.Info().Str("VMPath", fs.VMPath).Msg("Firecracker server closing")
 	}
+
 	if fs.cmd.Process != nil {
 		fs.closeLock.Lock()
 
@@ -119,6 +120,7 @@ func StartFirecrackerServer(ctx context.Context, log loggingtypes.Logger, firecr
 
 	server = &FirecrackerServer{
 		cmdErrCh: make(chan error, 1),
+		log:      log,
 	}
 
 	id := shortuuid.New()
@@ -167,17 +169,6 @@ func StartFirecrackerServer(ctx context.Context, log loggingtypes.Logger, firecr
 		}
 	}
 
-	watcher, err := inotify.NewWatcher()
-	if err != nil {
-		return nil, errors.Join(ErrCouldNotCreateInotifyWatcher, err)
-	}
-	defer watcher.Close()
-
-	err = watcher.AddWatch(server.VMPath, inotify.InCreate)
-	if err != nil {
-		return nil, errors.Join(ErrCouldNotAddInotifyWatch, err)
-	}
-
 	err = server.cmd.Start()
 	if err != nil {
 		return nil, errors.Join(ErrCouldNotStartFirecrackerServer, err)
@@ -212,15 +203,6 @@ func StartFirecrackerServer(ctx context.Context, log loggingtypes.Logger, firecr
 	defer goroutineManager.StopAllGoroutines()
 	defer goroutineManager.CreateBackgroundPanicCollector()()
 
-	goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
-		// Cause the `range Watcher.Event` loop to break if context is cancelled, e.g. when command errors
-		<-goroutineManager.Context().Done()
-
-		if err := watcher.Close(); err != nil {
-			panic(errors.Join(ErrCouldNotCloseWatcher, err))
-		}
-	})
-
 	// If the context is cancelled, shut down the server
 	goroutineManager.StartBackgroundGoroutine(func(_ context.Context) {
 		// Cause the Firecracker process to be closed if context is cancelled - cancelling `ctx` on the `exec.Command`
@@ -232,26 +214,43 @@ func StartFirecrackerServer(ctx context.Context, log loggingtypes.Logger, firecr
 		}
 	})
 
-	server.socketCreated = false
-
 	socketPath := filepath.Join(server.VMPath, FirecrackerSocketName)
-	for ev := range watcher.Event {
-		if filepath.Clean(ev.Name) == filepath.Clean(socketPath) {
-			server.socketCreated = true
-			break
+
+	ticker := time.NewTicker(10 * time.Millisecond)
+	waitCtx, waitCancel := context.WithTimeout(ctx, time.Second*10)
+
+	defer func() {
+		waitCancel()
+		ticker.Stop()
+	}()
+
+	logger := logrus.New()
+	clog := logger.WithField("subsystem", "firecracker")
+	clog.WithField("socketPath", socketPath).Info("Loading snapshot")
+	client := sdk.NewClient(socketPath, clog, true)
+
+	for {
+		select {
+		case <-waitCtx.Done():
+			return nil, errors.Join(ErrNoSocketCreated, waitCtx.Err())
+		case e := <-server.cmdErrCh: // The cmd exited already. Return it as an error here.
+			return nil, e
+		case <-ticker.C:
+			_, err := os.Stat(socketPath)
+			if err != nil {
+				continue
+			}
+
+			// Send test HTTP request to make sure socket is available
+			_, err = client.GetMachineConfiguration()
+			if err != nil {
+				continue
+			}
+
+			if log != nil {
+				log.Info().Str("VMPath", server.VMPath).Msg("Firecracker server up and ready")
+			}
+			return server, nil
 		}
 	}
-
-	if !server.socketCreated {
-		return nil, ErrNoSocketCreated
-	}
-
-	// TODO: Add more to this select...
-	select {
-	case e := <-server.cmdErrCh: // The cmd exited already. Return it as an error here.
-		return nil, e
-	default:
-	}
-
-	return
 }
