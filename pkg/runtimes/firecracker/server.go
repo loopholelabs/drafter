@@ -15,7 +15,6 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/lithammer/shortuuid/v4"
-	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 	"golang.org/x/sys/unix"
 )
 
@@ -50,6 +49,8 @@ type FirecrackerServer struct {
 	cmdWg    sync.WaitGroup
 	cmdErr   error
 	cmdErrCh chan error
+
+	client *sdk.Client
 }
 
 /**
@@ -192,27 +193,16 @@ func StartFirecrackerServer(ctx context.Context, log loggingtypes.Logger, firecr
 		log.Debug().Int("VMPid", server.VMPid).Msg("Started firecracker server")
 	}
 
-	// TODO: Tidy up under here...
-
-	goroutineManager := manager.NewGoroutineManager(
-		ctx,
-		&errs,
-		manager.GoroutineManagerHooks{},
-	)
-	defer goroutineManager.Wait()
-	defer goroutineManager.StopAllGoroutines()
-	defer goroutineManager.CreateBackgroundPanicCollector()()
-
-	// If the context is cancelled, shut down the server
-	goroutineManager.StartBackgroundGoroutine(func(_ context.Context) {
-		// Cause the Firecracker process to be closed if context is cancelled - cancelling `ctx` on the `exec.Command`
-		// doesn't actually stop it, it only stops trying to start it!
-		<-ctx.Done() // We use ctx, not goroutineManager.Context() here since this resource outlives the function call
-
-		if err := server.Close(); err != nil {
-			panic(errors.Join(ErrCouldNotCloseServer, err))
+	// If the context is cancelled, close the server.
+	go func() {
+		<-ctx.Done()
+		err := server.Close()
+		if err != nil {
+			if server.log != nil {
+				server.log.Error().Err(err).Msg("close fc error after context cancelled")
+			}
 		}
-	})
+	}()
 
 	socketPath := filepath.Join(server.VMPath, FirecrackerSocketName)
 
@@ -227,7 +217,7 @@ func StartFirecrackerServer(ctx context.Context, log loggingtypes.Logger, firecr
 	logger := logrus.New()
 	clog := logger.WithField("subsystem", "firecracker")
 	clog.WithField("socketPath", socketPath).Info("Loading snapshot")
-	client := sdk.NewClient(socketPath, clog, true)
+	server.client = sdk.NewClient(socketPath, clog, true)
 
 	for {
 		select {
@@ -242,7 +232,7 @@ func StartFirecrackerServer(ctx context.Context, log loggingtypes.Logger, firecr
 			}
 
 			// Send test HTTP request to make sure socket is available
-			_, err = client.GetMachineConfiguration()
+			_, err = server.client.GetMachineConfiguration()
 			if err != nil {
 				continue
 			}
