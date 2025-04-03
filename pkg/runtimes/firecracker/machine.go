@@ -58,7 +58,33 @@ const (
 	FirecrackerSocketName = "firecracker.sock"
 )
 
-type FirecrackerServer struct {
+type FirecrackerMachineConfig struct {
+	FirecrackerBin string
+	JailerBin      string
+	ChrootBaseDir  string
+	UID            int
+	GID            int
+	NetNS          string
+	NumaNode       int
+	CgroupVersion  int
+	EnableOutput   bool
+	EnableInput    bool
+}
+
+type NetworkConfiguration struct {
+	Interface string
+	MAC       string
+}
+
+type VMConfiguration struct {
+	CPUCount    int64
+	MemorySize  int64
+	CPUTemplate string
+	BootArgs    string
+}
+
+type FirecrackerMachine struct {
+	conf   *FirecrackerMachineConfig
 	log    loggingtypes.Logger
 	VMPath string
 	VMPid  int
@@ -75,25 +101,24 @@ type FirecrackerServer struct {
 }
 
 /**
- * Start a new firecracker server
+ * Start a new firecracker machine
  *
  */
-func StartFirecrackerServer(ctx context.Context, log loggingtypes.Logger, firecrackerBin string, jailerBin string,
-	chrootBaseDir string, uid int, gid int, netns string, numaNode int,
-	cgroupVersion int, enableOutput bool, enableInput bool) (*FirecrackerServer, error) {
+func StartFirecrackerMachine(ctx context.Context, log loggingtypes.Logger, conf *FirecrackerMachineConfig) (*FirecrackerMachine, error) {
 
 	if log != nil {
-		log.Info().Msg("Starting firecracker server")
+		log.Info().Msg("Starting firecracker machine")
 	}
 
-	server := &FirecrackerServer{
+	server := &FirecrackerMachine{
 		cmdErrCh: make(chan error, 1),
 		log:      log,
+		conf:     conf,
 	}
 
 	id := shortuuid.New()
 
-	server.VMPath = filepath.Join(chrootBaseDir, "firecracker", id, "root")
+	server.VMPath = filepath.Join(conf.ChrootBaseDir, "firecracker", id, "root")
 	err := os.MkdirAll(server.VMPath, os.ModePerm)
 	if err != nil {
 		return nil, errors.Join(ErrCouldNotCreateVMPathDirectory, err)
@@ -104,23 +129,23 @@ func StartFirecrackerServer(ctx context.Context, log loggingtypes.Logger, firecr
 	}
 
 	jBuilder := sdk.NewJailerCommandBuilder().
-		WithBin(jailerBin).
-		WithChrootBaseDir(chrootBaseDir).
-		WithUID(uid).
-		WithGID(gid).
-		WithNetNS(filepath.Join("/var", "run", "netns", netns)).
-		WithCgroupVersion(fmt.Sprintf("%v", cgroupVersion)).
-		WithNumaNode(numaNode).
+		WithBin(conf.JailerBin).
+		WithChrootBaseDir(conf.ChrootBaseDir).
+		WithUID(conf.UID).
+		WithGID(conf.GID).
+		WithNetNS(filepath.Join("/var", "run", "netns", conf.NetNS)).
+		WithCgroupVersion(fmt.Sprintf("%v", conf.CgroupVersion)).
+		WithNumaNode(conf.NumaNode).
 		WithID(id).
-		WithExecFile(firecrackerBin).
+		WithExecFile(conf.FirecrackerBin).
 		WithFirecrackerArgs("--api-sock", FirecrackerSocketName)
 
-	if enableOutput {
+	if conf.EnableOutput {
 		jBuilder = jBuilder.
 			WithStdout(os.Stdout).
 			WithStderr(os.Stderr)
 	}
-	if enableInput {
+	if conf.EnableInput {
 		jBuilder = jBuilder.
 			WithStdin(os.Stdin)
 	}
@@ -128,7 +153,7 @@ func StartFirecrackerServer(ctx context.Context, log loggingtypes.Logger, firecr
 	// Create the command
 	server.cmd = jBuilder.Build(ctx)
 
-	if !enableInput {
+	if !conf.EnableInput {
 		// Don't forward CTRL-C etc. signals from parent to child process
 		// We can't enable this if we set the cmd stdin or we deadlock
 		server.cmd.SysProcAttr = &unix.SysProcAttr{
@@ -157,7 +182,7 @@ func StartFirecrackerServer(ctx context.Context, log loggingtypes.Logger, firecr
 	}()
 
 	if log != nil {
-		log.Debug().Int("VMPid", server.VMPid).Msg("Started firecracker server")
+		log.Debug().Int("VMPid", server.VMPid).Msg("Started firecracker machine")
 	}
 
 	// If the context is cancelled, close the server.
@@ -216,9 +241,9 @@ func StartFirecrackerServer(ctx context.Context, log loggingtypes.Logger, firecr
  * Close the server
  *
  */
-func (fs *FirecrackerServer) Close() error {
+func (fs *FirecrackerMachine) Close() error {
 	if fs.log != nil {
-		fs.log.Info().Str("VMPath", fs.VMPath).Msg("Firecracker server closing")
+		fs.log.Info().Str("VMPath", fs.VMPath).Msg("Firecracker machine closing")
 	}
 
 	if fs.cmd.Process != nil {
@@ -251,7 +276,7 @@ func (fs *FirecrackerServer) Close() error {
  * Wait for the firecracker command to exit, and return any error
  *
  */
-func (fs *FirecrackerServer) Wait() error {
+func (fs *FirecrackerMachine) Wait() error {
 	fs.cmdWg.Wait()
 	err := fs.cmdErr
 
@@ -270,7 +295,7 @@ func (fs *FirecrackerServer) Wait() error {
  * Resume from a snapshot.
  *
  */
-func (fs *FirecrackerServer) ResumeSnapshot(ctx context.Context, statePath string, memoryPath string) error {
+func (fs *FirecrackerMachine) ResumeSnapshot(ctx context.Context, statePath string, memoryPath string) error {
 
 	_, err := fs.client.LoadSnapshot(ctx, &models.SnapshotLoadParams{
 		EnableDiffSnapshots: false,
@@ -294,7 +319,7 @@ func (fs *FirecrackerServer) ResumeSnapshot(ctx context.Context, statePath strin
  * Pause the VM and create a snapshot.
  *
  */
-func (fs *FirecrackerServer) CreateSnapshot(ctx context.Context, statePath string, memoryPath string, snapshotType string) error {
+func (fs *FirecrackerMachine) CreateSnapshot(ctx context.Context, statePath string, memoryPath string, snapshotType string) error {
 
 	if snapshotType != SDKSnapshotTypeMsync {
 		_, err := fs.client.PatchVM(ctx, &models.VM{
@@ -318,14 +343,19 @@ func (fs *FirecrackerServer) CreateSnapshot(ctx context.Context, statePath strin
  * Start VM
  *
  */
-func (fs *FirecrackerServer) StartVM(ctx context.Context, kernelPath string,
-	disks []string, ioEngine string, cpuCount int64, memorySize int64,
-	cpuTemplate string, bootArgs string, hostInterface string,
-	hostMAC string, vsockPath string, vsockCID int64) error {
+func (fs *FirecrackerMachine) StartVM(ctx context.Context, kernelPath string,
+	disks []string, ioEngine string,
+	vmConfig *VMConfiguration, netConfig *NetworkConfiguration,
+
+	// cpuCount int64, memorySize int64, cpuTemplate string, bootArgs string,
+
+	// hostInterface string, hostMAC string,
+
+	vsockPath string, vsockCID int64) error {
 
 	_, err := fs.client.PutGuestBootSource(ctx, &models.BootSource{
 		KernelImagePath: &kernelPath,
-		BootArgs:        bootArgs,
+		BootArgs:        vmConfig.BootArgs,
 	})
 	if err != nil {
 		return errors.Join(ErrCouldNotSetBootSource, err)
@@ -345,9 +375,9 @@ func (fs *FirecrackerServer) StartVM(ctx context.Context, kernelPath string,
 	}
 
 	_, err = fs.client.PutMachineConfiguration(ctx, &models.MachineConfiguration{
-		VcpuCount:   &cpuCount,
-		MemSizeMib:  &memorySize,
-		CPUTemplate: models.CPUTemplate(cpuTemplate).Pointer(),
+		VcpuCount:   &vmConfig.CPUCount,
+		MemSizeMib:  &vmConfig.MemorySize,
+		CPUTemplate: models.CPUTemplate(vmConfig.CPUTemplate).Pointer(),
 	})
 	if err != nil {
 		return errors.Join(ErrCouldNotSetMachineConfig, err)
@@ -362,10 +392,10 @@ func (fs *FirecrackerServer) StartVM(ctx context.Context, kernelPath string,
 		return errors.Join(ErrCouldNotSetVSock, err)
 	}
 
-	_, err = fs.client.PutGuestNetworkInterfaceByID(ctx, hostInterface, &models.NetworkInterface{
-		IfaceID:     &hostInterface,
-		GuestMac:    hostMAC,
-		HostDevName: &hostInterface,
+	_, err = fs.client.PutGuestNetworkInterfaceByID(ctx, netConfig.Interface, &models.NetworkInterface{
+		IfaceID:     &netConfig.Interface,
+		GuestMac:    netConfig.MAC,
+		HostDevName: &netConfig.Interface,
 	})
 
 	if err != nil {

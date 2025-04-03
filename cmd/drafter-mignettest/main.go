@@ -195,7 +195,7 @@ func handleConnection(migration int, conn net.Conn, log types.Logger, firecracke
 	// Create a new RuntimeProvider
 	rp2 := &rfirecracker.FirecrackerRuntimeProvider[struct{}, ipc.AgentServerRemote[struct{}], struct{}]{
 		Log: log,
-		HypervisorConfiguration: rfirecracker.HypervisorConfiguration{
+		HypervisorConfiguration: rfirecracker.FirecrackerMachineConfig{
 			FirecrackerBin: firecrackerBin,
 			JailerBin:      jailerBin,
 			ChrootBaseDir:  *testDirectory,
@@ -294,7 +294,7 @@ func handleConnection(migration int, conn net.Conn, log types.Logger, firecracke
 func setupFirstPeer(log types.Logger, firecrackerBin string, jailerBin string, snapDir string) (*peer.Peer, error) {
 	rp := &rfirecracker.FirecrackerRuntimeProvider[struct{}, ipc.AgentServerRemote[struct{}], struct{}]{
 		Log: log,
-		HypervisorConfiguration: rfirecracker.HypervisorConfiguration{
+		HypervisorConfiguration: rfirecracker.FirecrackerMachineConfig{
 			FirecrackerBin: firecrackerBin,
 			JailerBin:      jailerBin,
 			ChrootBaseDir:  *testDirectory,

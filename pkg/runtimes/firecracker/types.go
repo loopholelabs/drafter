@@ -21,33 +21,3 @@ type SnapshotDevice struct {
 	Input  string `json:"input"`
 	Output string `json:"output"`
 }
-
-type HypervisorConfiguration struct {
-	FirecrackerBin string
-	JailerBin      string
-
-	ChrootBaseDir string
-
-	UID int
-	GID int
-
-	NetNS         string
-	NumaNode      int
-	CgroupVersion int
-
-	EnableOutput bool
-	EnableInput  bool
-}
-
-type NetworkConfiguration struct {
-	Interface string
-	MAC       string
-}
-
-type VMConfiguration struct {
-	CPUCount    int64
-	MemorySize  int64
-	CPUTemplate string
-
-	BootArgs string
-}

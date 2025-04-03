@@ -120,7 +120,7 @@ func TestMigration(t *testing.T) {
 
 	rp := &rfirecracker.FirecrackerRuntimeProvider[struct{}, ipc.AgentServerRemote[struct{}], struct{}]{
 		Log: log,
-		HypervisorConfiguration: rfirecracker.HypervisorConfiguration{
+		HypervisorConfiguration: rfirecracker.FirecrackerMachineConfig{
 			FirecrackerBin: firecrackerBin,
 			JailerBin:      jailerBin,
 			ChrootBaseDir:  testPeerDirCowS3,
@@ -175,7 +175,7 @@ func TestMigration(t *testing.T) {
 		// Create a new RuntimeProvider
 		rp2 := &rfirecracker.FirecrackerRuntimeProvider[struct{}, ipc.AgentServerRemote[struct{}], struct{}]{
 			Log: log,
-			HypervisorConfiguration: rfirecracker.HypervisorConfiguration{
+			HypervisorConfiguration: rfirecracker.FirecrackerMachineConfig{
 				FirecrackerBin: firecrackerBin,
 				JailerBin:      jailerBin,
 				ChrootBaseDir:  testPeerDirCowS3,

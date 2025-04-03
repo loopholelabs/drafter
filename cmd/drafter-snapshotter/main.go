@@ -110,7 +110,7 @@ func main() {
 			ResumeTimeout:     *resumeTimeout,
 		},
 
-		rfirecracker.HypervisorConfiguration{
+		rfirecracker.FirecrackerMachineConfig{
 			FirecrackerBin: firecrackerBin,
 			JailerBin:      jailerBin,
 			ChrootBaseDir:  *chrootBaseDir,

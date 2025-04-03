@@ -42,7 +42,7 @@ var (
 
 func CreateSnapshot(log types.Logger, ctx context.Context, devices []SnapshotDevice, ioEngineSync bool,
 	vmConfiguration VMConfiguration, livenessConfiguration LivenessConfiguration,
-	hypervisorConfiguration HypervisorConfiguration, networkConfiguration NetworkConfiguration,
+	hypervisorConfiguration FirecrackerMachineConfig, networkConfiguration NetworkConfiguration,
 	agentConfiguration AgentConfiguration,
 ) (errs error) {
 	if log != nil {
@@ -61,20 +61,7 @@ func CreateSnapshot(log types.Logger, ctx context.Context, devices []SnapshotDev
 		return errors.Join(ErrCouldNotCreateChrootBaseDirectory, err)
 	}
 
-	server, err := StartFirecrackerServer(
-		ctx,
-		log,
-		hypervisorConfiguration.FirecrackerBin,
-		hypervisorConfiguration.JailerBin,
-		hypervisorConfiguration.ChrootBaseDir,
-		hypervisorConfiguration.UID,
-		hypervisorConfiguration.GID,
-		hypervisorConfiguration.NetNS,
-		hypervisorConfiguration.NumaNode,
-		hypervisorConfiguration.CgroupVersion,
-		hypervisorConfiguration.EnableOutput,
-		hypervisorConfiguration.EnableInput,
-	)
+	server, err := StartFirecrackerMachine(ctx, log, &hypervisorConfiguration)
 
 	if err != nil {
 		return errors.Join(ErrCouldNotStartFirecrackerServer, err)
@@ -128,20 +115,8 @@ func CreateSnapshot(log types.Logger, ctx context.Context, devices []SnapshotDev
 		ioEngine = SDKIOEngineSync
 	}
 
-	err = server.StartVM(
-		ctx,
-		common.DeviceKernelName,
-		disks,
-		ioEngine,
-		vmConfiguration.CPUCount,
-		vmConfiguration.MemorySize,
-		vmConfiguration.CPUTemplate,
-		vmConfiguration.BootArgs,
-		networkConfiguration.Interface,
-		networkConfiguration.MAC,
-		VSockName,
-		ipc.VSockCIDGuest,
-	)
+	err = server.StartVM(ctx, common.DeviceKernelName, disks, ioEngine,
+		&vmConfiguration, &networkConfiguration, VSockName, ipc.VSockCIDGuest)
 
 	if err != nil {
 		return errors.Join(ErrCouldNotStartVM, err)
@@ -223,7 +198,7 @@ func copySnapshotFiles(devices []SnapshotDevice, vmPath string) error {
  * Create the final snapshot
  *
  */
-func createFinalSnapshot(ctx context.Context, server *FirecrackerServer, vsockPort uint32, vmPath string, uid int, gid int) error {
+func createFinalSnapshot(ctx context.Context, server *FirecrackerMachine, vsockPort uint32, vmPath string, uid int, gid int) error {
 	err := server.CreateSnapshot(
 		ctx,
 		common.DeviceStateName,

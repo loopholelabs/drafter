@@ -74,7 +74,7 @@ func main() {
 	// Resume and suspend the vm a few times
 	for n := 0; n < *iterations; n++ {
 		fmt.Printf("\nRUN %d\n", n)
-		r, err := rfirecracker.StartRunner(log, ctx, ctx, rfirecracker.HypervisorConfiguration{
+		r, err := rfirecracker.StartRunner(log, ctx, ctx, rfirecracker.FirecrackerMachineConfig{
 			FirecrackerBin: firecrackerBin,
 			JailerBin:      jailerBin,
 			ChrootBaseDir:  resumeTestDir,
@@ -218,7 +218,7 @@ func setupSnapshot(log types.Logger, ctx context.Context) string {
 			LivenessVSockPort: uint32(25),
 			ResumeTimeout:     time.Minute,
 		},
-		rfirecracker.HypervisorConfiguration{
+		rfirecracker.FirecrackerMachineConfig{
 			FirecrackerBin: firecrackerBin,
 			JailerBin:      jailerBin,
 			ChrootBaseDir:  snapshotDir,

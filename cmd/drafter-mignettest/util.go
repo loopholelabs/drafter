@@ -75,7 +75,7 @@ func setupSnapshot(log types.Logger, ctx context.Context, snapDir string, blueDi
 			LivenessVSockPort: uint32(25),
 			ResumeTimeout:     time.Minute,
 		},
-		rfirecracker.HypervisorConfiguration{
+		rfirecracker.FirecrackerMachineConfig{
 			FirecrackerBin: firecrackerBin,
 			JailerBin:      jailerBin,
 			ChrootBaseDir:  snapDir,

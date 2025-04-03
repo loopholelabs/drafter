@@ -23,7 +23,7 @@ type FirecrackerRuntimeProvider[L ipc.AgentServerLocal, R ipc.AgentServerRemote[
 	Log                     types.Logger
 	Runner                  *Runner
 	ResumedRunner           *ResumedRunner[L, R, G]
-	HypervisorConfiguration HypervisorConfiguration
+	HypervisorConfiguration FirecrackerMachineConfig
 	StateName               string
 	MemoryName              string
 

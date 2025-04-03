@@ -61,7 +61,7 @@ func TestResumeSuspend(t *testing.T) {
 
 	// Resume and suspend the vm a few times
 	for n := 0; n < 10; n++ {
-		r, err := rfirecracker.StartRunner(log, ctx, ctx, rfirecracker.HypervisorConfiguration{
+		r, err := rfirecracker.StartRunner(log, ctx, ctx, rfirecracker.FirecrackerMachineConfig{
 			FirecrackerBin: firecrackerBin,
 			JailerBin:      jailerBin,
 			ChrootBaseDir:  resumeTestDir,

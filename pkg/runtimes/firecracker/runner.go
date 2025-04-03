@@ -19,8 +19,8 @@ type Runner struct {
 	VMPath                  string
 	VMPid                   int
 	ongoingResumeWg         sync.WaitGroup
-	hypervisorConfiguration HypervisorConfiguration
-	server                  *FirecrackerServer
+	hypervisorConfiguration FirecrackerMachineConfig
+	server                  *FirecrackerMachine
 	rescueCtx               context.Context
 }
 
@@ -47,7 +47,7 @@ func (r *Runner) Close() error {
 }
 
 func StartRunner(log types.Logger, hypervisorCtx context.Context, rescueCtx context.Context,
-	hypervisorConfiguration HypervisorConfiguration) (*Runner, error) {
+	hypervisorConfiguration FirecrackerMachineConfig) (*Runner, error) {
 
 	runner := &Runner{
 		log:                     log,
@@ -73,20 +73,7 @@ func StartRunner(log types.Logger, hypervisorCtx context.Context, rescueCtx cont
 		cancelFirecrackerCtx()
 	}()
 
-	runner.server, err = StartFirecrackerServer(
-		firecrackerCtx,
-		log,
-		hypervisorConfiguration.FirecrackerBin,
-		hypervisorConfiguration.JailerBin,
-		hypervisorConfiguration.ChrootBaseDir,
-		hypervisorConfiguration.UID,
-		hypervisorConfiguration.GID,
-		hypervisorConfiguration.NetNS,
-		hypervisorConfiguration.NumaNode,
-		hypervisorConfiguration.CgroupVersion,
-		hypervisorConfiguration.EnableOutput,
-		hypervisorConfiguration.EnableInput,
-	)
+	runner.server, err = StartFirecrackerMachine(firecrackerCtx, log, &hypervisorConfiguration)
 	if err != nil {
 		return nil, errors.Join(ErrCouldNotStartFirecrackerServer, err)
 	}

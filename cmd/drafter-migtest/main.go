@@ -109,7 +109,7 @@ func main() {
 
 	rp := &rfirecracker.FirecrackerRuntimeProvider[struct{}, ipc.AgentServerRemote[struct{}], struct{}]{
 		Log: log,
-		HypervisorConfiguration: rfirecracker.HypervisorConfiguration{
+		HypervisorConfiguration: rfirecracker.FirecrackerMachineConfig{
 			FirecrackerBin: firecrackerBin,
 			JailerBin:      jailerBin,
 			ChrootBaseDir:  testPeerDirCowS3,
@@ -167,7 +167,7 @@ func main() {
 		// Create a new RuntimeProvider
 		rp2 := &rfirecracker.FirecrackerRuntimeProvider[struct{}, ipc.AgentServerRemote[struct{}], struct{}]{
 			Log: log,
-			HypervisorConfiguration: rfirecracker.HypervisorConfiguration{
+			HypervisorConfiguration: rfirecracker.FirecrackerMachineConfig{
 				FirecrackerBin: firecrackerBin,
 				JailerBin:      jailerBin,
 				ChrootBaseDir:  testPeerDirCowS3,
@@ -458,7 +458,7 @@ func setupSnapshot(log types.Logger, ctx context.Context) string {
 			LivenessVSockPort: uint32(25),
 			ResumeTimeout:     time.Minute,
 		},
-		rfirecracker.HypervisorConfiguration{
+		rfirecracker.FirecrackerMachineConfig{
 			FirecrackerBin: firecrackerBin,
 			JailerBin:      jailerBin,
 			ChrootBaseDir:  createSnapshotDir,

@@ -159,7 +159,7 @@ func main() {
 		goroutineManager.Context(),
 		context.Background(), // Never give up on rescue operations
 
-		rfirecracker.HypervisorConfiguration{
+		rfirecracker.FirecrackerMachineConfig{
 			FirecrackerBin: firecrackerBin,
 			JailerBin:      jailerBin,
 
