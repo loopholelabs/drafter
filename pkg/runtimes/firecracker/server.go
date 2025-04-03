@@ -74,7 +74,17 @@ func (fs *FirecrackerServer) Close() error {
 		}
 		fs.closeLock.Unlock()
 	}
-	return fs.Wait()
+
+	// Wait for the process to exit
+	fs.cmdWg.Wait()
+
+	// We killed it! We expect this
+	if fs.cmdErr.Error() == errSignalKilled.Error() {
+		return nil
+	}
+
+	// Something else bad happened
+	return fs.cmdErr
 }
 
 /**
@@ -170,15 +180,6 @@ func StartFirecrackerServer(ctx context.Context, log loggingtypes.Logger, firecr
 
 	// TODO: Tidy up under here...
 
-	goroutineManager := manager.NewGoroutineManager(
-		ctx,
-		&errs,
-		manager.GoroutineManagerHooks{},
-	)
-	defer goroutineManager.Wait()
-	defer goroutineManager.StopAllGoroutines()
-	defer goroutineManager.CreateBackgroundPanicCollector()()
-
 	// We can only run this once since `cmd.Wait()` releases resources after the first call
 	server.Wait = sync.OnceValue(func() error {
 		server.cmdWg.Wait()
@@ -197,6 +198,15 @@ func StartFirecrackerServer(ctx context.Context, log loggingtypes.Logger, firecr
 
 		return nil
 	})
+
+	goroutineManager := manager.NewGoroutineManager(
+		ctx,
+		&errs,
+		manager.GoroutineManagerHooks{},
+	)
+	defer goroutineManager.Wait()
+	defer goroutineManager.StopAllGoroutines()
+	defer goroutineManager.CreateBackgroundPanicCollector()()
 
 	// It is safe to start a background goroutine here since we return a wait function
 	// Despite returning a wait function, we still need to start this goroutine however so that any errors
