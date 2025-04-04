@@ -73,7 +73,7 @@ func (rr *ResumedRunner[L, R, G]) Msync(ctx context.Context) error {
 	}
 
 	if !rr.snapshotLoadConfiguration.ExperimentalMapPrivate {
-		err := rr.runner.server.CreateSnapshot(
+		err := rr.runner.Machine.CreateSnapshot(
 			ctx,
 			rr.stateName,
 			"",
@@ -120,7 +120,7 @@ func (rr *ResumedRunner[L, R, G]) createSnapshot(ctx context.Context) error {
 	memoryCopyName := shortuuid.New()
 
 	if rr.snapshotLoadConfiguration.ExperimentalMapPrivate {
-		err := rr.runner.server.CreateSnapshot(
+		err := rr.runner.Machine.CreateSnapshot(
 			ctx,
 			// We need to write the state and memory to a separate file since we can't truncate an `mmap`ed file
 			stateCopyName,
@@ -131,7 +131,7 @@ func (rr *ResumedRunner[L, R, G]) createSnapshot(ctx context.Context) error {
 			return errors.Join(ErrCouldNotCreateSnapshot, err)
 		}
 
-		err = rr.runner.server.Close()
+		err = rr.runner.Machine.Close()
 		if err != nil {
 			return errors.Join(ErrCouldNotCloseServer, err)
 		}
@@ -145,7 +145,7 @@ func (rr *ResumedRunner[L, R, G]) createSnapshot(ctx context.Context) error {
 			{rr.stateName, stateCopyName, rr.snapshotLoadConfiguration.ExperimentalMapPrivateStateOutput},
 			{rr.memoryName, memoryCopyName, rr.snapshotLoadConfiguration.ExperimentalMapPrivateMemoryOutput},
 		} {
-			inputFile, err := os.Open(filepath.Join(rr.runner.server.VMPath, device[1]))
+			inputFile, err := os.Open(filepath.Join(rr.runner.Machine.VMPath, device[1]))
 			if err != nil {
 				return errors.Join(ErrCouldNotOpenInputFile, err)
 			}
@@ -155,7 +155,7 @@ func (rr *ResumedRunner[L, R, G]) createSnapshot(ctx context.Context) error {
 			addPadding := true
 
 			if outputPath == "" {
-				outputPath = filepath.Join(rr.runner.server.VMPath, device[0])
+				outputPath = filepath.Join(rr.runner.Machine.VMPath, device[0])
 				addPadding = false
 			}
 
@@ -186,7 +186,7 @@ func (rr *ResumedRunner[L, R, G]) createSnapshot(ctx context.Context) error {
 		}
 
 	} else {
-		err := rr.runner.server.CreateSnapshot(ctx, rr.stateName, "", SDKSnapshotTypeMsyncAndState)
+		err := rr.runner.Machine.CreateSnapshot(ctx, rr.stateName, "", SDKSnapshotTypeMsyncAndState)
 		if err != nil {
 			return errors.Join(ErrCouldNotCreateSnapshot, err)
 		}
@@ -232,7 +232,7 @@ func Resume[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 		}
 	}()
 
-	err := resumedRunner.rpc.Start(runner.server.VMPath, uint32(agentVSockPort), agentServerLocal, runner.hypervisorConfiguration.UID, runner.hypervisorConfiguration.GID)
+	err := resumedRunner.rpc.Start(runner.Machine.VMPath, uint32(agentVSockPort), agentServerLocal, runner.Machine.Conf.UID, runner.Machine.Conf.GID)
 	if err != nil {
 		if runner.log != nil {
 			runner.log.Error().Err(err).Msg("Resume resumedRunner failed to start rpc")
@@ -243,7 +243,7 @@ func Resume[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 	resumeSnapshotAndAcceptCtx, cancelResumeSnapshotAndAcceptCtx := context.WithTimeout(ctx, resumeTimeout)
 	defer cancelResumeSnapshotAndAcceptCtx()
 
-	err = runner.server.ResumeSnapshot(
+	err = runner.Machine.ResumeSnapshot(
 		resumeSnapshotAndAcceptCtx,
 		resumedRunner.stateName,
 		resumedRunner.memoryName,
@@ -254,26 +254,6 @@ func Resume[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 			runner.log.Error().Err(err).Msg("Resume resumedRunner failed to resume snapshot")
 		}
 		return nil, errors.Join(ErrCouldNotResumeSnapshot, err)
-	}
-
-	// Set something up to do a snapshot if anything fails, so that we can retry etc
-	recoverSnapshot := func() {
-		suspendCtx, cancelSuspendCtx := context.WithTimeout(runner.rescueCtx, rescueTimeout)
-		defer cancelSuspendCtx()
-
-		err := resumedRunner.rpc.Close()
-		if err != nil {
-			if runner.log != nil {
-				runner.log.Error().Err(err).Msg("Resume resumedRunner failed to recover")
-			}
-		}
-
-		// If a resume failed, flush the snapshot so that we can re-try
-		if err := resumedRunner.createSnapshot(suspendCtx); err != nil {
-			if runner.log != nil {
-				runner.log.Error().Err(err).Msg("Resume resumedRunner failed to recover snapshot")
-			}
-		}
 	}
 
 	rpcErr := make(chan error, 1)
@@ -291,7 +271,6 @@ func Resume[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 		}
 		runner.log.Info().Msg("Resume resumedRunner failed to call AfterResume. Retrying...")
 		if numRetries == 0 {
-			recoverSnapshot()
 			return nil, err
 		}
 		numRetries--
@@ -300,10 +279,8 @@ func Resume[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 	// Check if there was any error from the runner, or from the rpc and if so return it.
 	select {
 	case err := <-runnerErr:
-		recoverSnapshot()
 		return nil, err
 	case err := <-rpcErr:
-		recoverSnapshot()
 		return nil, err
 	default:
 	}

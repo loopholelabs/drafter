@@ -134,11 +134,11 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) FlushData(ctx context.Context) er
 }
 
 func (rp *FirecrackerRuntimeProvider[L, R, G]) DevicePath() string {
-	return rp.Runner.VMPath
+	return rp.Runner.Machine.VMPath
 }
 
 func (rp *FirecrackerRuntimeProvider[L, R, G]) GetVMPid() int {
-	return rp.Runner.VMPid
+	return rp.Runner.Machine.VMPid
 }
 
 func (rp *FirecrackerRuntimeProvider[L, R, G]) Close() error {

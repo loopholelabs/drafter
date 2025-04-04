@@ -266,7 +266,7 @@ func main() {
 			return
 
 		default:
-			if err := unix.Mknod(filepath.Join(r.VMPath, device.Name), unix.S_IFBLK|0666, deviceID); err != nil {
+			if err := unix.Mknod(filepath.Join(r.Machine.VMPath, device.Name), unix.S_IFBLK|0666, deviceID); err != nil {
 				panic(err)
 			}
 		}
@@ -310,7 +310,7 @@ func main() {
 		}
 	})
 
-	log.Info().Str("vmpath", r.VMPath).Int64("ms", time.Since(before).Milliseconds()).Msg("Resumed VM")
+	log.Info().Str("vmpath", r.Machine.VMPath).Int64("ms", time.Since(before).Milliseconds()).Msg("Resumed VM")
 
 	bubbleSignals = true
 

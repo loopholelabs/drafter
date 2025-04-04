@@ -84,7 +84,7 @@ type VMConfiguration struct {
 }
 
 type FirecrackerMachine struct {
-	conf   *FirecrackerMachineConfig
+	Conf   *FirecrackerMachineConfig
 	log    loggingtypes.Logger
 	VMPath string
 	VMPid  int
@@ -113,7 +113,7 @@ func StartFirecrackerMachine(ctx context.Context, log loggingtypes.Logger, conf 
 	server := &FirecrackerMachine{
 		cmdErrCh: make(chan error, 1),
 		log:      log,
-		conf:     conf,
+		Conf:     conf,
 	}
 
 	id := shortuuid.New()

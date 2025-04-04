@@ -93,12 +93,12 @@ func main() {
 		// Copy the devices in from the last place...
 		for _, d := range deviceFiles {
 			src := path.Join(devicesAt, d)
-			dst := path.Join(r.VMPath, d)
+			dst := path.Join(r.Machine.VMPath, d)
 			hash := calcHash(src)
 			os.Link(src, dst)
 			fmt.Printf("Device hash %x (%s)\n", hash, d)
 		}
-		devicesAt = r.VMPath
+		devicesAt = r.Machine.VMPath
 
 		// Now we can close the previous runner
 		if previousRunner != nil {

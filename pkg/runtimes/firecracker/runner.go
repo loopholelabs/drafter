@@ -15,30 +15,27 @@ var (
 )
 
 type Runner struct {
-	log                     types.Logger
-	VMPath                  string
-	VMPid                   int
-	ongoingResumeWg         sync.WaitGroup
-	hypervisorConfiguration FirecrackerMachineConfig
-	server                  *FirecrackerMachine
-	rescueCtx               context.Context
+	log             types.Logger
+	ongoingResumeWg sync.WaitGroup
+	Machine         *FirecrackerMachine
+	rescueCtx       context.Context
 }
 
 func (r *Runner) Wait() error {
-	if r.server != nil {
-		return r.server.Wait()
+	if r.Machine != nil {
+		return r.Machine.Wait()
 	}
 	return nil
 }
 
 func (r *Runner) Close() error {
-	if r.server != nil {
-		err := r.server.Close()
+	if r.Machine != nil {
+		err := r.Machine.Close()
 		if err != nil {
 			return errors.Join(ErrCouldNotCloseServer, err)
 		}
 
-		err = os.RemoveAll(filepath.Dir(r.VMPath))
+		err = os.RemoveAll(filepath.Dir(r.Machine.VMPath))
 		if err != nil {
 			return errors.Join(ErrCouldNotRemoveVMDir, err)
 		}
@@ -50,9 +47,8 @@ func StartRunner(log types.Logger, hypervisorCtx context.Context, rescueCtx cont
 	hypervisorConfiguration FirecrackerMachineConfig) (*Runner, error) {
 
 	runner := &Runner{
-		log:                     log,
-		hypervisorConfiguration: hypervisorConfiguration,
-		rescueCtx:               rescueCtx,
+		log:       log,
+		rescueCtx: rescueCtx,
 	}
 
 	if log != nil {
@@ -73,16 +69,13 @@ func StartRunner(log types.Logger, hypervisorCtx context.Context, rescueCtx cont
 		cancelFirecrackerCtx()
 	}()
 
-	runner.server, err = StartFirecrackerMachine(firecrackerCtx, log, &hypervisorConfiguration)
+	runner.Machine, err = StartFirecrackerMachine(firecrackerCtx, log, &hypervisorConfiguration)
 	if err != nil {
 		return nil, errors.Join(ErrCouldNotStartFirecrackerServer, err)
 	}
 
-	runner.VMPath = runner.server.VMPath
-	runner.VMPid = runner.server.VMPid
-
 	if log != nil {
-		log.Info().Str("vmpath", runner.VMPath).Int("vmpid", runner.VMPid).Msg("firecracker runner started")
+		log.Info().Str("vmpath", runner.Machine.VMPath).Int("vmpid", runner.Machine.VMPid).Msg("firecracker runner started")
 	}
 
 	return runner, nil
