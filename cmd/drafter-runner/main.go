@@ -277,7 +277,7 @@ func main() {
 
 	before := time.Now()
 
-	resumedRunner, err := rfirecracker.Resume[struct{}, ipc.AgentServerRemote[struct{}], struct{}](r,
+	resumedRunner, err := rfirecracker.Resume[struct{}, ipc.AgentServerRemote[struct{}], struct{}](r.Machine,
 		goroutineManager.Context(),
 
 		*resumeTimeout,

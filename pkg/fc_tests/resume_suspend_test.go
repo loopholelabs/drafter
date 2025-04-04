@@ -94,7 +94,7 @@ func TestResumeSuspend(t *testing.T) {
 			assert.NoError(t, err)
 		}
 
-		rr, err := rfirecracker.Resume[struct{}, ipc.AgentServerRemote[struct{}], struct{}](r, ctx, 30*time.Second, 30*time.Second,
+		rr, err := rfirecracker.Resume[struct{}, ipc.AgentServerRemote[struct{}], struct{}](r.Machine, ctx, 30*time.Second, 30*time.Second,
 			agentVsockPort, agentLocal, agentHooks, snapConfig)
 		assert.NoError(t, err)
 

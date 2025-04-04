@@ -75,7 +75,7 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Resume(resumeTimeout time.Duratio
 	}
 
 	rp.ResumedRunner, err = Resume[L, R, G](
-		rp.Runner,
+		rp.Runner.Machine,
 		resumeCtx,
 		resumeTimeout,
 		rescueTimeout,

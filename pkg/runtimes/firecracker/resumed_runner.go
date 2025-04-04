@@ -31,7 +31,6 @@ type ResumedRunner[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] st
 	snapshotLoadConfiguration SnapshotLoadConfiguration
 
 	machine *FirecrackerMachine
-	runner  *Runner
 
 	stateName  string
 	memoryName string
@@ -75,7 +74,7 @@ func (rr *ResumedRunner[L, R, G]) Msync(ctx context.Context) error {
 	}
 
 	if !rr.snapshotLoadConfiguration.ExperimentalMapPrivate {
-		err := rr.runner.Machine.CreateSnapshot(
+		err := rr.machine.CreateSnapshot(
 			ctx,
 			rr.stateName,
 			"",
@@ -122,7 +121,7 @@ func (rr *ResumedRunner[L, R, G]) createSnapshot(ctx context.Context) error {
 	memoryCopyName := shortuuid.New()
 
 	if rr.snapshotLoadConfiguration.ExperimentalMapPrivate {
-		err := rr.runner.Machine.CreateSnapshot(
+		err := rr.machine.CreateSnapshot(
 			ctx,
 			// We need to write the state and memory to a separate file since we can't truncate an `mmap`ed file
 			stateCopyName,
@@ -133,7 +132,7 @@ func (rr *ResumedRunner[L, R, G]) createSnapshot(ctx context.Context) error {
 			return errors.Join(ErrCouldNotCreateSnapshot, err)
 		}
 
-		err = rr.runner.Machine.Close()
+		err = rr.machine.Close()
 		if err != nil {
 			return errors.Join(ErrCouldNotCloseServer, err)
 		}
@@ -147,7 +146,7 @@ func (rr *ResumedRunner[L, R, G]) createSnapshot(ctx context.Context) error {
 			{rr.stateName, stateCopyName, rr.snapshotLoadConfiguration.ExperimentalMapPrivateStateOutput},
 			{rr.memoryName, memoryCopyName, rr.snapshotLoadConfiguration.ExperimentalMapPrivateMemoryOutput},
 		} {
-			inputFile, err := os.Open(filepath.Join(rr.runner.Machine.VMPath, device[1]))
+			inputFile, err := os.Open(filepath.Join(rr.machine.VMPath, device[1]))
 			if err != nil {
 				return errors.Join(ErrCouldNotOpenInputFile, err)
 			}
@@ -157,7 +156,7 @@ func (rr *ResumedRunner[L, R, G]) createSnapshot(ctx context.Context) error {
 			addPadding := true
 
 			if outputPath == "" {
-				outputPath = filepath.Join(rr.runner.Machine.VMPath, device[0])
+				outputPath = filepath.Join(rr.machine.VMPath, device[0])
 				addPadding = false
 			}
 
@@ -188,7 +187,7 @@ func (rr *ResumedRunner[L, R, G]) createSnapshot(ctx context.Context) error {
 		}
 
 	} else {
-		err := rr.runner.Machine.CreateSnapshot(ctx, rr.stateName, "", SDKSnapshotTypeMsyncAndState)
+		err := rr.machine.CreateSnapshot(ctx, rr.stateName, "", SDKSnapshotTypeMsyncAndState)
 		if err != nil {
 			return errors.Join(ErrCouldNotCreateSnapshot, err)
 		}
@@ -198,7 +197,7 @@ func (rr *ResumedRunner[L, R, G]) createSnapshot(ctx context.Context) error {
 }
 
 func Resume[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
-	runner *Runner,
+	machine *FirecrackerMachine,
 	ctx context.Context,
 	resumeTimeout time.Duration,
 	rescueTimeout time.Duration,
@@ -207,7 +206,6 @@ func Resume[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 	agentServerHooks ipc.AgentServerAcceptHooks[R, G],
 	snapshotLoadConfiguration SnapshotLoadConfiguration,
 ) (*ResumedRunner[L, R, G], error) {
-	machine := runner.Machine
 
 	if machine.log != nil {
 		machine.log.Debug().Msg("Resume resumedRunner")
@@ -219,7 +217,6 @@ func Resume[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 			log: machine.log,
 		},
 		snapshotLoadConfiguration: snapshotLoadConfiguration,
-		runner:                    runner,
 		machine:                   machine,
 		stateName:                 common.DeviceStateName,
 		memoryName:                common.DeviceMemoryName,
@@ -234,10 +231,10 @@ func Resume[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 		}
 	}()
 
-	err := resumedRunner.rpc.Start(runner.Machine.VMPath, uint32(agentVSockPort), agentServerLocal, runner.Machine.Conf.UID, runner.Machine.Conf.GID)
+	err := resumedRunner.rpc.Start(machine.VMPath, uint32(agentVSockPort), agentServerLocal, machine.Conf.UID, machine.Conf.GID)
 	if err != nil {
-		if runner.Machine.log != nil {
-			runner.Machine.log.Error().Err(err).Msg("Resume resumedRunner failed to start rpc")
+		if machine.log != nil {
+			machine.log.Error().Err(err).Msg("Resume resumedRunner failed to start rpc")
 		}
 		return nil, err
 	}
@@ -245,15 +242,15 @@ func Resume[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 	resumeSnapshotAndAcceptCtx, cancelResumeSnapshotAndAcceptCtx := context.WithTimeout(ctx, resumeTimeout)
 	defer cancelResumeSnapshotAndAcceptCtx()
 
-	err = runner.Machine.ResumeSnapshot(
+	err = machine.ResumeSnapshot(
 		resumeSnapshotAndAcceptCtx,
 		resumedRunner.stateName,
 		resumedRunner.memoryName,
 	)
 
 	if err != nil {
-		if runner.Machine.log != nil {
-			runner.Machine.log.Error().Err(err).Msg("Resume resumedRunner failed to resume snapshot")
+		if machine.log != nil {
+			machine.log.Error().Err(err).Msg("Resume resumedRunner failed to resume snapshot")
 		}
 		return nil, errors.Join(ErrCouldNotResumeSnapshot, err)
 	}
@@ -271,8 +268,8 @@ func Resume[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 				break
 			}
 		}
-		if runner.Machine.log != nil {
-			runner.Machine.log.Info().Msg("Resume resumedRunner failed to call AfterResume. Retrying...")
+		if machine.log != nil {
+			machine.log.Info().Msg("Resume resumedRunner failed to call AfterResume. Retrying...")
 		}
 		if numRetries == 0 {
 			return nil, err

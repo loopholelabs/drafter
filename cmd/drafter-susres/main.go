@@ -113,7 +113,7 @@ func main() {
 			}
 		}
 
-		rr, err := rfirecracker.Resume[struct{}, ipc.AgentServerRemote[struct{}], struct{}](r, ctx, 30*time.Second, 30*time.Second,
+		rr, err := rfirecracker.Resume[struct{}, ipc.AgentServerRemote[struct{}], struct{}](r.Machine, ctx, 30*time.Second, 30*time.Second,
 			agentVsockPort, agentLocal, agentHooks, snapConfig)
 		if err != nil {
 			panic(err)
