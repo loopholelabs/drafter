@@ -154,11 +154,11 @@ func main() {
 		cancel()
 	}()
 
-	r, err := rfirecracker.StartRunner(
-		log,
-		goroutineManager.Context(),
+	m, err := rfirecracker.StartFirecrackerMachine(
 
-		rfirecracker.FirecrackerMachineConfig{
+		goroutineManager.Context(),
+		log,
+		&rfirecracker.FirecrackerMachineConfig{
 			FirecrackerBin: firecrackerBin,
 			JailerBin:      jailerBin,
 
@@ -179,7 +179,7 @@ func main() {
 	defer func() {
 		defer goroutineManager.CreateForegroundPanicCollector()()
 
-		if err := r.Machine.Wait(); err != nil {
+		if err := m.Wait(); err != nil {
 			panic(err)
 		}
 	}()
@@ -191,17 +191,17 @@ func main() {
 	defer func() {
 		defer goroutineManager.CreateForegroundPanicCollector()()
 
-		if err := r.Machine.Close(); err != nil {
+		if err := m.Close(); err != nil {
 			panic(err)
 		}
-		err = os.RemoveAll(filepath.Dir(r.Machine.VMPath))
+		err = os.RemoveAll(filepath.Dir(m.VMPath))
 		if err != nil {
 			panic(err)
 		}
 	}()
 
 	goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
-		if err := r.Machine.Wait(); err != nil {
+		if err := m.Wait(); err != nil {
 			panic(err)
 		}
 	})
@@ -269,7 +269,7 @@ func main() {
 			return
 
 		default:
-			if err := unix.Mknod(filepath.Join(r.Machine.VMPath, device.Name), unix.S_IFBLK|0666, deviceID); err != nil {
+			if err := unix.Mknod(filepath.Join(m.VMPath, device.Name), unix.S_IFBLK|0666, deviceID); err != nil {
 				panic(err)
 			}
 		}
@@ -277,7 +277,7 @@ func main() {
 
 	before := time.Now()
 
-	resumedRunner, err := rfirecracker.Resume[struct{}, ipc.AgentServerRemote[struct{}], struct{}](r.Machine,
+	resumedRunner, err := rfirecracker.Resume[struct{}, ipc.AgentServerRemote[struct{}], struct{}](m,
 		goroutineManager.Context(),
 
 		*resumeTimeout,
@@ -313,7 +313,7 @@ func main() {
 		}
 	})
 
-	log.Info().Str("vmpath", r.Machine.VMPath).Int64("ms", time.Since(before).Milliseconds()).Msg("Resumed VM")
+	log.Info().Str("vmpath", m.VMPath).Int64("ms", time.Since(before).Milliseconds()).Msg("Resumed VM")
 
 	bubbleSignals = true
 

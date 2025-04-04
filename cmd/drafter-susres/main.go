@@ -60,7 +60,7 @@ func main() {
 	}
 
 	devicesAt := snapDir
-	var previousRunner *rfirecracker.Runner
+	var previousMachine *rfirecracker.FirecrackerMachine
 
 	firecrackerBin, err := exec.LookPath("firecracker")
 	if err != nil {
@@ -75,7 +75,7 @@ func main() {
 	// Resume and suspend the vm a few times
 	for n := 0; n < *iterations; n++ {
 		fmt.Printf("\nRUN %d\n", n)
-		r, err := rfirecracker.StartRunner(log, ctx, rfirecracker.FirecrackerMachineConfig{
+		m, err := rfirecracker.StartFirecrackerMachine(ctx, log, &rfirecracker.FirecrackerMachineConfig{
 			FirecrackerBin: firecrackerBin,
 			JailerBin:      jailerBin,
 			ChrootBaseDir:  resumeTestDir,
@@ -94,26 +94,26 @@ func main() {
 		// Copy the devices in from the last place...
 		for _, d := range deviceFiles {
 			src := path.Join(devicesAt, d)
-			dst := path.Join(r.Machine.VMPath, d)
+			dst := path.Join(m.VMPath, d)
 			hash := calcHash(src)
 			os.Link(src, dst)
 			fmt.Printf("Device hash %x (%s)\n", hash, d)
 		}
-		devicesAt = r.Machine.VMPath
+		devicesAt = m.VMPath
 
 		// Now we can close the previous runner
-		if previousRunner != nil {
-			previousRunner.Machine.Close()
+		if previousMachine != nil {
+			previousMachine.Close()
 			if err != nil {
 				panic(err)
 			}
-			err = os.RemoveAll(filepath.Dir(previousRunner.Machine.VMPath))
+			err = os.RemoveAll(filepath.Dir(previousMachine.VMPath))
 			if err != nil {
 				panic(err)
 			}
 		}
 
-		rr, err := rfirecracker.Resume[struct{}, ipc.AgentServerRemote[struct{}], struct{}](r.Machine, ctx, 30*time.Second, 30*time.Second,
+		rr, err := rfirecracker.Resume[struct{}, ipc.AgentServerRemote[struct{}], struct{}](m, ctx, 30*time.Second, 30*time.Second,
 			agentVsockPort, agentLocal, agentHooks, snapConfig)
 		if err != nil {
 			panic(err)
@@ -127,7 +127,7 @@ func main() {
 			panic(err)
 		}
 
-		previousRunner = r
+		previousMachine = m
 	}
 
 	fmt.Printf("\nDONE\n")

@@ -23,7 +23,7 @@ var ErrCouldNotRemoveVMDir = errors.New("could not remove vm dir")
 
 type FirecrackerRuntimeProvider[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] struct {
 	Log                     types.Logger
-	Runner                  *Runner
+	Machine                 *FirecrackerMachine
 	ResumedRunner           *ResumedRunner[L, R, G]
 	HypervisorConfiguration FirecrackerMachineConfig
 	StateName               string
@@ -75,7 +75,7 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Resume(resumeTimeout time.Duratio
 	}
 
 	rp.ResumedRunner, err = Resume[L, R, G](
-		rp.Runner.Machine,
+		rp.Machine,
 		resumeCtx,
 		resumeTimeout,
 		rescueTimeout,
@@ -110,15 +110,13 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Start(ctx context.Context, rescue
 	rp.hypervisorCtx = hypervisorCtx
 	rp.hypervisorCancel = hypervisorCancel
 
-	run, err := StartRunner(
-		rp.Log,
-		hypervisorCtx,
-		rp.HypervisorConfiguration,
-	)
+	var err error
+	rp.Machine, err = StartFirecrackerMachine(hypervisorCtx, rp.Log, &rp.HypervisorConfiguration)
+
 	if err == nil {
-		rp.Runner = run
+		// Wait for the machine, and relay it to the errChan
 		go func() {
-			err := run.Machine.Wait()
+			err := rp.Machine.Wait()
 			if err != nil {
 				select {
 				case errChan <- err:
@@ -135,11 +133,11 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) FlushData(ctx context.Context) er
 }
 
 func (rp *FirecrackerRuntimeProvider[L, R, G]) DevicePath() string {
-	return rp.Runner.Machine.VMPath
+	return rp.Machine.VMPath
 }
 
 func (rp *FirecrackerRuntimeProvider[L, R, G]) GetVMPid() int {
-	return rp.Runner.Machine.VMPid
+	return rp.Machine.VMPid
 }
 
 func (rp *FirecrackerRuntimeProvider[L, R, G]) Close() error {
@@ -164,16 +162,16 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Close() error {
 		}
 		rp.ResumedRunner = nil // Just to make sure if there's further calls to Close
 
-	} else if rp.Runner != nil {
+	} else if rp.Machine != nil {
 		if rp.Log != nil {
 			rp.Log.Debug().Msg("Closing machine")
 		}
-		err := rp.Runner.Machine.Close()
+		err := rp.Machine.Close()
 		if err != nil {
 			return errors.Join(ErrCouldNotCloseServer, err)
 		}
 
-		err = os.RemoveAll(filepath.Dir(rp.Runner.Machine.VMPath))
+		err = os.RemoveAll(filepath.Dir(rp.Machine.VMPath))
 		if err != nil {
 			return errors.Join(ErrCouldNotRemoveVMDir, err)
 		}
