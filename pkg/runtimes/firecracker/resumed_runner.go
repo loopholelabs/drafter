@@ -29,7 +29,9 @@ type SnapshotLoadConfiguration struct {
 type ResumedRunner[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] struct {
 	log                       types.Logger
 	snapshotLoadConfiguration SnapshotLoadConfiguration
-	runner                    *Runner
+
+	machine *FirecrackerMachine
+	runner  *Runner
 
 	stateName  string
 	memoryName string
@@ -136,7 +138,7 @@ func (rr *ResumedRunner[L, R, G]) createSnapshot(ctx context.Context) error {
 			return errors.Join(ErrCouldNotCloseServer, err)
 		}
 
-		err = rr.runner.Wait()
+		err = rr.machine.Wait()
 		if err != nil {
 			return errors.Join(ErrCouldNotWaitForFirecracker, err)
 		}
@@ -205,17 +207,20 @@ func Resume[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 	agentServerHooks ipc.AgentServerAcceptHooks[R, G],
 	snapshotLoadConfiguration SnapshotLoadConfiguration,
 ) (*ResumedRunner[L, R, G], error) {
-	if runner.log != nil {
-		runner.log.Debug().Msg("Resume resumedRunner")
+	machine := runner.Machine
+
+	if machine.log != nil {
+		machine.log.Debug().Msg("Resume resumedRunner")
 	}
 
 	resumedRunner := &ResumedRunner[L, R, G]{
-		log: runner.log,
+		log: machine.log,
 		rpc: &RunnerRPC[L, R, G]{
-			log: runner.log,
+			log: machine.log,
 		},
 		snapshotLoadConfiguration: snapshotLoadConfiguration,
 		runner:                    runner,
+		machine:                   machine,
 		stateName:                 common.DeviceStateName,
 		memoryName:                common.DeviceMemoryName,
 	}
@@ -226,7 +231,7 @@ func Resume[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 	// Monitor for any error from the runner
 	runnerErr := make(chan error, 1)
 	go func() {
-		err := runner.Wait()
+		err := machine.Wait()
 		if err != nil {
 			runnerErr <- err
 		}
@@ -234,8 +239,8 @@ func Resume[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 
 	err := resumedRunner.rpc.Start(runner.Machine.VMPath, uint32(agentVSockPort), agentServerLocal, runner.Machine.Conf.UID, runner.Machine.Conf.GID)
 	if err != nil {
-		if runner.log != nil {
-			runner.log.Error().Err(err).Msg("Resume resumedRunner failed to start rpc")
+		if runner.Machine.log != nil {
+			runner.Machine.log.Error().Err(err).Msg("Resume resumedRunner failed to start rpc")
 		}
 		return nil, err
 	}
@@ -250,8 +255,8 @@ func Resume[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 	)
 
 	if err != nil {
-		if runner.log != nil {
-			runner.log.Error().Err(err).Msg("Resume resumedRunner failed to resume snapshot")
+		if runner.Machine.log != nil {
+			runner.Machine.log.Error().Err(err).Msg("Resume resumedRunner failed to resume snapshot")
 		}
 		return nil, errors.Join(ErrCouldNotResumeSnapshot, err)
 	}
@@ -269,7 +274,9 @@ func Resume[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 				break
 			}
 		}
-		runner.log.Info().Msg("Resume resumedRunner failed to call AfterResume. Retrying...")
+		if runner.Machine.log != nil {
+			runner.Machine.log.Info().Msg("Resume resumedRunner failed to call AfterResume. Retrying...")
+		}
 		if numRetries == 0 {
 			return nil, err
 		}

@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"path/filepath"
 	"time"
 
 	"github.com/loopholelabs/drafter/pkg/ipc"
@@ -102,7 +103,11 @@ func main() {
 
 		// Now we can close the previous runner
 		if previousRunner != nil {
-			previousRunner.Close()
+			previousRunner.Machine.Close()
+			if err != nil {
+				panic(err)
+			}
+			err = os.RemoveAll(filepath.Dir(previousRunner.Machine.VMPath))
 			if err != nil {
 				panic(err)
 			}

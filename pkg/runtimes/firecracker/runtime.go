@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -18,6 +19,7 @@ var ErrConfigFileNotFound = errors.New("config file not found")
 var ErrCouldNotOpenConfigFile = errors.New("could not open config file")
 var ErrCouldNotDecodeConfigFile = errors.New("could not decode config file")
 var ErrCouldNotResumeRunner = errors.New("could not resume runner")
+var ErrCouldNotRemoveVMDir = errors.New("could not remove vm dir")
 
 type FirecrackerRuntimeProvider[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] struct {
 	Log                     types.Logger
@@ -117,7 +119,7 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Start(ctx context.Context, rescue
 	if err == nil {
 		rp.Runner = run
 		go func() {
-			err := run.Wait()
+			err := run.Machine.Wait()
 			if err != nil {
 				select {
 				case errChan <- err:
@@ -165,11 +167,16 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Close() error {
 
 	} else if rp.Runner != nil {
 		if rp.Log != nil {
-			rp.Log.Debug().Msg("Closing runner")
+			rp.Log.Debug().Msg("Closing machine")
 		}
-		err := rp.Runner.Close()
+		err := rp.Runner.Machine.Close()
 		if err != nil {
-			return err
+			return errors.Join(ErrCouldNotCloseServer, err)
+		}
+
+		err = os.RemoveAll(filepath.Dir(rp.Runner.Machine.VMPath))
+		if err != nil {
+			return errors.Join(ErrCouldNotRemoveVMDir, err)
 		}
 	}
 	return nil

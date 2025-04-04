@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -87,7 +88,9 @@ func TestResumeSuspend(t *testing.T) {
 
 		// Now we can close the previous runner
 		if previousRunner != nil {
-			previousRunner.Close()
+			err = previousRunner.Machine.Close()
+			assert.NoError(t, err)
+			err = os.RemoveAll(filepath.Dir(previousRunner.Machine.VMPath))
 			assert.NoError(t, err)
 		}
 

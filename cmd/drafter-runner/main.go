@@ -180,7 +180,7 @@ func main() {
 	defer func() {
 		defer goroutineManager.CreateForegroundPanicCollector()()
 
-		if err := r.Wait(); err != nil {
+		if err := r.Machine.Wait(); err != nil {
 			panic(err)
 		}
 	}()
@@ -192,13 +192,17 @@ func main() {
 	defer func() {
 		defer goroutineManager.CreateForegroundPanicCollector()()
 
-		if err := r.Close(); err != nil {
+		if err := r.Machine.Close(); err != nil {
+			panic(err)
+		}
+		err = os.RemoveAll(filepath.Dir(r.Machine.VMPath))
+		if err != nil {
 			panic(err)
 		}
 	}()
 
 	goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
-		if err := r.Wait(); err != nil {
+		if err := r.Machine.Wait(); err != nil {
 			panic(err)
 		}
 	})
