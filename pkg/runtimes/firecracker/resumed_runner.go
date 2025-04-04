@@ -225,9 +225,6 @@ func Resume[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 		memoryName:                common.DeviceMemoryName,
 	}
 
-	runner.ongoingResumeWg.Add(1)
-	defer runner.ongoingResumeWg.Done()
-
 	// Monitor for any error from the runner
 	runnerErr := make(chan error, 1)
 	go func() {

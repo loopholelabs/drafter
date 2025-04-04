@@ -75,7 +75,7 @@ func main() {
 	// Resume and suspend the vm a few times
 	for n := 0; n < *iterations; n++ {
 		fmt.Printf("\nRUN %d\n", n)
-		r, err := rfirecracker.StartRunner(log, ctx, ctx, rfirecracker.FirecrackerMachineConfig{
+		r, err := rfirecracker.StartRunner(log, ctx, rfirecracker.FirecrackerMachineConfig{
 			FirecrackerBin: firecrackerBin,
 			JailerBin:      jailerBin,
 			ChrootBaseDir:  resumeTestDir,

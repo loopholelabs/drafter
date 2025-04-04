@@ -157,7 +157,6 @@ func main() {
 	r, err := rfirecracker.StartRunner(
 		log,
 		goroutineManager.Context(),
-		context.Background(), // Never give up on rescue operations
 
 		rfirecracker.FirecrackerMachineConfig{
 			FirecrackerBin: firecrackerBin,
