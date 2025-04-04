@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	iutils "github.com/loopholelabs/drafter/internal/utils"
 	"github.com/loopholelabs/logging/types"
@@ -17,6 +18,26 @@ import (
 	"github.com/loopholelabs/drafter/pkg/ipc"
 	"github.com/loopholelabs/drafter/pkg/utils"
 )
+
+type SnapshotDevice struct {
+	Name   string `json:"name"`
+	Input  string `json:"input"`
+	Output string `json:"output"`
+}
+
+type LivenessConfiguration struct {
+	LivenessVSockPort uint32
+	ResumeTimeout     time.Duration
+}
+
+type AgentConfiguration struct {
+	AgentVSockPort uint32
+	ResumeTimeout  time.Duration
+}
+
+type PackageConfiguration struct {
+	AgentVSockPort uint32 `json:"agentVSockPort"`
+}
 
 const (
 	VSockName = "vsock.sock"

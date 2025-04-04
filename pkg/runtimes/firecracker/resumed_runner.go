@@ -16,8 +16,7 @@ import (
 )
 
 var (
-	ErrCouldNotResumeSnapshot         = errors.New("could not resume snapshot")
-	ErrCouldNotCreateRecoverySnapshot = errors.New("could not create recovery snapshot")
+	ErrCouldNotResumeSnapshot = errors.New("could not resume snapshot")
 )
 
 type SnapshotLoadConfiguration struct {
