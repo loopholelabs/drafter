@@ -2,15 +2,13 @@ module github.com/loopholelabs/drafter
 
 go 1.24.2
 
-replace github.com/firecracker-microvm/firecracker-go-sdk => ../firecracker-go-sdk
-
 require (
 	github.com/coreos/go-iptables v0.8.0
-	github.com/firecracker-microvm/firecracker-go-sdk v0.0.0-20250321151903-709a4aacf33f
 	github.com/freddierice/go-losetup/v2 v2.0.1
 	github.com/google/uuid v1.6.0
 	github.com/klauspost/compress v1.18.0
 	github.com/lithammer/shortuuid/v4 v4.2.0
+	github.com/loopholelabs/firecracker-go-sdk v1.0.0
 	github.com/loopholelabs/goroutine-manager v0.1.1
 	github.com/loopholelabs/logging v0.3.2
 	github.com/loopholelabs/silo v0.2.12
@@ -63,6 +61,7 @@ require (
 	github.com/go-openapi/strfmt v0.23.0 // indirect
 	github.com/go-openapi/swag v0.23.0 // indirect
 	github.com/go-openapi/validate v0.24.0 // indirect
+	github.com/go-ping/ping v1.2.0 // indirect
 	github.com/goccy/go-json v0.10.5 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect

@@ -10,14 +10,14 @@ import (
 	"sync"
 	"time"
 
-	sdk "github.com/firecracker-microvm/firecracker-go-sdk"
+	sdk "github.com/loopholelabs/firecracker-go-sdk"
 	loggingtypes "github.com/loopholelabs/logging/types"
 	"github.com/sirupsen/logrus"
 
 	"github.com/lithammer/shortuuid/v4"
 	"golang.org/x/sys/unix"
 
-	"github.com/firecracker-microvm/firecracker-go-sdk/client/models"
+	"github.com/loopholelabs/firecracker-go-sdk/client/models"
 )
 
 var (

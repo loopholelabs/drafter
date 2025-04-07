@@ -99,6 +99,34 @@ func StartAgentServer[L AgentServerLocal, R AgentServerRemote[G], G any](log log
 	return agentServer, nil
 }
 
+/**
+ * Handle a connection
+ *
+ */
+func handleConnection[R any](ctx context.Context, registry *rpc.Registry[R, json.RawMessage], conn net.Conn) error {
+	encoder := json.NewEncoder(conn)
+	decoder := json.NewDecoder(conn)
+
+	encodeFn := func(v rpc.Message[json.RawMessage]) error {
+		return encoder.Encode(v)
+	}
+	decodeFn := func(v *rpc.Message[json.RawMessage]) error {
+		return decoder.Decode(v)
+	}
+	marshalFn := func(v any) (json.RawMessage, error) {
+		b, err := json.Marshal(v)
+		if err != nil {
+			return nil, err
+		}
+		return json.RawMessage(b), nil
+	}
+	unmarshalFn := func(data json.RawMessage, v any) error {
+		return json.Unmarshal([]byte(data), v)
+	}
+
+	return registry.LinkStream(ctx, encodeFn, decodeFn, marshalFn, unmarshalFn, nil)
+}
+
 // FIXME: Tidy up under here...
 
 type AgentServerAcceptHooks[R AgentServerRemote[G], G any] struct {
@@ -106,7 +134,8 @@ type AgentServerAcceptHooks[R AgentServerRemote[G], G any] struct {
 }
 
 type AgentConnection[L AgentServerLocal, R AgentServerRemote[G], G any] struct {
-	Remote R
+	Remote  R
+	connErr chan error
 
 	Wait  func() error
 	Close func() error
@@ -116,6 +145,7 @@ func (agentServer *AgentServer[L, R, G]) Accept(acceptCtx context.Context, remot
 ) (agentConnection *AgentConnection[L, R, G], errs error) {
 
 	agentConnection = &AgentConnection[L, R, G]{
+		connErr: make(chan error, 1),
 		Wait: func() error {
 			return nil
 		},
@@ -167,20 +197,16 @@ func (agentServer *AgentServer[L, R, G]) Accept(acceptCtx context.Context, remot
 			}
 			return
 		}
-		panic(errors.Join(ErrCouldNotAcceptAgentClient, err))
+		return nil, errors.Join(ErrCouldNotAcceptAgentClient, err)
 	}
 
 	linkCtx, cancelLinkCtx := context.WithCancelCause(remoteCtx) // This resource outlives the current scope, so we use the external context
 
 	agentConnection.Close = func() error {
 		agentServer.closeLock.Lock()
-
 		agentServer.closed = true
-
 		cancelLinkCtx(goroutineManager.GetErrGoroutineStopped())
-
 		agentServer.closeLock.Unlock()
-
 		return agentConnection.Wait()
 	}
 
@@ -209,11 +235,9 @@ func (agentServer *AgentServer[L, R, G]) Accept(acceptCtx context.Context, remot
 
 	registry := rpc.NewRegistry[R, json.RawMessage](
 		agentServer.agentServerLocal,
-
-		&rpc.RegistryHooks{
-			OnClientConnect: func(remoteID string) {
-				signalReady()
-			},
+		&rpc.RegistryHooks{OnClientConnect: func(remoteID string) {
+			signalReady()
+		},
 		},
 	)
 
@@ -221,11 +245,16 @@ func (agentServer *AgentServer[L, R, G]) Accept(acceptCtx context.Context, remot
 		hooks.OnAfterRegistrySetup(registry.ForRemotes)
 	}
 
+	// Handle the connection here.
+	go func() {
+		defer cancelLinkCtx(nil)
+		err := handleConnection[R](linkCtx, registry, conn)
+		agentConnection.connErr <- err
+	}()
+
 	agentConnection.Wait = sync.OnceValue(func() error {
 		// We don't `defer conn.Close` here since Firecracker handles resetting active VSock connections for us
-		defer cancelLinkCtx(nil)
-
-		err := handleConnection[R](linkCtx, registry, conn)
+		err := <-agentConnection.connErr
 
 		if err != nil {
 			agentServer.closeLock.Lock()
@@ -272,32 +301,4 @@ func (agentServer *AgentServer[L, R, G]) Accept(acceptCtx context.Context, remot
 	}
 
 	return
-}
-
-/**
- * Handle a connection
- *
- */
-func handleConnection[R any](ctx context.Context, registry *rpc.Registry[R, json.RawMessage], conn net.Conn) error {
-	encoder := json.NewEncoder(conn)
-	decoder := json.NewDecoder(conn)
-
-	encodeFn := func(v rpc.Message[json.RawMessage]) error {
-		return encoder.Encode(v)
-	}
-	decodeFn := func(v *rpc.Message[json.RawMessage]) error {
-		return decoder.Decode(v)
-	}
-	marshalFn := func(v any) (json.RawMessage, error) {
-		b, err := json.Marshal(v)
-		if err != nil {
-			return nil, err
-		}
-		return json.RawMessage(b), nil
-	}
-	unmarshalFn := func(data json.RawMessage, v any) error {
-		return json.Unmarshal([]byte(data), v)
-	}
-
-	return registry.LinkStream(ctx, encodeFn, decodeFn, marshalFn, unmarshalFn, nil)
 }
