@@ -7,8 +7,6 @@ import (
 	"net"
 	"os"
 	"sync"
-
-	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 )
 
 var (
@@ -19,17 +17,12 @@ var (
 
 type LivenessServer struct {
 	vsockPortPath string
-
-	lis net.Listener
-
-	closeLock sync.Mutex
-	closed    bool
+	lis           net.Listener
+	closeLock     sync.Mutex
+	closed        bool
 }
 
-func NewLivenessServer(
-	vsockPath string,
-	vsockPort uint32,
-) *LivenessServer {
+func NewLivenessServer(vsockPath string, vsockPort uint32) *LivenessServer {
 	return &LivenessServer{
 		vsockPortPath: fmt.Sprintf("%s_%d", vsockPath, vsockPort),
 	}
@@ -41,52 +34,12 @@ func (l *LivenessServer) Open() (string, error) {
 	if err != nil {
 		return "", errors.Join(ErrCouldNotListenInLivenessServer, err)
 	}
-
 	return l.vsockPortPath, nil
-}
-
-func (l *LivenessServer) ReceiveAndClose(ctx context.Context) (errs error) {
-	goroutineManager := manager.NewGoroutineManager(
-		ctx,
-		&errs,
-		manager.GoroutineManagerHooks{},
-	)
-	defer goroutineManager.Wait()
-	defer goroutineManager.StopAllGoroutines()
-	defer goroutineManager.CreateBackgroundPanicCollector()()
-
-	goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
-		// Cause the `Accept()` function to unblock
-		<-goroutineManager.Context().Done()
-
-		l.Close()
-	})
-
-	defer l.Close()
-
-	// Don't close the connection here - we close the listener
-	if _, err := l.lis.Accept(); err != nil {
-		l.closeLock.Lock()
-		defer l.closeLock.Unlock()
-
-		if l.closed && errors.Is(err, net.ErrClosed) { // Don't treat closed errors as errors if we closed the connection
-			if err := goroutineManager.Context().Err(); err != nil {
-				panic(errors.Join(ErrLivenessServerContextCancelled, err))
-			}
-
-			return
-		}
-
-		panic(errors.Join(ErrCouldNotAcceptLivenessClient, err))
-	}
-
-	return
 }
 
 func (l *LivenessServer) Close() {
 	l.closeLock.Lock()
 	defer l.closeLock.Unlock()
-
 	l.closed = true
 
 	// We need to remove this file first so that the client can't try to reconnect
@@ -94,5 +47,34 @@ func (l *LivenessServer) Close() {
 
 	if l.lis != nil {
 		_ = l.lis.Close() // We ignore errors here since we might interrupt a network connection
+	}
+}
+
+func (l *LivenessServer) ReceiveAndClose(ctx context.Context) (errs error) {
+	defer l.Close()
+
+	connErr := make(chan error, 1)
+
+	go func() {
+		// Don't close the connection here - we close the listener
+		_, err := l.lis.Accept()
+		connErr <- err
+	}()
+
+	select {
+	case <-ctx.Done():
+		return errors.Join(ErrLivenessServerContextCancelled, ctx.Err())
+	case e := <-connErr:
+		if e == nil {
+			return nil // It all worked...
+		}
+
+		l.closeLock.Lock()
+		defer l.closeLock.Unlock()
+
+		if l.closed && errors.Is(e, net.ErrClosed) { // Don't treat closed errors as errors if we closed the connection
+			return nil // We closed the connection, report no error
+		}
+		return errors.Join(ErrCouldNotAcceptLivenessClient, e)
 	}
 }

@@ -58,12 +58,26 @@ func (a *AgentServer[L, R, G]) Close() error {
 	a.closed = true
 
 	// We need to remove this file first so that the client can't try to reconnect
-	_ = os.Remove(a.VSockPath) // We ignore errors here since the file might already have been removed, but we don't want to use `RemoveAll` cause it could remove a directory
+	err := os.Remove(a.VSockPath) // We ignore errors here since the file might already have been removed, but we don't want to use `RemoveAll` cause it could remove a directory
+	if err != nil {
+		if a.log != nil {
+			a.log.Debug().Err(err).Str("VSockPath", a.VSockPath).Msg("error removing vsockpath")
+		}
+	}
 
-	_ = a.lis.Close() // We ignore errors here since we might interrupt a network connection
+	err = a.lis.Close() // We ignore errors here since we might interrupt a network connection
+	if err != nil {
+		if a.log != nil {
+			a.log.Debug().Err(err).Str("VSockPath", a.VSockPath).Msg("error closing listener")
+		}
+	}
 	return nil
 }
 
+/**
+ * Start an AgentServer
+ *
+ */
 func StartAgentServer[L AgentServerLocal, R AgentServerRemote[G], G any](log loggingtypes.Logger, vsockPath string, vsockPort uint32,
 	agentServerLocal L) (*AgentServer[L, R, G], error) {
 
@@ -91,20 +105,17 @@ type AgentServerAcceptHooks[R AgentServerRemote[G], G any] struct {
 	OnAfterRegistrySetup func(forRemotes func(cb func(remoteID string, remote R) error) error) error
 }
 
-type AcceptingAgentServer[L AgentServerLocal, R AgentServerRemote[G], G any] struct {
+type AgentConnection[L AgentServerLocal, R AgentServerRemote[G], G any] struct {
 	Remote R
 
 	Wait  func() error
 	Close func() error
 }
 
-func (agentServer *AgentServer[L, R, G]) Accept(
-	acceptCtx context.Context,
-	remoteCtx context.Context,
+func (agentServer *AgentServer[L, R, G]) Accept(acceptCtx context.Context, remoteCtx context.Context, hooks AgentServerAcceptHooks[R, G],
+) (agentConnection *AgentConnection[L, R, G], errs error) {
 
-	hooks AgentServerAcceptHooks[R, G],
-) (acceptingAgentServer *AcceptingAgentServer[L, R, G], errs error) {
-	acceptingAgentServer = &AcceptingAgentServer[L, R, G]{
+	agentConnection = &AgentConnection[L, R, G]{
 		Wait: func() error {
 			return nil
 		},
@@ -154,16 +165,14 @@ func (agentServer *AgentServer[L, R, G]) Accept(
 			if err := goroutineManager.Context().Err(); err != nil {
 				panic(err)
 			}
-
 			return
 		}
-
 		panic(errors.Join(ErrCouldNotAcceptAgentClient, err))
 	}
 
 	linkCtx, cancelLinkCtx := context.WithCancelCause(remoteCtx) // This resource outlives the current scope, so we use the external context
 
-	acceptingAgentServer.Close = func() error {
+	agentConnection.Close = func() error {
 		agentServer.closeLock.Lock()
 
 		agentServer.closed = true
@@ -172,7 +181,7 @@ func (agentServer *AgentServer[L, R, G]) Accept(
 
 		agentServer.closeLock.Unlock()
 
-		return acceptingAgentServer.Wait()
+		return agentConnection.Wait()
 	}
 
 	// It is safe to start a background goroutine here since we return a wait function
@@ -191,7 +200,7 @@ func (agentServer *AgentServer[L, R, G]) Accept(
 			default:
 			}
 
-			if err := acceptingAgentServer.Close(); err != nil {
+			if err := agentConnection.Close(); err != nil {
 				panic(errors.Join(ErrCouldNotCloseAcceptingAgentServer, err))
 			}
 			agentServer.Close() // We ignore errors here since we might interrupt a network connection
@@ -208,11 +217,11 @@ func (agentServer *AgentServer[L, R, G]) Accept(
 		},
 	)
 
-	if hook := hooks.OnAfterRegistrySetup; hook != nil {
-		hook(registry.ForRemotes)
+	if hooks.OnAfterRegistrySetup != nil {
+		hooks.OnAfterRegistrySetup(registry.ForRemotes)
 	}
 
-	acceptingAgentServer.Wait = sync.OnceValue(func() error {
+	agentConnection.Wait = sync.OnceValue(func() error {
 		// We don't `defer conn.Close` here since Firecracker handles resetting active VSock connections for us
 		defer cancelLinkCtx(nil)
 
@@ -261,34 +270,31 @@ func (agentServer *AgentServer[L, R, G]) Accept(
 	// Despite returning a wait function, we still need to start this goroutine however so that any errors
 	// we get as we're waiting for a connection are caught
 	goroutineManager.StartBackgroundGoroutine(func(_ context.Context) {
-		if err := acceptingAgentServer.Wait(); err != nil {
+		if err := agentConnection.Wait(); err != nil {
 			panic(err)
 		}
 	})
 
 	select {
 	case <-goroutineManager.Context().Done():
-		if err := goroutineManager.Context().Err(); err != nil {
-			panic(err)
-		}
-
-		return
+		return nil, goroutineManager.Context().Err()
 	case <-ready:
 		break
 	}
 
 	found := false
-	if err := registry.ForRemotes(func(remoteID string, r R) error {
-		acceptingAgentServer.Remote = r
+	err = registry.ForRemotes(func(remoteID string, r R) error {
+		agentConnection.Remote = r
 		found = true
-
 		return nil
-	}); err != nil {
-		panic(err)
+	})
+
+	if err != nil {
+		return nil, err
 	}
 
 	if !found {
-		panic(ErrNoRemoteFound)
+		return nil, ErrNoRemoteFound
 	}
 
 	return

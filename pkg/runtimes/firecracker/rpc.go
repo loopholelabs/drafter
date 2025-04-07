@@ -99,7 +99,7 @@ func (rpc *FirecrackerRPC) LivenessAndBeforeSuspendAndClose(ctx context.Context,
 		rpc.Log.Debug().Msg("Liveness check OK")
 	}
 
-	var acceptingAgent *ipc.AcceptingAgentServer[struct{}, ipc.AgentServerRemote[struct{}], struct{}]
+	var acceptingAgent *ipc.AgentConnection[struct{}, ipc.AgentServerRemote[struct{}], struct{}]
 	acceptCtx, acceptCancel := context.WithTimeout(ctx, agentTimeout)
 	defer acceptCancel()
 
