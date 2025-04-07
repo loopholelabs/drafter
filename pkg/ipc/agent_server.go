@@ -225,33 +225,9 @@ func (agentServer *AgentServer[L, R, G]) Accept(acceptCtx context.Context, remot
 		// We don't `defer conn.Close` here since Firecracker handles resetting active VSock connections for us
 		defer cancelLinkCtx(nil)
 
-		encoder := json.NewEncoder(conn)
-		decoder := json.NewDecoder(conn)
+		err := handleConnection[R](linkCtx, registry, conn)
 
-		if err := registry.LinkStream(
-			linkCtx,
-
-			func(v rpc.Message[json.RawMessage]) error {
-				return encoder.Encode(v)
-			},
-			func(v *rpc.Message[json.RawMessage]) error {
-				return decoder.Decode(v)
-			},
-
-			func(v any) (json.RawMessage, error) {
-				b, err := json.Marshal(v)
-				if err != nil {
-					return nil, err
-				}
-
-				return json.RawMessage(b), nil
-			},
-			func(data json.RawMessage, v any) error {
-				return json.Unmarshal([]byte(data), v)
-			},
-
-			nil,
-		); err != nil {
+		if err != nil {
 			agentServer.closeLock.Lock()
 			defer agentServer.closeLock.Unlock()
 
@@ -259,10 +235,8 @@ func (agentServer *AgentServer[L, R, G]) Accept(acceptCtx context.Context, remot
 			if !(agentServer.closed && errors.Is(err, context.Canceled) && errors.Is(context.Cause(goroutineManager.Context()), goroutineManager.GetErrGoroutineStopped())) {
 				return errors.Join(ErrAgentClientDisconnected, ErrCouldNotLinkRegistry, err)
 			}
-
 			return remoteCtx.Err()
 		}
-
 		return nil
 	})
 
@@ -298,4 +272,32 @@ func (agentServer *AgentServer[L, R, G]) Accept(acceptCtx context.Context, remot
 	}
 
 	return
+}
+
+/**
+ * Handle a connection
+ *
+ */
+func handleConnection[R any](ctx context.Context, registry *rpc.Registry[R, json.RawMessage], conn net.Conn) error {
+	encoder := json.NewEncoder(conn)
+	decoder := json.NewDecoder(conn)
+
+	encodeFn := func(v rpc.Message[json.RawMessage]) error {
+		return encoder.Encode(v)
+	}
+	decodeFn := func(v *rpc.Message[json.RawMessage]) error {
+		return decoder.Decode(v)
+	}
+	marshalFn := func(v any) (json.RawMessage, error) {
+		b, err := json.Marshal(v)
+		if err != nil {
+			return nil, err
+		}
+		return json.RawMessage(b), nil
+	}
+	unmarshalFn := func(data json.RawMessage, v any) error {
+		return json.Unmarshal([]byte(data), v)
+	}
+
+	return registry.LinkStream(ctx, encodeFn, decodeFn, marshalFn, unmarshalFn, nil)
 }
