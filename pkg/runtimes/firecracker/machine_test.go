@@ -28,8 +28,8 @@ const resumeTestDir = "resume_suspend_test"
 /**
  * This creates a snapshot, and then resume and suspends 10 times.
  *
- * ark0 net namespace needs to exists
  * firecracker needs to work
+ * blueprints expected to exist at ./out/blueprint
  *
  */
 func TestResumeSuspend(t *testing.T) {

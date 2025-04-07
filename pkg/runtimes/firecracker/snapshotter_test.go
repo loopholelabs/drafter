@@ -25,7 +25,6 @@ const blueprintDir = "../../../out/blueprint"
 
 /**
  * Pre-requisites
- *  - ark0 network namespace exists
  *  - firecracker works
  *  - blueprints exist
  */

@@ -22,8 +22,10 @@ jobs:
         run: |
           wget https://github.com/loopholelabs/firecracker/releases/download/release-main-live-migration-pvm/firecracker.linux-x86_64
           sudo mv firecracker.linux-x86_64 /usr/bin/firecracker
+          chmod 777 /usr/bin/firecracker
           wget https://github.com/loopholelabs/firecracker/releases/download/release-main-live-migration-pvm/jailer.linux-x86_64
           sudo mv jailer.linux-x86_64 /usr/bin/jailer
+          chmod 777 /usr/bin/jailer
 
       - name: Grab some blueprints
         run: |

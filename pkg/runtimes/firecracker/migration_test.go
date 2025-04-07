@@ -33,6 +33,13 @@ const enableS3 = false
 const performHashChecks = false
 const pauseWaitSecondsMax = 3
 
+/**
+ *
+ * firecracker needs to work
+ * blueprints expected to exist at ./out/blueprint
+ *
+ */
+
 func setupDevicesCowS3(t *testing.T, log types.Logger, netns string) ([]common.MigrateToDevice, string, string) {
 
 	s3port := testutils.SetupMinioWithExpiry(t.Cleanup, 120*time.Minute)
