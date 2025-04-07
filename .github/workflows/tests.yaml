@@ -1,0 +1,28 @@
+name: Tests
+
+on:
+  pull_request
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.24.2
+
+      - name: Setup kvm
+        uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Setup firecracker
+        run: |
+          wget https://github.com/firecracker-microvm/firecracker/releases/download/v1.11.0/firecracker-v1.11.0-x86_64.tgz
+          tar -xzf firecracker-v1.11.0-x86_64.tgz
+          sudo cp release-v1.11.0-x86_64/* /usr/local/bin/
+
+      - name: Test
+        run: go test -exec sudo -v ./...
