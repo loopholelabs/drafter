@@ -1,14 +1,15 @@
 name: hydrun CI
 
 on:
-  push:
-    paths-ignore:
-      - ".github/signatures/**"
-  pull_request:
-    paths-ignore:
-      - ".github/signatures/**"
-  schedule:
-    - cron: "0 0 * * 0"
+  workflow_dispatch
+#  push:
+#    paths-ignore:
+#      - ".github/signatures/**"
+#  pull_request:
+#    paths-ignore:
+#      - ".github/signatures/**"
+#  schedule:
+#    - cron: "0 0 * * 0"
 
 jobs:
   build-linux:

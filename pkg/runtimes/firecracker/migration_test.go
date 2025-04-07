@@ -1,5 +1,5 @@
-//go:build integration
-// +build integration
+//go:build integration2
+// +build integration2
 
 package firecracker
 
