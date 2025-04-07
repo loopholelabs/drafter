@@ -20,9 +20,10 @@ jobs:
 
       - name: Setup firecracker
         run: |
-          wget https://github.com/firecracker-microvm/firecracker/releases/download/v1.11.0/firecracker-v1.11.0-x86_64.tgz
-          tar -xzf firecracker-v1.11.0-x86_64.tgz
-          sudo cp release-v1.11.0-x86_64/* /usr/local/bin/
+          wget https://github.com/loopholelabs/firecracker/releases/download/release-main-live-migration-pvm/firecracker.linux-x86_64
+          sudo mv firecracker.linux-x86_64 /usr/bin/firecracker
+          wget https://github.com/loopholelabs/firecracker/releases/download/release-main-live-migration-pvm/jailer.linux-x86_64
+          sudo mv jailer.linux-x86_64 /usr/bin/jailer
 
       - name: Grab some blueprints
         run: |
