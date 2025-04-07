@@ -1,7 +1,7 @@
 //go:build integration
 // +build integration
 
-package fc_tests
+package firecracker
 
 import (
 	"context"
@@ -19,7 +19,7 @@ import (
 	"github.com/loopholelabs/drafter/pkg/common"
 	"github.com/loopholelabs/drafter/pkg/ipc"
 	"github.com/loopholelabs/drafter/pkg/peer"
-	rfirecracker "github.com/loopholelabs/drafter/pkg/runtimes/firecracker"
+	"github.com/loopholelabs/drafter/pkg/testutil"
 	"github.com/loopholelabs/logging"
 	"github.com/loopholelabs/logging/types"
 	"github.com/loopholelabs/silo/pkg/storage/migrator"
@@ -33,7 +33,7 @@ const enableS3 = false
 const performHashChecks = false
 const pauseWaitSecondsMax = 3
 
-func setupDevicesCowS3(t *testing.T, log types.Logger) ([]common.MigrateToDevice, string, string) {
+func setupDevicesCowS3(t *testing.T, log types.Logger, netns string) ([]common.MigrateToDevice, string, string) {
 
 	s3port := testutils.SetupMinioWithExpiry(t.Cleanup, 120*time.Minute)
 	s3Endpoint := fmt.Sprintf("localhost:%s", s3port)
@@ -44,7 +44,7 @@ func setupDevicesCowS3(t *testing.T, log types.Logger) ([]common.MigrateToDevice
 	devicesTo := make([]common.MigrateToDevice, 0)
 
 	// create package files
-	snapDir := setupSnapshot(t, log, context.Background())
+	snapDir := setupSnapshot(t, log, context.Background(), netns)
 
 	for _, n := range append(common.KnownNames, "oci") {
 		devicesTo = append(devicesTo, common.MigrateToDevice{
@@ -105,12 +105,17 @@ func TestMigration(t *testing.T) {
 	log := logging.New(logging.Zerolog, "test", os.Stderr)
 	//log.SetLevel(types.DebugLevel)
 
+	ns := testutil.SetupNAT(t, "", "dra")
+
+	netns, err := ns.ClaimNamespace()
+	assert.NoError(t, err)
+
 	numMigrations := 10
 
 	grandTotalBlocksP2P := 0
 	grandTotalBlocksS3 := 0
 
-	devicesTo, snapDir, s3Endpoint := setupDevicesCowS3(t, log)
+	devicesTo, snapDir, s3Endpoint := setupDevicesCowS3(t, log, netns)
 
 	firecrackerBin, err := exec.LookPath("firecracker")
 	assert.NoError(t, err)
@@ -118,15 +123,15 @@ func TestMigration(t *testing.T) {
 	jailerBin, err := exec.LookPath("jailer")
 	assert.NoError(t, err)
 
-	rp := &rfirecracker.FirecrackerRuntimeProvider[struct{}, ipc.AgentServerRemote[struct{}], struct{}]{
+	rp := &FirecrackerRuntimeProvider[struct{}, ipc.AgentServerRemote[struct{}], struct{}]{
 		Log: log,
-		HypervisorConfiguration: rfirecracker.FirecrackerMachineConfig{
+		HypervisorConfiguration: FirecrackerMachineConfig{
 			FirecrackerBin: firecrackerBin,
 			JailerBin:      jailerBin,
 			ChrootBaseDir:  testPeerDirCowS3,
 			UID:            0,
 			GID:            0,
-			NetNS:          "ark0",
+			NetNS:          netns,
 			NumaNode:       0,
 			CgroupVersion:  2,
 			EnableOutput:   true,
@@ -136,7 +141,7 @@ func TestMigration(t *testing.T) {
 		MemoryName:       common.DeviceMemoryName,
 		AgentServerLocal: struct{}{},
 		AgentServerHooks: ipc.AgentServerAcceptHooks[ipc.AgentServerRemote[struct{}], struct{}]{},
-		SnapshotLoadConfiguration: rfirecracker.SnapshotLoadConfiguration{
+		SnapshotLoadConfiguration: SnapshotLoadConfiguration{
 			ExperimentalMapPrivate: false,
 		},
 	}
@@ -173,15 +178,15 @@ func TestMigration(t *testing.T) {
 		time.Sleep(time.Duration(waitTime) * time.Second)
 
 		// Create a new RuntimeProvider
-		rp2 := &rfirecracker.FirecrackerRuntimeProvider[struct{}, ipc.AgentServerRemote[struct{}], struct{}]{
+		rp2 := &FirecrackerRuntimeProvider[struct{}, ipc.AgentServerRemote[struct{}], struct{}]{
 			Log: log,
-			HypervisorConfiguration: rfirecracker.FirecrackerMachineConfig{
+			HypervisorConfiguration: FirecrackerMachineConfig{
 				FirecrackerBin: firecrackerBin,
 				JailerBin:      jailerBin,
 				ChrootBaseDir:  testPeerDirCowS3,
 				UID:            0,
 				GID:            0,
-				NetNS:          "ark0",
+				NetNS:          netns,
 				NumaNode:       0,
 				CgroupVersion:  2,
 				EnableOutput:   true,
@@ -191,7 +196,7 @@ func TestMigration(t *testing.T) {
 			MemoryName:       common.DeviceMemoryName,
 			AgentServerLocal: struct{}{},
 			AgentServerHooks: ipc.AgentServerAcceptHooks[ipc.AgentServerRemote[struct{}], struct{}]{},
-			SnapshotLoadConfiguration: rfirecracker.SnapshotLoadConfiguration{
+			SnapshotLoadConfiguration: SnapshotLoadConfiguration{
 				ExperimentalMapPrivate: false,
 			},
 		}
