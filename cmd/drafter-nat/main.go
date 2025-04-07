@@ -90,6 +90,7 @@ func main() {
 				log.Println("Removing namespace", id)
 			},
 		},
+		256,
 	)
 
 	defer func() {

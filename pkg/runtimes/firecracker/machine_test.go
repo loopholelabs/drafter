@@ -1,7 +1,7 @@
 //go:build integration
 // +build integration
 
-package fc_tests
+package firecracker
 
 import (
 	"context"
@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/loopholelabs/drafter/pkg/ipc"
-	rfirecracker "github.com/loopholelabs/drafter/pkg/runtimes/firecracker"
+	"github.com/loopholelabs/drafter/pkg/testutil"
 
 	"github.com/loopholelabs/logging"
 	"github.com/loopholelabs/logging/types"
@@ -25,6 +25,13 @@ import (
 
 const resumeTestDir = "resume_suspend_test"
 
+/**
+ * This creates a snapshot, and then resume and suspends 10 times.
+ *
+ * ark0 net namespace needs to exists
+ * firecracker needs to work
+ *
+ */
 func TestResumeSuspend(t *testing.T) {
 	log := logging.New(logging.Zerolog, "test", os.Stderr)
 	log.SetLevel(types.DebugLevel)
@@ -38,12 +45,17 @@ func TestResumeSuspend(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	snapDir := setupSnapshot(t, log, ctx)
+	ns := testutil.SetupNAT(t, "", "dra")
+
+	netns, err := ns.ClaimNamespace()
+	assert.NoError(t, err)
+
+	snapDir := setupSnapshot(t, log, ctx, netns)
 
 	agentVsockPort := uint32(26)
 	agentLocal := struct{}{}
 	agentHooks := ipc.AgentServerAcceptHooks[ipc.AgentServerRemote[struct{}], struct{}]{}
-	snapConfig := rfirecracker.SnapshotLoadConfiguration{
+	snapConfig := SnapshotLoadConfiguration{
 		ExperimentalMapPrivate: false,
 	}
 
@@ -52,7 +64,7 @@ func TestResumeSuspend(t *testing.T) {
 	}
 
 	devicesAt := snapDir
-	var previousMachine *rfirecracker.FirecrackerMachine
+	var previousMachine *FirecrackerMachine
 
 	firecrackerBin, err := exec.LookPath("firecracker")
 	assert.NoError(t, err)
@@ -62,13 +74,13 @@ func TestResumeSuspend(t *testing.T) {
 
 	// Resume and suspend the vm a few times
 	for n := 0; n < 10; n++ {
-		m, err := rfirecracker.StartFirecrackerMachine(ctx, log, &rfirecracker.FirecrackerMachineConfig{
+		m, err := StartFirecrackerMachine(ctx, log, &FirecrackerMachineConfig{
 			FirecrackerBin: firecrackerBin,
 			JailerBin:      jailerBin,
 			ChrootBaseDir:  resumeTestDir,
 			UID:            0,
 			GID:            0,
-			NetNS:          "ark0",
+			NetNS:          netns,
 			NumaNode:       0,
 			CgroupVersion:  2,
 			EnableOutput:   true,
@@ -94,7 +106,7 @@ func TestResumeSuspend(t *testing.T) {
 			assert.NoError(t, err)
 		}
 
-		rr, err := rfirecracker.Resume[struct{}, ipc.AgentServerRemote[struct{}], struct{}](m, ctx, 30*time.Second, 30*time.Second,
+		rr, err := Resume[struct{}, ipc.AgentServerRemote[struct{}], struct{}](m, ctx, 30*time.Second, 30*time.Second,
 			agentVsockPort, agentLocal, agentHooks, snapConfig)
 		assert.NoError(t, err)
 

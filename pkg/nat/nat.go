@@ -36,6 +36,7 @@ func CreateNAT(
 	translationConfiguration TranslationConfiguration,
 
 	hooks CreateNamespacesHooks,
+	maxCreated int,
 ) (namespaces *Namespaces, errs error) {
 	namespaces = &Namespaces{
 		Wait: func() error {
@@ -85,6 +86,11 @@ func CreateNAT(
 		panic(ErrNotEnoughAvailableIPsInNamespaceCIDR)
 	}
 
+	// Reduce the number of namespaces created...
+	if uint64(maxCreated) < availableIPs {
+		availableIPs = uint64(maxCreated)
+	}
+
 	var (
 		hostVeths     []*network.IPPair
 		hostVethsLock sync.Mutex
@@ -104,7 +110,8 @@ func CreateNAT(
 		defer hostVethsLock.Unlock()
 
 		for _, hostVeth := range hostVeths {
-			if err := namespaceVethIPs.ReleasePair(rescueCtx, hostVeth); err != nil {
+			err := namespaceVethIPs.ReleasePair(rescueCtx, hostVeth)
+			if err != nil {
 				errs = errors.Join(errs, ErrCouldNotReleaseHostVethIP, err)
 			}
 		}

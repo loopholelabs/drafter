@@ -1,6 +1,6 @@
 module github.com/loopholelabs/drafter
 
-go 1.23.0
+go 1.24.2
 
 replace github.com/firecracker-microvm/firecracker-go-sdk => ../firecracker-go-sdk
 
@@ -15,6 +15,7 @@ require (
 	github.com/loopholelabs/logging v0.3.2
 	github.com/loopholelabs/silo v0.2.12
 	github.com/metal-stack/go-ipam v1.14.8
+	github.com/nixigaj/go-default-route v0.0.0-20231019115740-0722aff7ebf3
 	github.com/pojntfx/panrpc/go v0.0.0-20250114165542-9cc31cf01885
 	github.com/prometheus/client_golang v1.21.1
 	github.com/sirupsen/logrus v1.9.3
@@ -22,7 +23,6 @@ require (
 	github.com/vishvananda/netlink v1.3.0
 	github.com/vishvananda/netns v0.0.5
 	golang.org/x/sys v0.31.0
-	k8s.io/utils v0.0.0-20241210054802-24370beab758
 )
 
 require (
@@ -75,6 +75,7 @@ require (
 	github.com/jmoiron/sqlx v1.4.0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/josharian/native v1.1.0 // indirect
+	github.com/jsimonetti/rtnetlink v1.3.5 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.10 // indirect
 	github.com/lib/pq v1.10.9 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
@@ -120,13 +121,15 @@ require (
 	go.mongodb.org/mongo-driver v1.17.1 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
+	go4.org/mem v0.0.0-20220726221520-4f986261bf13 // indirect
 	go4.org/netipx v0.0.0-20231129151722-fdeea329fbba // indirect
 	golang.org/x/crypto v0.36.0 // indirect
 	golang.org/x/mod v0.22.0 // indirect
-	golang.org/x/net v0.36.0 // indirect
+	golang.org/x/net v0.38.0 // indirect
 	golang.org/x/sync v0.12.0 // indirect
 	golang.org/x/text v0.23.0 // indirect
 	golang.org/x/tools v0.28.0 // indirect
+	golang.zx2c4.com/wireguard/windows v0.5.3 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20241223144023-3abc09e42ca8 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20241223144023-3abc09e42ca8 // indirect
 	google.golang.org/grpc v1.69.2 // indirect
