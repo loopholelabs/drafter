@@ -36,7 +36,7 @@ jobs:
           tar --zstd -xf oci-valkey-x86_64.tar.zst
           tar --zstd -xf drafteros-oci-x86_64.tar.zst
           mv oci out/blueprint/oci.ext4
-          mv kernel out/blueprint/vmlinux.bin
+          mv kernel out/blueprint/vmlinux
           mv disk out/blueprint/rootfs.ext4
 
       - name: Test
