@@ -211,10 +211,7 @@ func Resume[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 	}
 
 	resumedRunner := &ResumedRunner[L, R, G]{
-		log: machine.log,
-		rpc: &RunnerRPC[L, R, G]{
-			log: machine.log,
-		},
+		log:                       machine.log,
 		snapshotLoadConfiguration: snapshotLoadConfiguration,
 		machine:                   machine,
 		stateName:                 common.DeviceStateName,
@@ -230,22 +227,10 @@ func Resume[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 		}
 	}()
 
-	err := resumedRunner.rpc.Start(machine.VMPath, uint32(agentVSockPort), agentServerLocal, machine.Conf.UID, machine.Conf.GID)
-	if err != nil {
-		if machine.log != nil {
-			machine.log.Error().Err(err).Msg("Resume resumedRunner failed to start rpc")
-		}
-		return nil, err
-	}
-
 	resumeSnapshotAndAcceptCtx, cancelResumeSnapshotAndAcceptCtx := context.WithTimeout(ctx, resumeTimeout)
 	defer cancelResumeSnapshotAndAcceptCtx()
 
-	err = machine.ResumeSnapshot(
-		resumeSnapshotAndAcceptCtx,
-		resumedRunner.stateName,
-		resumedRunner.memoryName,
-	)
+	err := machine.ResumeSnapshot(resumeSnapshotAndAcceptCtx, resumedRunner.stateName, resumedRunner.memoryName)
 
 	if err != nil {
 		if machine.log != nil {
@@ -255,8 +240,21 @@ func Resume[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 	}
 
 	rpcErr := make(chan error, 1)
-	numRetries := 3
+	numRetries := 5
 	for {
+		resumedRunner.rpc = &RunnerRPC[L, R, G]{
+			log: machine.log,
+		}
+
+		// Start the RPC stuff...
+		err := resumedRunner.rpc.Start(machine.VMPath, uint32(agentVSockPort), agentServerLocal, machine.Conf.UID, machine.Conf.GID)
+		if err != nil {
+			if machine.log != nil {
+				machine.log.Error().Err(err).Msg("Resume resumedRunner failed to start rpc")
+			}
+			return nil, err
+		}
+
 		// Accept RPC connection
 		rpcErr = make(chan error, 1)
 		if machine.log != nil {

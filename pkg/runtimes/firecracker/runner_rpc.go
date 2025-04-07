@@ -40,11 +40,8 @@ func (rrpc *RunnerRPC[L, R, G]) Start(vmPath string, vsockPort uint32, agentServ
 
 func (rrpc *RunnerRPC[L, R, G]) Accept(acceptCtx context.Context, remoteCtx context.Context, agentServerHooks ipc.AgentServerAcceptHooks[R, G], errChan chan error) error {
 	var err error
-	rrpc.acceptingAgent, err = rrpc.agent.Accept(
-		acceptCtx,
-		remoteCtx,
-		agentServerHooks,
-	)
+	rrpc.acceptingAgent, err = rrpc.agent.Accept(acceptCtx, remoteCtx, agentServerHooks)
+
 	if err != nil {
 		return errors.Join(ErrCouldNotAcceptAgent, err)
 	}
