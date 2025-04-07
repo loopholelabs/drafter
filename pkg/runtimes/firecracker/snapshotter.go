@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	iutils "github.com/loopholelabs/drafter/internal/utils"
 	"github.com/loopholelabs/logging/types"
 
 	"github.com/loopholelabs/drafter/pkg/common"
@@ -121,7 +120,7 @@ func CreateSnapshot(log types.Logger, ctx context.Context, devices []SnapshotDev
 	disks := []string{}
 	for _, device := range devices {
 		if strings.TrimSpace(device.Input) != "" {
-			_, err := iutils.CopyFile(device.Input, filepath.Join(server.VMPath, device.Name), hypervisorConfiguration.UID, hypervisorConfiguration.GID)
+			_, err := copyFile(device.Input, filepath.Join(server.VMPath, device.Name), hypervisorConfiguration.UID, hypervisorConfiguration.GID)
 			if err != nil {
 				return errors.Join(ErrCouldNotCopyDeviceFile, err)
 			}
@@ -174,6 +173,38 @@ func CreateSnapshot(log types.Logger, ctx context.Context, devices []SnapshotDev
 	}
 
 	return
+}
+
+var (
+	ErrCouldNotOpenSourceFile        = errors.New("could not open source file")
+	ErrCouldNotCreateDestinationFile = errors.New("could not create destination file")
+	ErrCouldNotCopyFileContent       = errors.New("could not copy file content")
+	ErrCouldNotChangeFileOwner       = errors.New("could not change file owner")
+)
+
+func copyFile(src, dst string, uid int, gid int) (int64, error) {
+	srcFile, err := os.Open(src)
+	if err != nil {
+		return 0, errors.Join(ErrCouldNotOpenSourceFile, err)
+	}
+	defer srcFile.Close()
+
+	dstFile, err := os.Create(dst)
+	if err != nil {
+		return 0, errors.Join(ErrCouldNotCreateDestinationFile, err)
+	}
+	defer dstFile.Close()
+
+	n, err := io.Copy(dstFile, srcFile)
+	if err != nil {
+		return 0, errors.Join(ErrCouldNotCopyFileContent, err)
+	}
+
+	if err := os.Chown(dst, uid, gid); err != nil {
+		return 0, errors.Join(ErrCouldNotChangeFileOwner, err)
+	}
+
+	return n, nil
 }
 
 /**
