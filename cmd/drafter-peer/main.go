@@ -15,6 +15,7 @@ import (
 	"github.com/loopholelabs/drafter/pkg/common"
 	"github.com/loopholelabs/drafter/pkg/ipc"
 	"github.com/loopholelabs/drafter/pkg/peer"
+	"github.com/loopholelabs/drafter/pkg/runtimes"
 	rfirecracker "github.com/loopholelabs/drafter/pkg/runtimes/firecracker"
 	"github.com/loopholelabs/logging"
 	"github.com/loopholelabs/silo/pkg/storage/metrics"
@@ -34,6 +35,8 @@ func main() {
 	raddr := flag.String("raddr", "localhost:1337", "Remote address to connect to (leave empty to disable)")
 	laddr := flag.String("laddr", "localhost:1337", "Local address to listen on (leave empty to disable)")
 	concurrency := flag.Int("concurrency", 1024, "Number of concurrent workers to use in migrations")
+
+	mockRuntime := flag.Bool("mock", false, "Mock runtime")
 
 	// Firewcracker flags
 	rawFirecrackerBin := flag.String("firecracker-bin", "firecracker", "Firecracker binary")
@@ -121,29 +124,35 @@ func main() {
 		panic(err)
 	}
 
-	rp := &rfirecracker.FirecrackerRuntimeProvider[struct{}, ipc.AgentServerRemote[struct{}], struct{}]{
-		Log: log,
-		HypervisorConfiguration: rfirecracker.FirecrackerMachineConfig{
-			FirecrackerBin: firecrackerBin,
-			JailerBin:      jailerBin,
-			ChrootBaseDir:  *chrootBaseDir,
-			UID:            *uid,
-			GID:            *gid,
-			NetNS:          *netns,
-			NumaNode:       *numaNode,
-			CgroupVersion:  *cgroupVersion,
-			EnableOutput:   *enableOutput,
-			EnableInput:    *enableInput,
-		},
-		StateName:        common.DeviceStateName,
-		MemoryName:       common.DeviceMemoryName,
-		AgentServerLocal: struct{}{},
-		AgentServerHooks: ipc.AgentServerAcceptHooks[ipc.AgentServerRemote[struct{}], struct{}]{},
-		SnapshotLoadConfiguration: rfirecracker.SnapshotLoadConfiguration{
-			ExperimentalMapPrivate:             *experimentalMapPrivate,
-			ExperimentalMapPrivateStateOutput:  *experimentalMapPrivateStateOutput,
-			ExperimentalMapPrivateMemoryOutput: *experimentalMapPrivateMemoryOutput,
-		},
+	var rp runtimes.RuntimeProviderIfc
+
+	if *mockRuntime {
+		rp = &runtimes.EmptyRuntimeProvider{}
+	} else {
+		rp = &rfirecracker.FirecrackerRuntimeProvider[struct{}, ipc.AgentServerRemote[struct{}], struct{}]{
+			Log: log,
+			HypervisorConfiguration: rfirecracker.FirecrackerMachineConfig{
+				FirecrackerBin: firecrackerBin,
+				JailerBin:      jailerBin,
+				ChrootBaseDir:  *chrootBaseDir,
+				UID:            *uid,
+				GID:            *gid,
+				NetNS:          *netns,
+				NumaNode:       *numaNode,
+				CgroupVersion:  *cgroupVersion,
+				EnableOutput:   *enableOutput,
+				EnableInput:    *enableInput,
+			},
+			StateName:        common.DeviceStateName,
+			MemoryName:       common.DeviceMemoryName,
+			AgentServerLocal: struct{}{},
+			AgentServerHooks: ipc.AgentServerAcceptHooks[ipc.AgentServerRemote[struct{}], struct{}]{},
+			SnapshotLoadConfiguration: rfirecracker.SnapshotLoadConfiguration{
+				ExperimentalMapPrivate:             *experimentalMapPrivate,
+				ExperimentalMapPrivateStateOutput:  *experimentalMapPrivateStateOutput,
+				ExperimentalMapPrivateMemoryOutput: *experimentalMapPrivateMemoryOutput,
+			},
+		}
 	}
 
 	p, err := peer.StartPeer(ctx,
