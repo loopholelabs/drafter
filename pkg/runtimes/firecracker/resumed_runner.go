@@ -274,6 +274,10 @@ func Resume[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 		if machine.log != nil {
 			machine.log.Info().Err(err).Msg("Resume resumedRunner failed to call AfterResume. Retrying...")
 		}
+
+		// Close it
+		resumedRunner.rpc.Close()
+
 		if numRetries == 0 {
 			return nil, err
 		}
