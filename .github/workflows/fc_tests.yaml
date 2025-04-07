@@ -20,10 +20,10 @@ jobs:
 
       - name: Setup firecracker
         run: |
-          wget https://github.com/loopholelabs/firecracker/releases/download/release-main-live-migration-pvm/firecracker.linux-x86_64
+          wget -q https://github.com/loopholelabs/firecracker/releases/download/release-main-live-migration-pvm/firecracker.linux-x86_64
           sudo mv firecracker.linux-x86_64 /usr/bin/firecracker
           chmod 777 /usr/bin/firecracker
-          wget https://github.com/loopholelabs/firecracker/releases/download/release-main-live-migration-pvm/jailer.linux-x86_64
+          wget -q https://github.com/loopholelabs/firecracker/releases/download/release-main-live-migration-pvm/jailer.linux-x86_64
           sudo mv jailer.linux-x86_64 /usr/bin/jailer
           chmod 777 /usr/bin/jailer
 
@@ -31,8 +31,8 @@ jobs:
         run: |
           mkdir out
           mkdir out/blueprint
-          wget https://github.com/loopholelabs/drafter/releases/download/v0.6.3/oci-valkey-x86_64.tar.zst
-          wget https://github.com/loopholelabs/drafter/releases/download/v0.6.3/drafteros-oci-x86_64.tar.zst
+          wget -q https://github.com/loopholelabs/drafter/releases/download/v0.6.3/oci-valkey-x86_64.tar.zst
+          wget -q https://github.com/loopholelabs/drafter/releases/download/v0.6.3/drafteros-oci-x86_64.tar.zst
           tar --zstd -xf oci-valkey-x86_64.tar.zst
           tar --zstd -xf drafteros-oci-x86_64.tar.zst
           mv oci out/blueprint/oci.ext4
