@@ -4,9 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
-	"sync"
 
-	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 	"golang.org/x/sys/unix"
 )
 
@@ -16,69 +14,29 @@ var (
 	ErrVSockConnectFailed        = errors.New("could not connect to VSOCK socket")
 )
 
-func DialContext(
-	ctx context.Context,
-
-	cid uint32,
-	port uint32,
-) (c io.ReadWriteCloser, errs error) {
-	goroutineManager := manager.NewGoroutineManager(
-		ctx,
-		&errs,
-		manager.GoroutineManagerHooks{},
-	)
-	defer goroutineManager.Wait()
-	defer goroutineManager.StopAllGoroutines()
-	defer goroutineManager.CreateBackgroundPanicCollector()()
-
+func DialContext(ctx context.Context, cid uint32, port uint32) (c io.ReadWriteCloser, errs error) {
 	fd, err := unix.Socket(unix.AF_VSOCK, unix.SOCK_STREAM, 0)
 	if err != nil {
-		panic(errors.Join(ErrVSockSocketCreationFailed, err))
+		return nil, errors.Join(ErrVSockSocketCreationFailed, err)
 	}
 
-	var cLock sync.Mutex
-	goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
-		<-goroutineManager.Context().Done()
+	connErr := make(chan error, 1)
 
-		// Non-happy path; context was cancelled before `connect()` completed
-		cLock.Lock()
-		defer cLock.Unlock()
+	// Try to connect in a goroutine...
+	go func() {
+		err = unix.Connect(fd, &unix.SockaddrVM{CID: cid, Port: port})
+		connErr <- err
+	}()
 
-		if c == nil {
-			if err := unix.Shutdown(fd, unix.SHUT_RDWR); err != nil {
-				// Always close the file descriptor even if shutdown fails
-				if e := unix.Close(fd); e != nil {
-					err = errors.Join(ErrCouldNotShutdownVSockConnection, ErrCouldNotCloseVSockConn, e, err)
-				} else {
-					err = errors.Join(ErrCouldNotShutdownVSockConnection, err)
-				}
-
-				panic(err)
-			}
-
-			if err := unix.Close(fd); err != nil {
-				panic(errors.Join(ErrCouldNotCloseVSockConn, err))
-			}
-
-			if err := goroutineManager.Context().Err(); err != nil {
-				panic(errors.Join(ErrVSockDialContextCancelled, err))
-			}
-
-			return
+	select {
+	case <-ctx.Done():
+		errShutdown := unix.Shutdown(fd, unix.SHUT_RDWR)
+		errClose := unix.Close(fd)
+		return nil, errors.Join(ErrCouldNotCloseVSockConn, errShutdown, errClose)
+	case e := <-connErr:
+		if e != nil {
+			return nil, errors.Join(ErrVSockConnectFailed, err)
 		}
-	})
-
-	if err = unix.Connect(fd, &unix.SockaddrVM{
-		CID:  cid,
-		Port: port,
-	}); err != nil {
-		panic(errors.Join(ErrVSockConnectFailed, err))
+		return &conn{fd}, nil
 	}
-
-	cLock.Lock()
-	defer cLock.Unlock()
-
-	c = &conn{fd}
-
-	return
 }
