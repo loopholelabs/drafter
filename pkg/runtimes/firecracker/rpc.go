@@ -60,7 +60,7 @@ func (rpc *FirecrackerRPC) Init() error {
 	}
 
 	agent, err := ipc.StartAgentServer[struct{}, ipc.AgentServerRemote[struct{}]](
-		filepath.Join(rpc.VMPath, VSockName), rpc.AgentVSockPort, struct{}{},
+		rpc.Log, filepath.Join(rpc.VMPath, VSockName), rpc.AgentVSockPort, struct{}{},
 	)
 
 	if err != nil {

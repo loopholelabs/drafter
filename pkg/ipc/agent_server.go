@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
+	loggingtypes "github.com/loopholelabs/logging/types"
 	"github.com/pojntfx/panrpc/go/pkg/rpc"
 )
 
@@ -36,55 +37,55 @@ type AgentServerRemote[G any] struct {
 }
 
 type AgentServer[L AgentServerLocal, R AgentServerRemote[G], G any] struct {
-	VSockPath string
-
-	Close func()
-
-	lis net.Listener
-
-	closed    bool
-	closeLock sync.Mutex
-
+	log              loggingtypes.Logger
+	VSockPath        string
+	lis              net.Listener
+	closed           bool
+	closeLock        sync.Mutex
 	agentServerLocal L
 }
 
-func StartAgentServer[L AgentServerLocal, R AgentServerRemote[G], G any](
-	vsockPath string,
-	vsockPort uint32,
-
-	agentServerLocal L,
-) (
-	agentServer *AgentServer[L, R, G],
-
-	err error,
-) {
-	agentServer = &AgentServer[L, R, G]{
-		Close: func() {},
-
-		agentServerLocal: agentServerLocal,
+/**
+ * Close the AgentServer
+ *
+ */
+func (a *AgentServer[L, R, G]) Close() error {
+	if a.log != nil {
+		a.log.Info().Msg("Closing AgentServer")
 	}
+	a.closeLock.Lock()
+	defer a.closeLock.Unlock()
+	a.closed = true
 
-	agentServer.VSockPath = fmt.Sprintf("%s_%d", vsockPath, vsockPort)
+	// We need to remove this file first so that the client can't try to reconnect
+	_ = os.Remove(a.VSockPath) // We ignore errors here since the file might already have been removed, but we don't want to use `RemoveAll` cause it could remove a directory
+
+	_ = a.lis.Close() // We ignore errors here since we might interrupt a network connection
+	return nil
+}
+
+func StartAgentServer[L AgentServerLocal, R AgentServerRemote[G], G any](log loggingtypes.Logger, vsockPath string, vsockPort uint32,
+	agentServerLocal L) (*AgentServer[L, R, G], error) {
+
+	var err error
+	agentServer := &AgentServer[L, R, G]{
+		log:              log,
+		agentServerLocal: agentServerLocal,
+		VSockPath:        fmt.Sprintf("%s_%d", vsockPath, vsockPort),
+	}
 
 	agentServer.lis, err = net.Listen("unix", agentServer.VSockPath)
 	if err != nil {
 		return nil, errors.Join(ErrCouldNotListenInAgentServer, err)
 	}
 
-	agentServer.Close = func() {
-		agentServer.closeLock.Lock()
-		defer agentServer.closeLock.Unlock()
-
-		agentServer.closed = true
-
-		// We need to remove this file first so that the client can't try to reconnect
-		_ = os.Remove(agentServer.VSockPath) // We ignore errors here since the file might already have been removed, but we don't want to use `RemoveAll` cause it could remove a directory
-
-		_ = agentServer.lis.Close() // We ignore errors here since we might interrupt a network connection
+	if log != nil {
+		log.Info().Str("VSockPath", agentServer.VSockPath).Msg("Created AgentServer")
 	}
-
-	return
+	return agentServer, nil
 }
+
+// FIXME: Tidy up under here...
 
 type AgentServerAcceptHooks[R AgentServerRemote[G], G any] struct {
 	OnAfterRegistrySetup func(forRemotes func(cb func(remoteID string, remote R) error) error) error
