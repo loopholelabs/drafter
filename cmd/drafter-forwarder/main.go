@@ -9,7 +9,7 @@ import (
 	"os"
 	"os/signal"
 
-	"github.com/loopholelabs/drafter/pkg/forwarder"
+	"github.com/loopholelabs/drafter/pkg/network/forwarder"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 )
 
