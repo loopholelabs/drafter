@@ -29,15 +29,52 @@ type TranslationConfiguration struct {
 	AllowIncomingTraffic bool `json:"allowIncomingTraffic"`
 }
 
-func CreateNAT(
-	ctx context.Context,
-	rescueCtx context.Context,
+func CreateNAT(ctx context.Context, rescueCtx context.Context, translationConfiguration TranslationConfiguration,
+	hooks CreateNamespacesHooks, maxCreated int) (namespaces *Namespaces, errs error) {
 
-	translationConfiguration TranslationConfiguration,
+	// Check if the host interface exists
+	_, err := net.InterfaceByName(translationConfiguration.HostInterface)
+	if err != nil {
+		return nil, errors.Join(ErrCouldNotFindHostInterface, err)
+	}
 
-	hooks CreateNamespacesHooks,
-	maxCreated int,
-) (namespaces *Namespaces, errs error) {
+	err = network.CreateNAT(translationConfiguration.HostInterface)
+	if err != nil {
+		return nil, errors.Join(ErrCouldNotCreateNAT, err)
+	}
+
+	natCtx, natCancel := context.WithCancel(ctx)
+	defer natCancel()
+
+	hostVethIPs := network.NewIPTable(translationConfiguration.HostVethCIDR, natCtx)
+	err = hostVethIPs.Open(natCtx)
+	if err != nil {
+		return nil, errors.Join(ErrCouldNotOpenHostVethIPs, err)
+	}
+
+	namespaceVethIPs := network.NewIPTable(translationConfiguration.NamespaceVethCIDR, natCtx)
+	err = namespaceVethIPs.Open(natCtx)
+	if err != nil {
+		return nil, errors.Join(ErrCouldNotOpenNamespaceVethIPs, err)
+	}
+
+	availableIPs := namespaceVethIPs.AvailableIPs()
+
+	if availableIPs > hostVethIPs.AvailablePairs() {
+		return nil, ErrNotEnoughAvailableIPsInHostCIDR
+	}
+
+	if availableIPs < 1 {
+		return nil, ErrNotEnoughAvailableIPsInNamespaceCIDR
+	}
+
+	// Reduce the number of namespaces created...
+	if uint64(maxCreated) < availableIPs {
+		availableIPs = uint64(maxCreated)
+	}
+
+	// FIXME: Tidy up under here
+
 	namespaces = &Namespaces{
 		Wait: func() error {
 			return nil
@@ -45,7 +82,6 @@ func CreateNAT(
 		Close: func() error {
 			return nil
 		},
-
 		claimableNamespaces: map[string]*claimableNamespace{},
 	}
 
@@ -58,43 +94,9 @@ func CreateNAT(
 	defer goroutineManager.StopAllGoroutines()
 	defer goroutineManager.CreateBackgroundPanicCollector()()
 
-	// Check if the host interface exists
-	if _, err := net.InterfaceByName(translationConfiguration.HostInterface); err != nil {
-		panic(errors.Join(ErrCouldNotFindHostInterface, err))
-	}
-
-	if err := network.CreateNAT(translationConfiguration.HostInterface); err != nil {
-		panic(errors.Join(ErrCouldNotCreateNAT, err))
-	}
-
-	hostVethIPs := network.NewIPTable(translationConfiguration.HostVethCIDR, goroutineManager.Context())
-	if err := hostVethIPs.Open(goroutineManager.Context()); err != nil {
-		panic(errors.Join(ErrCouldNotOpenHostVethIPs, err))
-	}
-
-	namespaceVethIPs := network.NewIPTable(translationConfiguration.NamespaceVethCIDR, goroutineManager.Context())
-	if err := namespaceVethIPs.Open(goroutineManager.Context()); err != nil {
-		panic(errors.Join(ErrCouldNotOpenNamespaceVethIPs, err))
-	}
-
-	if namespaceVethIPs.AvailableIPs() > hostVethIPs.AvailablePairs() {
-		panic(ErrNotEnoughAvailableIPsInHostCIDR)
-	}
-
-	availableIPs := namespaceVethIPs.AvailableIPs()
-	if availableIPs < 1 {
-		panic(ErrNotEnoughAvailableIPsInNamespaceCIDR)
-	}
-
-	// Reduce the number of namespaces created...
-	if uint64(maxCreated) < availableIPs {
-		availableIPs = uint64(maxCreated)
-	}
-
 	var (
-		hostVeths     []*network.IPPair
-		hostVethsLock sync.Mutex
-
+		hostVeths          []*network.IPPair
+		hostVethsLock      sync.Mutex
 		namespaceVeths     []*network.IP
 		namespaceVethsLock sync.Mutex
 	)
@@ -103,6 +105,7 @@ func CreateNAT(
 	closed := false
 
 	closeInProgressContext, cancelCloseInProgressContext := context.WithCancel(rescueCtx) // We use `rescueCtx` here since this simply intercepts `ctx`
+
 	namespaces.Close = func() (errs error) {
 		defer cancelCloseInProgressContext()
 
@@ -159,6 +162,7 @@ func CreateNAT(
 
 		return
 	}
+
 	// Future-proofing; if we decide that NATing should use a background copy loop like `socat`, we can wait for that loop to finish here and return any errors
 	namespaces.Wait = func() error {
 		<-closeInProgressContext.Done()
