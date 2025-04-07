@@ -7,13 +7,28 @@ import (
 	"net"
 	"os"
 	"sync"
+
+	"github.com/loopholelabs/drafter/pkg/runtimes/firecracker/vsock"
 )
 
 var (
-	ErrCouldNotAcceptLivenessClient   = errors.New("could not accept liveness client")
-	ErrCouldNotListenInLivenessServer = errors.New("could not listen in liveness server")
-	ErrLivenessServerContextCancelled = errors.New("liveness server context cancelled")
+	ErrCouldNotDialLivenessVSockConnection  = errors.New("could not dial VSock liveness connection")
+	ErrCouldNotCloseLivenessVSockConnection = errors.New("could not close VSock liveness connection")
+	ErrCouldNotAcceptLivenessClient         = errors.New("could not accept liveness client")
+	ErrCouldNotListenInLivenessServer       = errors.New("could not listen in liveness server")
+	ErrLivenessServerContextCancelled       = errors.New("liveness server context cancelled")
 )
+
+func SendLivenessPing(ctx context.Context, vsockCID uint32, vsockPort uint32) error {
+	_, err := vsock.DialContext(ctx, vsockCID, vsockPort)
+
+	if err != nil {
+		return errors.Join(ErrCouldNotDialLivenessVSockConnection, err)
+	}
+
+	// We don't `conn.Close` here since Firecracker handles resetting active VSock connections for us
+	return nil
+}
 
 type LivenessServer struct {
 	vsockPortPath string
