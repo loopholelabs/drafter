@@ -5,7 +5,7 @@ import (
 	"log"
 	"testing"
 
-	"github.com/loopholelabs/drafter/pkg/nat"
+	"github.com/loopholelabs/drafter/pkg/network/nat"
 	route "github.com/nixigaj/go-default-route"
 	"github.com/stretchr/testify/assert"
 )

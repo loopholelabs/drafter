@@ -7,7 +7,7 @@ import (
 	"net"
 	"sync"
 
-	"github.com/loopholelabs/drafter/internal/network"
+	"github.com/loopholelabs/drafter/pkg/network"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 )
 

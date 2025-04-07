@@ -3,7 +3,7 @@ package nat
 import (
 	"sync"
 
-	"github.com/loopholelabs/drafter/internal/network"
+	"github.com/loopholelabs/drafter/pkg/network"
 )
 
 type claimableNamespace struct {
