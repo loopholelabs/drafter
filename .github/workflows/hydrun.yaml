@@ -98,13 +98,6 @@ jobs:
             cmd: ./Hydrunfile go drafter-peer
             dst: out/*
             runner: depot-ubuntu-22.04-32
-          - id: go.drafter-terminator
-            src: .
-            os: golang:bookworm
-            flags: -e '-v /tmp/ccache:/root/.cache/go-build'
-            cmd: ./Hydrunfile go drafter-terminator
-            dst: out/*
-            runner: depot-ubuntu-22.04-32
 
           # OCI OS
           - id: os.drafteros-oci-x86_64
