@@ -77,13 +77,6 @@ jobs:
             cmd: ./Hydrunfile go drafter-runner
             dst: out/*
             runner: depot-ubuntu-22.04-32
-          - id: go.drafter-registry
-            src: .
-            os: golang:bookworm
-            flags: -e '-v /tmp/ccache:/root/.cache/go-build'
-            cmd: ./Hydrunfile go drafter-registry
-            dst: out/*
-            runner: depot-ubuntu-22.04-32
           - id: go.drafter-mounter
             src: .
             os: golang:bookworm
