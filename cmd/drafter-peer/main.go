@@ -53,10 +53,6 @@ func main() {
 	resumeTimeout := flag.Duration("resume-timeout", time.Minute, "Maximum amount of time to wait for agent and liveness to resume")
 	rescueTimeout := flag.Duration("rescue-timeout", time.Minute, "Maximum amount of time to wait for rescue operations")
 
-	experimentalMapPrivate := flag.Bool("experimental-map-private", false, "(Experimental) Whether to use MAP_PRIVATE for memory and state devices")
-	experimentalMapPrivateStateOutput := flag.String("experimental-map-private-state-output", "", "(Experimental) Path to write the local changes to the shared state to (leave empty to write back to device directly) (ignored unless --experimental-map-private)")
-	experimentalMapPrivateMemoryOutput := flag.String("experimental-map-private-memory-output", "", "(Experimental) Path to write the local changes to the shared memory to (leave empty to write back to device directly) (ignored unless --experimental-map-private)")
-
 	serveMetrics := flag.String("metrics", "", "Address to serve metrics from")
 
 	disablePostcopyMigration := flag.Bool("disable-postcopy-migration", false, "Whether to disable post-copy migration")
@@ -147,11 +143,6 @@ func main() {
 			MemoryName:       common.DeviceMemoryName,
 			AgentServerLocal: struct{}{},
 			AgentServerHooks: ipc.AgentServerAcceptHooks[ipc.AgentServerRemote[struct{}], struct{}]{},
-			SnapshotLoadConfiguration: rfirecracker.SnapshotLoadConfiguration{
-				ExperimentalMapPrivate:             *experimentalMapPrivate,
-				ExperimentalMapPrivateStateOutput:  *experimentalMapPrivateStateOutput,
-				ExperimentalMapPrivateMemoryOutput: *experimentalMapPrivateMemoryOutput,
-			},
 		}
 	}
 

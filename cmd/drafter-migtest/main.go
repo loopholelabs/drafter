@@ -125,9 +125,6 @@ func main() {
 		MemoryName:       common.DeviceMemoryName,
 		AgentServerLocal: struct{}{},
 		AgentServerHooks: ipc.AgentServerAcceptHooks[ipc.AgentServerRemote[struct{}], struct{}]{},
-		SnapshotLoadConfiguration: rfirecracker.SnapshotLoadConfiguration{
-			ExperimentalMapPrivate: false,
-		},
 	}
 
 	myPeer, err := peer.StartPeer(context.TODO(), context.Background(), log, siloMetrics, drafterMetrics, "cow_test", rp)
@@ -183,9 +180,6 @@ func main() {
 			MemoryName:       common.DeviceMemoryName,
 			AgentServerLocal: struct{}{},
 			AgentServerHooks: ipc.AgentServerAcceptHooks[ipc.AgentServerRemote[struct{}], struct{}]{},
-			SnapshotLoadConfiguration: rfirecracker.SnapshotLoadConfiguration{
-				ExperimentalMapPrivate: false,
-			},
 		}
 
 		nextPeer, err := peer.StartPeer(context.TODO(), context.Background(), log, siloMetrics, drafterMetrics, "cow_test", rp2)

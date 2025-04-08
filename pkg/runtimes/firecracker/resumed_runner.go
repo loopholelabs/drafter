@@ -3,15 +3,10 @@ package firecracker
 import (
 	"context"
 	"errors"
-	"io"
-	"os"
-	"path/filepath"
 	"time"
 
-	"github.com/lithammer/shortuuid/v4"
 	"github.com/loopholelabs/drafter/pkg/common"
 	"github.com/loopholelabs/drafter/pkg/ipc"
-	"github.com/loopholelabs/drafter/pkg/utils"
 	"github.com/loopholelabs/logging/types"
 )
 
@@ -19,16 +14,8 @@ var (
 	ErrCouldNotResumeSnapshot = errors.New("could not resume snapshot")
 )
 
-type SnapshotLoadConfiguration struct {
-	ExperimentalMapPrivate             bool
-	ExperimentalMapPrivateStateOutput  string
-	ExperimentalMapPrivateMemoryOutput string
-}
-
 type ResumedRunner[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] struct {
-	log                       types.Logger
-	snapshotLoadConfiguration SnapshotLoadConfiguration
-
+	log     types.Logger
 	machine *FirecrackerMachine
 
 	stateName  string
@@ -72,19 +59,17 @@ func (rr *ResumedRunner[L, R, G]) Msync(ctx context.Context) error {
 		rr.log.Info().Msg("resumed runner Msync")
 	}
 
-	if !rr.snapshotLoadConfiguration.ExperimentalMapPrivate {
-		err := rr.machine.CreateSnapshot(
-			ctx,
-			rr.stateName,
-			"",
-			SDKSnapshotTypeMsync,
-		)
-		if err != nil {
-			if rr.log != nil {
-				rr.log.Error().Err(err).Msg("error in resumed runner Msync")
-			}
-			return errors.Join(ErrCouldNotCreateSnapshot, err)
+	err := rr.machine.CreateSnapshot(
+		ctx,
+		rr.stateName,
+		"",
+		SDKSnapshotTypeMsync,
+	)
+	if err != nil {
+		if rr.log != nil {
+			rr.log.Error().Err(err).Msg("error in resumed runner Msync")
 		}
+		return errors.Join(ErrCouldNotCreateSnapshot, err)
 	}
 	return nil
 }
@@ -103,93 +88,13 @@ func (rr *ResumedRunner[L, R, G]) SuspendAndCloseAgentServer(ctx context.Context
 		return err
 	}
 
-	err = rr.createSnapshot(suspendCtx)
-	if err != nil {
-		return errors.Join(ErrCouldNotCreateSnapshot, err)
-	}
-
-	return nil
-}
-
-func (rr *ResumedRunner[L, R, G]) createSnapshot(ctx context.Context) error {
 	if rr.log != nil {
 		rr.log.Debug().Msg("resumedRunner createSnapshot")
 	}
 
-	stateCopyName := shortuuid.New()
-	memoryCopyName := shortuuid.New()
-
-	if rr.snapshotLoadConfiguration.ExperimentalMapPrivate {
-		err := rr.machine.CreateSnapshot(
-			ctx,
-			// We need to write the state and memory to a separate file since we can't truncate an `mmap`ed file
-			stateCopyName,
-			memoryCopyName,
-			SDKSnapshotTypeFull,
-		)
-		if err != nil {
-			return errors.Join(ErrCouldNotCreateSnapshot, err)
-		}
-
-		err = rr.machine.Close()
-		if err != nil {
-			return errors.Join(ErrCouldNotCloseServer, err)
-		}
-
-		err = rr.machine.Wait()
-		if err != nil {
-			return errors.Join(ErrCouldNotWaitForFirecracker, err)
-		}
-
-		for _, device := range [][3]string{
-			{rr.stateName, stateCopyName, rr.snapshotLoadConfiguration.ExperimentalMapPrivateStateOutput},
-			{rr.memoryName, memoryCopyName, rr.snapshotLoadConfiguration.ExperimentalMapPrivateMemoryOutput},
-		} {
-			inputFile, err := os.Open(filepath.Join(rr.machine.VMPath, device[1]))
-			if err != nil {
-				return errors.Join(ErrCouldNotOpenInputFile, err)
-			}
-			defer inputFile.Close()
-
-			outputPath := device[2]
-			addPadding := true
-
-			if outputPath == "" {
-				outputPath = filepath.Join(rr.machine.VMPath, device[0])
-				addPadding = false
-			}
-
-			err = os.MkdirAll(filepath.Dir(outputPath), os.ModePerm)
-			if err != nil {
-				panic(errors.Join(common.ErrCouldNotCreateOutputDir, err))
-			}
-
-			outputFile, err := os.OpenFile(outputPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, os.ModePerm)
-			if err != nil {
-				return errors.Join(common.ErrCouldNotOpenOutputFile, err)
-			}
-			defer outputFile.Close()
-
-			deviceSize, err := io.Copy(outputFile, inputFile)
-			if err != nil {
-				return errors.Join(ErrCouldNotCopyFile, err)
-			}
-
-			// We need to add a padding like the snapshotter if we're writing to a file instead of a block device
-			if addPadding {
-				if paddingLength := utils.GetBlockDevicePadding(deviceSize); paddingLength > 0 {
-					if _, err := outputFile.Write(make([]byte, paddingLength)); err != nil {
-						return errors.Join(ErrCouldNotWritePadding, err)
-					}
-				}
-			}
-		}
-
-	} else {
-		err := rr.machine.CreateSnapshot(ctx, rr.stateName, "", SDKSnapshotTypeMsyncAndState)
-		if err != nil {
-			return errors.Join(ErrCouldNotCreateSnapshot, err)
-		}
+	err = rr.machine.CreateSnapshot(suspendCtx, rr.stateName, "", SDKSnapshotTypeMsyncAndState)
+	if err != nil {
+		return errors.Join(ErrCouldNotCreateSnapshot, err)
 	}
 
 	return nil
@@ -203,7 +108,6 @@ func Resume[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 	agentVSockPort uint32,
 	agentServerLocal L,
 	agentServerHooks ipc.AgentServerAcceptHooks[R, G],
-	snapshotLoadConfiguration SnapshotLoadConfiguration,
 ) (*ResumedRunner[L, R, G], error) {
 
 	if machine.log != nil {
@@ -211,11 +115,10 @@ func Resume[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 	}
 
 	resumedRunner := &ResumedRunner[L, R, G]{
-		log:                       machine.log,
-		snapshotLoadConfiguration: snapshotLoadConfiguration,
-		machine:                   machine,
-		stateName:                 common.DeviceStateName,
-		memoryName:                common.DeviceMemoryName,
+		log:        machine.log,
+		machine:    machine,
+		stateName:  common.DeviceStateName,
+		memoryName: common.DeviceMemoryName,
 	}
 
 	// Monitor for any error from the runner

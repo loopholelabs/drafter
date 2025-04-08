@@ -148,9 +148,6 @@ func TestMigration(t *testing.T) {
 		MemoryName:       common.DeviceMemoryName,
 		AgentServerLocal: struct{}{},
 		AgentServerHooks: ipc.AgentServerAcceptHooks[ipc.AgentServerRemote[struct{}], struct{}]{},
-		SnapshotLoadConfiguration: SnapshotLoadConfiguration{
-			ExperimentalMapPrivate: false,
-		},
 	}
 
 	myPeer, err := peer.StartPeer(context.TODO(), context.Background(), log, nil, nil, "cow_test", rp)
@@ -203,9 +200,6 @@ func TestMigration(t *testing.T) {
 			MemoryName:       common.DeviceMemoryName,
 			AgentServerLocal: struct{}{},
 			AgentServerHooks: ipc.AgentServerAcceptHooks[ipc.AgentServerRemote[struct{}], struct{}]{},
-			SnapshotLoadConfiguration: SnapshotLoadConfiguration{
-				ExperimentalMapPrivate: false,
-			},
 		}
 
 		nextPeer, err := peer.StartPeer(context.TODO(), context.Background(), log, nil, nil, "cow_test", rp2)

@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"os"
 	"sync"
 
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
@@ -57,15 +56,17 @@ func (a *AgentServer[L, R, G]) Close() error {
 	defer a.closeLock.Unlock()
 	a.closed = true
 
-	// We need to remove this file first so that the client can't try to reconnect
-	err := os.Remove(a.VSockPath) // We ignore errors here since the file might already have been removed, but we don't want to use `RemoveAll` cause it could remove a directory
-	if err != nil {
-		if a.log != nil {
-			a.log.Debug().Err(err).Str("VSockPath", a.VSockPath).Msg("error removing vsockpath")
+	/*
+		// We need to remove this file first so that the client can't try to reconnect
+		err := os.Remove(a.VSockPath) // We ignore errors here since the file might already have been removed, but we don't want to use `RemoveAll` cause it could remove a directory
+		if err != nil {
+			if a.log != nil {
+				a.log.Debug().Err(err).Str("VSockPath", a.VSockPath).Msg("error removing vsockpath")
+			}
 		}
-	}
+	*/
 
-	err = a.lis.Close() // We ignore errors here since we might interrupt a network connection
+	err := a.lis.Close() // We ignore errors here since we might interrupt a network connection
 	if err != nil {
 		if a.log != nil {
 			a.log.Debug().Err(err).Str("VSockPath", a.VSockPath).Msg("error closing listener")
@@ -134,13 +135,19 @@ type AgentServerAcceptHooks[R AgentServerRemote[G], G any] struct {
 }
 
 type AgentConnection[L AgentServerLocal, R AgentServerRemote[G], G any] struct {
-	Remote  R
-	connErr chan error
+	Remote        R
+	connErr       chan error
+	connectionErr error
+	connectionWg  sync.WaitGroup
 
 	Wait  func() error
 	Close func() error
 }
 
+/**
+ * Accept a connection, and handle it
+ *
+ */
 func (agentServer *AgentServer[L, R, G]) Accept(acceptCtx context.Context, remoteCtx context.Context, hooks AgentServerAcceptHooks[R, G],
 ) (agentConnection *AgentConnection[L, R, G], errs error) {
 
@@ -153,6 +160,22 @@ func (agentServer *AgentServer[L, R, G]) Accept(acceptCtx context.Context, remot
 			return nil
 		},
 	}
+
+	conn, err := agentServer.lis.Accept()
+	if err != nil {
+		agentServer.closeLock.Lock()
+		defer agentServer.closeLock.Unlock()
+		if agentServer.closed && errors.Is(err, net.ErrClosed) {
+			return nil, nil
+		}
+		return nil, errors.Join(ErrCouldNotAcceptAgentClient, err)
+	}
+
+	if agentServer.log != nil {
+		agentServer.log.Info().Str("VSockPath", agentServer.VSockPath).Msg("AgentServer Accepted connection")
+	}
+
+	linkCtx, cancelLinkCtx := context.WithCancelCause(remoteCtx) // This resource outlives the current scope, so we use the external context
 
 	goroutineManager := manager.NewGoroutineManager(
 		acceptCtx,
@@ -185,22 +208,6 @@ func (agentServer *AgentServer[L, R, G]) Accept(acceptCtx context.Context, remot
 			agentServer.Close() // We ignore errors here since we might interrupt a network connection
 		}
 	})
-
-	conn, err := agentServer.lis.Accept()
-	if err != nil {
-		agentServer.closeLock.Lock()
-		defer agentServer.closeLock.Unlock()
-
-		if agentServer.closed && errors.Is(err, net.ErrClosed) { // Don't treat closed errors as errors if we closed the connection
-			if err := goroutineManager.Context().Err(); err != nil {
-				panic(err)
-			}
-			return
-		}
-		return nil, errors.Join(ErrCouldNotAcceptAgentClient, err)
-	}
-
-	linkCtx, cancelLinkCtx := context.WithCancelCause(remoteCtx) // This resource outlives the current scope, so we use the external context
 
 	agentConnection.Close = func() error {
 		agentServer.closeLock.Lock()
@@ -246,10 +253,13 @@ func (agentServer *AgentServer[L, R, G]) Accept(acceptCtx context.Context, remot
 	}
 
 	// Handle the connection here.
+	agentConnection.connectionWg.Add(1)
 	go func() {
 		defer cancelLinkCtx(nil)
 		err := handleConnection[R](linkCtx, registry, conn)
 		agentConnection.connErr <- err
+		agentConnection.connectionErr = err
+		agentConnection.connectionWg.Done()
 	}()
 
 	agentConnection.Wait = sync.OnceValue(func() error {

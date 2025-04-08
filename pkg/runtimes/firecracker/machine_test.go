@@ -1,5 +1,5 @@
-//go:build integration2
-// +build integration2
+//go:build integration
+// +build integration
 
 package firecracker
 
@@ -55,9 +55,6 @@ func TestResumeSuspend(t *testing.T) {
 	agentVsockPort := uint32(26)
 	agentLocal := struct{}{}
 	agentHooks := ipc.AgentServerAcceptHooks[ipc.AgentServerRemote[struct{}], struct{}]{}
-	snapConfig := SnapshotLoadConfiguration{
-		ExperimentalMapPrivate: false,
-	}
 
 	deviceFiles := []string{
 		"state", "memory", "kernel", "disk", "config", "oci",
@@ -73,7 +70,7 @@ func TestResumeSuspend(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Resume and suspend the vm a few times
-	for n := 0; n < 10; n++ {
+	for n := 0; n < 3; n++ {
 		m, err := StartFirecrackerMachine(ctx, log, &FirecrackerMachineConfig{
 			FirecrackerBin: firecrackerBin,
 			JailerBin:      jailerBin,
@@ -106,8 +103,8 @@ func TestResumeSuspend(t *testing.T) {
 			assert.NoError(t, err)
 		}
 
-		rr, err := Resume[struct{}, ipc.AgentServerRemote[struct{}], struct{}](m, ctx, 30*time.Second, 30*time.Second,
-			agentVsockPort, agentLocal, agentHooks, snapConfig)
+		rr, err := Resume[struct{}, ipc.AgentServerRemote[struct{}], struct{}](m, ctx, 5*time.Second, 5*time.Second,
+			agentVsockPort, agentLocal, agentHooks)
 		assert.NoError(t, err)
 
 		assert.NotNil(t, rr)

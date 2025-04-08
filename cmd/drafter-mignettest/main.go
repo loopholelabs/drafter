@@ -211,9 +211,6 @@ func handleConnection(migration int, conn net.Conn, log types.Logger, firecracke
 		MemoryName:       common.DeviceMemoryName,
 		AgentServerLocal: struct{}{},
 		AgentServerHooks: ipc.AgentServerAcceptHooks[ipc.AgentServerRemote[struct{}], struct{}]{},
-		SnapshotLoadConfiguration: rfirecracker.SnapshotLoadConfiguration{
-			ExperimentalMapPrivate: false,
-		},
 	}
 
 	nextPeer, err := peer.StartPeer(context.TODO(), context.Background(), log, nil, nil, "cow_test", rp2)
@@ -310,9 +307,6 @@ func setupFirstPeer(log types.Logger, firecrackerBin string, jailerBin string, s
 		MemoryName:       common.DeviceMemoryName,
 		AgentServerLocal: struct{}{},
 		AgentServerHooks: ipc.AgentServerAcceptHooks[ipc.AgentServerRemote[struct{}], struct{}]{},
-		SnapshotLoadConfiguration: rfirecracker.SnapshotLoadConfiguration{
-			ExperimentalMapPrivate: false,
-		},
 	}
 
 	myPeer, err := peer.StartPeer(context.TODO(), context.Background(), log, nil, nil, "cow_test", rp)

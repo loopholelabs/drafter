@@ -34,8 +34,6 @@ type FirecrackerRuntimeProvider[L ipc.AgentServerLocal, R ipc.AgentServerRemote[
 	resumeCtx        context.Context
 	resumeCancel     context.CancelFunc
 
-	SnapshotLoadConfiguration SnapshotLoadConfiguration
-
 	runningLock sync.Mutex
 	running     bool
 
@@ -82,7 +80,6 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Resume(resumeTimeout time.Duratio
 		packageConfig.AgentVSockPort,
 		rp.AgentServerLocal,
 		rp.AgentServerHooks,
-		rp.SnapshotLoadConfiguration,
 	)
 	if err != nil {
 		return err

@@ -346,11 +346,6 @@ func (fs *FirecrackerMachine) CreateSnapshot(ctx context.Context, statePath stri
 func (fs *FirecrackerMachine) StartVM(ctx context.Context, kernelPath string,
 	disks []string, ioEngine string,
 	vmConfig *VMConfiguration, netConfig *NetworkConfiguration,
-
-	// cpuCount int64, memorySize int64, cpuTemplate string, bootArgs string,
-
-	// hostInterface string, hostMAC string,
-
 	vsockPath string, vsockCID int64) error {
 
 	_, err := fs.client.PutGuestBootSource(ctx, &models.BootSource{

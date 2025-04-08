@@ -67,10 +67,6 @@ func main() {
 	numaNode := flag.Int("numa-node", 0, "NUMA node to run Firecracker in")
 	cgroupVersion := flag.Int("cgroup-version", 2, "Cgroup version to use for Jailer")
 
-	experimentalMapPrivate := flag.Bool("experimental-map-private", false, "(Experimental) Whether to use MAP_PRIVATE for memory and state devices")
-	experimentalMapPrivateStateOutput := flag.String("experimental-map-private-state-output", "", "(Experimental) Path to write the local changes to the shared state to (leave empty to write back to device directly) (ignored unless --experimental-map-private)")
-	experimentalMapPrivateMemoryOutput := flag.String("experimental-map-private-memory-output", "", "(Experimental) Path to write the local changes to the shared memory to (leave empty to write back to device directly) (ignored unless --experimental-map-private)")
-
 	rawDevices := flag.String("devices", string(defaultDevices), "Devices configuration")
 
 	flag.Parse()
@@ -286,13 +282,6 @@ func main() {
 
 		struct{}{},
 		ipc.AgentServerAcceptHooks[ipc.AgentServerRemote[struct{}], struct{}]{},
-
-		rfirecracker.SnapshotLoadConfiguration{
-			ExperimentalMapPrivate: *experimentalMapPrivate,
-
-			ExperimentalMapPrivateStateOutput:  *experimentalMapPrivateStateOutput,
-			ExperimentalMapPrivateMemoryOutput: *experimentalMapPrivateMemoryOutput,
-		},
 	)
 
 	if err != nil {

@@ -51,9 +51,6 @@ func main() {
 	agentVsockPort := uint32(26)
 	agentLocal := struct{}{}
 	agentHooks := ipc.AgentServerAcceptHooks[ipc.AgentServerRemote[struct{}], struct{}]{}
-	snapConfig := rfirecracker.SnapshotLoadConfiguration{
-		ExperimentalMapPrivate: false,
-	}
 
 	deviceFiles := []string{
 		"state", "memory", "kernel", "disk", "config", "oci",
@@ -114,7 +111,7 @@ func main() {
 		}
 
 		rr, err := rfirecracker.Resume[struct{}, ipc.AgentServerRemote[struct{}], struct{}](m, ctx, 30*time.Second, 30*time.Second,
-			agentVsockPort, agentLocal, agentHooks, snapConfig)
+			agentVsockPort, agentLocal, agentHooks)
 		if err != nil {
 			panic(err)
 		}
