@@ -185,6 +185,10 @@ type AgentConnection[L AgentServerLocal, R AgentServerRemote[G], G any] struct {
 }
 
 func (ac *AgentConnection[L, R, G]) Close() error {
+	if ac.agentServer.log != nil {
+		ac.agentServer.log.Info().Str("VSockPath", ac.agentServer.VSockPath).Msg("AgentConnection.Close()")
+	}
+
 	ac.agentServer.closeLock.Lock()
 	ac.agentServer.closed = true
 	ac.linkCancel(ac.stoppedErr)
@@ -246,22 +250,6 @@ func (agentServer *AgentServer[L, R, G]) Accept(acceptCtx context.Context, remot
 			close(ready) // We can safely close() this channel since the caller only runs once/is `sync.OnceFunc`d
 		})
 	)
-	// This goroutine will not leak on function return because it selects on `goroutineManager.Context().Done()` internally
-	goroutineManager.StartBackgroundGoroutine(func(ctx context.Context) {
-		select {
-		// Failure case; something failed and the goroutineManager.Context() was cancelled before we got a connection
-		case <-ctx.Done():
-			// Happy case; we've got a connection and we want to wait with closing the agent's connections until the context, not the internal context is cancelled
-			// We don't do anything here because the `acceptingAgent` context handler must close in order
-			select {
-			case <-ready:
-				return
-			default:
-			}
-
-			agentServer.Close() // We ignore errors here since we might interrupt a network connection
-		}
-	})
 
 	// It is safe to start a background goroutine here since we return a wait function
 	// Despite returning a wait function, we still need to start this goroutine however so that any errors
@@ -336,6 +324,7 @@ func (agentServer *AgentServer[L, R, G]) Accept(acceptCtx context.Context, remot
 
 	select {
 	case <-goroutineManager.Context().Done():
+		agentServer.Close()
 		return nil, goroutineManager.Context().Err()
 	case <-ready:
 		break
