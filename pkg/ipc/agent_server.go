@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"os"
 	"sync"
 
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
@@ -38,11 +39,11 @@ type AgentServerRemote[G any] struct {
 type AgentServer[L AgentServerLocal, R AgentServerRemote[G], G any] struct {
 	log              loggingtypes.Logger
 	VSockPath        string
-	lis              net.Listener
 	closed           bool
 	closeLock        sync.Mutex
 	agentServerLocal L
 
+	lis           net.Listener
 	listenCtx     context.Context
 	listenCancel  context.CancelFunc
 	connections   chan net.Conn
@@ -55,7 +56,7 @@ type AgentServer[L AgentServerLocal, R AgentServerRemote[G], G any] struct {
  */
 func (a *AgentServer[L, R, G]) Close() error {
 	if a.log != nil {
-		a.log.Info().Msg("Closing AgentServer")
+		a.log.Info().Str("VSockPath", a.VSockPath).Msg("Closing AgentServer")
 	}
 	a.closeLock.Lock()
 	defer a.closeLock.Unlock()
@@ -63,17 +64,15 @@ func (a *AgentServer[L, R, G]) Close() error {
 
 	a.listenCancel()
 
-	/*
-		// We need to remove this file first so that the client can't try to reconnect
-		err := os.Remove(a.VSockPath) // We ignore errors here since the file might already have been removed, but we don't want to use `RemoveAll` cause it could remove a directory
-		if err != nil {
-			if a.log != nil {
-				a.log.Debug().Err(err).Str("VSockPath", a.VSockPath).Msg("error removing vsockpath")
-			}
+	// We need to remove this file first so that the client can't try to reconnect
+	err := os.Remove(a.VSockPath) // We ignore errors here since the file might already have been removed, but we don't want to use `RemoveAll` cause it could remove a directory
+	if err != nil {
+		if a.log != nil {
+			a.log.Debug().Err(err).Str("VSockPath", a.VSockPath).Msg("error removing vsockpath")
 		}
-	*/
+	}
 
-	err := a.lis.Close() // We ignore errors here since we might interrupt a network connection
+	err = a.lis.Close() // We ignore errors here since we might interrupt a network connection
 	if err != nil {
 		if a.log != nil {
 			a.log.Debug().Err(err).Str("VSockPath", a.VSockPath).Msg("error closing listener")
@@ -110,7 +109,7 @@ func StartAgentServer[L AgentServerLocal, R AgentServerRemote[G], G any](log log
 	}
 
 	if log != nil {
-		log.Info().Str("VSockPath", agentServer.VSockPath).Msg("Created AgentServer")
+		log.Info().Str("VSockPath", agentServer.VSockPath).Msg("Created an AgentServer")
 	}
 
 	// Start accepting here so we *know* we are accepting connections
@@ -118,14 +117,14 @@ func StartAgentServer[L AgentServerLocal, R AgentServerRemote[G], G any](log log
 		select {
 		case <-listenCtx.Done():
 			if log != nil {
-				log.Info().Str("VSockPath", agentServer.VSockPath).Msg("AgentServer.listener shut down")
+				log.Debug().Str("VSockPath", agentServer.VSockPath).Msg("AgentServer.listener shut down")
 			}
 			return
 		default:
 		}
 		conn, err := agentServer.lis.Accept()
 		if log != nil {
-			log.Info().Str("VSockPath", agentServer.VSockPath).Err(err).Msg("AgentServer.listener accepted")
+			log.Debug().Str("VSockPath", agentServer.VSockPath).Err(err).Msg("AgentServer.listener accepted")
 		}
 		if err != nil {
 			agentServer.connectionErr <- err
@@ -172,13 +171,25 @@ type AgentServerAcceptHooks[R AgentServerRemote[G], G any] struct {
 }
 
 type AgentConnection[L AgentServerLocal, R AgentServerRemote[G], G any] struct {
+	agentServer   *AgentServer[L, R, G]
 	Remote        R
 	connErr       chan error
 	connectionErr error
 	connectionWg  sync.WaitGroup
 
-	Wait  func() error
-	Close func() error
+	linkCtx    context.Context
+	linkCancel context.CancelCauseFunc
+	stoppedErr error
+
+	Wait func() error
+}
+
+func (ac *AgentConnection[L, R, G]) Close() error {
+	ac.agentServer.closeLock.Lock()
+	ac.agentServer.closed = true
+	ac.linkCancel(ac.stoppedErr)
+	ac.agentServer.closeLock.Unlock()
+	return ac.Wait()
 }
 
 /**
@@ -189,11 +200,9 @@ func (agentServer *AgentServer[L, R, G]) Accept(acceptCtx context.Context, remot
 ) (agentConnection *AgentConnection[L, R, G], errs error) {
 
 	agentConnection = &AgentConnection[L, R, G]{
-		connErr: make(chan error, 1),
+		agentServer: agentServer,
+		connErr:     make(chan error, 1),
 		Wait: func() error {
-			return nil
-		},
-		Close: func() error {
 			return nil
 		},
 	}
@@ -218,7 +227,7 @@ func (agentServer *AgentServer[L, R, G]) Accept(acceptCtx context.Context, remot
 		agentServer.log.Info().Str("VSockPath", agentServer.VSockPath).Msg("AgentServer.Accept Accepted connection")
 	}
 
-	linkCtx, cancelLinkCtx := context.WithCancelCause(remoteCtx) // This resource outlives the current scope, so we use the external context
+	agentConnection.linkCtx, agentConnection.linkCancel = context.WithCancelCause(remoteCtx) // This resource outlives the current scope, so we use the external context
 
 	goroutineManager := manager.NewGoroutineManager(
 		acceptCtx,
@@ -228,6 +237,8 @@ func (agentServer *AgentServer[L, R, G]) Accept(acceptCtx context.Context, remot
 	defer goroutineManager.Wait()
 	defer goroutineManager.StopAllGoroutines()
 	defer goroutineManager.CreateBackgroundPanicCollector()()
+
+	agentConnection.stoppedErr = goroutineManager.GetErrGoroutineStopped()
 
 	var (
 		ready       = make(chan struct{})
@@ -251,14 +262,6 @@ func (agentServer *AgentServer[L, R, G]) Accept(acceptCtx context.Context, remot
 			agentServer.Close() // We ignore errors here since we might interrupt a network connection
 		}
 	})
-
-	agentConnection.Close = func() error {
-		agentServer.closeLock.Lock()
-		agentServer.closed = true
-		cancelLinkCtx(goroutineManager.GetErrGoroutineStopped())
-		agentServer.closeLock.Unlock()
-		return agentConnection.Wait()
-	}
 
 	// It is safe to start a background goroutine here since we return a wait function
 	// Despite returning a wait function, we still need to start this goroutine however so that any errors
@@ -298,8 +301,8 @@ func (agentServer *AgentServer[L, R, G]) Accept(acceptCtx context.Context, remot
 	// Handle the connection here.
 	agentConnection.connectionWg.Add(1)
 	go func() {
-		defer cancelLinkCtx(nil)
-		err := handleConnection[R](linkCtx, registry, conn)
+		defer agentConnection.linkCancel(nil)
+		err := handleConnection[R](agentConnection.linkCtx, registry, conn)
 		agentConnection.connErr <- err
 		agentConnection.connectionErr = err
 		agentConnection.connectionWg.Done()
