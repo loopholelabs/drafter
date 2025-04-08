@@ -42,6 +42,11 @@ type AgentServer[L AgentServerLocal, R AgentServerRemote[G], G any] struct {
 	closed           bool
 	closeLock        sync.Mutex
 	agentServerLocal L
+
+	listenCtx     context.Context
+	listenCancel  context.CancelFunc
+	connections   chan net.Conn
+	connectionErr chan error
 }
 
 /**
@@ -55,6 +60,8 @@ func (a *AgentServer[L, R, G]) Close() error {
 	a.closeLock.Lock()
 	defer a.closeLock.Unlock()
 	a.closed = true
+
+	a.listenCancel()
 
 	/*
 		// We need to remove this file first so that the client can't try to reconnect
@@ -82,11 +89,19 @@ func (a *AgentServer[L, R, G]) Close() error {
 func StartAgentServer[L AgentServerLocal, R AgentServerRemote[G], G any](log loggingtypes.Logger, vsockPath string, vsockPort uint32,
 	agentServerLocal L) (*AgentServer[L, R, G], error) {
 
+	listenCtx, listenCancel := context.WithCancel(context.Background())
+
+	backlog := 16
+
 	var err error
 	agentServer := &AgentServer[L, R, G]{
+		listenCtx:        listenCtx,
+		listenCancel:     listenCancel,
 		log:              log,
 		agentServerLocal: agentServerLocal,
 		VSockPath:        fmt.Sprintf("%s_%d", vsockPath, vsockPort),
+		connections:      make(chan net.Conn, backlog),
+		connectionErr:    make(chan error, backlog),
 	}
 
 	agentServer.lis, err = net.Listen("unix", agentServer.VSockPath)
@@ -97,6 +112,28 @@ func StartAgentServer[L AgentServerLocal, R AgentServerRemote[G], G any](log log
 	if log != nil {
 		log.Info().Str("VSockPath", agentServer.VSockPath).Msg("Created AgentServer")
 	}
+
+	// Start accepting here so we *know* we are accepting connections
+	go func() {
+		select {
+		case <-listenCtx.Done():
+			if log != nil {
+				log.Info().Str("VSockPath", agentServer.VSockPath).Msg("AgentServer.listener shut down")
+			}
+			return
+		default:
+		}
+		conn, err := agentServer.lis.Accept()
+		if log != nil {
+			log.Info().Str("VSockPath", agentServer.VSockPath).Err(err).Msg("AgentServer.listener accepted")
+		}
+		if err != nil {
+			agentServer.connectionErr <- err
+		} else {
+			agentServer.connections <- conn
+		}
+	}()
+
 	return agentServer, nil
 }
 
@@ -161,8 +198,14 @@ func (agentServer *AgentServer[L, R, G]) Accept(acceptCtx context.Context, remot
 		},
 	}
 
-	conn, err := agentServer.lis.Accept()
-	if err != nil {
+	if agentServer.log != nil {
+		agentServer.log.Info().Str("VSockPath", agentServer.VSockPath).Msg("AgentServer.Accept Accepting connection")
+	}
+
+	var conn net.Conn
+	select {
+	case conn = <-agentServer.connections:
+	case err := <-agentServer.connectionErr:
 		agentServer.closeLock.Lock()
 		defer agentServer.closeLock.Unlock()
 		if agentServer.closed && errors.Is(err, net.ErrClosed) {
@@ -172,7 +215,7 @@ func (agentServer *AgentServer[L, R, G]) Accept(acceptCtx context.Context, remot
 	}
 
 	if agentServer.log != nil {
-		agentServer.log.Info().Str("VSockPath", agentServer.VSockPath).Msg("AgentServer Accepted connection")
+		agentServer.log.Info().Str("VSockPath", agentServer.VSockPath).Msg("AgentServer.Accept Accepted connection")
 	}
 
 	linkCtx, cancelLinkCtx := context.WithCancelCause(remoteCtx) // This resource outlives the current scope, so we use the external context
@@ -296,7 +339,7 @@ func (agentServer *AgentServer[L, R, G]) Accept(acceptCtx context.Context, remot
 	}
 
 	found := false
-	err = registry.ForRemotes(func(remoteID string, r R) error {
+	err := registry.ForRemotes(func(remoteID string, r R) error {
 		agentConnection.Remote = r
 		found = true
 		return nil
