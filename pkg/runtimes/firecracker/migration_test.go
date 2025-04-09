@@ -291,7 +291,7 @@ func migration(t *testing.T, config *migrationConfig) {
 				NetNS:          netns,
 				NumaNode:       0,
 				CgroupVersion:  2,
-				EnableOutput:   true,
+				EnableOutput:   false,
 				EnableInput:    false,
 			},
 			StateName:        common.DeviceStateName,
