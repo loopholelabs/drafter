@@ -207,6 +207,7 @@ func StartFirecrackerMachine(ctx context.Context, log loggingtypes.Logger, conf 
 	}()
 
 	logger := logrus.New()
+	logger.SetLevel(logrus.ErrorLevel)
 	clog := logger.WithField("subsystem", "firecracker")
 	clog.WithField("socketPath", socketPath).Info("Loading snapshot")
 	server.client = sdk.NewClient(socketPath, clog, true)
