@@ -408,7 +408,7 @@ func migration(t *testing.T, config *migrationConfig) {
 
 		lastPeer = nextPeer
 
-		fmt.Printf("\nMIGRATION %d COMPLETED evacuated in %dms migrated in %dms (%d P2P) (%d S3)\n", migration+1,
+		fmt.Printf("MIGRATION %d COMPLETED evacuated in %dms migrated in %dms (%d P2P) (%d S3)\n", migration+1,
 			evacuationTook.Milliseconds(), migrationTook.Milliseconds(), totalBlocksP2P, totalBlocksS3)
 	}
 
