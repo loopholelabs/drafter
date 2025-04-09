@@ -47,7 +47,13 @@ func TestSnapshotter(t *testing.T) {
 	netns, err := ns.ClaimNamespace()
 	assert.NoError(t, err)
 
-	snapDir := setupSnapshot(t, log, ctx, netns)
+	snapDir := setupSnapshot(t, log, ctx, netns, VMConfiguration{
+		CPUCount:    1,
+		MemorySize:  1024,
+		CPUTemplate: "None",
+		BootArgs:    DefaultBootArgsNoPVM,
+	},
+	)
 
 	// Check output
 
@@ -65,7 +71,7 @@ func TestSnapshotter(t *testing.T) {
  *  - firecracker works
  *  - blueprints exist
  */
-func setupSnapshot(t *testing.T, log types.Logger, ctx context.Context, netns string) string {
+func setupSnapshot(t *testing.T, log types.Logger, ctx context.Context, netns string, vmConfiguration VMConfiguration) string {
 	currentUser, err := user.Current()
 	if err != nil {
 		panic(err)
@@ -118,12 +124,7 @@ func setupSnapshot(t *testing.T, log types.Logger, ctx context.Context, netns st
 	}
 
 	err = CreateSnapshot(log, ctx, devices, false,
-		VMConfiguration{
-			CPUCount:    1,
-			MemorySize:  1024,
-			CPUTemplate: "None",
-			BootArgs:    DefaultBootArgsNoPVM,
-		},
+		vmConfiguration,
 		LivenessConfiguration{
 			LivenessVSockPort: uint32(25),
 			ResumeTimeout:     time.Minute,

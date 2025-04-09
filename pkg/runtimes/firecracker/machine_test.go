@@ -50,7 +50,13 @@ func TestResumeSuspend(t *testing.T) {
 	netns, err := ns.ClaimNamespace()
 	assert.NoError(t, err)
 
-	snapDir := setupSnapshot(t, log, ctx, netns)
+	snapDir := setupSnapshot(t, log, ctx, netns, VMConfiguration{
+		CPUCount:    1,
+		MemorySize:  1024,
+		CPUTemplate: "None",
+		BootArgs:    DefaultBootArgsNoPVM,
+	},
+	)
 
 	agentVsockPort := uint32(26)
 	agentLocal := struct{}{}

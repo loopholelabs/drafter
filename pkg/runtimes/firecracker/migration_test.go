@@ -29,9 +29,103 @@ import (
 )
 
 const testPeerDirCowS3 = "test_peer_cow"
-const enableS3 = false
 const performHashChecks = false
-const pauseWaitSecondsMax = 3
+
+func TestMigrationBasic(t *testing.T) {
+	migration(t, &migrationConfig{
+		numMigrations:  5,
+		minCycles:      1,
+		maxCycles:      1,
+		cycleThrottle:  100 * time.Millisecond,
+		maxDirtyBlocks: 10,
+		cpuCount:       1,
+		memorySize:     1024,
+		pauseWaitMax:   3 * time.Second,
+		enableS3:       false,
+	})
+}
+
+func TestMigrationBasicWithS3(t *testing.T) {
+	migration(t, &migrationConfig{
+		numMigrations:  5,
+		minCycles:      1,
+		maxCycles:      1,
+		cycleThrottle:  100 * time.Millisecond,
+		maxDirtyBlocks: 10,
+		cpuCount:       1,
+		memorySize:     1024,
+		pauseWaitMax:   3 * time.Second,
+		enableS3:       true,
+	})
+}
+
+func TestMigrationCpus(t *testing.T) {
+	migration(t, &migrationConfig{
+		numMigrations:  5,
+		minCycles:      1,
+		maxCycles:      1,
+		cycleThrottle:  100 * time.Millisecond,
+		maxDirtyBlocks: 10,
+		cpuCount:       4,
+		memorySize:     1024,
+		pauseWaitMax:   3 * time.Second,
+		enableS3:       false,
+	})
+}
+
+func TestMigrationNoPause(t *testing.T) {
+	migration(t, &migrationConfig{
+		numMigrations:  5,
+		minCycles:      1,
+		maxCycles:      1,
+		cycleThrottle:  100 * time.Millisecond,
+		maxDirtyBlocks: 10,
+		cpuCount:       1,
+		memorySize:     1024,
+		pauseWaitMax:   0,
+		enableS3:       false,
+	})
+}
+
+func TestMigrationMultiCycle(t *testing.T) {
+	migration(t, &migrationConfig{
+		numMigrations:  5,
+		minCycles:      10,
+		maxCycles:      20,
+		cycleThrottle:  100 * time.Millisecond,
+		maxDirtyBlocks: 10,
+		cpuCount:       1,
+		memorySize:     1024,
+		pauseWaitMax:   3 * time.Second,
+		enableS3:       false,
+	})
+}
+
+func TestMigrationNoCycle(t *testing.T) {
+	migration(t, &migrationConfig{
+		numMigrations:  5,
+		minCycles:      0,
+		maxCycles:      0,
+		cycleThrottle:  100 * time.Millisecond,
+		maxDirtyBlocks: 10,
+		cpuCount:       1,
+		memorySize:     1024,
+		pauseWaitMax:   3 * time.Second,
+		enableS3:       false,
+	})
+}
+
+type migrationConfig struct {
+	numMigrations  int
+	minCycles      int
+	maxCycles      int
+	cycleThrottle  time.Duration
+	maxDirtyBlocks int
+	cpuCount       int
+	memorySize     int
+	pauseWaitMax   time.Duration
+	enableS3       bool
+}
 
 /**
  *
@@ -40,7 +134,7 @@ const pauseWaitSecondsMax = 3
  *
  */
 
-func setupDevicesCowS3(t *testing.T, log types.Logger, netns string) ([]common.MigrateToDevice, string, string) {
+func setupDevicesCowS3(t *testing.T, log types.Logger, netns string, config *migrationConfig) ([]common.MigrateToDevice, string, string) {
 
 	s3port := testutils.SetupMinioWithExpiry(t.Cleanup, 120*time.Minute)
 	s3Endpoint := fmt.Sprintf("localhost:%s", s3port)
@@ -51,22 +145,28 @@ func setupDevicesCowS3(t *testing.T, log types.Logger, netns string) ([]common.M
 	devicesTo := make([]common.MigrateToDevice, 0)
 
 	// create package files
-	snapDir := setupSnapshot(t, log, context.Background(), netns)
+	snapDir := setupSnapshot(t, log, context.Background(), netns, VMConfiguration{
+		CPUCount:    int64(config.cpuCount),
+		MemorySize:  int64(config.memorySize),
+		CPUTemplate: "None",
+		BootArgs:    DefaultBootArgsNoPVM,
+	},
+	)
 
 	for _, n := range append(common.KnownNames, "oci") {
 		devicesTo = append(devicesTo, common.MigrateToDevice{
 			Name:           n,
-			MaxDirtyBlocks: 10,
-			MinCycles:      1,
-			MaxCycles:      1,
-			CycleThrottle:  100 * time.Millisecond,
+			MaxDirtyBlocks: config.maxDirtyBlocks,
+			MinCycles:      config.minCycles,
+			MaxCycles:      config.maxCycles,
+			CycleThrottle:  config.cycleThrottle,
 		})
 
 	}
 	return devicesTo, snapDir, s3Endpoint
 }
 
-func getDevicesFrom(t *testing.T, snapDir string, s3Endpoint string, i int) []common.MigrateFromDevice {
+func getDevicesFrom(t *testing.T, snapDir string, s3Endpoint string, i int, config *migrationConfig) []common.MigrateFromDevice {
 	devicesFrom := make([]common.MigrateFromDevice, 0)
 
 	err := os.Mkdir(path.Join(testPeerDirCowS3, fmt.Sprintf("migration_%d", i)), 0777)
@@ -86,7 +186,7 @@ func getDevicesFrom(t *testing.T, snapDir string, s3Endpoint string, i int) []co
 			SharedBase: true,
 		}
 
-		if enableS3 && (n == common.DeviceMemoryName || n == common.DeviceDiskName) {
+		if config.enableS3 && (n == common.DeviceMemoryName || n == common.DeviceDiskName) {
 			dev.S3Sync = true
 			dev.S3AccessKey = "silosilo"
 			dev.S3SecretKey = "silosilo"
@@ -100,7 +200,7 @@ func getDevicesFrom(t *testing.T, snapDir string, s3Endpoint string, i int) []co
 	return devicesFrom
 }
 
-func TestMigration(t *testing.T) {
+func migration(t *testing.T, config *migrationConfig) {
 
 	err := os.Mkdir(testPeerDirCowS3, 0777)
 	assert.NoError(t, err)
@@ -117,12 +217,10 @@ func TestMigration(t *testing.T) {
 	netns, err := ns.ClaimNamespace()
 	assert.NoError(t, err)
 
-	numMigrations := 10
-
 	grandTotalBlocksP2P := 0
 	grandTotalBlocksS3 := 0
 
-	devicesTo, snapDir, s3Endpoint := setupDevicesCowS3(t, log, netns)
+	devicesTo, snapDir, s3Endpoint := setupDevicesCowS3(t, log, netns, config)
 
 	firecrackerBin, err := exec.LookPath("firecracker")
 	assert.NoError(t, err)
@@ -160,7 +258,7 @@ func TestMigration(t *testing.T) {
 		OnXferCustomData:           func(data []byte) {},
 	}
 
-	devicesFrom := getDevicesFrom(t, snapDir, s3Endpoint, 0)
+	devicesFrom := getDevicesFrom(t, snapDir, s3Endpoint, 0, config)
 	err = myPeer.MigrateFrom(context.TODO(), devicesFrom, nil, nil, hooks1)
 	assert.NoError(t, err)
 
@@ -173,13 +271,13 @@ func TestMigration(t *testing.T) {
 
 	var lastPeer = myPeer
 
-	for migration := 0; migration < numMigrations; migration++ {
+	for migration := 0; migration < config.numMigrations; migration++ {
 
 		// Wait for some random time...
-		waitTime := rand.Intn(pauseWaitSecondsMax)
-
-		// Let some S3 sync go on...
-		time.Sleep(time.Duration(waitTime) * time.Second)
+		if config.pauseWaitMax.Milliseconds() > 0 {
+			waitTime := rand.Intn(int(config.pauseWaitMax.Milliseconds()))
+			time.Sleep(time.Duration(waitTime) * time.Millisecond)
+		}
 
 		// Create a new RuntimeProvider
 		rp2 := &FirecrackerRuntimeProvider[struct{}, ipc.AgentServerRemote[struct{}], struct{}]{
@@ -246,7 +344,7 @@ func TestMigration(t *testing.T) {
 				completedWg.Done()
 			},
 		}
-		devicesFrom = getDevicesFrom(t, snapDir, s3Endpoint, migration+1)
+		devicesFrom = getDevicesFrom(t, snapDir, s3Endpoint, migration+1, config)
 		err = nextPeer.MigrateFrom(context.TODO(), devicesFrom, []io.Reader{r2}, []io.Writer{w1}, hooks2)
 		assert.NoError(t, err)
 
