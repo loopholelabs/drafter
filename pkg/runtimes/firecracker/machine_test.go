@@ -34,7 +34,7 @@ const resumeTestDir = "resume_suspend_test"
  */
 func TestResumeSuspend(t *testing.T) {
 	log := logging.New(logging.Zerolog, "test", os.Stderr)
-	log.SetLevel(types.DebugLevel)
+	log.SetLevel(types.ErrorLevel)
 
 	err := os.Mkdir(resumeTestDir, 0777)
 	assert.NoError(t, err)
@@ -86,7 +86,7 @@ func TestResumeSuspend(t *testing.T) {
 			NetNS:          netns,
 			NumaNode:       0,
 			CgroupVersion:  2,
-			EnableOutput:   true,
+			EnableOutput:   false,
 			EnableInput:    false,
 		})
 		assert.NoError(t, err)

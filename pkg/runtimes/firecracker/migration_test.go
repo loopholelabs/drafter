@@ -210,7 +210,7 @@ func migration(t *testing.T, config *migrationConfig) {
 	})
 
 	log := logging.New(logging.Zerolog, "test", os.Stderr)
-	//log.SetLevel(types.DebugLevel)
+	log.SetLevel(types.ErrorLevel)
 
 	ns := testutil.SetupNAT(t, "", "dra")
 
@@ -239,7 +239,7 @@ func migration(t *testing.T, config *migrationConfig) {
 			NetNS:          netns,
 			NumaNode:       0,
 			CgroupVersion:  2,
-			EnableOutput:   true,
+			EnableOutput:   false,
 			EnableInput:    false,
 		},
 		StateName:        common.DeviceStateName,

@@ -15,6 +15,7 @@ import (
 
 	"github.com/loopholelabs/logging"
 	"github.com/loopholelabs/logging/types"
+	loggingtypes "github.com/loopholelabs/logging/types"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/loopholelabs/drafter/pkg/testutil"
@@ -41,6 +42,7 @@ func TestSnapshotter(t *testing.T) {
 	ns := testutil.SetupNAT(t, "", "dra")
 
 	log := logging.New(logging.Zerolog, "test", os.Stderr)
+	log.SetLevel(loggingtypes.ErrorLevel)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
