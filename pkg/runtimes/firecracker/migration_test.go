@@ -29,9 +29,8 @@ import (
 )
 
 const testPeerDirCowS3 = "test_peer_cow"
-const performHashChecks = false
 
-func TestMigrationBasic(t *testing.T) {
+func TestMigrationBasicHashChecks(t *testing.T) {
 	migration(t, &migrationConfig{
 		numMigrations:  3,
 		minCycles:      1,
@@ -42,6 +41,7 @@ func TestMigrationBasic(t *testing.T) {
 		memorySize:     1024,
 		pauseWaitMax:   3 * time.Second,
 		enableS3:       false,
+		hashChecks:     true,
 	})
 }
 
@@ -56,6 +56,7 @@ func TestMigrationBasicWithS3(t *testing.T) {
 		memorySize:     1024,
 		pauseWaitMax:   3 * time.Second,
 		enableS3:       true,
+		hashChecks:     false,
 	})
 }
 
@@ -70,6 +71,7 @@ func TestMigration4Cpus(t *testing.T) {
 		memorySize:     1024,
 		pauseWaitMax:   3 * time.Second,
 		enableS3:       false,
+		hashChecks:     false,
 	})
 }
 
@@ -84,6 +86,7 @@ func TestMigrationNoPause(t *testing.T) {
 		memorySize:     1024,
 		pauseWaitMax:   0,
 		enableS3:       false,
+		hashChecks:     false,
 	})
 }
 
@@ -98,6 +101,7 @@ func TestMigrationMultiCycle(t *testing.T) {
 		memorySize:     1024,
 		pauseWaitMax:   3 * time.Second,
 		enableS3:       false,
+		hashChecks:     false,
 	})
 }
 
@@ -112,6 +116,7 @@ func TestMigrationNoCycle(t *testing.T) {
 		memorySize:     1024,
 		pauseWaitMax:   3 * time.Second,
 		enableS3:       false,
+		hashChecks:     false,
 	})
 }
 
@@ -125,6 +130,7 @@ type migrationConfig struct {
 	memorySize     int
 	pauseWaitMax   time.Duration
 	enableS3       bool
+	hashChecks     bool
 }
 
 /**
@@ -375,9 +381,9 @@ func migration(t *testing.T, config *migrationConfig) {
 			*/
 		}
 
-		if performHashChecks && err == nil && sendingErr == nil {
+		if config.hashChecks && err == nil && sendingErr == nil {
 			// Make sure everything migrated as expected...
-			for _, n := range common.KnownNames {
+			for _, n := range append(common.KnownNames, "oci") {
 
 				buff1, err := os.ReadFile(path.Join(rp.DevicePath(), n))
 				assert.NoError(t, err)
@@ -402,14 +408,16 @@ func migration(t *testing.T, config *migrationConfig) {
 		err = lastPeer.Close()
 		assert.NoError(t, err)
 
+		pMetrics := lastPeer.GetMetrics()
+
 		// We can resume here safely
 		err = nextPeer.Resume(context.TODO(), 10*time.Second, 10*time.Second)
 		assert.NoError(t, err)
 
 		lastPeer = nextPeer
 
-		fmt.Printf("MIGRATION %d COMPLETED evacuated in %dms migrated in %dms (%d P2P) (%d S3)\n", migration+1,
-			evacuationTook.Milliseconds(), migrationTook.Milliseconds(), totalBlocksP2P, totalBlocksS3)
+		fmt.Printf("MIGRATION %d COMPLETED evacuated in %dms migrated in %dms (%d P2P) (%d S3) (%d flush ops in %dms)\n", migration+1,
+			evacuationTook.Milliseconds(), migrationTook.Milliseconds(), totalBlocksP2P, totalBlocksS3, pMetrics.FlushDataOps, pMetrics.FlushDataTimeMs)
 	}
 
 	// Close the final peer

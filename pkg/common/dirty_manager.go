@@ -47,9 +47,11 @@ func NewDirtyManager(vmState *VMStateMgr, devices map[string]*DeviceStatus, auth
 func (dm *DirtyManager) PreGetDirty(name string) error {
 	// If the VM is still running, do an Msync for the memory...
 	if !dm.VMState.CheckSuspendedVM() && name == DeviceMemoryName {
-		err := dm.VMState.Msync()
-		if err != nil {
-			return errors.Join(ErrCouldNotMsyncRunner, err)
+		if dm.Devices[name].MaxCycles > 0 {
+			err := dm.VMState.Msync()
+			if err != nil {
+				return errors.Join(ErrCouldNotMsyncRunner, err)
+			}
 		}
 	}
 	return nil
@@ -146,7 +148,7 @@ func (dm *DirtyManager) PostMigrateDirty(name string, blocks []uint) (bool, erro
 		if di.CyclesBelowDirtyBlockTreshold > di.MinCycles {
 			dm.markDeviceReady(name, di)
 		}
-	} else if di.TotalCycles > di.MaxCycles {
+	} else if di.TotalCycles >= di.MaxCycles {
 		dm.markDeviceReady(name, di)
 	} else {
 		di.CyclesBelowDirtyBlockTreshold = 0

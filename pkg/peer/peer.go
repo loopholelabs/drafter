@@ -10,6 +10,7 @@ import (
 	"os"
 	"path"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -41,6 +42,22 @@ type Peer struct {
 	backgroundErr chan error
 
 	instanceID string
+
+	metricFlushDataOps           int64
+	metricFlushDataTimeMs        int64
+	metricVMRunning              int64
+	metricMigratingTo            int64
+	metricMigratingFrom          int64
+	metricMigratingFromWaitReady int64
+}
+
+type PeerMetrics struct {
+	FlushDataOps           int64
+	FlushDataTimeMs        int64
+	VMRunning              int64
+	MigratingTo            int64
+	MigratingFrom          int64
+	MigratingFromWaitReady int64
 }
 
 // Callbacks for MigrateTO
@@ -61,6 +78,17 @@ type MigrateFromHooks struct {
 	OnLocalAllDevicesRequested func()
 
 	OnXferCustomData func([]byte)
+}
+
+func (peer *Peer) GetMetrics() *PeerMetrics {
+	return &PeerMetrics{
+		FlushDataOps:           atomic.LoadInt64(&peer.metricFlushDataOps),
+		FlushDataTimeMs:        atomic.LoadInt64(&peer.metricFlushDataTimeMs),
+		VMRunning:              atomic.LoadInt64(&peer.metricVMRunning),
+		MigratingTo:            atomic.LoadInt64(&peer.metricMigratingTo),
+		MigratingFrom:          atomic.LoadInt64(&peer.metricMigratingFrom),
+		MigratingFromWaitReady: atomic.LoadInt64(&peer.metricMigratingFromWaitReady),
+	}
 }
 
 func (peer *Peer) Close() error {
@@ -148,6 +176,9 @@ func StartPeer(ctx context.Context, rescueCtx context.Context,
 func (peer *Peer) MigrateFrom(ctx context.Context, devices []common.MigrateFromDevice,
 	readers []io.Reader, writers []io.Writer, hooks MigrateFromHooks) error {
 
+	atomic.StoreInt64(&peer.metricMigratingFrom, 1)
+
+	// FIXME: Going
 	if peer.dmet != nil {
 		// Set migratingTo to 1 while we are migrating away.
 		peer.dmet.MetricMigratingFrom.WithLabelValues(peer.instanceID).Set(1)
@@ -212,6 +243,9 @@ func (peer *Peer) MigrateFrom(ctx context.Context, devices []common.MigrateFromD
 		// Monitor the transfer, and report any error if it happens
 		go func() {
 			defer cancelProtocolCtx()
+			defer atomic.StoreInt64(&peer.metricMigratingFrom, 0)
+
+			// FIXME: Going
 			if peer.dmet != nil {
 				defer peer.dmet.MetricMigratingFrom.WithLabelValues(peer.instanceID).Set(0)
 			}
@@ -228,10 +262,16 @@ func (peer *Peer) MigrateFrom(ctx context.Context, devices []common.MigrateFromD
 				}
 			}
 			if err == nil {
+				atomic.StoreInt64(&peer.metricMigratingFromWaitReady, 1)
+
+				// FIXME: Going
 				if peer.dmet != nil {
 					peer.dmet.MetricMigratingFromWaitReady.WithLabelValues(peer.instanceID).Set(1)
 				}
 				err = dg.WaitForReady()
+				atomic.StoreInt64(&peer.metricMigratingFromWaitReady, 0)
+
+				// FIXME: Going
 				if peer.dmet != nil {
 					peer.dmet.MetricMigratingFromWaitReady.WithLabelValues(peer.instanceID).Set(0)
 				}
@@ -269,6 +309,9 @@ func (peer *Peer) MigrateFrom(ctx context.Context, devices []common.MigrateFromD
 	//
 
 	if len(readers) == 0 && len(writers) == 0 {
+		defer atomic.StoreInt64(&peer.metricMigratingFrom, 0)
+
+		// FIXME: Going
 		if peer.dmet != nil {
 			defer peer.dmet.MetricMigratingFrom.WithLabelValues(peer.instanceID).Set(0)
 		}
@@ -320,6 +363,9 @@ func (peer *Peer) Resume(ctx context.Context, resumeTimeout time.Duration, rescu
 		return err
 	}
 
+	atomic.StoreInt64(&peer.metricVMRunning, 1)
+
+	// FIXME: Going
 	if peer.dmet != nil {
 		peer.dmet.MetricVMRunning.WithLabelValues(peer.instanceID).Set(1)
 	}
@@ -340,6 +386,10 @@ func (peer *Peer) MigrateTo(ctx context.Context, devices []common.MigrateToDevic
 	suspendTimeout time.Duration, concurrency int, readers []io.Reader, writers []io.Writer,
 	hooks MigrateToHooks) error {
 
+	atomic.StoreInt64(&peer.metricMigratingTo, 1)
+	defer atomic.StoreInt64(&peer.metricMigratingTo, 0)
+
+	// FIXME: Going
 	if peer.dmet != nil {
 		// Set migratingTo to 1 while we are migrating away.
 		peer.dmet.MetricMigratingTo.WithLabelValues(peer.instanceID).Set(1)
@@ -353,6 +403,9 @@ func (peer *Peer) MigrateTo(ctx context.Context, devices []common.MigrateToDevic
 	suspend := func(ctx context.Context, timeout time.Duration) error {
 		err := peer.runtimeProvider.Suspend(ctx, timeout)
 		if err == nil {
+			atomic.StoreInt64(&peer.metricVMRunning, 0)
+
+			// FIXME: Going
 			if peer.dmet != nil {
 				peer.dmet.MetricVMRunning.WithLabelValues(peer.instanceID).Set(0)
 			}
@@ -365,6 +418,10 @@ func (peer *Peer) MigrateTo(ctx context.Context, devices []common.MigrateToDevic
 		err := peer.runtimeProvider.FlushData(ctx)
 		ms := time.Since(ctime).Milliseconds()
 		if err == nil {
+			atomic.AddInt64(&peer.metricFlushDataOps, 1)
+			atomic.AddInt64(&peer.metricFlushDataTimeMs, ms)
+
+			// FIXME: Going
 			if peer.dmet != nil {
 				peer.dmet.MetricFlushDataTimeMS.WithLabelValues(peer.instanceID).Add(float64(ms))
 				peer.dmet.MetricFlushDataOps.WithLabelValues(peer.instanceID).Inc()
