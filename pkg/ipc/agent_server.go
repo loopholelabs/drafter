@@ -112,7 +112,7 @@ func StartAgentServer[L AgentServerLocal, R AgentServerRemote[G], G any](log log
 		log.Info().Str("VSockPath", agentServer.VSockPath).Msg("Created an AgentServer")
 	}
 
-	// Start accepting here so we *know* we are accepting connections
+	// Start accepting here so we *know* we are always accepting connections
 	go func() {
 		select {
 		case <-listenCtx.Done():
@@ -171,11 +171,12 @@ type AgentServerAcceptHooks[R AgentServerRemote[G], G any] struct {
 }
 
 type AgentConnection[L AgentServerLocal, R AgentServerRemote[G], G any] struct {
-	agentServer   *AgentServer[L, R, G]
-	Remote        R
-	connErr       chan error
-	connectionErr error
-	connectionWg  sync.WaitGroup
+	agentServer     *AgentServer[L, R, G]
+	Remote          R
+	connErr         chan error
+	connectionErr   error
+	connectionWg    sync.WaitGroup
+	connectionReady chan bool
 
 	linkCtx    context.Context
 	linkCancel context.CancelCauseFunc
@@ -204,8 +205,9 @@ func (agentServer *AgentServer[L, R, G]) Accept(acceptCtx context.Context, remot
 ) (agentConnection *AgentConnection[L, R, G], errs error) {
 
 	agentConnection = &AgentConnection[L, R, G]{
-		agentServer: agentServer,
-		connErr:     make(chan error, 1),
+		connectionReady: make(chan bool, 1),
+		agentServer:     agentServer,
+		connErr:         make(chan error, 1),
 		Wait: func() error {
 			return nil
 		},
@@ -244,13 +246,6 @@ func (agentServer *AgentServer[L, R, G]) Accept(acceptCtx context.Context, remot
 
 	agentConnection.stoppedErr = goroutineManager.GetErrGoroutineStopped()
 
-	var (
-		ready       = make(chan struct{})
-		signalReady = sync.OnceFunc(func() {
-			close(ready) // We can safely close() this channel since the caller only runs once/is `sync.OnceFunc`d
-		})
-	)
-
 	// It is safe to start a background goroutine here since we return a wait function
 	// Despite returning a wait function, we still need to start this goroutine however so that any errors
 	// we get as we're waiting for a connection are caught
@@ -262,7 +257,7 @@ func (agentServer *AgentServer[L, R, G]) Accept(acceptCtx context.Context, remot
 
 			// Happy case; we've got a connection and we want to wait with closing the agent's connections until the context, not the internal context is cancelled
 			select {
-			case <-ready:
+			case <-agentConnection.connectionReady:
 				<-remoteCtx.Done() // Wait here...
 			default:
 			}
@@ -277,7 +272,8 @@ func (agentServer *AgentServer[L, R, G]) Accept(acceptCtx context.Context, remot
 	registry := rpc.NewRegistry[R, json.RawMessage](
 		agentServer.agentServerLocal,
 		&rpc.RegistryHooks{OnClientConnect: func(remoteID string) {
-			signalReady()
+			// Signal that we're ready
+			close(agentConnection.connectionReady)
 		},
 		},
 	)
@@ -326,7 +322,7 @@ func (agentServer *AgentServer[L, R, G]) Accept(acceptCtx context.Context, remot
 	case <-goroutineManager.Context().Done():
 		agentServer.Close()
 		return nil, goroutineManager.Context().Err()
-	case <-ready:
+	case <-agentConnection.connectionReady:
 		break
 	}
 
