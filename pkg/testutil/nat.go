@@ -2,7 +2,6 @@ package testutil
 
 import (
 	"context"
-	"log"
 	"testing"
 
 	"github.com/loopholelabs/drafter/pkg/network/nat"
@@ -50,10 +49,10 @@ func SetupNAT(t *testing.T, hostInterface string, namespacePrefix string) *nat.N
 
 		nat.CreateNamespacesHooks{
 			OnBeforeCreateNamespace: func(id string) {
-				log.Println("Creating namespace", id)
+				//				log.Println("Creating namespace", id)
 			},
 			OnBeforeRemoveNamespace: func(id string) {
-				log.Println("Removing namespace", id)
+				//				log.Println("Removing namespace", id)
 			},
 		},
 		2, // We only need a couple of namespaces

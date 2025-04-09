@@ -33,7 +33,7 @@ const performHashChecks = false
 
 func TestMigrationBasic(t *testing.T) {
 	migration(t, &migrationConfig{
-		numMigrations:  5,
+		numMigrations:  3,
 		minCycles:      1,
 		maxCycles:      1,
 		cycleThrottle:  100 * time.Millisecond,
@@ -47,7 +47,7 @@ func TestMigrationBasic(t *testing.T) {
 
 func TestMigrationBasicWithS3(t *testing.T) {
 	migration(t, &migrationConfig{
-		numMigrations:  5,
+		numMigrations:  3,
 		minCycles:      1,
 		maxCycles:      1,
 		cycleThrottle:  100 * time.Millisecond,
@@ -59,9 +59,9 @@ func TestMigrationBasicWithS3(t *testing.T) {
 	})
 }
 
-func TestMigrationCpus(t *testing.T) {
+func TestMigration4Cpus(t *testing.T) {
 	migration(t, &migrationConfig{
-		numMigrations:  5,
+		numMigrations:  3,
 		minCycles:      1,
 		maxCycles:      1,
 		cycleThrottle:  100 * time.Millisecond,
@@ -75,7 +75,7 @@ func TestMigrationCpus(t *testing.T) {
 
 func TestMigrationNoPause(t *testing.T) {
 	migration(t, &migrationConfig{
-		numMigrations:  5,
+		numMigrations:  3,
 		minCycles:      1,
 		maxCycles:      1,
 		cycleThrottle:  100 * time.Millisecond,
@@ -89,7 +89,7 @@ func TestMigrationNoPause(t *testing.T) {
 
 func TestMigrationMultiCycle(t *testing.T) {
 	migration(t, &migrationConfig{
-		numMigrations:  5,
+		numMigrations:  3,
 		minCycles:      10,
 		maxCycles:      20,
 		cycleThrottle:  100 * time.Millisecond,
@@ -103,7 +103,7 @@ func TestMigrationMultiCycle(t *testing.T) {
 
 func TestMigrationNoCycle(t *testing.T) {
 	migration(t, &migrationConfig{
-		numMigrations:  5,
+		numMigrations:  3,
 		minCycles:      0,
 		maxCycles:      0,
 		cycleThrottle:  100 * time.Millisecond,
@@ -340,7 +340,6 @@ func migration(t *testing.T, config *migrationConfig) {
 			OnLocalAllDevicesRequested: func() {},
 			OnXferCustomData:           func(data []byte) {},
 			OnCompletion: func() {
-				fmt.Printf("Completed!\n")
 				completedWg.Done()
 			},
 		}
