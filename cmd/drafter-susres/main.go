@@ -50,7 +50,6 @@ func main() {
 
 	agentVsockPort := uint32(26)
 	agentLocal := struct{}{}
-	agentHooks := ipc.AgentServerAcceptHooks[ipc.AgentServerRemote[struct{}], struct{}]{}
 
 	deviceFiles := []string{
 		"state", "memory", "kernel", "disk", "config", "oci",
@@ -111,7 +110,7 @@ func main() {
 		}
 
 		rr, err := rfirecracker.Resume[struct{}, ipc.AgentServerRemote[struct{}], struct{}](m, ctx, 30*time.Second, 30*time.Second,
-			agentVsockPort, agentLocal, agentHooks)
+			agentVsockPort, agentLocal)
 		if err != nil {
 			panic(err)
 		}

@@ -40,14 +40,6 @@ func (rr *ResumedRunner[L, R, G]) Close() error {
 	return nil
 }
 
-/*
-	func (rr *ResumedRunner[L, R, G]) Wait() error {
-		if rr.log != nil {
-			rr.log.Info().Msg("waiting for resumed runner")
-		}
-		return rr.rpc.Wait()
-	}
-*/
 func (rr *ResumedRunner[L, R, G]) Msync(ctx context.Context) error {
 	if rr.log != nil {
 		rr.log.Info().Msg("resumed runner Msync")
@@ -101,7 +93,6 @@ func Resume[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 	rescueTimeout time.Duration,
 	agentVSockPort uint32,
 	agentServerLocal L,
-	agentServerHooks ipc.AgentServerAcceptHooks[R, G],
 ) (*ResumedRunner[L, R, G], error) {
 
 	if machine.log != nil {
@@ -157,7 +148,7 @@ func Resume[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 		if machine.log != nil {
 			machine.log.Debug().Msg("Resume resumedRunner rpc Accept")
 		}
-		err = resumedRunner.rpc.Accept(resumeSnapshotAndAcceptCtx, ctx, agentServerHooks, rpcErr)
+		err = resumedRunner.rpc.Accept(resumeSnapshotAndAcceptCtx, ctx, rpcErr)
 		if machine.log != nil {
 			machine.log.Debug().Err(err).Msg("Resume resumedRunner rpc Accept returned")
 		}

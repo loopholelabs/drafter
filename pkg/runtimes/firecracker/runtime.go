@@ -40,7 +40,6 @@ type FirecrackerRuntimeProvider[L ipc.AgentServerLocal, R ipc.AgentServerRemote[
 	// RPC Bits
 	Remote           R
 	AgentServerLocal L
-	AgentServerHooks ipc.AgentServerAcceptHooks[R, G]
 }
 
 func (rp *FirecrackerRuntimeProvider[L, R, G]) Resume(resumeTimeout time.Duration, rescueTimeout time.Duration, errChan chan error) error {
@@ -79,24 +78,13 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Resume(resumeTimeout time.Duratio
 		rescueTimeout,
 		packageConfig.AgentVSockPort,
 		rp.AgentServerLocal,
-		rp.AgentServerHooks,
 	)
 	if err != nil {
 		return err
 	}
 
 	rp.Remote = *rp.ResumedRunner.rpc.Remote
-	/*
-		go func() {
-			err := rp.ResumedRunner.Wait()
-			if err != nil {
-				select {
-				case errChan <- err:
-				default:
-				}
-			}
-		}()
-	*/
+
 	rp.running = true
 	return nil
 }

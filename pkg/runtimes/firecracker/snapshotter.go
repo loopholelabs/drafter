@@ -213,8 +213,7 @@ func CreateSnapshot(log types.Logger, ctx context.Context, devices []SnapshotDev
 
 	acceptingAgentErr := make(chan error, 1)
 
-	acceptingAgent, err = agent.Accept(acceptCtx, ctx,
-		ipc.AgentServerAcceptHooks[ipc.AgentServerRemote[struct{}], struct{}]{}, acceptingAgentErr)
+	acceptingAgent, err = agent.Accept(acceptCtx, ctx, acceptingAgentErr)
 
 	if err != nil {
 		return errors.Join(ErrCouldNotAcceptAgentConnection, err)
@@ -225,7 +224,12 @@ func CreateSnapshot(log types.Logger, ctx context.Context, devices []SnapshotDev
 		log.Debug().Msg("Calling Remote BeforeSuspend")
 	}
 
-	err = acceptingAgent.Remote.BeforeSuspend(acceptCtx)
+	rem, err := acceptingAgent.GetRemote(acceptCtx)
+	if err != nil {
+		return errors.Join(ErrCouldNotBeforeSuspend, err)
+	}
+
+	err = rem.BeforeSuspend(acceptCtx)
 	if err != nil {
 		return errors.Join(ErrCouldNotBeforeSuspend, err)
 	}

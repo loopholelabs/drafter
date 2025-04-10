@@ -60,7 +60,6 @@ func TestResumeSuspend(t *testing.T) {
 
 	agentVsockPort := uint32(26)
 	agentLocal := struct{}{}
-	agentHooks := ipc.AgentServerAcceptHooks[ipc.AgentServerRemote[struct{}], struct{}]{}
 
 	deviceFiles := []string{
 		"state", "memory", "kernel", "disk", "config", "oci",
@@ -110,7 +109,7 @@ func TestResumeSuspend(t *testing.T) {
 		}
 
 		rr, err := Resume[struct{}, ipc.AgentServerRemote[struct{}], struct{}](m, ctx, 5*time.Second, 5*time.Second,
-			agentVsockPort, agentLocal, agentHooks)
+			agentVsockPort, agentLocal)
 		assert.NoError(t, err)
 
 		assert.NotNil(t, rr)

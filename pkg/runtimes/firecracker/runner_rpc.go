@@ -33,14 +33,19 @@ func (rrpc *RunnerRPC[L, R, G]) Start(vmPath string, vsockPort uint32, agentServ
 	return nil
 }
 
-func (rrpc *RunnerRPC[L, R, G]) Accept(acceptCtx context.Context, remoteCtx context.Context, agentServerHooks ipc.AgentServerAcceptHooks[R, G], errChan chan error) error {
+func (rrpc *RunnerRPC[L, R, G]) Accept(acceptCtx context.Context, remoteCtx context.Context, errChan chan error) error {
 	var err error
-	rrpc.acceptingAgent, err = rrpc.agent.Accept(acceptCtx, remoteCtx, agentServerHooks, errChan)
+	rrpc.acceptingAgent, err = rrpc.agent.Accept(acceptCtx, remoteCtx, errChan)
 
 	if err != nil {
 		return errors.Join(ErrCouldNotAcceptAgent, err)
 	}
-	rrpc.Remote = &rrpc.acceptingAgent.Remote
+	rem, err := rrpc.acceptingAgent.GetRemote(acceptCtx)
+	if err != nil {
+		return errors.Join(ErrCouldNotAcceptAgent, err)
+	}
+
+	rrpc.Remote = &rem
 
 	return nil
 }
@@ -69,7 +74,7 @@ func (rrpc *RunnerRPC[L, R, G]) BeforeSuspend(ctx context.Context) error {
 	}
 
 	if rrpc.Remote != nil {
-		remote := *(*ipc.AgentServerRemote[G])(unsafe.Pointer(&rrpc.acceptingAgent.Remote))
+		remote := *(*ipc.AgentServerRemote[G])(unsafe.Pointer(rrpc.Remote))
 		err := remote.BeforeSuspend(ctx)
 		if err != nil {
 			return errors.Join(ErrCouldNotCallBeforeSuspendRPC, err)
@@ -87,7 +92,7 @@ func (rrpc *RunnerRPC[L, R, G]) AfterResume(ctx context.Context, resumeTimeout t
 		rrpc.log.Info().Int64("timeout_ms", resumeTimeout.Milliseconds()).Msg("runnerRPC AfterResume")
 	}
 
-	remote := *(*ipc.AgentServerRemote[G])(unsafe.Pointer(&rrpc.acceptingAgent.Remote))
+	remote := *(*ipc.AgentServerRemote[G])(unsafe.Pointer(rrpc.Remote))
 	err := remote.AfterResume(afterResumeCtx)
 	if err != nil {
 		return errors.Join(ErrCouldNotCallAfterResumeRPC, err)

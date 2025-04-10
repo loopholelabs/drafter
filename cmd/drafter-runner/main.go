@@ -281,7 +281,6 @@ func main() {
 		packageConfig.AgentVSockPort,
 
 		struct{}{},
-		ipc.AgentServerAcceptHooks[ipc.AgentServerRemote[struct{}], struct{}]{},
 	)
 
 	if err != nil {
@@ -295,12 +294,6 @@ func main() {
 			panic(err)
 		}
 	}()
-
-	goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
-		if err := resumedRunner.Wait(); err != nil {
-			panic(err)
-		}
-	})
 
 	log.Info().Str("vmpath", m.VMPath).Int64("ms", time.Since(before).Milliseconds()).Msg("Resumed VM")
 

@@ -166,13 +166,9 @@ func handleConnection[R any](ctx context.Context, registry *rpc.Registry[R, json
 
 // FIXME: Tidy up under here...
 
-type AgentServerAcceptHooks[R AgentServerRemote[G], G any] struct {
-	OnAfterRegistrySetup func(forRemotes func(cb func(remoteID string, remote R) error) error) error
-}
-
 type AgentConnection[L AgentServerLocal, R AgentServerRemote[G], G any] struct {
 	agentServer     *AgentServer[L, R, G]
-	Remote          R
+	remote          R
 	connErr         chan error
 	connectionErr   error
 	connectionWg    sync.WaitGroup
@@ -181,6 +177,10 @@ type AgentConnection[L AgentServerLocal, R AgentServerRemote[G], G any] struct {
 	linkCtx    context.Context
 	linkCancel context.CancelCauseFunc
 	stoppedErr error
+}
+
+func (ac *AgentConnection[L, R, G]) GetRemote(ctx context.Context) (R, error) {
+	return ac.remote, nil
 }
 
 func (ac *AgentConnection[L, R, G]) Close() error {
@@ -201,7 +201,7 @@ func (ac *AgentConnection[L, R, G]) Close() error {
  * Accept a connection, and handle it
  *
  */
-func (agentServer *AgentServer[L, R, G]) Accept(acceptCtx context.Context, remoteCtx context.Context, hooks AgentServerAcceptHooks[R, G], errChan chan error,
+func (agentServer *AgentServer[L, R, G]) Accept(acceptCtx context.Context, remoteCtx context.Context, errChan chan error,
 ) (agentConnection *AgentConnection[L, R, G], errs error) {
 
 	agentConnection = &AgentConnection[L, R, G]{
@@ -276,10 +276,6 @@ func (agentServer *AgentServer[L, R, G]) Accept(acceptCtx context.Context, remot
 		},
 	)
 
-	if hooks.OnAfterRegistrySetup != nil {
-		hooks.OnAfterRegistrySetup(registry.ForRemotes)
-	}
-
 	// Handle the connection here.
 	agentConnection.connectionWg.Add(1)
 	go func() {
@@ -305,7 +301,7 @@ func (agentServer *AgentServer[L, R, G]) Accept(acceptCtx context.Context, remot
 
 	found := false
 	err := registry.ForRemotes(func(remoteID string, r R) error {
-		agentConnection.Remote = r
+		agentConnection.remote = r
 		found = true
 		return nil
 	})
