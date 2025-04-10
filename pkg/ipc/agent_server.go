@@ -181,8 +181,6 @@ type AgentConnection[L AgentServerLocal, R AgentServerRemote[G], G any] struct {
 	linkCtx    context.Context
 	linkCancel context.CancelCauseFunc
 	stoppedErr error
-
-	// Wait func() error
 }
 
 func (ac *AgentConnection[L, R, G]) Close() error {
@@ -196,7 +194,6 @@ func (ac *AgentConnection[L, R, G]) Close() error {
 	ac.agentServer.closeLock.Unlock()
 
 	ac.connectionWg.Wait()
-
 	return nil
 }
 
@@ -262,7 +259,8 @@ func (agentServer *AgentServer[L, R, G]) Accept(acceptCtx context.Context, remot
 			default:
 			}
 
-			if err := agentConnection.Close(); err != nil {
+			err := agentConnection.Close()
+			if err != nil {
 				panic(errors.Join(ErrCouldNotCloseAcceptingAgentServer, err))
 			}
 			agentServer.Close() // We ignore errors here since we might interrupt a network connection

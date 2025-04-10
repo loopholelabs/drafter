@@ -69,9 +69,6 @@ func (rrpc *RunnerRPC[L, R, G]) BeforeSuspend(ctx context.Context) error {
 	}
 
 	if rrpc.Remote != nil {
-		// This is a safe type cast because R is constrained by ipc.AgentServerRemote, so this specific BeforeSuspend field
-		// must be defined or there will be a compile-time error.
-		// The Go Generics system can't catch this here however, it can only catch it once the type is concrete, so we need to manually cast.
 		remote := *(*ipc.AgentServerRemote[G])(unsafe.Pointer(&rrpc.acceptingAgent.Remote))
 		err := remote.BeforeSuspend(ctx)
 		if err != nil {
@@ -87,12 +84,9 @@ func (rrpc *RunnerRPC[L, R, G]) AfterResume(ctx context.Context, resumeTimeout t
 	defer cancelAfterResumeCtx()
 
 	if rrpc.log != nil {
-		rrpc.log.Info().Int64("timeout_ms", resumeTimeout.Milliseconds()).Msg("runnerRPC afterResume")
+		rrpc.log.Info().Int64("timeout_ms", resumeTimeout.Milliseconds()).Msg("runnerRPC AfterResume")
 	}
 
-	// This is a safe type cast because R is constrained by ipc.AgentServerRemote, so this specific AfterResume field
-	// must be defined or there will be a compile-time error.
-	// The Go Generics system can't catch this here however, it can only catch it once the type is concrete, so we need to manually cast.
 	remote := *(*ipc.AgentServerRemote[G])(unsafe.Pointer(&rrpc.acceptingAgent.Remote))
 	err := remote.AfterResume(afterResumeCtx)
 	if err != nil {

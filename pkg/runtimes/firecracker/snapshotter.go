@@ -58,13 +58,37 @@ var (
 	ErrCouldNotChownPackageConfigFile    = errors.New("could not change ownership of package configuration file")
 	ErrCouldNotCreateChrootBaseDirectory = errors.New("could not create chroot base directory")
 	ErrCouldNotCreateSnapshot            = errors.New("could not create snapshot")
+	ErrCouldNotOpenSourceFile            = errors.New("could not open source file")
+	ErrCouldNotCreateDestinationFile     = errors.New("could not create destination file")
+	ErrCouldNotCopyFileContent           = errors.New("could not copy file content")
+	ErrCouldNotChangeFileOwner           = errors.New("could not change file owner")
+
+	// TODO Cleanup
+	ErrCouldNotStartAgentServer              = errors.New("could not start agent server")
+	ErrCouldNotCloseAcceptingAgent           = errors.New("could not close accepting agent")
+	ErrCouldNotOpenLivenessServer            = errors.New("could not open liveness server")
+	ErrCouldNotChownLivenessServerVSock      = errors.New("could not change ownership of liveness server VSock")
+	ErrCouldNotChownAgentServerVSock         = errors.New("could not change ownership of agent server VSock")
+	ErrCouldNotReceiveAndCloseLivenessServer = errors.New("could not receive and close liveness server")
+	ErrCouldNotAcceptAgentConnection         = errors.New("could not accept agent connection")
+	ErrCouldNotBeforeSuspend                 = errors.New("error before suspend")
+
+	// TODO Dedup
+	ErrCouldNotChownVSockPath       = errors.New("could not change ownership of vsock path")
+	ErrCouldNotAcceptAgent          = errors.New("could not accept agent")
+	ErrCouldNotCallAfterResumeRPC   = errors.New("could not call AfterResume RPC")
+	ErrCouldNotCallBeforeSuspendRPC = errors.New("could not call BeforeSuspend RPC")
 )
 
+/**
+ * Create a new snapshot
+ *
+ */
 func CreateSnapshot(log types.Logger, ctx context.Context, devices []SnapshotDevice, ioEngineSync bool,
 	vmConfiguration VMConfiguration, livenessConfiguration LivenessConfiguration,
 	hypervisorConfiguration FirecrackerMachineConfig, networkConfiguration NetworkConfiguration,
-	agentConfiguration AgentConfiguration,
-) (errs error) {
+	agentConfiguration AgentConfiguration) error {
+
 	if log != nil {
 		log.Info().Msg("Creating firecracker VM snapshot")
 		for _, s := range devices {
@@ -101,21 +125,42 @@ func CreateSnapshot(log types.Logger, ctx context.Context, devices []SnapshotDev
 		log.Debug().Str("vmpath", server.VMPath).Msg("Firecracker server running")
 	}
 
-	// Setup RPC bits required here.
-	rpc := &FirecrackerRPC{
-		Log:               log,
-		VMPath:            server.VMPath,
-		UID:               hypervisorConfiguration.UID,
-		GID:               hypervisorConfiguration.GID,
-		LivenessVSockPort: uint32(livenessConfiguration.LivenessVSockPort),
-		AgentVSockPort:    uint32(agentConfiguration.AgentVSockPort),
+	// Setup the liveness bits
+	liveness := ipc.NewLivenessServer(filepath.Join(server.VMPath, VSockName), uint32(livenessConfiguration.LivenessVSockPort))
+
+	livenessVSockPath, err := liveness.Open()
+	if err != nil {
+		return errors.Join(ErrCouldNotOpenLivenessServer, err)
 	}
 
-	err = rpc.Init()
-	if err != nil {
-		return err
+	if log != nil {
+		log.Debug().Msg("Created liveness server")
 	}
-	defer rpc.Close()
+
+	err = os.Chown(livenessVSockPath, hypervisorConfiguration.UID, hypervisorConfiguration.GID)
+	if err != nil {
+		return errors.Join(ErrCouldNotChownLivenessServerVSock, err)
+	}
+	defer liveness.Close()
+
+	// Setup the agent server
+	agent, err := ipc.StartAgentServer[struct{}, ipc.AgentServerRemote[struct{}]](
+		log, filepath.Join(server.VMPath, VSockName), uint32(agentConfiguration.AgentVSockPort), struct{}{},
+	)
+
+	if err != nil {
+		return errors.Join(ErrCouldNotStartAgentServer, err)
+	}
+
+	if log != nil {
+		log.Debug().Msg("Created agent server")
+	}
+
+	err = os.Chown(agent.VSockPath, hypervisorConfiguration.UID, hypervisorConfiguration.GID)
+	if err != nil {
+		return errors.Join(ErrCouldNotChownAgentServerVSock, err)
+	}
+	defer agent.Close()
 
 	disks := []string{}
 	for _, device := range devices {
@@ -147,10 +192,60 @@ func CreateSnapshot(log types.Logger, ctx context.Context, devices []SnapshotDev
 		log.Info().Msg("Started firecracker VM")
 	}
 
-	// Perform the RPC calls here...
-	err = rpc.LivenessAndBeforeSuspendAndClose(ctx, livenessConfiguration.ResumeTimeout, agentConfiguration.ResumeTimeout)
+	// Check for liveness
+	receiveCtx, livenessCancel := context.WithTimeout(ctx, livenessConfiguration.ResumeTimeout)
+	defer livenessCancel()
+
+	err = liveness.ReceiveAndClose(receiveCtx)
 	if err != nil {
+		return errors.Join(ErrCouldNotReceiveAndCloseLivenessServer, err)
+	}
+
+	if log != nil {
+		log.Debug().Msg("Liveness check OK")
+	}
+	liveness.Close()
+
+	// BeforeSuspend and close
+	var acceptingAgent *ipc.AgentConnection[struct{}, ipc.AgentServerRemote[struct{}], struct{}]
+	acceptCtx, acceptCancel := context.WithTimeout(ctx, livenessConfiguration.ResumeTimeout)
+	defer acceptCancel()
+
+	acceptingAgentErr := make(chan error, 1)
+
+	acceptingAgent, err = agent.Accept(acceptCtx, ctx,
+		ipc.AgentServerAcceptHooks[ipc.AgentServerRemote[struct{}], struct{}]{}, acceptingAgentErr)
+
+	if err != nil {
+		return errors.Join(ErrCouldNotAcceptAgentConnection, err)
+	}
+	defer acceptingAgent.Close()
+
+	if log != nil {
+		log.Debug().Msg("Calling Remote BeforeSuspend")
+	}
+
+	err = acceptingAgent.Remote.BeforeSuspend(acceptCtx)
+	if err != nil {
+		return errors.Join(ErrCouldNotBeforeSuspend, err)
+	}
+
+	if log != nil {
+		log.Debug().Msg("RPC Closing")
+	}
+
+	// Connections need to be closed before creating the snapshot
+	err = acceptingAgent.Close()
+	if err != nil {
+		return errors.Join(ErrCouldNotCloseAcceptingAgent, err)
+	}
+	agent.Close()
+
+	// Check if there was any error
+	select {
+	case err := <-acceptingAgentErr:
 		return err
+	default:
 	}
 
 	err = createFinalSnapshot(ctx, server, agentConfiguration.AgentVSockPort,
@@ -172,15 +267,8 @@ func CreateSnapshot(log types.Logger, ctx context.Context, devices []SnapshotDev
 	default:
 	}
 
-	return
+	return nil
 }
-
-var (
-	ErrCouldNotOpenSourceFile        = errors.New("could not open source file")
-	ErrCouldNotCreateDestinationFile = errors.New("could not create destination file")
-	ErrCouldNotCopyFileContent       = errors.New("could not copy file content")
-	ErrCouldNotChangeFileOwner       = errors.New("could not change file owner")
-)
 
 func copyFile(src, dst string, uid int, gid int) (int64, error) {
 	srcFile, err := os.Open(src)
@@ -283,143 +371,6 @@ func createFinalSnapshot(ctx context.Context, server *FirecrackerMachine, vsockP
 	err = os.Chown(configFilename, uid, gid)
 	if err != nil {
 		return errors.Join(ErrCouldNotChownPackageConfigFile, err)
-	}
-
-	return nil
-}
-
-var (
-	ErrCouldNotStartAgentServer              = errors.New("could not start agent server")
-	ErrCouldNotWaitForAcceptingAgent         = errors.New("could not wait for accepting agent")
-	ErrCouldNotCloseAcceptingAgent           = errors.New("could not close accepting agent")
-	ErrCouldNotOpenLivenessServer            = errors.New("could not open liveness server")
-	ErrCouldNotChownLivenessServerVSock      = errors.New("could not change ownership of liveness server VSock")
-	ErrCouldNotChownAgentServerVSock         = errors.New("could not change ownership of agent server VSock")
-	ErrCouldNotReceiveAndCloseLivenessServer = errors.New("could not receive and close liveness server")
-	ErrCouldNotAcceptAgentConnection         = errors.New("could not accept agent connection")
-	ErrCouldNotBeforeSuspend                 = errors.New("error before suspend")
-
-	// TODO Dedup
-	ErrCouldNotChownVSockPath       = errors.New("could not change ownership of vsock path")
-	ErrCouldNotAcceptAgent          = errors.New("could not accept agent")
-	ErrCouldNotCallAfterResumeRPC   = errors.New("could not call AfterResume RPC")
-	ErrCouldNotCallBeforeSuspendRPC = errors.New("could not call BeforeSuspend RPC")
-)
-
-type FirecrackerRPC struct {
-	Log               types.Logger
-	VMPath            string
-	UID               int
-	GID               int
-	LivenessVSockPort uint32
-	AgentVSockPort    uint32
-
-	liveness *ipc.LivenessServer
-	agent    *ipc.AgentServer[struct{}, ipc.AgentServerRemote[struct{}], struct{}]
-}
-
-func (rpc *FirecrackerRPC) Init() error {
-	liveness := ipc.NewLivenessServer(filepath.Join(rpc.VMPath, VSockName), rpc.LivenessVSockPort)
-
-	livenessVSockPath, err := liveness.Open()
-	if err != nil {
-		return errors.Join(ErrCouldNotOpenLivenessServer, err)
-	}
-	rpc.liveness = liveness
-
-	if rpc.Log != nil {
-		rpc.Log.Debug().Msg("Created liveness server")
-	}
-
-	err = os.Chown(livenessVSockPath, rpc.UID, rpc.GID)
-	if err != nil {
-		return errors.Join(ErrCouldNotChownLivenessServerVSock, err)
-	}
-
-	agent, err := ipc.StartAgentServer[struct{}, ipc.AgentServerRemote[struct{}]](
-		rpc.Log, filepath.Join(rpc.VMPath, VSockName), rpc.AgentVSockPort, struct{}{},
-	)
-
-	if err != nil {
-		return errors.Join(ErrCouldNotStartAgentServer, err)
-	}
-	rpc.agent = agent
-
-	if rpc.Log != nil {
-		rpc.Log.Debug().Msg("Created agent server")
-	}
-
-	err = os.Chown(agent.VSockPath, rpc.UID, rpc.GID)
-	if err != nil {
-		return errors.Join(ErrCouldNotChownAgentServerVSock, err)
-	}
-
-	return nil
-}
-
-func (rpc *FirecrackerRPC) Close() {
-	rpc.agent.Close()
-	rpc.liveness.Close()
-}
-
-func (rpc *FirecrackerRPC) LivenessAndBeforeSuspendAndClose(ctx context.Context, livenessTimeout time.Duration, agentTimeout time.Duration) error {
-
-	receiveCtx, livenessCancel := context.WithTimeout(ctx, livenessTimeout)
-	defer livenessCancel()
-
-	err := rpc.liveness.ReceiveAndClose(receiveCtx)
-	if err != nil {
-		return errors.Join(ErrCouldNotReceiveAndCloseLivenessServer, err)
-	}
-
-	if rpc.Log != nil {
-		rpc.Log.Debug().Msg("Liveness check OK")
-	}
-
-	var acceptingAgent *ipc.AgentConnection[struct{}, ipc.AgentServerRemote[struct{}], struct{}]
-	acceptCtx, acceptCancel := context.WithTimeout(ctx, agentTimeout)
-	defer acceptCancel()
-
-	acceptingAgentErr := make(chan error, 1)
-
-	acceptingAgent, err = rpc.agent.Accept(acceptCtx, ctx,
-		ipc.AgentServerAcceptHooks[ipc.AgentServerRemote[struct{}], struct{}]{}, acceptingAgentErr)
-
-	if err != nil {
-		return errors.Join(ErrCouldNotAcceptAgentConnection, err)
-	}
-	defer acceptingAgent.Close()
-
-	if rpc.Log != nil {
-		rpc.Log.Debug().Msg("RPC Agent accepted")
-	}
-
-	if rpc.Log != nil {
-		rpc.Log.Debug().Msg("Calling Remote BeforeSuspend")
-	}
-
-	err = acceptingAgent.Remote.BeforeSuspend(acceptCtx)
-	if err != nil {
-		return errors.Join(ErrCouldNotBeforeSuspend, err)
-	}
-
-	if rpc.Log != nil {
-		rpc.Log.Debug().Msg("RPC Closing")
-	}
-
-	// Connections need to be closed before creating the snapshot
-	rpc.liveness.Close()
-	err = acceptingAgent.Close()
-	if err != nil {
-		return errors.Join(ErrCouldNotCloseAcceptingAgent, err)
-	}
-	rpc.agent.Close()
-
-	// Check if there was any error
-	select {
-	case err := <-acceptingAgentErr:
-		return err
-	default:
 	}
 
 	return nil
