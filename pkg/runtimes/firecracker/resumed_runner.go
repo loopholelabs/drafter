@@ -37,23 +37,17 @@ func (rr *ResumedRunner[L, R, G]) Close() error {
 		return err
 	}
 
-	err = rr.rpc.Wait()
-	if err != nil {
-		if rr.log != nil {
-			rr.log.Error().Err(err).Msg("error closing resumed runner (rpc.Wait)")
-		}
-		return errors.Join(ErrCouldNotWaitForAcceptingAgent, err)
-	}
 	return nil
 }
 
-func (rr *ResumedRunner[L, R, G]) Wait() error {
-	if rr.log != nil {
-		rr.log.Info().Msg("waiting for resumed runner")
+/*
+	func (rr *ResumedRunner[L, R, G]) Wait() error {
+		if rr.log != nil {
+			rr.log.Info().Msg("waiting for resumed runner")
+		}
+		return rr.rpc.Wait()
 	}
-	return rr.rpc.Wait()
-}
-
+*/
 func (rr *ResumedRunner[L, R, G]) Msync(ctx context.Context) error {
 	if rr.log != nil {
 		rr.log.Info().Msg("resumed runner Msync")

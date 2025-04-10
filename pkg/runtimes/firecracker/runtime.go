@@ -86,17 +86,17 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Resume(resumeTimeout time.Duratio
 	}
 
 	rp.Remote = *rp.ResumedRunner.rpc.Remote
-
-	go func() {
-		err := rp.ResumedRunner.Wait()
-		if err != nil {
-			select {
-			case errChan <- err:
-			default:
+	/*
+		go func() {
+			err := rp.ResumedRunner.Wait()
+			if err != nil {
+				select {
+				case errChan <- err:
+				default:
+				}
 			}
-		}
-	}()
-
+		}()
+	*/
 	rp.running = true
 	return nil
 }
@@ -150,10 +150,6 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Close() error {
 		rp.hypervisorCancel()
 
 		err = rp.ResumedRunner.Close()
-		if err != nil {
-			return err
-		}
-		err = rp.ResumedRunner.Wait()
 		if err != nil {
 			return err
 		}

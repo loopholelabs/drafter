@@ -103,9 +103,10 @@ func (rpc *FirecrackerRPC) LivenessAndBeforeSuspendAndClose(ctx context.Context,
 	acceptCtx, acceptCancel := context.WithTimeout(ctx, agentTimeout)
 	defer acceptCancel()
 
+	acceptingAgentErr := make(chan error, 1)
+
 	acceptingAgent, err = rpc.agent.Accept(acceptCtx, ctx,
-		ipc.AgentServerAcceptHooks[ipc.AgentServerRemote[struct{}], struct{}]{},
-	)
+		ipc.AgentServerAcceptHooks[ipc.AgentServerRemote[struct{}], struct{}]{}, acceptingAgentErr)
 
 	if err != nil {
 		return errors.Join(ErrCouldNotAcceptAgentConnection, err)
@@ -115,15 +116,6 @@ func (rpc *FirecrackerRPC) LivenessAndBeforeSuspendAndClose(ctx context.Context,
 	if rpc.Log != nil {
 		rpc.Log.Debug().Msg("RPC Agent accepted")
 	}
-
-	acceptingAgentErr := make(chan error, 1)
-	go func() {
-		err := acceptingAgent.Wait()
-		if err != nil {
-			// Pass the error back here...
-			acceptingAgentErr <- err
-		}
-	}()
 
 	if rpc.Log != nil {
 		rpc.Log.Debug().Msg("Calling Remote BeforeSuspend")

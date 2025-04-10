@@ -182,7 +182,7 @@ type AgentConnection[L AgentServerLocal, R AgentServerRemote[G], G any] struct {
 	linkCancel context.CancelCauseFunc
 	stoppedErr error
 
-	Wait func() error
+	// Wait func() error
 }
 
 func (ac *AgentConnection[L, R, G]) Close() error {
@@ -194,23 +194,23 @@ func (ac *AgentConnection[L, R, G]) Close() error {
 	ac.agentServer.closed = true
 	ac.linkCancel(ac.stoppedErr)
 	ac.agentServer.closeLock.Unlock()
-	return ac.Wait()
+
+	ac.connectionWg.Wait()
+
+	return nil
 }
 
 /**
  * Accept a connection, and handle it
  *
  */
-func (agentServer *AgentServer[L, R, G]) Accept(acceptCtx context.Context, remoteCtx context.Context, hooks AgentServerAcceptHooks[R, G],
+func (agentServer *AgentServer[L, R, G]) Accept(acceptCtx context.Context, remoteCtx context.Context, hooks AgentServerAcceptHooks[R, G], errChan chan error,
 ) (agentConnection *AgentConnection[L, R, G], errs error) {
 
 	agentConnection = &AgentConnection[L, R, G]{
 		connectionReady: make(chan bool, 1),
 		agentServer:     agentServer,
 		connErr:         make(chan error, 1),
-		Wait: func() error {
-			return nil
-		},
 	}
 
 	if agentServer.log != nil {
@@ -290,33 +290,12 @@ func (agentServer *AgentServer[L, R, G]) Accept(acceptCtx context.Context, remot
 		agentConnection.connErr <- err
 		agentConnection.connectionErr = err
 		agentConnection.connectionWg.Done()
+		agentServer.closeLock.Lock()
+		defer agentServer.closeLock.Unlock()
+		if !(agentServer.closed && errors.Is(err, context.Canceled) && errors.Is(context.Cause(goroutineManager.Context()), goroutineManager.GetErrGoroutineStopped())) {
+			errChan <- err
+		}
 	}()
-
-	agentConnection.Wait = sync.OnceValue(func() error {
-		// We don't `defer conn.Close` here since Firecracker handles resetting active VSock connections for us
-		err := <-agentConnection.connErr
-
-		if err != nil {
-			agentServer.closeLock.Lock()
-			defer agentServer.closeLock.Unlock()
-
-			// Don't treat closed errors as errors if we closed the connection
-			if !(agentServer.closed && errors.Is(err, context.Canceled) && errors.Is(context.Cause(goroutineManager.Context()), goroutineManager.GetErrGoroutineStopped())) {
-				return errors.Join(ErrAgentClientDisconnected, ErrCouldNotLinkRegistry, err)
-			}
-			return remoteCtx.Err()
-		}
-		return nil
-	})
-
-	// It is safe to start a background goroutine here since we return a wait function
-	// Despite returning a wait function, we still need to start this goroutine however so that any errors
-	// we get as we're waiting for a connection are caught
-	goroutineManager.StartBackgroundGoroutine(func(_ context.Context) {
-		if err := agentConnection.Wait(); err != nil {
-			panic(err)
-		}
-	})
 
 	select {
 	case <-goroutineManager.Context().Done():

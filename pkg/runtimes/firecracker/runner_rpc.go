@@ -40,19 +40,12 @@ func (rrpc *RunnerRPC[L, R, G]) Start(vmPath string, vsockPort uint32, agentServ
 
 func (rrpc *RunnerRPC[L, R, G]) Accept(acceptCtx context.Context, remoteCtx context.Context, agentServerHooks ipc.AgentServerAcceptHooks[R, G], errChan chan error) error {
 	var err error
-	rrpc.acceptingAgent, err = rrpc.agent.Accept(acceptCtx, remoteCtx, agentServerHooks)
+	rrpc.acceptingAgent, err = rrpc.agent.Accept(acceptCtx, remoteCtx, agentServerHooks, errChan)
 
 	if err != nil {
 		return errors.Join(ErrCouldNotAcceptAgent, err)
 	}
 	rrpc.Remote = &rrpc.acceptingAgent.Remote
-
-	go func() {
-		err := rrpc.acceptingAgent.Wait()
-		if err != nil {
-			errChan <- err
-		}
-	}()
 
 	return nil
 }
@@ -75,17 +68,18 @@ func (rrpc *RunnerRPC[L, R, G]) Close() error {
 	return nil
 }
 
-func (rrpc *RunnerRPC[L, R, G]) Wait() error {
-	if rrpc.log != nil {
-		rrpc.log.Debug().Msg("runnerRPC wait")
-	}
+/*
+	func (rrpc *RunnerRPC[L, R, G]) Wait() error {
+		if rrpc.log != nil {
+			rrpc.log.Debug().Msg("runnerRPC wait")
+		}
 
-	if rrpc.acceptingAgent != nil {
-		return rrpc.acceptingAgent.Wait()
+		if rrpc.acceptingAgent != nil {
+			return rrpc.acceptingAgent.Wait()
+		}
+		return nil
 	}
-	return nil
-}
-
+*/
 func (rrpc *RunnerRPC[L, R, G]) BeforeSuspend(ctx context.Context) error {
 	if rrpc.log != nil {
 		rrpc.log.Debug().Msg("runnerRPC beforeSuspend")
