@@ -127,7 +127,6 @@ func Resume[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 		return nil, errors.Join(ErrCouldNotResumeSnapshot, err)
 	}
 
-	rpcErr := make(chan error, 1)
 	numRetries := 5
 	for {
 		resumedRunner.rpc = &RunnerRPC[L, R, G]{
@@ -143,21 +142,13 @@ func Resume[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 			return nil, err
 		}
 
-		// Accept RPC connection
-		rpcErr = make(chan error, 1)
 		if machine.log != nil {
-			machine.log.Debug().Msg("Resume resumedRunner rpc Accept")
+			machine.log.Debug().Msg("Resume resumedRunner rpc AfterResume")
 		}
-		err = resumedRunner.rpc.Accept(resumeSnapshotAndAcceptCtx, ctx, rpcErr)
-		if machine.log != nil {
-			machine.log.Debug().Err(err).Msg("Resume resumedRunner rpc Accept returned")
-		}
+		// Call after resume RPC
+		err = resumedRunner.rpc.AfterResume(ctx, resumeTimeout)
 		if err == nil {
-			// Call after resume RPC
-			err = resumedRunner.rpc.AfterResume(ctx, resumeTimeout)
-			if err == nil {
-				break
-			}
+			break
 		}
 		if machine.log != nil {
 			machine.log.Error().Err(err).Msg("Resume resumedRunner failed to call AfterResume. Retrying...")
@@ -176,8 +167,6 @@ func Resume[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 	// Check if there was any error from the runner, or from the rpc and if so return it.
 	select {
 	case err := <-runnerErr:
-		return nil, err
-	case err := <-rpcErr:
 		return nil, err
 	default:
 	}

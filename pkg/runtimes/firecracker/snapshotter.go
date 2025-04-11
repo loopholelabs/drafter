@@ -207,26 +207,20 @@ func CreateSnapshot(log types.Logger, ctx context.Context, devices []SnapshotDev
 	liveness.Close()
 
 	// BeforeSuspend and close
-	var acceptingAgent *ipc.AgentConnection[struct{}, ipc.AgentServerRemote[struct{}], struct{}]
 	acceptCtx, acceptCancel := context.WithTimeout(ctx, livenessConfiguration.ResumeTimeout)
 	defer acceptCancel()
 
-	acceptingAgentErr := make(chan error, 1)
-
-	acceptingAgent, err = agent.Accept(acceptCtx, ctx, acceptingAgentErr)
-
-	if err != nil {
-		return errors.Join(ErrCouldNotAcceptAgentConnection, err)
+	if log != nil {
+		log.Debug().Msg("Calling Remote BeforeSuspend (GetRemote)")
 	}
-	defer acceptingAgent.Close()
+
+	rem, err := agent.GetRemote(acceptCtx)
+	if err != nil {
+		return errors.Join(ErrCouldNotBeforeSuspend, err)
+	}
 
 	if log != nil {
 		log.Debug().Msg("Calling Remote BeforeSuspend")
-	}
-
-	rem, err := acceptingAgent.GetRemote(acceptCtx)
-	if err != nil {
-		return errors.Join(ErrCouldNotBeforeSuspend, err)
 	}
 
 	err = rem.BeforeSuspend(acceptCtx)
@@ -239,18 +233,7 @@ func CreateSnapshot(log types.Logger, ctx context.Context, devices []SnapshotDev
 	}
 
 	// Connections need to be closed before creating the snapshot
-	err = acceptingAgent.Close()
-	if err != nil {
-		return errors.Join(ErrCouldNotCloseAcceptingAgent, err)
-	}
 	agent.Close()
-
-	// Check if there was any error
-	select {
-	case err := <-acceptingAgentErr:
-		return err
-	default:
-	}
 
 	err = createFinalSnapshot(ctx, server, agentConfiguration.AgentVSockPort,
 		server.VMPath, hypervisorConfiguration.UID, hypervisorConfiguration.GID)

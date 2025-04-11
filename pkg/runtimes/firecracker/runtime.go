@@ -38,7 +38,6 @@ type FirecrackerRuntimeProvider[L ipc.AgentServerLocal, R ipc.AgentServerRemote[
 	running     bool
 
 	// RPC Bits
-	Remote           R
 	AgentServerLocal L
 }
 
@@ -82,8 +81,6 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Resume(resumeTimeout time.Duratio
 	if err != nil {
 		return err
 	}
-
-	rp.Remote = *rp.ResumedRunner.rpc.Remote
 
 	rp.running = true
 	return nil

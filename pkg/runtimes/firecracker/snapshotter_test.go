@@ -42,7 +42,7 @@ func TestSnapshotter(t *testing.T) {
 	ns := testutil.SetupNAT(t, "", "dra")
 
 	log := logging.New(logging.Zerolog, "test", os.Stderr)
-	log.SetLevel(loggingtypes.ErrorLevel)
+	log.SetLevel(loggingtypes.DebugLevel)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 

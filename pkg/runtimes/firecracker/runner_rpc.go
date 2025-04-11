@@ -13,10 +13,8 @@ import (
 )
 
 type RunnerRPC[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] struct {
-	log            types.Logger
-	agent          *ipc.AgentRPC[L, R, G]
-	acceptingAgent *ipc.AgentConnection[L, R, G]
-	Remote         *R
+	log   types.Logger
+	agent *ipc.AgentRPC[L, R, G]
 }
 
 func (rrpc *RunnerRPC[L, R, G]) Start(vmPath string, vsockPort uint32, agentServerLocal L, uid int, gid int) error {
@@ -33,33 +31,9 @@ func (rrpc *RunnerRPC[L, R, G]) Start(vmPath string, vsockPort uint32, agentServ
 	return nil
 }
 
-func (rrpc *RunnerRPC[L, R, G]) Accept(acceptCtx context.Context, remoteCtx context.Context, errChan chan error) error {
-	var err error
-	rrpc.acceptingAgent, err = rrpc.agent.Accept(acceptCtx, remoteCtx, errChan)
-
-	if err != nil {
-		return errors.Join(ErrCouldNotAcceptAgent, err)
-	}
-	rem, err := rrpc.acceptingAgent.GetRemote(acceptCtx)
-	if err != nil {
-		return errors.Join(ErrCouldNotAcceptAgent, err)
-	}
-
-	rrpc.Remote = &rem
-
-	return nil
-}
-
 func (rrpc *RunnerRPC[L, R, G]) Close() error {
 	if rrpc.log != nil {
 		rrpc.log.Debug().Msg("runnerRPC close")
-	}
-
-	if rrpc.acceptingAgent != nil {
-		err := rrpc.acceptingAgent.Close()
-		if err != nil {
-			return errors.Join(ErrCouldNotCloseAcceptingAgent, err)
-		}
 	}
 
 	if rrpc.agent != nil {
@@ -73,12 +47,15 @@ func (rrpc *RunnerRPC[L, R, G]) BeforeSuspend(ctx context.Context) error {
 		rrpc.log.Debug().Msg("runnerRPC beforeSuspend")
 	}
 
-	if rrpc.Remote != nil {
-		remote := *(*ipc.AgentServerRemote[G])(unsafe.Pointer(rrpc.Remote))
-		err := remote.BeforeSuspend(ctx)
-		if err != nil {
-			return errors.Join(ErrCouldNotCallBeforeSuspendRPC, err)
-		}
+	r, err := rrpc.agent.GetRemote(ctx)
+	if err != nil {
+		return err
+	}
+
+	remote := *(*ipc.AgentServerRemote[G])(unsafe.Pointer(&r))
+	err = remote.BeforeSuspend(ctx)
+	if err != nil {
+		return errors.Join(ErrCouldNotCallBeforeSuspendRPC, err)
 	}
 
 	return nil
@@ -92,8 +69,13 @@ func (rrpc *RunnerRPC[L, R, G]) AfterResume(ctx context.Context, resumeTimeout t
 		rrpc.log.Info().Int64("timeout_ms", resumeTimeout.Milliseconds()).Msg("runnerRPC AfterResume")
 	}
 
-	remote := *(*ipc.AgentServerRemote[G])(unsafe.Pointer(rrpc.Remote))
-	err := remote.AfterResume(afterResumeCtx)
+	r, err := rrpc.agent.GetRemote(afterResumeCtx)
+	if err != nil {
+		return err
+	}
+
+	remote := *(*ipc.AgentServerRemote[G])(unsafe.Pointer(&r))
+	err = remote.AfterResume(afterResumeCtx)
 	if err != nil {
 		return errors.Join(ErrCouldNotCallAfterResumeRPC, err)
 	}
