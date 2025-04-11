@@ -134,11 +134,9 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Close() error {
 		rp.resumeCancel() // We can cancel this context now
 		rp.hypervisorCancel()
 
-		if rp.ResumedRunner.agent != nil {
-			err = rp.ResumedRunner.agent.Close()
-			if err != nil {
-				return err
-			}
+		err = rp.ResumedRunner.Close()
+		if err != nil {
+			return err
 		}
 		rp.ResumedRunner = nil // Just to make sure if there's further calls to Close
 
