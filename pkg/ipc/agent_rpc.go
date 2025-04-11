@@ -35,7 +35,7 @@ type AgentServerRemote[G any] struct {
 	AfterResume   func(ctx context.Context) error
 }
 
-type AgentServer[L AgentServerLocal, R AgentServerRemote[G], G any] struct {
+type AgentRPC[L AgentServerLocal, R AgentServerRemote[G], G any] struct {
 	log              loggingtypes.Logger
 	VSockPath        string
 	closed           bool
@@ -53,7 +53,7 @@ type AgentServer[L AgentServerLocal, R AgentServerRemote[G], G any] struct {
  * Close the AgentServer
  *
  */
-func (a *AgentServer[L, R, G]) Close() error {
+func (a *AgentRPC[L, R, G]) Close() error {
 	if a.log != nil {
 		a.log.Info().Str("VSockPath", a.VSockPath).Msg("Closing AgentServer")
 	}
@@ -85,14 +85,14 @@ func (a *AgentServer[L, R, G]) Close() error {
  *
  */
 func StartAgentServer[L AgentServerLocal, R AgentServerRemote[G], G any](log loggingtypes.Logger, vsockPath string, vsockPort uint32,
-	agentServerLocal L) (*AgentServer[L, R, G], error) {
+	agentServerLocal L) (*AgentRPC[L, R, G], error) {
 
 	listenCtx, listenCancel := context.WithCancel(context.Background())
 
 	backlog := 16
 
 	var err error
-	agentServer := &AgentServer[L, R, G]{
+	agentServer := &AgentRPC[L, R, G]{
 		listenCtx:        listenCtx,
 		listenCancel:     listenCancel,
 		log:              log,
@@ -166,7 +166,7 @@ func handleConnection[R any](ctx context.Context, registry *rpc.Registry[R, json
 // FIXME: Tidy up under here...
 
 type AgentConnection[L AgentServerLocal, R AgentServerRemote[G], G any] struct {
-	agentServer     *AgentServer[L, R, G]
+	agentServer     *AgentRPC[L, R, G]
 	remote          R
 	connErr         chan error
 	connectionErr   error
@@ -199,7 +199,7 @@ func (ac *AgentConnection[L, R, G]) Close() error {
  * Accept a connection, and handle it
  *
  */
-func (agentServer *AgentServer[L, R, G]) Accept(acceptCtx context.Context, remoteCtx context.Context, errChan chan error,
+func (agentServer *AgentRPC[L, R, G]) Accept(acceptCtx context.Context, remoteCtx context.Context, errChan chan error,
 ) (agentConnection *AgentConnection[L, R, G], errs error) {
 
 	agentConnection = &AgentConnection[L, R, G]{

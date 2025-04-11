@@ -14,7 +14,7 @@ import (
 
 type RunnerRPC[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] struct {
 	log            types.Logger
-	agent          *ipc.AgentServer[L, R, G]
+	agent          *ipc.AgentRPC[L, R, G]
 	acceptingAgent *ipc.AgentConnection[L, R, G]
 	Remote         *R
 }
