@@ -287,14 +287,6 @@ func main() {
 		panic(err)
 	}
 
-	defer func() {
-		defer goroutineManager.CreateForegroundPanicCollector()()
-
-		if err := resumedRunner.Close(); err != nil {
-			panic(err)
-		}
-	}()
-
 	log.Info().Str("vmpath", m.VMPath).Int64("ms", time.Since(before).Milliseconds()).Msg("Resumed VM")
 
 	bubbleSignals = true

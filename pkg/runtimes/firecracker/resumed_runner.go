@@ -21,27 +21,7 @@ type ResumedRunner[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] st
 	log     types.Logger
 	machine *FirecrackerMachine
 
-	stateName  string
-	memoryName string
-
 	agent *ipc.AgentRPC[L, R, G]
-}
-
-func (rr *ResumedRunner[L, R, G]) Close() error {
-	if rr.log != nil {
-		rr.log.Info().Msg("closing resumed runner")
-	}
-	if rr.agent != nil {
-		err := rr.agent.Close()
-		if err != nil {
-			if rr.log != nil {
-				rr.log.Error().Err(err).Msg("error closing resumed runner (rpc.Close)")
-			}
-			return err
-		}
-	}
-
-	return nil
 }
 
 func (rr *ResumedRunner[L, R, G]) Msync(ctx context.Context) error {
@@ -51,7 +31,7 @@ func (rr *ResumedRunner[L, R, G]) Msync(ctx context.Context) error {
 
 	err := rr.machine.CreateSnapshot(
 		ctx,
-		rr.stateName,
+		common.DeviceStateName,
 		"",
 		SDKSnapshotTypeMsync,
 	)
@@ -88,7 +68,7 @@ func (rr *ResumedRunner[L, R, G]) SuspendAndCloseAgentServer(ctx context.Context
 		rr.log.Debug().Msg("resumedRunner createSnapshot")
 	}
 
-	err = rr.machine.CreateSnapshot(suspendCtx, rr.stateName, "", SDKSnapshotTypeMsyncAndState)
+	err = rr.machine.CreateSnapshot(suspendCtx, common.DeviceStateName, "", SDKSnapshotTypeMsyncAndState)
 	if err != nil {
 		return errors.Join(ErrCouldNotCreateSnapshot, err)
 	}
@@ -110,10 +90,8 @@ func Resume[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 	}
 
 	resumedRunner := &ResumedRunner[L, R, G]{
-		log:        machine.log,
-		machine:    machine,
-		stateName:  common.DeviceStateName,
-		memoryName: common.DeviceMemoryName,
+		log:     machine.log,
+		machine: machine,
 	}
 
 	// Monitor for any error from the runner
@@ -128,7 +106,7 @@ func Resume[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 	resumeSnapshotAndAcceptCtx, cancelResumeSnapshotAndAcceptCtx := context.WithTimeout(ctx, resumeTimeout)
 	defer cancelResumeSnapshotAndAcceptCtx()
 
-	err := machine.ResumeSnapshot(resumeSnapshotAndAcceptCtx, resumedRunner.stateName, resumedRunner.memoryName)
+	err := machine.ResumeSnapshot(resumeSnapshotAndAcceptCtx, common.DeviceStateName, common.DeviceMemoryName)
 
 	if err != nil {
 		if machine.log != nil {
