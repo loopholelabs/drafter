@@ -49,10 +49,11 @@ type AgentRPC[L AgentServerLocal, R AgentServerRemote[G], G any] struct {
 }
 
 /**
- * Start an AgentServer
+ * Start an AgentRPC
+ *
  *
  */
-func StartAgentServer[L AgentServerLocal, R AgentServerRemote[G], G any](log loggingtypes.Logger, vsockPath string, vsockPort uint32,
+func StartAgentRPC[L AgentServerLocal, R AgentServerRemote[G], G any](log loggingtypes.Logger, vsockPath string, vsockPort uint32,
 	agentServerLocal L) (*AgentRPC[L, R, G], error) {
 
 	listenCtx, listenCancel := context.WithCancel(context.Background())
@@ -72,16 +73,12 @@ func StartAgentServer[L AgentServerLocal, R AgentServerRemote[G], G any](log log
 		return nil, errors.Join(ErrCouldNotListenInAgentServer, err)
 	}
 
-	if log != nil {
-		log.Info().Str("VSockPath", agentServer.VSockPath).Msg("Created an AgentServer")
-	}
-
-	// Start accepting here so we *know* we are always accepting connections
+	// Start accepting connections
 	go func() {
 		select {
 		case <-listenCtx.Done():
 			if log != nil {
-				log.Debug().Str("VSockPath", agentServer.VSockPath).Msg("AgentServer.listener shut down")
+				log.Debug().Str("VSockPath", agentServer.VSockPath).Msg("AgentRPC.listener shut down")
 			}
 			return
 		default:
@@ -92,9 +89,9 @@ func StartAgentServer[L AgentServerLocal, R AgentServerRemote[G], G any](log log
 		}
 		if err == nil {
 			// Handle the connection, and wait until it's finished (We only handle ONE at a time)
-			err = agentServer.handle(listenCtx, conn)
+			err = agentServer.handle(listenCtx, conn, 10*time.Second)
 			if log != nil {
-				log.Debug().Str("VSockPath", agentServer.VSockPath).Err(err).Msg("AgentServer.handle finished")
+				log.Debug().Str("VSockPath", agentServer.VSockPath).Err(err).Msg("AgentServer.listener handle finished")
 			}
 		}
 	}()
@@ -102,14 +99,44 @@ func StartAgentServer[L AgentServerLocal, R AgentServerRemote[G], G any](log log
 	return agentServer, nil
 }
 
-func (a AgentRPC[L, R, G]) handle(ctx context.Context, conn net.Conn) error {
+/**
+ * Close the AgentRPC
+ *
+ */
+func (a *AgentRPC[L, R, G]) Close() error {
+	if a.log != nil {
+		a.log.Info().Str("VSockPath", a.VSockPath).Msg("Closing AgentRPC")
+	}
+
+	// Cancel the listenCtx
+	a.listenCancel()
+
+	// We need to remove this file first so that the client can't try to reconnect
+	os.Remove(a.VSockPath) // We ignore errors here since the file might already have been removed, but we don't want to use `RemoveAll` cause it could remove a directory
+	a.lis.Close()          // We ignore errors here since we might interrupt a network connection
+
+	return nil
+}
+
+/**
+ * Handle an incoming connection
+ *
+ */
+func (a AgentRPC[L, R, G]) handle(ctx context.Context, conn net.Conn, readyTimeout time.Duration) error {
+	// Clear remote if it's set
+	select {
+	case <-a.remote:
+	default:
+	}
+
 	ready := make(chan bool)
 
-	// Setup the connection, and use it...
+	// Cancel context when we return
 	linkCtx, linkCancel := context.WithCancel(ctx)
 	defer linkCancel()
 
-	readyCtx, readyCancel := context.WithTimeout(linkCtx, 10*time.Second)
+	// Setup a timeout to wait for the RPC to be ready
+	readyCtx, readyCancel := context.WithTimeout(linkCtx, readyTimeout)
 	defer readyCancel()
 
 	// Setup registry
@@ -130,7 +157,7 @@ func (a AgentRPC[L, R, G]) handle(ctx context.Context, conn net.Conn) error {
 		defer linkCancel()
 		err := handleConnection[R](linkCtx, registry, conn)
 		if a.log != nil {
-			a.log.Info().Err(err).Msg("Handle connection finished")
+			a.log.Debug().Err(err).Msg("AgentRPC handle connection finished")
 		}
 		connectionWg.Done()
 	}()
@@ -138,28 +165,30 @@ func (a AgentRPC[L, R, G]) handle(ctx context.Context, conn net.Conn) error {
 	select {
 	case <-readyCtx.Done(): // Timeout waiting for RPC ready
 		return readyCtx.Err()
-	case <-ready:
+	case <-ready: // Ready to use connection
 		break
-	}
-
-	if a.log != nil {
-		a.log.Debug().Msg("RPC ready")
 	}
 
 	found := false
 	err := registry.ForRemotes(func(remoteID string, r R) error {
-		select {
-		case <-a.remote:
-		default:
-		}
-
 		a.remote <- r
 		if a.log != nil {
-			a.log.Debug().Msg("RPC set remote")
+			a.log.Debug().Msg("AgentRPC remote found and set")
 		}
 		found = true
 		return nil
 	})
+
+	// If we found a remote, set something up to clear it at the end.
+	if found {
+		defer func() {
+			// Clear the remote if it's set
+			select {
+			case <-a.remote:
+			default:
+			}
+		}()
+	}
 
 	if err != nil {
 		return err
@@ -169,39 +198,8 @@ func (a AgentRPC[L, R, G]) handle(ctx context.Context, conn net.Conn) error {
 		return ErrNoRemoteFound
 	}
 
-	// Now wait until it's done
+	// Now wait until this connection is done with
 	connectionWg.Wait()
-
-	<-a.remote
-
-	return nil
-}
-
-/**
- * Close the AgentServer
- *
- */
-func (a *AgentRPC[L, R, G]) Close() error {
-	if a.log != nil {
-		a.log.Info().Str("VSockPath", a.VSockPath).Msg("Closing AgentServer")
-	}
-
-	a.listenCancel()
-
-	// We need to remove this file first so that the client can't try to reconnect
-	err := os.Remove(a.VSockPath) // We ignore errors here since the file might already have been removed, but we don't want to use `RemoveAll` cause it could remove a directory
-	if err != nil {
-		if a.log != nil {
-			a.log.Debug().Err(err).Str("VSockPath", a.VSockPath).Msg("error removing vsockpath")
-		}
-	}
-
-	err = a.lis.Close() // We ignore errors here since we might interrupt a network connection
-	if err != nil {
-		if a.log != nil {
-			a.log.Debug().Err(err).Str("VSockPath", a.VSockPath).Msg("error closing listener")
-		}
-	}
 	return nil
 }
 
@@ -211,17 +209,20 @@ func (a *AgentRPC[L, R, G]) Close() error {
  */
 func (a *AgentRPC[L, R, G]) GetRemote(ctx context.Context) (R, error) {
 	if a.log != nil {
-		a.log.Debug().Str("VSockPath", a.VSockPath).Msg("GetRemote")
+		a.log.Trace().Str("VSockPath", a.VSockPath).Msg("AgentRPC waiting to GetRemote")
 	}
 
 	select {
 	case r := <-a.remote:
-		a.remote <- r
+		a.remote <- r // Put it back on the channel for another consumer
 		if a.log != nil {
-			a.log.Debug().Str("VSockPath", a.VSockPath).Msg("GetRemote found remote")
+			a.log.Trace().Str("VSockPath", a.VSockPath).Msg("AgentRPC GetRemote found remote")
 		}
 		return r, nil
 	case <-ctx.Done():
+		if a.log != nil {
+			a.log.Trace().Str("VSockPath", a.VSockPath).Msg("AgentRPC GetRemote timed out")
+		}
 		return R{}, ctx.Err()
 	}
 }

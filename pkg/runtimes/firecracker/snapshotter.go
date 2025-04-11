@@ -144,7 +144,7 @@ func CreateSnapshot(log types.Logger, ctx context.Context, devices []SnapshotDev
 	defer liveness.Close()
 
 	// Setup the agent server
-	agent, err := ipc.StartAgentServer[struct{}, ipc.AgentServerRemote[struct{}]](
+	agent, err := ipc.StartAgentRPC[struct{}, ipc.AgentServerRemote[struct{}]](
 		log, filepath.Join(server.VMPath, VSockName), uint32(agentConfiguration.AgentVSockPort), struct{}{},
 	)
 

@@ -19,7 +19,7 @@ type RunnerRPC[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] struct
 
 func (rrpc *RunnerRPC[L, R, G]) Start(vmPath string, vsockPort uint32, agentServerLocal L, uid int, gid int) error {
 	var err error
-	rrpc.agent, err = ipc.StartAgentServer[L, R](rrpc.log, path.Join(vmPath, VSockName), vsockPort, agentServerLocal)
+	rrpc.agent, err = ipc.StartAgentRPC[L, R](rrpc.log, path.Join(vmPath, VSockName), vsockPort, agentServerLocal)
 	if err != nil {
 		return errors.Join(ErrCouldNotStartAgentServer, err)
 	}
