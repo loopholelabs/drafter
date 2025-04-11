@@ -20,6 +20,7 @@ var ErrCouldNotOpenConfigFile = errors.New("could not open config file")
 var ErrCouldNotDecodeConfigFile = errors.New("could not decode config file")
 var ErrCouldNotResumeRunner = errors.New("could not resume runner")
 var ErrCouldNotRemoveVMDir = errors.New("could not remove vm dir")
+var ErrCouldNotResumeSnapshot = errors.New("could not resume snapshot")
 
 type FirecrackerRuntimeProvider[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] struct {
 	Log                     types.Logger
