@@ -14,7 +14,9 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+	"unsafe"
 
+	"github.com/loopholelabs/drafter/pkg/common"
 	"github.com/loopholelabs/drafter/pkg/ipc"
 	"github.com/loopholelabs/drafter/pkg/testutil"
 
@@ -108,16 +110,45 @@ func TestResumeSuspend(t *testing.T) {
 			assert.NoError(t, err)
 		}
 
-		rr, err := Resume[struct{}, ipc.AgentServerRemote[struct{}], struct{}](m, ctx, 5*time.Second, 5*time.Second,
+		resumeSnapshotAndAcceptCtx, cancelResumeSnapshotAndAcceptCtx := context.WithTimeout(ctx, 10*time.Second)
+		defer cancelResumeSnapshotAndAcceptCtx()
+
+		err = m.ResumeSnapshot(resumeSnapshotAndAcceptCtx, common.DeviceStateName, common.DeviceMemoryName)
+		assert.NoError(t, err)
+
+		agent, err := ipc.StartAgentRPC[struct{}, ipc.AgentServerRemote[struct{}]](
+			log, path.Join(m.VMPath, VSockName),
 			agentVsockPort, agentLocal)
 		assert.NoError(t, err)
 
-		assert.NotNil(t, rr)
+		// Call after resume RPC
+		afterResumeCtx, cancelAfterResumeCtx := context.WithTimeout(ctx, 10*time.Second)
+		defer cancelAfterResumeCtx()
+
+		r, err := agent.GetRemote(afterResumeCtx)
+		assert.NoError(t, err)
+
+		remote := *(*ipc.AgentServerRemote[struct{}])(unsafe.Pointer(&r))
+		err = remote.AfterResume(afterResumeCtx)
+		assert.NoError(t, err)
 
 		// Wait a tiny bit for the VM to do things...
 		time.Sleep(10 * time.Second)
 
-		err = rr.SuspendAndCloseAgentServer(ctx, 10*time.Second)
+		suspendCtx, cancelSuspendCtx := context.WithTimeout(ctx, 10*time.Second)
+		defer cancelSuspendCtx()
+
+		r, err = agent.GetRemote(suspendCtx)
+		assert.NoError(t, err)
+
+		remote = *(*ipc.AgentServerRemote[struct{}])(unsafe.Pointer(&r))
+		err = remote.BeforeSuspend(suspendCtx)
+		assert.NoError(t, err)
+
+		err = agent.Close()
+		assert.NoError(t, err)
+
+		err = m.CreateSnapshot(suspendCtx, common.DeviceStateName, "", SDKSnapshotTypeMsyncAndState)
 		assert.NoError(t, err)
 
 		previousMachine = m

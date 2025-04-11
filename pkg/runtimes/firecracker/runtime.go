@@ -8,6 +8,7 @@ import (
 	"path"
 	"sync"
 	"time"
+	"unsafe"
 
 	"github.com/loopholelabs/drafter/pkg/common"
 	"github.com/loopholelabs/drafter/pkg/ipc"
@@ -23,7 +24,6 @@ var ErrCouldNotRemoveVMDir = errors.New("could not remove vm dir")
 type FirecrackerRuntimeProvider[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] struct {
 	Log                     types.Logger
 	Machine                 *FirecrackerMachine
-	ResumedRunner           *ResumedRunner[L, R, G]
 	HypervisorConfiguration FirecrackerMachineConfig
 	StateName               string
 	MemoryName              string
@@ -37,6 +37,7 @@ type FirecrackerRuntimeProvider[L ipc.AgentServerLocal, R ipc.AgentServerRemote[
 	running     bool
 
 	// RPC Bits
+	agent            *ipc.AgentRPC[L, R, G]
 	AgentServerLocal L
 }
 
@@ -69,19 +70,39 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Resume(resumeTimeout time.Duratio
 		return errors.Join(ErrCouldNotDecodeConfigFile, err)
 	}
 
-	rp.ResumedRunner, err = Resume[L, R, G](
-		rp.Machine,
-		resumeCtx,
-		resumeTimeout,
-		rescueTimeout,
-		packageConfig.AgentVSockPort,
-		rp.AgentServerLocal,
-	)
+	resumeSnapshotAndAcceptCtx, cancelResumeSnapshotAndAcceptCtx := context.WithTimeout(resumeCtx, resumeTimeout)
+	defer cancelResumeSnapshotAndAcceptCtx()
+
+	err = rp.Machine.ResumeSnapshot(resumeSnapshotAndAcceptCtx, common.DeviceStateName, common.DeviceMemoryName)
 	if err != nil {
 		return err
 	}
 
 	rp.running = true
+
+	// Start the RPC stuff...
+	rp.agent, err = ipc.StartAgentRPC[L, R](
+		rp.Log, path.Join(rp.Machine.VMPath, VSockName),
+		packageConfig.AgentVSockPort, rp.AgentServerLocal)
+	if err != nil {
+		return err
+	}
+
+	// Call after resume RPC
+	afterResumeCtx, cancelAfterResumeCtx := context.WithTimeout(resumeCtx, resumeTimeout)
+	defer cancelAfterResumeCtx()
+
+	r, err := rp.agent.GetRemote(afterResumeCtx)
+	if err != nil {
+		return err
+	}
+
+	remote := *(*ipc.AgentServerRemote[G])(unsafe.Pointer(&r))
+	err = remote.AfterResume(afterResumeCtx)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -110,7 +131,18 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Start(ctx context.Context, rescue
 }
 
 func (rp *FirecrackerRuntimeProvider[L, R, G]) FlushData(ctx context.Context) error {
-	return rp.ResumedRunner.Msync(ctx)
+	if rp.Log != nil {
+		rp.Log.Info().Msg("resumed runner Msync")
+	}
+
+	err := rp.Machine.CreateSnapshot(ctx, common.DeviceStateName, "", SDKSnapshotTypeMsync)
+	if err != nil {
+		if rp.Log != nil {
+			rp.Log.Error().Err(err).Msg("error in resumed runner Msync")
+		}
+		return errors.Join(ErrCouldNotCreateSnapshot, err)
+	}
+	return nil
 }
 
 func (rp *FirecrackerRuntimeProvider[L, R, G]) DevicePath() string {
@@ -122,7 +154,7 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) GetVMPid() int {
 }
 
 func (rp *FirecrackerRuntimeProvider[L, R, G]) Close() error {
-	if rp.ResumedRunner != nil {
+	if rp.agent != nil {
 		if rp.Log != nil {
 			rp.Log.Debug().Msg("Closing resumed runner")
 		}
@@ -133,12 +165,10 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Close() error {
 		rp.resumeCancel() // We can cancel this context now
 		rp.hypervisorCancel()
 
-		err = rp.ResumedRunner.Close()
+		err = rp.agent.Close()
 		if err != nil {
 			return err
 		}
-		rp.ResumedRunner = nil // Just to make sure if there's further calls to Close
-
 	}
 
 	if rp.Machine != nil {
@@ -160,7 +190,7 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Close() error {
 	return nil
 }
 
-func (rp *FirecrackerRuntimeProvider[L, R, G]) Suspend(ctx context.Context, resumeTimeout time.Duration) error {
+func (rp *FirecrackerRuntimeProvider[L, R, G]) Suspend(ctx context.Context, suspendTimeout time.Duration) error {
 	rp.runningLock.Lock()
 	defer rp.runningLock.Unlock()
 
@@ -174,16 +204,36 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Suspend(ctx context.Context, resu
 	if rp.Log != nil {
 		rp.Log.Debug().Msg("firecracker SuspendAndCloseAgentServer")
 	}
-	err := rp.ResumedRunner.SuspendAndCloseAgentServer(
-		ctx,
-		resumeTimeout,
-	)
+
+	suspendCtx, cancelSuspendCtx := context.WithTimeout(ctx, suspendTimeout)
+	defer cancelSuspendCtx()
+
+	r, err := rp.agent.GetRemote(suspendCtx)
 	if err != nil {
-		if rp.Log != nil {
-			rp.Log.Warn().Err(err).Msg("error from SuspendAndCloseAgentServer")
-		}
-	} else {
-		rp.running = false
+		return err
 	}
-	return err
+
+	remote := *(*ipc.AgentServerRemote[G])(unsafe.Pointer(&r))
+	err = remote.BeforeSuspend(suspendCtx)
+	if err != nil {
+		return errors.Join(ErrCouldNotCallBeforeSuspendRPC, err)
+	}
+
+	err = rp.agent.Close()
+	if err != nil {
+		return err
+	}
+
+	if rp.Log != nil {
+		rp.Log.Debug().Msg("resumedRunner createSnapshot")
+	}
+
+	err = rp.Machine.CreateSnapshot(suspendCtx, common.DeviceStateName, "", SDKSnapshotTypeMsyncAndState)
+	if err != nil {
+		return errors.Join(ErrCouldNotCreateSnapshot, err)
+	}
+
+	rp.running = false
+
+	return nil
 }
