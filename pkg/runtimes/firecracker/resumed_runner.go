@@ -3,7 +3,9 @@ package firecracker
 import (
 	"context"
 	"errors"
+	"path"
 	"time"
+	"unsafe"
 
 	"github.com/loopholelabs/drafter/pkg/common"
 	"github.com/loopholelabs/drafter/pkg/ipc"
@@ -21,8 +23,7 @@ type ResumedRunner[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] st
 	stateName  string
 	memoryName string
 
-	// TODO: Switch to interface here, chase away generics
-	rpc *RunnerRPC[L, R, G]
+	agent *ipc.AgentRPC[L, R, G]
 }
 
 func (rr *ResumedRunner[L, R, G]) Close() error {
@@ -30,8 +31,8 @@ func (rr *ResumedRunner[L, R, G]) Close() error {
 		rr.log.Info().Msg("closing resumed runner")
 	}
 
-	if rr.rpc.agent != nil {
-		err := rr.rpc.agent.Close()
+	if rr.agent != nil {
+		err := rr.agent.Close()
 		if err != nil {
 			if rr.log != nil {
 				rr.log.Error().Err(err).Msg("error closing resumed runner (rpc.Close)")
@@ -67,16 +68,20 @@ func (rr *ResumedRunner[L, R, G]) SuspendAndCloseAgentServer(ctx context.Context
 	suspendCtx, cancelSuspendCtx := context.WithTimeout(ctx, suspendTimeout)
 	defer cancelSuspendCtx()
 
-	err := rr.rpc.BeforeSuspend(suspendCtx)
+	r, err := rr.agent.GetRemote(suspendCtx)
 	if err != nil {
 		return err
 	}
 
-	if rr.rpc.agent != nil {
-		err = rr.rpc.agent.Close()
-		if err != nil {
-			return err
-		}
+	remote := *(*ipc.AgentServerRemote[G])(unsafe.Pointer(&r))
+	err = remote.BeforeSuspend(suspendCtx)
+	if err != nil {
+		return errors.Join(ErrCouldNotCallBeforeSuspendRPC, err)
+	}
+
+	err = rr.agent.Close()
+	if err != nil {
+		return err
 	}
 
 	if rr.log != nil {
@@ -132,43 +137,34 @@ func Resume[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 		return nil, errors.Join(ErrCouldNotResumeSnapshot, err)
 	}
 
-	numRetries := 5
-	for {
-		resumedRunner.rpc = &RunnerRPC[L, R, G]{
-			log: machine.log,
-		}
+	// Start the RPC stuff...
+	resumedRunner.agent, err = ipc.StartAgentRPC[L, R](
+		machine.log, path.Join(machine.VMPath, VSockName),
+		uint32(agentVSockPort), agentServerLocal)
 
-		// Start the RPC stuff...
-		err := resumedRunner.rpc.Start(machine.VMPath, uint32(agentVSockPort), agentServerLocal, machine.Conf.UID, machine.Conf.GID)
-		if err != nil {
-			if machine.log != nil {
-				machine.log.Error().Err(err).Msg("Resume resumedRunner failed to start rpc")
-			}
-			return nil, err
-		}
-
+	if err != nil {
 		if machine.log != nil {
-			machine.log.Debug().Msg("Resume resumedRunner rpc AfterResume")
+			machine.log.Error().Err(err).Msg("Resume resumedRunner failed to start rpc")
 		}
-		// Call after resume RPC
-		err = resumedRunner.rpc.AfterResume(ctx, resumeTimeout)
-		if err == nil {
-			break
-		}
-		if machine.log != nil {
-			machine.log.Error().Err(err).Msg("Resume resumedRunner failed to call AfterResume. Retrying...")
-		}
+		return nil, err
+	}
 
-		// Close it
-		if resumedRunner.rpc.agent != nil {
-			resumedRunner.rpc.agent.Close()
-		}
+	if machine.log != nil {
+		machine.log.Debug().Msg("Resume resumedRunner rpc AfterResume")
+	}
+	// Call after resume RPC
+	afterResumeCtx, cancelAfterResumeCtx := context.WithTimeout(ctx, resumeTimeout)
+	defer cancelAfterResumeCtx()
 
-		if numRetries == 0 {
-			return nil, err
-		}
-		numRetries--
-		time.Sleep(200 * time.Millisecond)
+	r, err := resumedRunner.agent.GetRemote(afterResumeCtx)
+	if err != nil {
+		return nil, err
+	}
+
+	remote := *(*ipc.AgentServerRemote[G])(unsafe.Pointer(&r))
+	err = remote.AfterResume(afterResumeCtx)
+	if err != nil {
+		return nil, err
 	}
 
 	// Check if there was any error from the runner, or from the rpc and if so return it.
