@@ -111,7 +111,23 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Start(ctx context.Context, rescue
 }
 
 func (rp *FirecrackerRuntimeProvider[L, R, G]) FlushData(ctx context.Context) error {
-	return rp.ResumedRunner.Msync(ctx)
+	if rp.Machine.log != nil {
+		rp.Machine.log.Info().Msg("Machine Msync")
+	}
+
+	err := rp.Machine.CreateSnapshot(
+		ctx,
+		common.DeviceStateName,
+		"",
+		SDKSnapshotTypeMsync,
+	)
+	if err != nil {
+		if rp.Machine.log != nil {
+			rp.Machine.log.Error().Err(err).Msg("error in Msync")
+		}
+		return errors.Join(ErrCouldNotCreateSnapshot, err)
+	}
+	return nil
 }
 
 func (rp *FirecrackerRuntimeProvider[L, R, G]) DevicePath() string {
