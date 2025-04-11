@@ -6,7 +6,6 @@ import (
 	"errors"
 	"os"
 	"path"
-	"path/filepath"
 	"sync"
 	"time"
 
@@ -140,7 +139,9 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Close() error {
 		}
 		rp.ResumedRunner = nil // Just to make sure if there's further calls to Close
 
-	} else if rp.Machine != nil {
+	}
+
+	if rp.Machine != nil {
 		if rp.Log != nil {
 			rp.Log.Debug().Msg("Closing machine")
 		}
@@ -148,11 +149,13 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Close() error {
 		if err != nil {
 			return errors.Join(ErrCouldNotCloseServer, err)
 		}
-
-		err = os.RemoveAll(filepath.Dir(rp.Machine.VMPath))
-		if err != nil {
-			return errors.Join(ErrCouldNotRemoveVMDir, err)
-		}
+		/*
+		   FOR NOW, DON'T REMOVE DATA
+		   		err = os.RemoveAll(filepath.Dir(rp.Machine.VMPath))
+		   		if err != nil {
+		   			return errors.Join(ErrCouldNotRemoveVMDir, err)
+		   		}
+		*/
 	}
 	return nil
 }

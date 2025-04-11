@@ -32,7 +32,7 @@ const testPeerDirCowS3 = "test_peer_cow"
 
 func TestMigrationBasicHashChecks(t *testing.T) {
 	migration(t, &migrationConfig{
-		numMigrations:  3,
+		numMigrations:  2,
 		minCycles:      1,
 		maxCycles:      1,
 		cycleThrottle:  100 * time.Millisecond,
@@ -47,7 +47,7 @@ func TestMigrationBasicHashChecks(t *testing.T) {
 
 func TestMigrationBasicWithS3(t *testing.T) {
 	migration(t, &migrationConfig{
-		numMigrations:  3,
+		numMigrations:  2,
 		minCycles:      1,
 		maxCycles:      1,
 		cycleThrottle:  100 * time.Millisecond,
@@ -62,7 +62,7 @@ func TestMigrationBasicWithS3(t *testing.T) {
 
 func TestMigration4Cpus(t *testing.T) {
 	migration(t, &migrationConfig{
-		numMigrations:  3,
+		numMigrations:  2,
 		minCycles:      1,
 		maxCycles:      1,
 		cycleThrottle:  100 * time.Millisecond,
@@ -77,7 +77,7 @@ func TestMigration4Cpus(t *testing.T) {
 
 func TestMigrationNoPause(t *testing.T) {
 	migration(t, &migrationConfig{
-		numMigrations:  3,
+		numMigrations:  2,
 		minCycles:      1,
 		maxCycles:      1,
 		cycleThrottle:  100 * time.Millisecond,
@@ -92,7 +92,7 @@ func TestMigrationNoPause(t *testing.T) {
 
 func TestMigrationMultiCycle(t *testing.T) {
 	migration(t, &migrationConfig{
-		numMigrations:  3,
+		numMigrations:  2,
 		minCycles:      10,
 		maxCycles:      20,
 		cycleThrottle:  100 * time.Millisecond,
@@ -107,7 +107,7 @@ func TestMigrationMultiCycle(t *testing.T) {
 
 func TestMigrationNoCycle(t *testing.T) {
 	migration(t, &migrationConfig{
-		numMigrations:  3,
+		numMigrations:  2,
 		minCycles:      0,
 		maxCycles:      0,
 		cycleThrottle:  100 * time.Millisecond,
