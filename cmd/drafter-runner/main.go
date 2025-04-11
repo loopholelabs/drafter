@@ -8,10 +8,12 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path"
 	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
+	"unsafe"
 
 	"github.com/loopholelabs/drafter/pkg/common"
 	"github.com/loopholelabs/drafter/pkg/ipc"
@@ -58,9 +60,6 @@ func main() {
 
 	enableOutput := flag.Bool("enable-output", true, "Whether to enable VM stdout and stderr")
 	enableInput := flag.Bool("enable-input", false, "Whether to enable VM stdin")
-
-	resumeTimeout := flag.Duration("resume-timeout", time.Minute, "Maximum amount of time to wait for agent and liveness to resume")
-	rescueTimeout := flag.Duration("rescue-timeout", time.Second*5, "Maximum amount of time to wait for rescue operations")
 
 	netns := flag.String("netns", "ark0", "Network namespace to run Firecracker in")
 
@@ -273,28 +272,45 @@ func main() {
 
 	before := time.Now()
 
-	resumedRunner, err := rfirecracker.Resume[struct{}, ipc.AgentServerRemote[struct{}], struct{}](m,
-		goroutineManager.Context(),
+	resumeSnapshotAndAcceptCtx, cancelResumeSnapshotAndAcceptCtx := context.WithTimeout(ctx, 10*time.Second)
+	defer cancelResumeSnapshotAndAcceptCtx()
 
-		*resumeTimeout,
-		*rescueTimeout,
-		packageConfig.AgentVSockPort,
-
-		struct{}{},
-	)
-
+	err = m.ResumeSnapshot(resumeSnapshotAndAcceptCtx, common.DeviceStateName, common.DeviceMemoryName)
 	if err != nil {
 		panic(err)
 	}
-	/*
-		defer func() {
-			defer goroutineManager.CreateForegroundPanicCollector()()
 
-			if err := resumedRunner.Close(); err != nil {
-				panic(err)
-			}
-		}()
-	*/
+	// Start the RPC stuff...
+	agent, err := ipc.StartAgentRPC[struct{}, ipc.AgentServerRemote[struct{}]](
+		log, path.Join(m.VMPath, rfirecracker.VSockName),
+		packageConfig.AgentVSockPort, struct{}{})
+	if err != nil {
+		panic(err)
+	}
+
+	// Call after resume RPC
+	afterResumeCtx, cancelAfterResumeCtx := context.WithTimeout(ctx, 10*time.Second)
+	defer cancelAfterResumeCtx()
+
+	r, err := agent.GetRemote(afterResumeCtx)
+	if err != nil {
+		panic(err)
+	}
+
+	remote := *(*ipc.AgentServerRemote[struct{}])(unsafe.Pointer(&r))
+	err = remote.AfterResume(afterResumeCtx)
+	if err != nil {
+		panic(err)
+	}
+
+	defer func() {
+		defer goroutineManager.CreateForegroundPanicCollector()()
+
+		if err := agent.Close(); err != nil {
+			panic(err)
+		}
+	}()
+
 	log.Info().Str("vmpath", m.VMPath).Int64("ms", time.Since(before).Milliseconds()).Msg("Resumed VM")
 
 	bubbleSignals = true
@@ -309,7 +325,31 @@ func main() {
 
 	before = time.Now()
 
-	if err := resumedRunner.SuspendAndCloseAgentServer(goroutineManager.Context(), *resumeTimeout); err != nil {
+	suspendCtx, cancelSuspendCtx := context.WithTimeout(ctx, 10*time.Second)
+	defer cancelSuspendCtx()
+
+	r, err = agent.GetRemote(suspendCtx)
+	if err != nil {
+		panic(err)
+	}
+
+	remote = *(*ipc.AgentServerRemote[struct{}])(unsafe.Pointer(&r))
+	err = remote.BeforeSuspend(suspendCtx)
+	if err != nil {
+		panic(err)
+	}
+
+	err = agent.Close()
+	if err != nil {
+		panic(err)
+	}
+
+	if log != nil {
+		log.Debug().Msg("resumedRunner createSnapshot")
+	}
+
+	err = m.CreateSnapshot(suspendCtx, common.DeviceStateName, "", rfirecracker.SDKSnapshotTypeMsyncAndState)
+	if err != nil {
 		panic(err)
 	}
 
