@@ -31,17 +31,6 @@ func (rrpc *RunnerRPC[L, R, G]) Start(vmPath string, vsockPort uint32, agentServ
 	return nil
 }
 
-func (rrpc *RunnerRPC[L, R, G]) Close() error {
-	if rrpc.log != nil {
-		rrpc.log.Debug().Msg("runnerRPC close")
-	}
-
-	if rrpc.agent != nil {
-		rrpc.agent.Close()
-	}
-	return nil
-}
-
 func (rrpc *RunnerRPC[L, R, G]) BeforeSuspend(ctx context.Context) error {
 	if rrpc.log != nil {
 		rrpc.log.Debug().Msg("runnerRPC beforeSuspend")

@@ -29,12 +29,15 @@ func (rr *ResumedRunner[L, R, G]) Close() error {
 	if rr.log != nil {
 		rr.log.Info().Msg("closing resumed runner")
 	}
-	err := rr.rpc.Close()
-	if err != nil {
-		if rr.log != nil {
-			rr.log.Error().Err(err).Msg("error closing resumed runner (rpc.Close)")
+
+	if rr.rpc.agent != nil {
+		err := rr.rpc.agent.Close()
+		if err != nil {
+			if rr.log != nil {
+				rr.log.Error().Err(err).Msg("error closing resumed runner (rpc.Close)")
+			}
+			return err
 		}
-		return err
 	}
 
 	return nil
@@ -69,9 +72,11 @@ func (rr *ResumedRunner[L, R, G]) SuspendAndCloseAgentServer(ctx context.Context
 		return err
 	}
 
-	err = rr.rpc.Close()
-	if err != nil {
-		return err
+	if rr.rpc.agent != nil {
+		err = rr.rpc.agent.Close()
+		if err != nil {
+			return err
+		}
 	}
 
 	if rr.log != nil {
@@ -155,7 +160,9 @@ func Resume[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any](
 		}
 
 		// Close it
-		resumedRunner.rpc.Close()
+		if resumedRunner.rpc.agent != nil {
+			resumedRunner.rpc.agent.Close()
+		}
 
 		if numRetries == 0 {
 			return nil, err
