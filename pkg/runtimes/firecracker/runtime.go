@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+	"unsafe"
 
 	"github.com/loopholelabs/drafter/pkg/common"
 	"github.com/loopholelabs/drafter/pkg/ipc"
@@ -187,10 +188,32 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Suspend(ctx context.Context, resu
 	if rp.Log != nil {
 		rp.Log.Debug().Msg("firecracker SuspendAndCloseAgentServer")
 	}
-	err := rp.ResumedRunner.SuspendAndCloseAgentServer(
-		ctx,
-		resumeTimeout,
-	)
+
+	suspendCtx, cancelSuspendCtx := context.WithTimeout(ctx, resumeTimeout)
+	defer cancelSuspendCtx()
+
+	r, err := rp.ResumedRunner.agent.GetRemote(suspendCtx)
+	if err != nil {
+		return err
+	}
+
+	remote := *(*ipc.AgentServerRemote[G])(unsafe.Pointer(&r))
+	err = remote.BeforeSuspend(suspendCtx)
+	if err != nil {
+		return errors.Join(ErrCouldNotCallBeforeSuspendRPC, err)
+	}
+
+	err = rp.ResumedRunner.agent.Close()
+	if err != nil {
+		return err
+	}
+
+	if rp.Log != nil {
+		rp.Log.Debug().Msg("resumedRunner createSnapshot")
+	}
+
+	err = rp.Machine.CreateSnapshot(suspendCtx, common.DeviceStateName, "", SDKSnapshotTypeMsyncAndState)
+
 	if err != nil {
 		if rp.Log != nil {
 			rp.Log.Warn().Err(err).Msg("error from SuspendAndCloseAgentServer")

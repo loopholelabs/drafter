@@ -1,6 +1,3 @@
-//go:build integration
-// +build integration
-
 package firecracker
 
 import (
@@ -30,6 +27,10 @@ const blueprintDir = "../../../out/blueprint"
  *  - blueprints exist
  */
 func TestSnapshotter(t *testing.T) {
+	if !testutil.FirecrackerAvailable() {
+		t.Skip("setup firecracker to run this test")
+	}
+
 	currentUser, err := user.Current()
 	if err != nil {
 		panic(err)

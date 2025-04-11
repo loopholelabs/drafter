@@ -40,4 +40,4 @@ jobs:
           mv disk out/blueprint/rootfs.ext4
 
       - name: Test
-        run: go test -exec sudo -v ./... --tags integration --timeout 30m
+        run: go test -exec sudo -v ./pkg/runtimes/firecracker/... --timeout 30m

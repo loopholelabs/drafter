@@ -1,6 +1,3 @@
-//go:build integration
-// +build integration
-
 package firecracker
 
 import (
@@ -207,6 +204,9 @@ func getDevicesFrom(t *testing.T, snapDir string, s3Endpoint string, i int, conf
 }
 
 func migration(t *testing.T, config *migrationConfig) {
+	if !testutil.FirecrackerAvailable() {
+		t.Skip("setup firecracker to run this test")
+	}
 
 	err := os.Mkdir(testPeerDirCowS3, 0777)
 	assert.NoError(t, err)
