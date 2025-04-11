@@ -1,3 +1,6 @@
+//go:build integration
+// +build integration
+
 package firecracker
 
 import (
@@ -30,10 +33,6 @@ const resumeTestDir = "resume_suspend_test"
  *
  */
 func TestResumeSuspend(t *testing.T) {
-	if !testutil.FirecrackerAvailable() {
-		t.Skip("setup firecracker to run this test")
-	}
-
 	log := logging.New(logging.Zerolog, "test", os.Stderr)
 	log.SetLevel(types.ErrorLevel)
 
