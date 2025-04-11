@@ -9,7 +9,6 @@ import (
 	"os"
 	"sync"
 
-	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 	loggingtypes "github.com/loopholelabs/logging/types"
 	"github.com/pojntfx/panrpc/go/pkg/rpc"
 )
@@ -175,8 +174,7 @@ type AgentConnection[L AgentServerLocal, R AgentServerRemote[G], G any] struct {
 	connectionReady chan bool
 
 	linkCtx    context.Context
-	linkCancel context.CancelCauseFunc
-	stoppedErr error
+	linkCancel context.CancelFunc
 }
 
 func (ac *AgentConnection[L, R, G]) GetRemote(ctx context.Context) (R, error) {
@@ -190,7 +188,7 @@ func (ac *AgentConnection[L, R, G]) Close() error {
 
 	ac.agentServer.closeLock.Lock()
 	ac.agentServer.closed = true
-	ac.linkCancel(ac.stoppedErr)
+	ac.linkCancel()
 	ac.agentServer.closeLock.Unlock()
 
 	ac.connectionWg.Wait()
@@ -230,42 +228,7 @@ func (agentServer *AgentServer[L, R, G]) Accept(acceptCtx context.Context, remot
 		agentServer.log.Info().Str("VSockPath", agentServer.VSockPath).Msg("AgentServer.Accept Accepted connection")
 	}
 
-	agentConnection.linkCtx, agentConnection.linkCancel = context.WithCancelCause(remoteCtx) // This resource outlives the current scope, so we use the external context
-
-	goroutineManager := manager.NewGoroutineManager(
-		acceptCtx,
-		&errs,
-		manager.GoroutineManagerHooks{},
-	)
-	defer goroutineManager.Wait()
-	defer goroutineManager.StopAllGoroutines()
-	defer goroutineManager.CreateBackgroundPanicCollector()()
-
-	agentConnection.stoppedErr = goroutineManager.GetErrGoroutineStopped()
-
-	// It is safe to start a background goroutine here since we return a wait function
-	// Despite returning a wait function, we still need to start this goroutine however so that any errors
-	// we get as we're waiting for a connection are caught
-	// It's important that we start this _after_ calling `cmd.Start`, otherwise our process would be nil
-	goroutineManager.StartBackgroundGoroutine(func(ctx context.Context) {
-		select {
-		// Failure case; something failed and the goroutineManager.Context() was cancelled before we got a connection
-		case <-ctx.Done():
-
-			// Happy case; we've got a connection and we want to wait with closing the agent's connections until the context, not the internal context is cancelled
-			select {
-			case <-agentConnection.connectionReady:
-				<-remoteCtx.Done() // Wait here...
-			default:
-			}
-
-			err := agentConnection.Close()
-			if err != nil {
-				panic(errors.Join(ErrCouldNotCloseAcceptingAgentServer, err))
-			}
-			agentServer.Close() // We ignore errors here since we might interrupt a network connection
-		}
-	})
+	agentConnection.linkCtx, agentConnection.linkCancel = context.WithCancel(remoteCtx)
 
 	registry := rpc.NewRegistry[R, json.RawMessage](
 		agentServer.agentServerLocal,
@@ -279,22 +242,21 @@ func (agentServer *AgentServer[L, R, G]) Accept(acceptCtx context.Context, remot
 	// Handle the connection here.
 	agentConnection.connectionWg.Add(1)
 	go func() {
-		defer agentConnection.linkCancel(nil)
+		defer agentConnection.linkCancel()
 		err := handleConnection[R](agentConnection.linkCtx, registry, conn)
 		agentConnection.connErr <- err
 		agentConnection.connectionErr = err
 		agentConnection.connectionWg.Done()
 		agentServer.closeLock.Lock()
 		defer agentServer.closeLock.Unlock()
-		if !(agentServer.closed && errors.Is(err, context.Canceled) && errors.Is(context.Cause(goroutineManager.Context()), goroutineManager.GetErrGoroutineStopped())) {
+		if !(agentServer.closed && errors.Is(err, context.Canceled)) {
 			errChan <- err
 		}
 	}()
 
 	select {
-	case <-goroutineManager.Context().Done():
-		agentServer.Close()
-		return nil, goroutineManager.Context().Err()
+	case <-agentConnection.linkCtx.Done():
+		return nil, agentConnection.linkCtx.Err()
 	case <-agentConnection.connectionReady:
 		break
 	}
