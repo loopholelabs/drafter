@@ -122,26 +122,32 @@ func main() {
 
 	var rp runtimes.RuntimeProviderIfc
 
+	fcconfig := rfirecracker.FirecrackerMachineConfig{
+		FirecrackerBin: firecrackerBin,
+		JailerBin:      jailerBin,
+		ChrootBaseDir:  *chrootBaseDir,
+		UID:            *uid,
+		GID:            *gid,
+		NetNS:          *netns,
+		NumaNode:       *numaNode,
+		CgroupVersion:  *cgroupVersion,
+		EnableInput:    *enableInput,
+	}
+
+	if *enableOutput {
+		fcconfig.Stdout = os.Stdout
+		fcconfig.Stderr = os.Stderr
+	}
+
 	if *mockRuntime {
 		rp = &runtimes.EmptyRuntimeProvider{}
 	} else {
 		rp = &rfirecracker.FirecrackerRuntimeProvider[struct{}, ipc.AgentServerRemote[struct{}], struct{}]{
-			Log: log,
-			HypervisorConfiguration: rfirecracker.FirecrackerMachineConfig{
-				FirecrackerBin: firecrackerBin,
-				JailerBin:      jailerBin,
-				ChrootBaseDir:  *chrootBaseDir,
-				UID:            *uid,
-				GID:            *gid,
-				NetNS:          *netns,
-				NumaNode:       *numaNode,
-				CgroupVersion:  *cgroupVersion,
-				EnableOutput:   *enableOutput,
-				EnableInput:    *enableInput,
-			},
-			StateName:        common.DeviceStateName,
-			MemoryName:       common.DeviceMemoryName,
-			AgentServerLocal: struct{}{},
+			Log:                     log,
+			HypervisorConfiguration: fcconfig,
+			StateName:               common.DeviceStateName,
+			MemoryName:              common.DeviceMemoryName,
+			AgentServerLocal:        struct{}{},
 		}
 	}
 

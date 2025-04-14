@@ -87,7 +87,8 @@ func TestResumeSuspend(t *testing.T) {
 			NetNS:          netns,
 			NumaNode:       0,
 			CgroupVersion:  2,
-			EnableOutput:   false,
+			Stdout:         nil,
+			Stderr:         nil,
 			EnableInput:    false,
 		})
 		assert.NoError(t, err)

@@ -98,6 +98,23 @@ func main() {
 		cancel()
 	}()
 
+	fcconfig := rfirecracker.FirecrackerMachineConfig{
+		FirecrackerBin: firecrackerBin,
+		JailerBin:      jailerBin,
+		ChrootBaseDir:  *chrootBaseDir,
+		UID:            *uid,
+		GID:            *gid,
+		NetNS:          *netns,
+		NumaNode:       *numaNode,
+		CgroupVersion:  *cgroupVersion,
+		EnableInput:    *enableInput,
+	}
+
+	if *enableOutput {
+		fcconfig.Stdout = os.Stdout
+		fcconfig.Stderr = os.Stderr
+	}
+
 	err = rfirecracker.CreateSnapshot(log, ctx, devices, *ioEngineSync,
 		rfirecracker.VMConfiguration{
 			CPUCount:    *cpuCount,
@@ -110,18 +127,7 @@ func main() {
 			ResumeTimeout:     *resumeTimeout,
 		},
 
-		rfirecracker.FirecrackerMachineConfig{
-			FirecrackerBin: firecrackerBin,
-			JailerBin:      jailerBin,
-			ChrootBaseDir:  *chrootBaseDir,
-			UID:            *uid,
-			GID:            *gid,
-			NetNS:          *netns,
-			NumaNode:       *numaNode,
-			CgroupVersion:  *cgroupVersion,
-			EnableOutput:   *enableOutput,
-			EnableInput:    *enableInput,
-		},
+		fcconfig,
 		rfirecracker.NetworkConfiguration{
 			Interface: *iface,
 			MAC:       *mac,

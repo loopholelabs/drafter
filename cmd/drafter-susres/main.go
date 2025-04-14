@@ -82,7 +82,8 @@ func main() {
 			NetNS:          "ark0",
 			NumaNode:       0,
 			CgroupVersion:  2,
-			EnableOutput:   true,
+			Stdout:         nil,
+			Stderr:         nil,
 			EnableInput:    false,
 		})
 		if err != nil {
@@ -273,7 +274,8 @@ func setupSnapshot(log types.Logger, ctx context.Context) string {
 			NetNS:          "ark0",
 			NumaNode:       0,
 			CgroupVersion:  2,
-			EnableOutput:   false,
+			Stdout:         nil,
+			Stderr:         nil,
 			EnableInput:    false,
 		},
 		rfirecracker.NetworkConfiguration{

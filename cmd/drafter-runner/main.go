@@ -149,26 +149,32 @@ func main() {
 		cancel()
 	}()
 
+	fcconfig := &rfirecracker.FirecrackerMachineConfig{
+		FirecrackerBin: firecrackerBin,
+		JailerBin:      jailerBin,
+
+		ChrootBaseDir: *chrootBaseDir,
+
+		UID: *uid,
+		GID: *gid,
+
+		NetNS:         *netns,
+		NumaNode:      *numaNode,
+		CgroupVersion: *cgroupVersion,
+
+		EnableInput: *enableInput,
+	}
+
+	if *enableOutput {
+		fcconfig.Stdout = os.Stdout
+		fcconfig.Stderr = os.Stderr
+	}
+
 	m, err := rfirecracker.StartFirecrackerMachine(
 
 		goroutineManager.Context(),
 		log,
-		&rfirecracker.FirecrackerMachineConfig{
-			FirecrackerBin: firecrackerBin,
-			JailerBin:      jailerBin,
-
-			ChrootBaseDir: *chrootBaseDir,
-
-			UID: *uid,
-			GID: *gid,
-
-			NetNS:         *netns,
-			NumaNode:      *numaNode,
-			CgroupVersion: *cgroupVersion,
-
-			EnableOutput: *enableOutput,
-			EnableInput:  *enableInput,
-		},
+		fcconfig,
 	)
 
 	defer func() {

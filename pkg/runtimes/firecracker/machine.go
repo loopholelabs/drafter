@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -67,7 +68,8 @@ type FirecrackerMachineConfig struct {
 	NetNS          string
 	NumaNode       int
 	CgroupVersion  int
-	EnableOutput   bool
+	Stdout         io.Writer
+	Stderr         io.Writer
 	EnableInput    bool
 }
 
@@ -140,14 +142,14 @@ func StartFirecrackerMachine(ctx context.Context, log loggingtypes.Logger, conf 
 		WithExecFile(conf.FirecrackerBin).
 		WithFirecrackerArgs("--api-sock", FirecrackerSocketName)
 
-	if conf.EnableOutput {
-		jBuilder = jBuilder.
-			WithStdout(os.Stdout).
-			WithStderr(os.Stderr)
+	if conf.Stdout != nil {
+		jBuilder = jBuilder.WithStdout(os.Stdout)
+	}
+	if conf.Stderr != nil {
+		jBuilder = jBuilder.WithStdout(os.Stderr)
 	}
 	if conf.EnableInput {
-		jBuilder = jBuilder.
-			WithStdin(os.Stdin)
+		jBuilder = jBuilder.WithStdin(os.Stdin)
 	}
 
 	// Create the command

@@ -84,7 +84,8 @@ func setupSnapshot(log types.Logger, ctx context.Context, snapDir string, blueDi
 			NetNS:          *networkNamespace,
 			NumaNode:       0,
 			CgroupVersion:  2,
-			EnableOutput:   true,
+			Stdout:         os.Stdout,
+			Stderr:         os.Stderr,
 			EnableInput:    false,
 		},
 		rfirecracker.NetworkConfiguration{
