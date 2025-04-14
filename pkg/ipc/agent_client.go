@@ -32,15 +32,9 @@ type AgentClientLocal[G any] struct {
 // See https://github.com/pojntfx/panrpc/tree/main?tab=readme-ov-file#4-calling-the-servers-rpcs-from-the-client
 type AgentClientRemote any
 
-func NewAgentClient[G any](
-	guestService G,
-
-	beforeSuspend func(ctx context.Context) error,
-	afterResume func(ctx context.Context) error,
-) *AgentClientLocal[G] {
+func NewAgentClient[G any](guestService G, beforeSuspend func(ctx context.Context) error, afterResume func(ctx context.Context) error) *AgentClientLocal[G] {
 	return &AgentClientLocal[G]{
-		GuestService: guestService,
-
+		GuestService:  guestService,
 		beforeSuspend: beforeSuspend,
 		afterResume:   afterResume,
 	}
@@ -57,8 +51,23 @@ func (l *AgentClientLocal[G]) AfterResume(ctx context.Context) error {
 type ConnectedAgentClient[L *AgentClientLocal[G], R AgentClientRemote, G any] struct {
 	Remote R
 
-	Wait  func() error
-	Close func()
+	linkCtx    context.Context
+	linkCancel context.CancelFunc
+
+	closeLock sync.Mutex
+	closed    bool
+
+	Wait func() error
+}
+
+func (agentClient ConnectedAgentClient[L, R, G]) Close() error {
+	agentClient.closeLock.Lock()
+	defer agentClient.closeLock.Unlock()
+
+	agentClient.closed = true
+
+	agentClient.linkCancel()
+	return nil
 }
 
 type StartAgentClientHooks[R AgentClientRemote] struct {
@@ -68,10 +77,8 @@ type StartAgentClientHooks[R AgentClientRemote] struct {
 func StartAgentClient[L *AgentClientLocal[G], R AgentClientRemote, G any](
 	dialCtx context.Context,
 	remoteCtx context.Context,
-
 	vsockCID uint32,
 	vsockPort uint32,
-
 	agentClientLocal L,
 	hooks StartAgentClientHooks[R],
 ) (connectedAgentClient *ConnectedAgentClient[L, R, G], errs error) {
@@ -79,8 +86,16 @@ func StartAgentClient[L *AgentClientLocal[G], R AgentClientRemote, G any](
 		Wait: func() error {
 			return nil
 		},
-		Close: func() {},
 	}
+
+	conn, err := vsock.DialContext(dialCtx, vsockCID, vsockPort)
+	if err != nil {
+		return nil, errors.Join(ErrCouldNotDialVSock, err)
+	}
+
+	connectedAgentClient.linkCtx, connectedAgentClient.linkCancel = context.WithCancel(remoteCtx)
+
+	// TODO Tidy under here
 
 	goroutineManager := manager.NewGoroutineManager(
 		dialCtx,
@@ -90,30 +105,6 @@ func StartAgentClient[L *AgentClientLocal[G], R AgentClientRemote, G any](
 	defer goroutineManager.Wait()
 	defer goroutineManager.StopAllGoroutines()
 	defer goroutineManager.CreateBackgroundPanicCollector()()
-
-	conn, err := vsock.DialContext(
-		goroutineManager.Context(),
-
-		vsockCID,
-		vsockPort,
-	)
-	if err != nil {
-		panic(errors.Join(ErrCouldNotDialVSock, err))
-	}
-
-	var closeLock sync.Mutex
-	closed := false
-
-	linkCtx, cancelLinkCtx := context.WithCancelCause(remoteCtx) // This resource outlives the current scope, so we use the external context
-
-	connectedAgentClient.Close = func() {
-		closeLock.Lock()
-		defer closeLock.Unlock()
-
-		closed = true
-
-		cancelLinkCtx(goroutineManager.GetErrGoroutineStopped())
-	}
 
 	var (
 		ready       = make(chan struct{})
@@ -155,16 +146,16 @@ func StartAgentClient[L *AgentClientLocal[G], R AgentClientRemote, G any](
 
 	connectedAgentClient.Wait = sync.OnceValue(func() error {
 		// We don't `defer conn.Close` here since Firecracker handles resetting active VSock connections for us
-		defer cancelLinkCtx(nil)
+		defer connectedAgentClient.linkCancel()
 
-		err := handleConnection(linkCtx, registry, conn)
+		err := handleConnection(connectedAgentClient.linkCtx, registry, conn)
 
 		if err != nil {
-			closeLock.Lock()
-			defer closeLock.Unlock()
+			connectedAgentClient.closeLock.Lock()
+			defer connectedAgentClient.closeLock.Unlock()
 
 			// Don't treat closed errors as errors if we closed the connection
-			if !(closed && errors.Is(err, context.Canceled) && errors.Is(context.Cause(goroutineManager.Context()), goroutineManager.GetErrGoroutineStopped())) {
+			if !(connectedAgentClient.closed && errors.Is(err, context.Canceled) && errors.Is(context.Cause(goroutineManager.Context()), goroutineManager.GetErrGoroutineStopped())) {
 				return errors.Join(ErrAgentServerDisconnected, ErrCouldNotLinkRegistry, err)
 			}
 			return remoteCtx.Err()
