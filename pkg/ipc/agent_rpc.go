@@ -74,25 +74,27 @@ func StartAgentRPC[L AgentServerLocal, R AgentServerRemote[G], G any](log loggin
 		return nil, errors.Join(ErrCouldNotListenInAgentServer, err)
 	}
 
-	// Start accepting connections
+	// Start accepting connections, and keep going until listenCtx is done
 	go func() {
-		select {
-		case <-listenCtx.Done():
-			if log != nil {
-				log.Debug().Str("VSockPath", agentServer.VSockPath).Msg("AgentRPC.listener shut down")
+		for {
+			select {
+			case <-listenCtx.Done():
+				if log != nil {
+					log.Debug().Str("VSockPath", agentServer.VSockPath).Msg("AgentRPC.listener shut down")
+				}
+				return
+			default:
 			}
-			return
-		default:
-		}
-		conn, err := agentServer.lis.Accept()
-		if log != nil {
-			log.Debug().Str("VSockPath", agentServer.VSockPath).Err(err).Msg("AgentServer.listener accepted")
-		}
-		if err == nil {
-			// Handle the connection, and wait until it's finished (We only handle ONE at a time)
-			err = agentServer.handle(listenCtx, conn, 10*time.Second)
+			conn, err := agentServer.lis.Accept()
 			if log != nil {
-				log.Debug().Str("VSockPath", agentServer.VSockPath).Err(err).Msg("AgentServer.listener handle finished")
+				log.Debug().Str("VSockPath", agentServer.VSockPath).Err(err).Msg("AgentServer.listener accepted")
+			}
+			if err == nil {
+				// Handle the connection, and wait until it's finished (We only handle ONE at a time)
+				err = agentServer.handle(listenCtx, conn, 10*time.Second)
+				if log != nil {
+					log.Debug().Str("VSockPath", agentServer.VSockPath).Err(err).Msg("AgentServer.listener handle finished")
+				}
 			}
 		}
 	}()
