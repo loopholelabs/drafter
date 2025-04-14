@@ -107,6 +107,10 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Resume(resumeTimeout time.Duratio
 	return nil
 }
 
+func (rp *FirecrackerRuntimeProvider[L, R, G]) GetRemote(ctx context.Context) (R, error) {
+	return rp.agent.GetRemote(ctx)
+}
+
 func (rp *FirecrackerRuntimeProvider[L, R, G]) Start(ctx context.Context, rescueCtx context.Context, errChan chan error) error {
 	hypervisorCtx, hypervisorCancel := context.WithCancel(context.TODO())
 
