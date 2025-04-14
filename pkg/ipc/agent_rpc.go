@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"sync"
@@ -231,7 +232,7 @@ func (a *AgentRPC[L, R, G]) GetRemote(ctx context.Context) (R, error) {
  * Handle a connection
  *
  */
-func handleConnection[R any](ctx context.Context, registry *rpc.Registry[R, json.RawMessage], conn net.Conn) error {
+func handleConnection[R any](ctx context.Context, registry *rpc.Registry[R, json.RawMessage], conn io.ReadWriteCloser) error {
 	encoder := json.NewEncoder(conn)
 	decoder := json.NewDecoder(conn)
 

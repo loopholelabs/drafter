@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"flag"
-	"log"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -13,6 +12,7 @@ import (
 
 	"github.com/loopholelabs/drafter/pkg/ipc"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
+	"github.com/loopholelabs/logging"
 )
 
 func main() {
@@ -24,6 +24,10 @@ func main() {
 	afterResumeCmd := flag.String("after-resume-cmd", "", "Command to run after the VM has been resumed (leave empty to disable)")
 
 	flag.Parse()
+
+	log := logging.New(logging.Zerolog, "agent", os.Stderr)
+
+	log.Info().Msg("Starting drafter-agent")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -50,7 +54,7 @@ func main() {
 
 		<-done
 
-		log.Println("Exiting gracefully")
+		log.Info().Msg("Exiting gracefully")
 
 		cancel()
 	}()
@@ -59,7 +63,7 @@ func main() {
 		struct{}{},
 
 		func(ctx context.Context) error {
-			log.Println("Running pre-suspend command")
+			log.Info().Msg("Running pre-suspend command")
 
 			if strings.TrimSpace(*beforeSuspendCmd) != "" {
 				cmd := exec.CommandContext(ctx, *shellCmd, "-c", *beforeSuspendCmd)
@@ -74,7 +78,7 @@ func main() {
 			return nil
 		},
 		func(ctx context.Context) error {
-			log.Println("Running after-resume command")
+			log.Info().Msg("Running after-resume command")
 
 			if strings.TrimSpace(*afterResumeCmd) != "" {
 				cmd := exec.CommandContext(ctx, *shellCmd, "-c", *afterResumeCmd)
@@ -92,7 +96,7 @@ func main() {
 
 	for {
 		if err := func() error {
-			log.Println("Connecting to host")
+			log.Info().Msg("Connecting to host")
 
 			dialCtx, cancelDialCtx := context.WithTimeout(goroutineManager.Context(), *vsockTimeout)
 			defer cancelDialCtx()
@@ -112,12 +116,12 @@ func main() {
 			}
 			defer connectedAgentClient.Close()
 
-			log.Println("Connected to host")
+			log.Info().Msg("Connected to host")
 
 			return connectedAgentClient.Wait()
 		}(); err != nil {
 			if !(errors.Is(err, context.Canceled) && errors.Is(context.Cause(goroutineManager.Context()), goroutineManager.GetErrGoroutineStopped())) {
-				log.Println("Disconnected from host with error, reconnecting:", err)
+				log.Error().Err(err).Msg("Disconnected from host with error, reconnecting:")
 
 				continue
 			}
@@ -128,5 +132,5 @@ func main() {
 		break
 	}
 
-	log.Println("Shutting down")
+	log.Info().Msg("Shutting down")
 }

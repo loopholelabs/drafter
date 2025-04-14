@@ -149,45 +149,17 @@ func StartAgentClient[L *AgentClientLocal[G], R AgentClientRemote, G any](
 		},
 	)
 
-	if hook := hooks.OnAfterRegistrySetup; hook != nil {
-		hook(registry.ForRemotes)
+	if hooks.OnAfterRegistrySetup != nil {
+		hooks.OnAfterRegistrySetup(registry.ForRemotes)
 	}
 
 	connectedAgentClient.Wait = sync.OnceValue(func() error {
 		// We don't `defer conn.Close` here since Firecracker handles resetting active VSock connections for us
 		defer cancelLinkCtx(nil)
 
-		encoder := json.NewEncoder(conn)
-		decoder := json.NewDecoder(conn)
+		err := handleConnection(linkCtx, registry, conn)
 
-		if err := registry.LinkStream(
-			linkCtx,
-
-			func(v rpc.Message[json.RawMessage]) error {
-				return encoder.Encode(v)
-			},
-			func(v *rpc.Message[json.RawMessage]) error {
-				return decoder.Decode(v)
-			},
-
-			func(v any) (json.RawMessage, error) {
-				b, err := json.Marshal(v)
-				if err != nil {
-					return nil, errors.Join(ErrCouldNotMarshalJSON, err)
-				}
-
-				return json.RawMessage(b), nil
-			},
-			func(data json.RawMessage, v any) error {
-				if err := json.Unmarshal([]byte(data), v); err != nil {
-					return errors.Join(ErrCouldNotUnmarshalJSON, err)
-				}
-
-				return nil
-			},
-
-			nil,
-		); err != nil {
+		if err != nil {
 			closeLock.Lock()
 			defer closeLock.Unlock()
 
@@ -195,10 +167,8 @@ func StartAgentClient[L *AgentClientLocal[G], R AgentClientRemote, G any](
 			if !(closed && errors.Is(err, context.Canceled) && errors.Is(context.Cause(goroutineManager.Context()), goroutineManager.GetErrGoroutineStopped())) {
 				return errors.Join(ErrAgentServerDisconnected, ErrCouldNotLinkRegistry, err)
 			}
-
 			return remoteCtx.Err()
 		}
-
 		return nil
 	})
 
@@ -214,26 +184,26 @@ func StartAgentClient[L *AgentClientLocal[G], R AgentClientRemote, G any](
 	select {
 	case <-goroutineManager.Context().Done():
 		if err := goroutineManager.Context().Err(); err != nil {
-			panic(errors.Join(ErrAgentContextCancelled, err))
+			return nil, errors.Join(ErrAgentContextCancelled, err)
 		}
-
 		return
 	case <-ready:
 		break
 	}
 
 	found := false
-	if err := registry.ForRemotes(func(remoteID string, r R) error {
+	err = registry.ForRemotes(func(remoteID string, r R) error {
 		connectedAgentClient.Remote = r
 		found = true
-
 		return nil
-	}); err != nil {
-		panic(err)
+	})
+
+	if err != nil {
+		return nil, err
 	}
 
 	if !found {
-		panic(ErrNoRemoteFound)
+		return nil, ErrNoRemoteFound
 	}
 
 	return
