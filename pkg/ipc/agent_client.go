@@ -14,8 +14,6 @@ import (
 var (
 	ErrAgentServerDisconnected = errors.New("agent server disconnected")
 	ErrCouldNotDialVSock       = errors.New("could not dial VSock")
-	ErrCouldNotMarshalJSON     = errors.New("could not marshal JSON")
-	ErrCouldNotUnmarshalJSON   = errors.New("could not unmarshal JSON")
 	ErrAgentContextCancelled   = errors.New("agent context cancelled")
 )
 
@@ -60,10 +58,9 @@ type ConnectedAgentClient[L *AgentClientLocal[G], R AgentClientRemote, G any] st
 	Wait func() error
 }
 
-func (agentClient ConnectedAgentClient[L, R, G]) Close() error {
+func (agentClient *ConnectedAgentClient[L, R, G]) Close() error {
 	agentClient.closeLock.Lock()
 	defer agentClient.closeLock.Unlock()
-
 	agentClient.closed = true
 
 	agentClient.linkCancel()
@@ -132,7 +129,6 @@ func StartAgentClient[L *AgentClientLocal[G], R AgentClientRemote, G any](
 
 	registry := rpc.NewRegistry[R, json.RawMessage](
 		agentClientLocal,
-
 		&rpc.RegistryHooks{
 			OnClientConnect: func(remoteID string) {
 				signalReady()
