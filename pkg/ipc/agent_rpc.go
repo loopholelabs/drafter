@@ -122,6 +122,58 @@ func (a *AgentRPC[L, R, G]) Close() error {
 }
 
 /**
+ * Wait and get a valid remote
+ *
+ */
+func (a *AgentRPC[L, R, G]) GetRemote(ctx context.Context) (R, error) {
+	if a.log != nil {
+		a.log.Trace().Str("VSockPath", a.VSockPath).Msg("AgentRPC waiting to GetRemote")
+	}
+
+	select {
+	case r := <-a.remote:
+		a.remote <- r // Put it back on the channel for another consumer
+		if a.log != nil {
+			a.log.Trace().Str("VSockPath", a.VSockPath).Msg("AgentRPC GetRemote found remote")
+		}
+		return r, nil
+	case <-ctx.Done():
+		if a.log != nil {
+			a.log.Trace().Str("VSockPath", a.VSockPath).Msg("AgentRPC GetRemote timed out")
+		}
+		return R{}, ctx.Err()
+	}
+}
+
+/**
+ * Handle a connection
+ *
+ */
+func handleConnection[R any](ctx context.Context, registry *rpc.Registry[R, json.RawMessage], conn io.ReadWriteCloser) error {
+	encoder := json.NewEncoder(conn)
+	decoder := json.NewDecoder(conn)
+
+	encodeFn := func(v rpc.Message[json.RawMessage]) error {
+		return encoder.Encode(v)
+	}
+	decodeFn := func(v *rpc.Message[json.RawMessage]) error {
+		return decoder.Decode(v)
+	}
+	marshalFn := func(v any) (json.RawMessage, error) {
+		b, err := json.Marshal(v)
+		if err != nil {
+			return nil, err
+		}
+		return json.RawMessage(b), nil
+	}
+	unmarshalFn := func(data json.RawMessage, v any) error {
+		return json.Unmarshal([]byte(data), v)
+	}
+
+	return registry.LinkStream(ctx, encodeFn, decodeFn, marshalFn, unmarshalFn, nil)
+}
+
+/**
  * Handle an incoming connection
  *
  */
@@ -204,56 +256,4 @@ func (a AgentRPC[L, R, G]) handle(ctx context.Context, conn net.Conn, readyTimeo
 	// Now wait until this connection is done with
 	connectionWg.Wait()
 	return nil
-}
-
-/**
- * Wait and get a valid remote
- *
- */
-func (a *AgentRPC[L, R, G]) GetRemote(ctx context.Context) (R, error) {
-	if a.log != nil {
-		a.log.Trace().Str("VSockPath", a.VSockPath).Msg("AgentRPC waiting to GetRemote")
-	}
-
-	select {
-	case r := <-a.remote:
-		a.remote <- r // Put it back on the channel for another consumer
-		if a.log != nil {
-			a.log.Trace().Str("VSockPath", a.VSockPath).Msg("AgentRPC GetRemote found remote")
-		}
-		return r, nil
-	case <-ctx.Done():
-		if a.log != nil {
-			a.log.Trace().Str("VSockPath", a.VSockPath).Msg("AgentRPC GetRemote timed out")
-		}
-		return R{}, ctx.Err()
-	}
-}
-
-/**
- * Handle a connection
- *
- */
-func handleConnection[R any](ctx context.Context, registry *rpc.Registry[R, json.RawMessage], conn io.ReadWriteCloser) error {
-	encoder := json.NewEncoder(conn)
-	decoder := json.NewDecoder(conn)
-
-	encodeFn := func(v rpc.Message[json.RawMessage]) error {
-		return encoder.Encode(v)
-	}
-	decodeFn := func(v *rpc.Message[json.RawMessage]) error {
-		return decoder.Decode(v)
-	}
-	marshalFn := func(v any) (json.RawMessage, error) {
-		b, err := json.Marshal(v)
-		if err != nil {
-			return nil, err
-		}
-		return json.RawMessage(b), nil
-	}
-	unmarshalFn := func(data json.RawMessage, v any) error {
-		return json.Unmarshal([]byte(data), v)
-	}
-
-	return registry.LinkStream(ctx, encodeFn, decodeFn, marshalFn, unmarshalFn, nil)
 }

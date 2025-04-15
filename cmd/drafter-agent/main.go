@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"os"
 	"os/exec"
@@ -79,27 +78,17 @@ func main() {
 
 	agentClient := ipc.NewAgentClient[struct{}](struct{}{}, beforeSuspendFn, afterResumeFn)
 
-	for {
-		err := connectAndHandle(log, ctx, *vsockTimeout, int(*vsockPort), agentClient)
+	err := connectAndHandle(log, ctx, *vsockTimeout, int(*vsockPort), agentClient)
 
-		// Context cancelled, lets quit.
-		if errors.Is(err, context.Canceled) {
-			break
-		}
-
-		if err != nil {
-			log.Error().Err(err).Msg("Disconnected from host with error, reconnecting:")
-			continue
-		}
-		break
+	if err != nil {
+		log.Error().Err(err).Msg("Error from RPC connection")
 	}
 
-	log.Info().Msg("Shutting down")
 }
 
 /**
  * Connect to the host and handle any RPC calls.
- *
+ * Waits until ctx is cancelled.
  */
 func connectAndHandle(log loggingtypes.Logger, ctx context.Context, timeout time.Duration, port int, agentClient *ipc.AgentClientLocal[struct{}]) error {
 	log.Info().Msg("Connecting to host")
@@ -108,12 +97,7 @@ func connectAndHandle(log loggingtypes.Logger, ctx context.Context, timeout time
 	defer cancelDialCtx()
 
 	connectedAgentClient, err := ipc.StartAgentClient[*ipc.AgentClientLocal[struct{}], struct{}](
-		dialCtx,
-		ctx,
-		ipc.VSockCIDHost,
-		uint32(port),
-		agentClient,
-		ipc.StartAgentClientHooks[struct{}]{},
+		log, dialCtx, ctx, ipc.VSockCIDHost, uint32(port), agentClient,
 	)
 
 	if err != nil {
@@ -122,5 +106,8 @@ func connectAndHandle(log loggingtypes.Logger, ctx context.Context, timeout time
 	defer connectedAgentClient.Close()
 
 	log.Info().Msg("Connected to host, serving RPC calls")
-	return connectedAgentClient.Wait()
+
+	// Wait until ctx is cancelled
+	<-ctx.Done()
+	return nil
 }

@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"sync"
+	"time"
 
 	"github.com/loopholelabs/drafter/pkg/runtimes/firecracker/vsock"
-	"github.com/loopholelabs/goroutine-manager/pkg/manager"
+	loggingtypes "github.com/loopholelabs/logging/types"
 	"github.com/pojntfx/panrpc/go/pkg/rpc"
 )
 
@@ -47,151 +49,143 @@ func (l *AgentClientLocal[G]) AfterResume(ctx context.Context) error {
 }
 
 type ConnectedAgentClient[L *AgentClientLocal[G], R AgentClientRemote, G any] struct {
-	Remote R
-
-	linkCtx    context.Context
-	linkCancel context.CancelFunc
-
-	closeLock sync.Mutex
-	closed    bool
-
-	Wait func() error
+	log              loggingtypes.Logger
+	remote           chan R
+	listenCtx        context.Context
+	listenCancel     context.CancelFunc
+	agentClientLocal L
 }
 
-func (agentClient *ConnectedAgentClient[L, R, G]) Close() error {
-	agentClient.closeLock.Lock()
-	defer agentClient.closeLock.Unlock()
-	agentClient.closed = true
+func (a *ConnectedAgentClient[L, R, G]) Close() error {
+	if a.log != nil {
+		a.log.Info().Msg("Closing AgentClient")
+	}
 
-	agentClient.linkCancel()
+	a.listenCancel()
 	return nil
 }
 
-type StartAgentClientHooks[R AgentClientRemote] struct {
-	OnAfterRegistrySetup func(forRemotes func(cb func(remoteID string, remote R) error) error) error
-}
-
 func StartAgentClient[L *AgentClientLocal[G], R AgentClientRemote, G any](
+	log loggingtypes.Logger,
 	dialCtx context.Context,
 	remoteCtx context.Context,
 	vsockCID uint32,
 	vsockPort uint32,
 	agentClientLocal L,
-	hooks StartAgentClientHooks[R],
 ) (connectedAgentClient *ConnectedAgentClient[L, R, G], errs error) {
+	listenCtx, listenCancel := context.WithCancel(context.Background())
+
 	connectedAgentClient = &ConnectedAgentClient[L, R, G]{
-		Wait: func() error {
-			return nil
-		},
+		log:              log,
+		listenCtx:        listenCtx,
+		listenCancel:     listenCancel,
+		remote:           make(chan R, 1),
+		agentClientLocal: agentClientLocal,
 	}
 
-	conn, err := vsock.DialContext(dialCtx, vsockCID, vsockPort)
-	if err != nil {
-		return nil, errors.Join(ErrCouldNotDialVSock, err)
-	}
-
-	connectedAgentClient.linkCtx, connectedAgentClient.linkCancel = context.WithCancel(remoteCtx)
-
-	// TODO Tidy under here
-
-	goroutineManager := manager.NewGoroutineManager(
-		dialCtx,
-		&errs,
-		manager.GoroutineManagerHooks{},
-	)
-	defer goroutineManager.Wait()
-	defer goroutineManager.StopAllGoroutines()
-	defer goroutineManager.CreateBackgroundPanicCollector()()
-
-	var (
-		ready       = make(chan struct{})
-		signalReady = sync.OnceFunc(func() {
-			close(ready) // We can safely close() this channel since the caller only runs once/is `sync.OnceFunc`d
-		})
-	)
-	// This goroutine will not leak on function return because it selects on `goroutineManager.Context().Done()`
-	// internally and we return a wait function
-	goroutineManager.StartBackgroundGoroutine(func(ctx context.Context) {
-		select {
-		// Failure case; something failed and the goroutineManager.Context() was cancelled before we got a connection
-		case <-ctx.Done():
+	go func() {
+		for {
 			select {
-			// Happy case; we've got a connection and we want to wait with closing the agent's connections until the ready channel is closed.
-			case <-ready:
-				<-remoteCtx.Done()
+			case <-listenCtx.Done():
+				if log != nil {
+					log.Debug().Msg("AgentClient.connector shut down")
+				}
+				return
 			default:
 			}
-
-			connectedAgentClient.Close() // We ignore errors here since we might interrupt a network connection
-			break
+			conn, err := vsock.DialContext(dialCtx, vsockCID, vsockPort)
+			if log != nil {
+				log.Debug().Err(err).Msg("AgentClient.connector accepted")
+			}
+			if err == nil {
+				err = connectedAgentClient.handle(listenCtx, conn, 10*time.Second)
+				if log != nil {
+					log.Debug().Err(err).Msg("AgentClient.connector handle finished")
+				}
+			}
 		}
-	})
+	}()
+
+	return connectedAgentClient, nil
+}
+
+func (a *ConnectedAgentClient[L, R, G]) handle(ctx context.Context, conn io.ReadWriteCloser, readyTimeout time.Duration) error {
+	// Clear remote if it's set
+	select {
+	case <-a.remote:
+	default:
+	}
+
+	ready := make(chan bool)
+
+	// Cancel context when we return
+	linkCtx, linkCancel := context.WithCancel(ctx)
+	defer linkCancel()
+
+	// Setup a timeout to wait for the RPC to be ready
+	readyCtx, readyCancel := context.WithTimeout(linkCtx, readyTimeout)
+	defer readyCancel()
 
 	registry := rpc.NewRegistry[R, json.RawMessage](
-		agentClientLocal,
+		a.agentClientLocal,
 		&rpc.RegistryHooks{
 			OnClientConnect: func(remoteID string) {
-				signalReady()
+				// Signal that we're ready
+				close(ready)
 			},
 		},
 	)
 
-	if hooks.OnAfterRegistrySetup != nil {
-		hooks.OnAfterRegistrySetup(registry.ForRemotes)
-	}
+	var connectionWg sync.WaitGroup
 
-	connectedAgentClient.Wait = sync.OnceValue(func() error {
-		// We don't `defer conn.Close` here since Firecracker handles resetting active VSock connections for us
-		defer connectedAgentClient.linkCancel()
-
-		err := handleConnection(connectedAgentClient.linkCtx, registry, conn)
-
-		if err != nil {
-			connectedAgentClient.closeLock.Lock()
-			defer connectedAgentClient.closeLock.Unlock()
-
-			// Don't treat closed errors as errors if we closed the connection
-			if !(connectedAgentClient.closed && errors.Is(err, context.Canceled) && errors.Is(context.Cause(goroutineManager.Context()), goroutineManager.GetErrGoroutineStopped())) {
-				return errors.Join(ErrAgentServerDisconnected, ErrCouldNotLinkRegistry, err)
-			}
-			return remoteCtx.Err()
+	// Handle the connection here.
+	connectionWg.Add(1)
+	go func() {
+		defer linkCancel()
+		err := handleConnection[R](linkCtx, registry, conn)
+		if a.log != nil {
+			a.log.Debug().Err(err).Msg("AgentRPC handle connection finished")
 		}
-		return nil
-	})
-
-	// It is safe to start a background goroutine here since we return a wait function
-	// Despite returning a wait function, we still need to start this goroutine however so that any errors
-	// we get as we're waiting for a connection are caught
-	goroutineManager.StartBackgroundGoroutine(func(_ context.Context) {
-		if err := connectedAgentClient.Wait(); err != nil {
-			panic(errors.Join(ErrAgentContextCancelled, err))
-		}
-	})
+		connectionWg.Done()
+	}()
 
 	select {
-	case <-goroutineManager.Context().Done():
-		if err := goroutineManager.Context().Err(); err != nil {
-			return nil, errors.Join(ErrAgentContextCancelled, err)
-		}
-		return
-	case <-ready:
+	case <-readyCtx.Done(): // Timeout waiting for RPC ready
+		return readyCtx.Err()
+	case <-ready: // Ready to use connection
 		break
 	}
 
 	found := false
-	err = registry.ForRemotes(func(remoteID string, r R) error {
-		connectedAgentClient.Remote = r
+	err := registry.ForRemotes(func(remoteID string, r R) error {
+		a.remote <- r
+		if a.log != nil {
+			a.log.Debug().Msg("AgentClient remote found and set")
+		}
 		found = true
 		return nil
 	})
 
+	// If we found a remote, set something up to clear it at the end.
+	if found {
+		defer func() {
+			// Clear the remote if it's set
+			select {
+			case <-a.remote:
+			default:
+			}
+		}()
+	}
+
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	if !found {
-		return nil, ErrNoRemoteFound
+		return ErrNoRemoteFound
 	}
 
-	return
+	// Now wait until this connection is done with
+	connectionWg.Wait()
+	return nil
 }
