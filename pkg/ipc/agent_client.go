@@ -3,9 +3,9 @@ package ipc
 import (
 	"context"
 	"errors"
+	"io"
 	"time"
 
-	"github.com/loopholelabs/drafter/pkg/runtimes/firecracker/vsock"
 	loggingtypes "github.com/loopholelabs/logging/types"
 )
 
@@ -62,8 +62,8 @@ func (a *AgentClient[L, R, G]) Close() error {
 }
 
 func StartAgentClient[L *AgentClientLocal[G], R AgentClientRemote, G any](log loggingtypes.Logger,
-	dialCtx context.Context, remoteCtx context.Context,
-	vsockCID uint32, vsockPort uint32, agentClientLocal L) (*AgentClient[L, R, G], error) {
+	connFactory func(context.Context) (io.ReadWriteCloser, error),
+	agentClientLocal L) (*AgentClient[L, R, G], error) {
 	listenCtx, listenCancel := context.WithCancel(context.Background())
 
 	connectedAgentClient := &AgentClient[L, R, G]{
@@ -84,7 +84,7 @@ func StartAgentClient[L *AgentClientLocal[G], R AgentClientRemote, G any](log lo
 				return
 			default:
 			}
-			conn, err := vsock.DialContext(dialCtx, vsockCID, vsockPort)
+			conn, err := connFactory(listenCtx)
 			if log != nil {
 				log.Debug().Err(err).Msg("AgentClient.connector accepted")
 			}

@@ -39,14 +39,14 @@ type AgentServerRemote[G any] struct {
 
 type AgentRPC[L AgentServerLocal, R AgentServerRemote[G], G any] struct {
 	log              loggingtypes.Logger
-	VSockPath        string
 	agentServerLocal L
 
 	remote chan R
 
-	lis          net.Listener
 	listenCtx    context.Context
 	listenCancel context.CancelFunc
+
+	connFactoryShutdown func()
 }
 
 /**
@@ -55,23 +55,43 @@ type AgentRPC[L AgentServerLocal, R AgentServerRemote[G], G any] struct {
  *
  */
 func StartAgentRPC[L AgentServerLocal, R AgentServerRemote[G], G any](log loggingtypes.Logger, vsockPath string, vsockPort uint32,
-	agentServerLocal L) (*AgentRPC[L, R, G], error) {
+	agentServerLocal L,
+) (*AgentRPC[L, R, G], error) {
+	lis, err := net.Listen("unix", fmt.Sprintf("%s_%d", vsockPath, vsockPort))
+	if err != nil {
+		return nil, errors.Join(ErrCouldNotListenInAgentServer, err)
+	}
+
+	connFactoryShutdown := func() {
+		os.Remove(fmt.Sprintf("%s_%d", vsockPath, vsockPort))
+		lis.Close()
+	}
+
+	connFactory := func(ctx context.Context) (io.ReadWriteCloser, error) {
+		return lis.Accept()
+	}
+
+	return StartAgentServer[L, R, G](log, agentServerLocal, connFactory, connFactoryShutdown)
+}
+
+/**
+ * More general case of AgentServer
+ *
+ */
+func StartAgentServer[L AgentServerLocal, R AgentServerRemote[G], G any](log loggingtypes.Logger,
+	agentServerLocal L,
+	connFactory func(context.Context) (io.ReadWriteCloser, error), connFactoryShutdown func(),
+) (*AgentRPC[L, R, G], error) {
 
 	listenCtx, listenCancel := context.WithCancel(context.Background())
 
-	var err error
 	agentServer := &AgentRPC[L, R, G]{
-		listenCtx:        listenCtx,
-		listenCancel:     listenCancel,
-		log:              log,
-		agentServerLocal: agentServerLocal,
-		VSockPath:        fmt.Sprintf("%s_%d", vsockPath, vsockPort),
-		remote:           make(chan R, 1),
-	}
-
-	agentServer.lis, err = net.Listen("unix", agentServer.VSockPath)
-	if err != nil {
-		return nil, errors.Join(ErrCouldNotListenInAgentServer, err)
+		listenCtx:           listenCtx,
+		listenCancel:        listenCancel,
+		log:                 log,
+		agentServerLocal:    agentServerLocal,
+		remote:              make(chan R, 1),
+		connFactoryShutdown: connFactoryShutdown,
 	}
 
 	// Start accepting connections, and keep going until listenCtx is done
@@ -80,20 +100,20 @@ func StartAgentRPC[L AgentServerLocal, R AgentServerRemote[G], G any](log loggin
 			select {
 			case <-listenCtx.Done():
 				if log != nil {
-					log.Debug().Str("VSockPath", agentServer.VSockPath).Msg("AgentRPC.listener shut down")
+					log.Debug().Msg("AgentRPC.listener shut down")
 				}
 				return
 			default:
 			}
-			conn, err := agentServer.lis.Accept()
+			conn, err := connFactory(listenCtx)
 			if log != nil {
-				log.Debug().Str("VSockPath", agentServer.VSockPath).Err(err).Msg("AgentServer.listener accepted")
+				log.Debug().Err(err).Msg("AgentServer.listener accepted")
 			}
 			if err == nil {
 				// Handle the connection, and wait until it's finished (We only handle ONE at a time)
 				err = handleRPCConnection(log, listenCtx, conn, 10*time.Second, agentServer.remote, agentServer.agentServerLocal)
 				if log != nil {
-					log.Debug().Str("VSockPath", agentServer.VSockPath).Err(err).Msg("AgentServer.listener handle finished")
+					log.Debug().Err(err).Msg("AgentServer.listener handle finished")
 				}
 			}
 		}
@@ -108,15 +128,13 @@ func StartAgentRPC[L AgentServerLocal, R AgentServerRemote[G], G any](log loggin
  */
 func (a *AgentRPC[L, R, G]) Close() error {
 	if a.log != nil {
-		a.log.Info().Str("VSockPath", a.VSockPath).Msg("Closing AgentRPC")
+		a.log.Info().Msg("Closing AgentRPC")
 	}
 
 	// Cancel the listenCtx
 	a.listenCancel()
 
-	// We need to remove this file first so that the client can't try to reconnect
-	os.Remove(a.VSockPath) // We ignore errors here since the file might already have been removed, but we don't want to use `RemoveAll` cause it could remove a directory
-	a.lis.Close()          // We ignore errors here since we might interrupt a network connection
+	a.connFactoryShutdown()
 
 	return nil
 }
@@ -127,19 +145,19 @@ func (a *AgentRPC[L, R, G]) Close() error {
  */
 func (a *AgentRPC[L, R, G]) GetRemote(ctx context.Context) (R, error) {
 	if a.log != nil {
-		a.log.Trace().Str("VSockPath", a.VSockPath).Msg("AgentRPC waiting to GetRemote")
+		a.log.Trace().Msg("AgentRPC waiting to GetRemote")
 	}
 
 	select {
 	case r := <-a.remote:
 		a.remote <- r // Put it back on the channel for another consumer
 		if a.log != nil {
-			a.log.Trace().Str("VSockPath", a.VSockPath).Msg("AgentRPC GetRemote found remote")
+			a.log.Trace().Msg("AgentRPC GetRemote found remote")
 		}
 		return r, nil
 	case <-ctx.Done():
 		if a.log != nil {
-			a.log.Trace().Str("VSockPath", a.VSockPath).Msg("AgentRPC GetRemote timed out")
+			a.log.Trace().Msg("AgentRPC GetRemote timed out")
 		}
 		return R{}, ctx.Err()
 	}
