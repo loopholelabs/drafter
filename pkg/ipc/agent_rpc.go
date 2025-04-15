@@ -91,7 +91,7 @@ func StartAgentRPC[L AgentServerLocal, R AgentServerRemote[G], G any](log loggin
 			}
 			if err == nil {
 				// Handle the connection, and wait until it's finished (We only handle ONE at a time)
-				err = agentServer.handle(listenCtx, conn, 10*time.Second)
+				err = handleRPCConnection(log, listenCtx, conn, 10*time.Second, agentServer.remote, agentServer.agentServerLocal)
 				if log != nil {
 					log.Debug().Str("VSockPath", agentServer.VSockPath).Err(err).Msg("AgentServer.listener handle finished")
 				}
@@ -177,10 +177,10 @@ func handleConnection[R any](ctx context.Context, registry *rpc.Registry[R, json
  * Handle an incoming connection
  *
  */
-func (a AgentRPC[L, R, G]) handle(ctx context.Context, conn net.Conn, readyTimeout time.Duration) error {
+func handleRPCConnection[L any, R any](log loggingtypes.Logger, ctx context.Context, conn io.ReadWriteCloser, readyTimeout time.Duration, remoteChan chan R, local L) error {
 	// Clear remote if it's set
 	select {
-	case <-a.remote:
+	case <-remoteChan:
 	default:
 	}
 
@@ -196,7 +196,7 @@ func (a AgentRPC[L, R, G]) handle(ctx context.Context, conn net.Conn, readyTimeo
 
 	// Setup registry
 	registry := rpc.NewRegistry[R, json.RawMessage](
-		a.agentServerLocal,
+		local,
 		&rpc.RegistryHooks{OnClientConnect: func(remoteID string) {
 			// Signal that we're ready
 			close(ready)
@@ -211,8 +211,8 @@ func (a AgentRPC[L, R, G]) handle(ctx context.Context, conn net.Conn, readyTimeo
 	go func() {
 		defer linkCancel()
 		err := handleConnection[R](linkCtx, registry, conn)
-		if a.log != nil {
-			a.log.Debug().Err(err).Msg("AgentRPC handle connection finished")
+		if log != nil {
+			log.Debug().Err(err).Msg("AgentRPC handle connection finished")
 		}
 		connectionWg.Done()
 	}()
@@ -226,9 +226,9 @@ func (a AgentRPC[L, R, G]) handle(ctx context.Context, conn net.Conn, readyTimeo
 
 	found := false
 	err := registry.ForRemotes(func(remoteID string, r R) error {
-		a.remote <- r
-		if a.log != nil {
-			a.log.Debug().Msg("AgentRPC remote found and set")
+		remoteChan <- r
+		if log != nil {
+			log.Debug().Msg("AgentRPC remote found and set")
 		}
 		found = true
 		return nil
@@ -239,7 +239,7 @@ func (a AgentRPC[L, R, G]) handle(ctx context.Context, conn net.Conn, readyTimeo
 		defer func() {
 			// Clear the remote if it's set
 			select {
-			case <-a.remote:
+			case <-remoteChan:
 			default:
 			}
 		}()

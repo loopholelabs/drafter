@@ -39,5 +39,16 @@ jobs:
           mv kernel out/blueprint/vmlinux
           mv disk out/blueprint/rootfs.ext4
 
+      - name: Build agent
+        run: |
+          cd cmd/drafter-agent
+          go build .
+          cd ../..
+          mkdir tmproot
+          sudo mount out/blueprint/rootfs.ext4 tmproot
+          sudo mv cmd/drafter-agent/drafter-agent tmproot/usr/bin/drafter-agent
+          sudo umount out/blueprint/rootfs.ext4
+          rmdir tmproot
+
       - name: Test
         run: go test -exec sudo -v ./... --tags integration --timeout 30m

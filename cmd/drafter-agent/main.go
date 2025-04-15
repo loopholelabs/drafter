@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -25,12 +26,26 @@ func main() {
 
 	log := logging.New(logging.Zerolog, "agent", os.Stderr)
 
+	// Get vcs revision
+	var Commit = func() string {
+		if info, ok := debug.ReadBuildInfo(); ok {
+			for _, setting := range info.Settings {
+				if setting.Key == "vcs.revision" {
+					return setting.Value
+				}
+			}
+		}
+		return ""
+	}()
+
+	log.Info().Str("vcs.revision", Commit).Msg("Starting agent")
+
 	log.Info().Uint("vsock-port", *vsockPort).
 		Int64("vsock-timeout-ms", (*vsockTimeout).Milliseconds()).
 		Str("shell-cmd", *shellCmd).
 		Str("before-suspend-cmd", *beforeSuspendCmd).
 		Str("after-resume-cmd", *afterResumeCmd).
-		Msg("Starting drafter-agent")
+		Msg("Starting drafter-agent NEW")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

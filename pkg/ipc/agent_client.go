@@ -2,15 +2,11 @@ package ipc
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"io"
-	"sync"
 	"time"
 
 	"github.com/loopholelabs/drafter/pkg/runtimes/firecracker/vsock"
 	loggingtypes "github.com/loopholelabs/logging/types"
-	"github.com/pojntfx/panrpc/go/pkg/rpc"
 )
 
 var (
@@ -48,7 +44,7 @@ func (l *AgentClientLocal[G]) AfterResume(ctx context.Context) error {
 	return l.afterResume(ctx)
 }
 
-type ConnectedAgentClient[L *AgentClientLocal[G], R AgentClientRemote, G any] struct {
+type AgentClient[L *AgentClientLocal[G], R AgentClientRemote, G any] struct {
 	log              loggingtypes.Logger
 	remote           chan R
 	listenCtx        context.Context
@@ -56,7 +52,7 @@ type ConnectedAgentClient[L *AgentClientLocal[G], R AgentClientRemote, G any] st
 	agentClientLocal L
 }
 
-func (a *ConnectedAgentClient[L, R, G]) Close() error {
+func (a *AgentClient[L, R, G]) Close() error {
 	if a.log != nil {
 		a.log.Info().Msg("Closing AgentClient")
 	}
@@ -65,17 +61,12 @@ func (a *ConnectedAgentClient[L, R, G]) Close() error {
 	return nil
 }
 
-func StartAgentClient[L *AgentClientLocal[G], R AgentClientRemote, G any](
-	log loggingtypes.Logger,
-	dialCtx context.Context,
-	remoteCtx context.Context,
-	vsockCID uint32,
-	vsockPort uint32,
-	agentClientLocal L,
-) (connectedAgentClient *ConnectedAgentClient[L, R, G], errs error) {
+func StartAgentClient[L *AgentClientLocal[G], R AgentClientRemote, G any](log loggingtypes.Logger,
+	dialCtx context.Context, remoteCtx context.Context,
+	vsockCID uint32, vsockPort uint32, agentClientLocal L) (*AgentClient[L, R, G], error) {
 	listenCtx, listenCancel := context.WithCancel(context.Background())
 
-	connectedAgentClient = &ConnectedAgentClient[L, R, G]{
+	connectedAgentClient := &AgentClient[L, R, G]{
 		log:              log,
 		listenCtx:        listenCtx,
 		listenCancel:     listenCancel,
@@ -98,7 +89,7 @@ func StartAgentClient[L *AgentClientLocal[G], R AgentClientRemote, G any](
 				log.Debug().Err(err).Msg("AgentClient.connector accepted")
 			}
 			if err == nil {
-				err = connectedAgentClient.handle(listenCtx, conn, 10*time.Second)
+				err = handleRPCConnection(log, listenCtx, conn, 10*time.Second, connectedAgentClient.remote, connectedAgentClient.agentClientLocal)
 				if log != nil {
 					log.Debug().Err(err).Msg("AgentClient.connector handle finished")
 				}
@@ -107,85 +98,4 @@ func StartAgentClient[L *AgentClientLocal[G], R AgentClientRemote, G any](
 	}()
 
 	return connectedAgentClient, nil
-}
-
-func (a *ConnectedAgentClient[L, R, G]) handle(ctx context.Context, conn io.ReadWriteCloser, readyTimeout time.Duration) error {
-	// Clear remote if it's set
-	select {
-	case <-a.remote:
-	default:
-	}
-
-	ready := make(chan bool)
-
-	// Cancel context when we return
-	linkCtx, linkCancel := context.WithCancel(ctx)
-	defer linkCancel()
-
-	// Setup a timeout to wait for the RPC to be ready
-	readyCtx, readyCancel := context.WithTimeout(linkCtx, readyTimeout)
-	defer readyCancel()
-
-	registry := rpc.NewRegistry[R, json.RawMessage](
-		a.agentClientLocal,
-		&rpc.RegistryHooks{
-			OnClientConnect: func(remoteID string) {
-				// Signal that we're ready
-				close(ready)
-			},
-		},
-	)
-
-	var connectionWg sync.WaitGroup
-
-	// Handle the connection here.
-	connectionWg.Add(1)
-	go func() {
-		defer linkCancel()
-		err := handleConnection[R](linkCtx, registry, conn)
-		if a.log != nil {
-			a.log.Debug().Err(err).Msg("AgentRPC handle connection finished")
-		}
-		connectionWg.Done()
-	}()
-
-	select {
-	case <-readyCtx.Done(): // Timeout waiting for RPC ready
-		return readyCtx.Err()
-	case <-ready: // Ready to use connection
-		break
-	}
-
-	found := false
-	err := registry.ForRemotes(func(remoteID string, r R) error {
-		a.remote <- r
-		if a.log != nil {
-			a.log.Debug().Msg("AgentClient remote found and set")
-		}
-		found = true
-		return nil
-	})
-
-	// If we found a remote, set something up to clear it at the end.
-	if found {
-		defer func() {
-			// Clear the remote if it's set
-			select {
-			case <-a.remote:
-			default:
-			}
-		}()
-	}
-
-	if err != nil {
-		return err
-	}
-
-	if !found {
-		return ErrNoRemoteFound
-	}
-
-	// Now wait until this connection is done with
-	connectionWg.Wait()
-	return nil
 }
