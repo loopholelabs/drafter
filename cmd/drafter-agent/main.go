@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"io"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/loopholelabs/drafter/pkg/ipc"
+	"github.com/loopholelabs/drafter/pkg/runtimes/firecracker/vsock"
 	"github.com/loopholelabs/logging"
 	loggingtypes "github.com/loopholelabs/logging/types"
 )
@@ -108,11 +110,14 @@ func main() {
 func connectAndHandle(log loggingtypes.Logger, ctx context.Context, timeout time.Duration, port int, agentClient *ipc.AgentClientLocal[struct{}]) error {
 	log.Info().Msg("Connecting to host")
 
-	dialCtx, cancelDialCtx := context.WithTimeout(ctx, timeout)
-	defer cancelDialCtx()
+	connFactory := func(ctx context.Context) (io.ReadWriteCloser, error) {
+		dialCtx, cancelDialCtx := context.WithTimeout(ctx, timeout)
+		defer cancelDialCtx()
+		return vsock.DialContext(dialCtx, ipc.VSockCIDHost, uint32(port))
+	}
 
 	connectedAgentClient, err := ipc.StartAgentClient[*ipc.AgentClientLocal[struct{}], struct{}](
-		log, dialCtx, ctx, ipc.VSockCIDHost, uint32(port), agentClient,
+		log, connFactory, agentClient,
 	)
 
 	if err != nil {
