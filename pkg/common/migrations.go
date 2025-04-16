@@ -97,6 +97,9 @@ func CreateSiloDevSchema(i *MigrateFromDevice) (*config.DeviceSchema, error) {
 	}
 
 	ds := &config.DeviceSchema{
+		Migration: &config.MigrationConfigSchema{
+			AnyOrder: true,
+		},
 		Name:      i.Name,
 		BlockSize: fmt.Sprintf("%v", i.BlockSize),
 		Expose:    true,
@@ -162,6 +165,9 @@ func CreateSiloDevSchema(i *MigrateFromDevice) (*config.DeviceSchema, error) {
 
 func CreateIncomingSiloDevSchema(i *MigrateFromDevice, schema *config.DeviceSchema) (*config.DeviceSchema, error) {
 	ds := &config.DeviceSchema{
+		Migration: &config.MigrationConfigSchema{
+			AnyOrder: true,
+		},
 		Name:      i.Name,
 		BlockSize: schema.BlockSize, // fmt.Sprintf("%v", i.BlockSize),
 		Expose:    true,
