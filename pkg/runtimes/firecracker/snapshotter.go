@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -156,7 +157,9 @@ func CreateSnapshot(log types.Logger, ctx context.Context, devices []SnapshotDev
 		log.Debug().Msg("Created agent server")
 	}
 
-	err = os.Chown(agent.VSockPath, hypervisorConfiguration.UID, hypervisorConfiguration.GID)
+	vsockPath := fmt.Sprintf("%s_%d", filepath.Join(server.VMPath, VSockName), uint32(agentConfiguration.AgentVSockPort))
+
+	err = os.Chown(vsockPath, hypervisorConfiguration.UID, hypervisorConfiguration.GID)
 	if err != nil {
 		return errors.Join(ErrCouldNotChownAgentServerVSock, err)
 	}
