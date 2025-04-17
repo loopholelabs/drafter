@@ -230,6 +230,8 @@ github.com/loopholelabs/goroutine-manager v0.1.1 h1:qpN9XcfNKp7aw8YI3YoIisCWZHK7
 github.com/loopholelabs/goroutine-manager v0.1.1/go.mod h1:d0r+/HNqnDR/6AXv4Mbz0dJZ7P0nATksCjkt5WWDsqA=
 github.com/loopholelabs/logging v0.3.2 h1:JPfQr/YcYoMlEbgwgoslQs/C2He/nPVCAD1FpdNceRo=
 github.com/loopholelabs/logging v0.3.2/go.mod h1:9p5/U/hNxghtUoD6k2Rzx7X4tr4ik3QzhyYUu1m7D58=
+github.com/loopholelabs/silo v0.2.12 h1:Dc7fuDohppo+uSywr+XOnYu+ThWVj6wGfUnle7dpCdY=
+github.com/loopholelabs/silo v0.2.12/go.mod h1:JASDS1bHBHZYT9uJgqPExVPuhKhqDyOUn7ZfNDtyPZc=
 github.com/lufia/plan9stats v0.0.0-20240909124753-873cd0166683 h1:7UMa6KCCMjZEMDtTVdcGu0B1GmmC7QJKiCCjyTAWQy0=
 github.com/lufia/plan9stats v0.0.0-20240909124753-873cd0166683/go.mod h1:ilwx/Dta8jXAgpFYFvSWEMwxmbWXyiUHkd5FwyKhb5k=
 github.com/magiconair/properties v1.8.9 h1:nWcCbLq1N2v/cpNsy5WvQ37Fb+YElfq20WJ/a8RkpQM=
@@ -316,10 +318,6 @@ github.com/pkg/errors v0.9.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINE
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 h1:Jamvg5psRIccs7FGNTlIRMkT8wgtp5eCXdBlqhYGL6U=
 github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
-github.com/pojntfx/panrpc v0.10.0 h1:VwYOmgr3fvaZqpiPGbmQM/XGDGNnFSGgO1Ear9eTNao=
-github.com/pojntfx/panrpc v0.10.0/go.mod h1:VyaraHVuJaaQLCp+ekvpf/GFek1EpxruwkSbn7TFmCE=
-github.com/pojntfx/panrpc/go v0.0.0-20250114165542-9cc31cf01885 h1:h1j+f7p/rTMm9IqysbnTotWkaEnII82A2oNYFK70Voo=
-github.com/pojntfx/panrpc/go v0.0.0-20250114165542-9cc31cf01885/go.mod h1:4TusY8rB5an4d75+XF+M0xaiC95HRzBM0Lxh7rSZvqE=
 github.com/pojntfx/panrpc/go v0.0.0-20250417210125-a744df25ac56 h1:IUFTCbRKfVQ7CgDhezKo8WCiVg4N5BQ8QJgLUKa2pfk=
 github.com/pojntfx/panrpc/go v0.0.0-20250417210125-a744df25ac56/go.mod h1:4TusY8rB5an4d75+XF+M0xaiC95HRzBM0Lxh7rSZvqE=
 github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 h1:o4JXh1EVt9k/+g42oCprj/FisM4qX9L3sZB3upGN2ZU=
