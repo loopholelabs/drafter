@@ -13,7 +13,7 @@ OS_DEFCONFIG ?= drafteros-oci-firecracker-x86_64_defconfig
 OS_BR2_EXTERNAL ?= ../../os
 
 # Private variables
-obj = drafter-nat drafter-forwarder drafter-agent drafter-liveness drafter-snapshotter drafter-packager drafter-runner drafter-registry drafter-mounter drafter-peer drafter-terminator
+obj = drafter-nat drafter-forwarder drafter-agent drafter-liveness drafter-snapshotter drafter-packager drafter-runner drafter-peer
 all: $(addprefix build/,$(obj))
 
 # Build
