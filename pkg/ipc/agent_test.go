@@ -42,73 +42,70 @@ func (p *PipeBidirectional) Close() error {
 	return nil
 }
 
-func TestAgent(t *testing.T) {
-	log := logging.New(logging.Zerolog, "test", os.Stdout)
+func TestAgent(tt *testing.T) {
 
-	con1, con2 := NewPipes()
+	for i := 0; i < 100; i++ {
+		tt.Run(fmt.Sprintf("run%d", i), func(t *testing.T) {
+			log := logging.New(logging.Zerolog, "test", os.Stdout)
 
-	connFactory1 := func(ctx context.Context) (io.ReadWriteCloser, error) {
-		return con1, nil
+			con1, con2 := NewPipes()
+
+			connFactory1 := func(ctx context.Context) (io.ReadWriteCloser, error) {
+				return con1, nil
+			}
+			connFactory2 := func(ctx context.Context) (io.ReadWriteCloser, error) {
+				return con2, nil
+			}
+			connFactoryShutdown := func() {
+			}
+
+			// Start a "server"
+			agent, err := StartAgentServer[struct{}, AgentServerRemote[struct{}]](
+				log, struct{}{}, connFactory1, connFactoryShutdown,
+			)
+
+			assert.NoError(t, err)
+
+			defer agent.Close()
+
+			countBeforeSuspend := uint64(0)
+			countAfterResume := uint64(0)
+
+			// Start a "client"
+			beforeSuspendFn := func(ctx context.Context) error {
+				atomic.AddUint64(&countBeforeSuspend, 1)
+				return nil
+			}
+			afterResumeFn := func(ctx context.Context) error {
+				atomic.AddUint64(&countAfterResume, 1)
+				return nil
+			}
+			agentClient := NewAgentClient[struct{}](struct{}{}, beforeSuspendFn, afterResumeFn)
+
+			client, err := StartAgentClient[*AgentClientLocal[struct{}], struct{}](log, connFactory2, agentClient)
+			assert.NoError(t, err)
+
+			defer client.Close()
+
+			// Try doing RPC calls...
+
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			r, err := agent.GetRemote(ctx)
+			assert.NoError(t, err)
+
+			beforeSuependCtx, beforeSuspendCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer beforeSuspendCancel()
+
+			err = r.BeforeSuspend(beforeSuependCtx) // FIXME: SOMETIMES HANGS!!!
+			assert.NoError(t, err)
+
+			err = r.AfterResume(context.Background())
+			assert.NoError(t, err)
+
+			assert.Equal(t, uint64(1), atomic.LoadUint64(&countBeforeSuspend))
+			assert.Equal(t, uint64(1), atomic.LoadUint64(&countAfterResume))
+
+		})
 	}
-	connFactory2 := func(ctx context.Context) (io.ReadWriteCloser, error) {
-		return con2, nil
-	}
-	connFactoryShutdown := func() {
-		fmt.Printf("Shutdown here...\n")
-	}
-
-	// Start a "server"
-	agent, err := StartAgentServer[struct{}, AgentServerRemote[struct{}]](
-		log, struct{}{}, connFactory1, connFactoryShutdown,
-	)
-
-	assert.NoError(t, err)
-
-	defer agent.Close()
-
-	countBeforeSuspend := uint64(0)
-	countAfterResume := uint64(0)
-
-	// Start a "client"
-	beforeSuspendFn := func(ctx context.Context) error {
-		fmt.Printf("BeforeSuspend\n")
-		atomic.AddUint64(&countBeforeSuspend, 1)
-		return nil
-	}
-	afterResumeFn := func(ctx context.Context) error {
-		fmt.Printf("AfterResume\n")
-		atomic.AddUint64(&countAfterResume, 1)
-		return nil
-	}
-	agentClient := NewAgentClient[struct{}](struct{}{}, beforeSuspendFn, afterResumeFn)
-
-	client, err := StartAgentClient[*AgentClientLocal[struct{}], struct{}](log, connFactory2, agentClient)
-	assert.NoError(t, err)
-
-	defer client.Close()
-
-	// Try doing RPC calls...
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	r, err := agent.GetRemote(ctx)
-	assert.NoError(t, err)
-
-	beforeSuependCtx, beforeSuspendCancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer beforeSuspendCancel()
-
-	fmt.Printf("Calling BeforeSuspend...\n")
-	err = r.BeforeSuspend(beforeSuependCtx) // FIXME: SOMETIMES HANGS!!!
-	fmt.Printf("Called BeforeSuspend...\n")
-	assert.NoError(t, err)
-
-	//	err = r.AfterResume(context.Background())
-	//	assert.NoError(t, err)
-
-	fmt.Printf("Done calls\n")
-
-	assert.Equal(t, uint64(1), atomic.LoadUint64(&countBeforeSuspend))
-	//	assert.Equal(t, uint64(1), atomic.LoadUint64(&countAfterResume))
-
-	fmt.Printf("End of test\n")
 }
