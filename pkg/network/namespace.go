@@ -38,77 +38,54 @@ var (
 )
 
 type Namespace struct {
-	id string
-
-	hostInterface      string
-	namespaceInterface string
-
+	id                        string
+	hostInterface             string
+	namespaceInterface        string
 	namespaceInterfaceGateway string
 	namespaceInterfaceNetmask uint32
-
-	hostVethInternalIP string
-	hostVethExternalIP string
-
-	namespaceInterfaceIP string
-	namespaceVethIP      string
-
-	blockedSubnet string
-
-	namespaceInterfaceMAC string
-
-	veth0 string
-	veth1 string
-
-	parsedExternalAddr   *netlink.Addr
-	parsedDefaultAddress *netlink.Addr
-
-	allowIncomingTraffic bool
+	hostVethInternalIP        string
+	hostVethExternalIP        string
+	namespaceInterfaceIP      string
+	namespaceVethIP           string
+	blockedSubnet             string
+	namespaceInterfaceMAC     string
+	veth0                     string
+	veth1                     string
+	parsedExternalAddr        *netlink.Addr
+	parsedDefaultAddress      *netlink.Addr
+	allowIncomingTraffic      bool
 }
 
-func NewNamespace(
-	id string,
+type NamespaceConfig struct {
+	HostInterface             string
+	NamespaceInterface        string
+	NamespaceInterfaceGateway string
+	NamespaceInterfaceNetmask uint32
+	HostVethInternalIP        string
+	HostVethExternalIP        string
+	NamespaceInterfaceIP      string
+	NamespaceVethIP           string
+	BlockedSubnet             string
+	NamespaceInterfaceMAC     string
+	AllowIncomingTraffic      bool
+}
 
-	hostInterface string,
-	namespaceInterface string,
-
-	namespaceInterfaceGateway string,
-	namespaceInterfaceNetmask uint32,
-
-	hostVethInternalIP string,
-	hostVethExternalIP string,
-
-	namespaceInterfaceIP string,
-	namespaceVethIP string,
-
-	blockedSubnet string,
-
-	namespaceInterfaceMAC string,
-
-	allowIncomingTraffic bool,
-) *Namespace {
+func NewNamespace(id string, conf *NamespaceConfig) *Namespace {
 	return &Namespace{
-		id: id,
-
-		hostInterface:      hostInterface,
-		namespaceInterface: namespaceInterface,
-
-		namespaceInterfaceGateway: namespaceInterfaceGateway,
-		namespaceInterfaceNetmask: namespaceInterfaceNetmask,
-
-		hostVethInternalIP: hostVethInternalIP,
-		hostVethExternalIP: hostVethExternalIP,
-
-		namespaceInterfaceIP: namespaceInterfaceIP,
-		namespaceVethIP:      namespaceVethIP,
-
-		blockedSubnet: blockedSubnet,
-
-		namespaceInterfaceMAC: namespaceInterfaceMAC,
-
-		veth0: fmt.Sprintf("%s-veth0", id),
-		veth1: fmt.Sprintf("%s-veth1", id),
-
-		allowIncomingTraffic: allowIncomingTraffic,
+		id:                        id,
+		hostInterface:             conf.HostInterface,
+		namespaceInterface:        conf.NamespaceInterface,
+		namespaceInterfaceGateway: conf.NamespaceInterfaceGateway,
+		namespaceInterfaceNetmask: conf.NamespaceInterfaceNetmask,
+		hostVethInternalIP:        conf.HostVethInternalIP,
+		hostVethExternalIP:        conf.HostVethExternalIP,
+		namespaceInterfaceIP:      conf.NamespaceInterfaceIP,
+		namespaceVethIP:           conf.NamespaceVethIP,
+		blockedSubnet:             conf.BlockedSubnet,
+		namespaceInterfaceMAC:     conf.NamespaceInterfaceMAC,
+		veth0:                     fmt.Sprintf("%s-veth0", id),
+		veth1:                     fmt.Sprintf("%s-veth1", id),
+		allowIncomingTraffic:      conf.AllowIncomingTraffic,
 	}
 }
 

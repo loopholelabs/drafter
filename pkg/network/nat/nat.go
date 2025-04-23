@@ -12,23 +12,23 @@ import (
 )
 
 type TranslationConfiguration struct {
-	HostInterface string `json:"hostInterface"`
-
-	HostVethCIDR      string `json:"hostVethCIDR"`
-	NamespaceVethCIDR string `json:"namespaceVethCIDR"`
-	BlockedSubnetCIDR string `json:"blockedSubnetCIDR"`
-
+	HostInterface             string `json:"hostInterface"`
+	HostVethCIDR              string `json:"hostVethCIDR"`
+	NamespaceVethCIDR         string `json:"namespaceVethCIDR"`
+	BlockedSubnetCIDR         string `json:"blockedSubnetCIDR"`
 	NamespaceInterface        string `json:"namespaceInterface"`
 	NamespaceInterfaceGateway string `json:"namespaceInterfaceGateway"`
 	NamespaceInterfaceNetmask uint32 `json:"namespaceInterfaceNetmask"`
 	NamespaceInterfaceIP      string `json:"namespaceInterfaceIP"`
 	NamespaceInterfaceMAC     string `json:"namespaceInterfaceMAC"`
-
-	NamespacePrefix string `json:"namespacePrefix"`
-
-	AllowIncomingTraffic bool `json:"allowIncomingTraffic"`
+	NamespacePrefix           string `json:"namespacePrefix"`
+	AllowIncomingTraffic      bool   `json:"allowIncomingTraffic"`
 }
 
+/**
+ * Create a nat
+ *
+ */
 func CreateNAT(ctx context.Context, rescueCtx context.Context, translationConfiguration TranslationConfiguration,
 	hooks CreateNamespacesHooks, maxCreated int) (namespaces *Namespaces, errs error) {
 
@@ -76,9 +76,6 @@ func CreateNAT(ctx context.Context, rescueCtx context.Context, translationConfig
 	// FIXME: Tidy up under here
 
 	namespaces = &Namespaces{
-		Wait: func() error {
-			return nil
-		},
 		Close: func() error {
 			return nil
 		},
@@ -104,10 +101,7 @@ func CreateNAT(ctx context.Context, rescueCtx context.Context, translationConfig
 	var closeLock sync.Mutex
 	closed := false
 
-	closeInProgressContext, cancelCloseInProgressContext := context.WithCancel(rescueCtx) // We use `rescueCtx` here since this simply intercepts `ctx`
-
 	namespaces.Close = func() (errs error) {
-		defer cancelCloseInProgressContext()
 
 		hostVethsLock.Lock()
 		defer hostVethsLock.Unlock()
@@ -161,13 +155,6 @@ func CreateNAT(ctx context.Context, rescueCtx context.Context, translationConfig
 		// No need to call `.Wait()` here since `.Wait()` is just waiting for us to cancel the in-progress context
 
 		return
-	}
-
-	// Future-proofing; if we decide that NATing should use a background copy loop like `socat`, we can wait for that loop to finish here and return any errors
-	namespaces.Wait = func() error {
-		<-closeInProgressContext.Done()
-
-		return nil
 	}
 
 	ready := make(chan struct{})
@@ -256,8 +243,6 @@ func CreateNAT(ctx context.Context, rescueCtx context.Context, translationConfig
 		}
 
 		if err := func() error {
-			namespaces.claimableNamespacesLock.Lock()
-			defer namespaces.claimableNamespacesLock.Unlock()
 
 			select {
 			case <-ctx.Done():
@@ -271,27 +256,20 @@ func CreateNAT(ctx context.Context, rescueCtx context.Context, translationConfig
 				hook(id)
 			}
 
-			namespace := network.NewNamespace(
-				id,
-
-				translationConfiguration.HostInterface,
-				translationConfiguration.NamespaceInterface,
-
-				translationConfiguration.NamespaceInterfaceGateway,
-				translationConfiguration.NamespaceInterfaceNetmask,
-
-				hostVeth.GetFirstIP().String(),
-				hostVeth.GetSecondIP().String(),
-
-				translationConfiguration.NamespaceInterfaceIP,
-				namespaceVeth.String(),
-
-				translationConfiguration.BlockedSubnetCIDR,
-
-				translationConfiguration.NamespaceInterfaceMAC,
-
-				translationConfiguration.AllowIncomingTraffic,
-			)
+			nsConf := &network.NamespaceConfig{
+				HostInterface:             translationConfiguration.HostInterface,
+				NamespaceInterface:        translationConfiguration.NamespaceInterface,
+				NamespaceInterfaceGateway: translationConfiguration.NamespaceInterfaceGateway,
+				NamespaceInterfaceNetmask: translationConfiguration.NamespaceInterfaceNetmask,
+				HostVethInternalIP:        hostVeth.GetFirstIP().String(),
+				HostVethExternalIP:        hostVeth.GetSecondIP().String(),
+				NamespaceInterfaceIP:      translationConfiguration.NamespaceInterfaceIP,
+				NamespaceVethIP:           namespaceVeth.String(),
+				BlockedSubnet:             translationConfiguration.BlockedSubnetCIDR,
+				NamespaceInterfaceMAC:     translationConfiguration.NamespaceInterfaceMAC,
+				AllowIncomingTraffic:      translationConfiguration.AllowIncomingTraffic,
+			}
+			namespace := network.NewNamespace(id, nsConf)
 			if err := namespace.Open(); err != nil {
 				if e := namespace.Close(); e != nil {
 					return errors.Join(ErrCouldNotOpenNamespace, err, e)
@@ -300,9 +278,7 @@ func CreateNAT(ctx context.Context, rescueCtx context.Context, translationConfig
 				return err
 			}
 
-			namespaces.claimableNamespaces[id] = &claimableNamespace{
-				namespace: namespace,
-			}
+			namespaces.addNamespace(id, namespace)
 
 			return nil
 		}(); err != nil {
