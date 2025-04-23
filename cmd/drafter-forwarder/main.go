@@ -4,13 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"flag"
-	"log"
 	"net"
 	"os"
 	"os/signal"
 
 	"github.com/loopholelabs/drafter/pkg/network/forwarder"
-	"github.com/loopholelabs/goroutine-manager/pkg/manager"
+	"github.com/loopholelabs/logging"
 )
 
 func main() {
@@ -21,7 +20,6 @@ func main() {
 			Netns:        "ark0",
 			InternalPort: "6379",
 			Protocol:     "tcp",
-
 			ExternalAddr: "127.0.0.1:3333",
 		},
 	})
@@ -33,91 +31,70 @@ func main() {
 
 	flag.Parse()
 
+	log := logging.New(logging.Zerolog, "drafter", os.Stderr)
+
 	var portForwards []forwarder.PortForward
-	if err := json.Unmarshal([]byte(*rawPortForwards), &portForwards); err != nil {
+	err = json.Unmarshal([]byte(*rawPortForwards), &portForwards)
+	if err != nil {
+		log.Error().Err(err).Msg("Error in portForwards")
 		panic(err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	var errs error
-	defer func() {
-		if errs != nil {
-			panic(errs)
-		}
-	}()
-
-	goroutineManager := manager.NewGoroutineManager(
-		ctx,
-		&errs,
-		manager.GoroutineManagerHooks{},
-	)
-	defer goroutineManager.Wait()
-	defer goroutineManager.StopAllGoroutines()
-	defer goroutineManager.CreateBackgroundPanicCollector()()
-
+	done := make(chan os.Signal, 1)
+	signal.Notify(done, os.Interrupt)
 	go func() {
-		done := make(chan os.Signal, 1)
-		signal.Notify(done, os.Interrupt)
-
 		<-done
-
-		log.Println("Exiting gracefully")
-
+		log.Info().Msg("Exiting gracefully")
 		cancel()
 	}()
 
 	_, hostVethCIDR, err := net.ParseCIDR(*rawHostVethCIDR)
 	if err != nil {
+		log.Error().Err(err).Msg("could not parse CIDR")
 		panic(err)
 	}
 
 	forwardedPorts, err := forwarder.ForwardPorts(
-		goroutineManager.Context(),
-
+		ctx,
 		hostVethCIDR,
 		portForwards,
 
 		forwarder.PortForwardHooks{
 			OnAfterPortForward: func(portID int, netns, internalIP, internalPort, externalIP, externalPort, protocol string) {
-				log.Printf("Forwarding port with ID %v from %v:%v/%v in network namespace %v to %v:%v/%v", portID, internalIP, internalPort, protocol, netns, externalIP, externalPort, protocol)
+				log.Info().
+					Int("portID", portID).
+					Str("netns", netns).
+					Str("internalIP", internalIP).
+					Str("internalPort", internalPort).
+					Str("externalIP", externalIP).
+					Str("externalPort", externalPort).
+					Str("protocol", protocol).
+					Msg("Forwarding port")
 			},
 			OnBeforePortUnforward: func(portID int) {
-				log.Println("Unforwarding port with ID", portID)
+				log.Info().
+					Int("portID", portID).
+					Msg("Unforwarding port")
 			},
 		},
 	)
 
-	defer func() {
-		defer goroutineManager.CreateForegroundPanicCollector()()
-
-		if err := forwardedPorts.Wait(); err != nil {
-			panic(err)
-		}
-	}()
-
 	if err != nil {
+		log.Error().Err(err).Msg("Error forwarding port")
 		panic(err)
 	}
 
-	defer func() {
-		defer goroutineManager.CreateForegroundPanicCollector()()
+	log.Info().Msg("Forwarded all configured ports")
 
-		if err := forwardedPorts.Close(); err != nil {
-			panic(err)
-		}
-	}()
+	<-ctx.Done()
 
-	goroutineManager.StartForegroundGoroutine(func(_ context.Context) {
-		if err := forwardedPorts.Wait(); err != nil {
-			panic(err)
-		}
-	})
+	err = forwardedPorts.Close()
+	if err != nil {
+		log.Error().Err(err).Msg("Error closing forwardedPorts")
+	}
 
-	log.Println("Forwarded all configured ports")
-
-	<-goroutineManager.Context().Done()
-
-	log.Println("Shutting down")
+	log.Info().Msg("Shutting down")
 }
