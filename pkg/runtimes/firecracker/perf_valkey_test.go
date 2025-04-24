@@ -1,5 +1,5 @@
-//go:build benchmark
-// +build benchmark
+//go:build integration
+// +build integration
 
 package firecracker
 
