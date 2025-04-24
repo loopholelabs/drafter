@@ -191,6 +191,7 @@ func main() {
 			S3Secure:      device.S3Secure,
 			S3Bucket:      device.S3Bucket,
 			S3Concurrency: device.S3Concurrency,
+			SkipSilo:      device.SkipSilo,
 		})
 	}
 

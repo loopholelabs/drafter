@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -47,6 +48,8 @@ type MigrateFromDevice struct {
 	Shared    bool   `json:"shared"`
 
 	SharedBase bool `json:"sharedbase"`
+
+	SkipSilo bool `json:"skipsilo"`
 
 	S3Sync        bool   `json:"s3sync"`
 	S3AccessKey   string `json:"s3accesskey"`
@@ -212,7 +215,11 @@ func CreateIncomingSiloDevSchema(i *MigrateFromDevice, schema *config.DeviceSche
 func MigrateFromFS(log types.Logger, met metrics.SiloMetrics, instanceID, vmpath string,
 	devices []MigrateFromDevice, tweak func(index int, name string, schema *config.DeviceSchema) *config.DeviceSchema) (*devicegroup.DeviceGroup, error) {
 	siloDeviceSchemas := make([]*config.DeviceSchema, 0)
+
+	skipSilos := make(map[string]bool)
 	for i, input := range devices {
+		skipSilos[input.Name] = input.SkipSilo
+
 		if input.Shared {
 			// Deal with shared devices here...
 			err := ExposeSiloDeviceAsFile(vmpath, input.Name, input.Base)
@@ -244,17 +251,51 @@ func MigrateFromFS(log types.Logger, met metrics.SiloMetrics, instanceID, vmpath
 	}
 
 	for _, input := range siloDeviceSchemas {
-		dev := dg.GetExposedDeviceByName(input.Name)
-		err = ExposeSiloDeviceAsFile(vmpath, input.Name, filepath.Join("/dev", dev.Device()))
-		if err != nil {
-			return nil, err
-		}
-		if log != nil {
-			log.Info().
-				Str("name", input.Name).
-				Str("vmpath", vmpath).
-				Str("device", dev.Device()).
-				Msg("silo device exposed")
+
+		if skipSilos[input.Name] {
+			// Rather than putting Silo in the mix here, we just copy the data over.
+			di := dg.GetDeviceInformationByName(input.Name)
+			src, err := os.Open(filepath.Join("/dev", di.Exp.Device()))
+			if err != nil {
+				return nil, err
+			}
+			dst, err := os.OpenFile(path.Join(vmpath, input.Name), os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
+			if err != nil {
+				return nil, err
+			}
+
+			if log != nil {
+				log.Info().Str("from", filepath.Join("/dev", di.Exp.Device())).Str("to", path.Join(vmpath, input.Name)).Msg("Copying")
+			}
+
+			n, err := io.Copy(dst, src)
+			if err != nil {
+				return nil, err
+			}
+			err = src.Close()
+			if err != nil {
+				return nil, err
+			}
+			err = dst.Close()
+			if err != nil {
+				return nil, err
+			}
+			if log != nil {
+				log.Info().Str("name", input.Name).Int64("bytes", n).Msg("Copied file over. Skipping Silo.")
+			}
+		} else {
+			dev := dg.GetExposedDeviceByName(input.Name)
+			err = ExposeSiloDeviceAsFile(vmpath, input.Name, filepath.Join("/dev", dev.Device()))
+			if err != nil {
+				return nil, err
+			}
+			if log != nil {
+				log.Info().
+					Str("name", input.Name).
+					Str("vmpath", vmpath).
+					Str("device", dev.Device()).
+					Msg("silo device exposed")
+			}
 		}
 	}
 	return dg, nil

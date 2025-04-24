@@ -37,6 +37,8 @@ type CompositeDevices struct {
 	S3Secure      bool   `json:"s3secure"`
 	S3Bucket      string `json:"s3bucket"`
 	S3Concurrency int    `json:"s3concurrency"`
+
+	SkipSilo bool `json:"skipsilo"`
 }
 
 func decodeDevices(data string) ([]CompositeDevices, error) {
