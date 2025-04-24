@@ -32,7 +32,7 @@ type claimableNamespace struct {
  */
 func (namespaces *Namespaces) addNamespace(id string, ns *network.Namespace) {
 	namespaces.claimableNamespacesLock.Lock()
-	defer namespaces.claimableNamespacesLock.Lock()
+	defer namespaces.claimableNamespacesLock.Unlock()
 
 	namespaces.claimableNamespaces[id] = &claimableNamespace{
 		claimed:   false,
