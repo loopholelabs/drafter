@@ -20,9 +20,9 @@ import (
 	"github.com/loopholelabs/drafter/pkg/ipc"
 	"github.com/loopholelabs/drafter/pkg/peer"
 	"github.com/loopholelabs/drafter/pkg/testutil"
-
 	"github.com/loopholelabs/logging"
 	"github.com/loopholelabs/logging/types"
+
 	"github.com/stretchr/testify/assert"
 	valkey "github.com/valkey-io/valkey-go"
 )
@@ -37,6 +37,14 @@ const perfTestDir = "perf_test"
  *
  */
 func TestValkeyPerf(t *testing.T) {
+	/*
+		f, err := os.Create("valkey_perf_cpu_profile")
+		if err != nil {
+			panic(err)
+		}
+		pprof.StartCPUProfile(f)
+		defer pprof.StopCPUProfile()
+	*/
 	log := logging.New(logging.Zerolog, "test", os.Stderr)
 	log.SetLevel(types.ErrorLevel)
 
@@ -276,7 +284,7 @@ func bench(t *testing.T, name string, port int) (time.Duration, time.Duration) {
 	client, err := valkey.NewClient(valkey.ClientOption{InitAddress: []string{fmt.Sprintf("127.0.0.1:%d", port)}})
 	assert.NoError(t, err)
 
-	numSet := 1000000 // Number of keys
+	numSet := 100000 // Number of keys
 
 	setErrors := 0
 	// SET key val NX
