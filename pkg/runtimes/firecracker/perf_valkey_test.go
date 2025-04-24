@@ -281,10 +281,19 @@ func bench(t *testing.T, name string, port int) (time.Duration, time.Duration) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	client, err := valkey.NewClient(valkey.ClientOption{InitAddress: []string{fmt.Sprintf("127.0.0.1:%d", port)}})
-	assert.NoError(t, err)
+	var client valkey.Client
+	var err error
 
-	numSet := 100000 // Number of keys
+	for i := 0; i < 5; i++ {
+		client, err = valkey.NewClient(valkey.ClientOption{InitAddress: []string{fmt.Sprintf("127.0.0.1:%d", port)}})
+		if err == nil {
+			break
+		}
+		fmt.Printf("Error connecting. Retrying in 5 seconds. %v\n", err)
+		time.Sleep(5 * time.Second)
+	}
+
+	numSet := 1000000 // Number of keys
 
 	setErrors := 0
 	// SET key val NX
