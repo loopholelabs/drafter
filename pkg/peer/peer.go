@@ -173,6 +173,10 @@ func StartPeer(ctx context.Context, rescueCtx context.Context,
 	return peer, nil
 }
 
+func (peer *Peer) SetInstanceID(id string) {
+	peer.instanceID = id
+}
+
 func (peer *Peer) MigrateFrom(ctx context.Context, devices []common.MigrateFromDevice,
 	readers []io.Reader, writers []io.Writer, hooks MigrateFromHooks) error {
 

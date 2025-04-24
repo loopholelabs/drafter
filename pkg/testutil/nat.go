@@ -2,12 +2,63 @@ package testutil
 
 import (
 	"context"
+	"fmt"
+	"net"
 	"testing"
 
+	"github.com/loopholelabs/drafter/pkg/network/forwarder"
 	"github.com/loopholelabs/drafter/pkg/network/nat"
+	loggingtypes "github.com/loopholelabs/logging/types"
 	route "github.com/nixigaj/go-default-route"
 	"github.com/stretchr/testify/assert"
 )
+
+func ForwardPort(t *testing.T, log loggingtypes.Logger, ns string, protocol string, portFrom int, portTo int) {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	hostVeth := "10.0.8.0/22"
+	_, hostVethCIDR, err := net.ParseCIDR(hostVeth)
+
+	portForwards := []forwarder.PortForward{
+		{
+			Netns:        ns,
+			InternalPort: fmt.Sprintf("%d", portFrom),
+			Protocol:     protocol,
+			ExternalAddr: fmt.Sprintf("127.0.0.1:%d", portTo),
+		},
+	}
+
+	forwardedPorts, err := forwarder.ForwardPorts(
+		ctx,
+		hostVethCIDR,
+		portForwards,
+
+		forwarder.PortForwardHooks{
+			OnAfterPortForward: func(portID int, netns, internalIP, internalPort, externalIP, externalPort, protocol string) {
+				log.Info().
+					Int("portID", portID).
+					Str("netns", netns).
+					Str("internalIP", internalIP).
+					Str("internalPort", internalPort).
+					Str("externalIP", externalIP).
+					Str("externalPort", externalPort).
+					Str("protocol", protocol).
+					Msg("Forwarding port")
+			},
+			OnBeforePortUnforward: func(portID int) {
+				log.Info().
+					Int("portID", portID).
+					Msg("Unforwarding port")
+			},
+		},
+	)
+	assert.NoError(t, err)
+
+	t.Cleanup(func() {
+		forwardedPorts.Close()
+		cancel()
+	})
+}
 
 func SetupNAT(t *testing.T, hostInterface string, namespacePrefix string) *nat.Namespaces {
 
