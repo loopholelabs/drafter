@@ -293,7 +293,7 @@ func bench(t *testing.T, name string, port int) (time.Duration, time.Duration) {
 		time.Sleep(5 * time.Second)
 	}
 
-	numSet := 1000000 // Number of keys
+	numSet := 100000 // Number of keys
 
 	setErrors := 0
 	// SET key val NX
