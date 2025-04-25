@@ -105,6 +105,11 @@ func CreateSiloDevSchema(i *MigrateFromDevice) (*config.DeviceSchema, error) {
 		Expose:    true,
 		Size:      fmt.Sprintf("%v", stat.Size()),
 		//		Binlog:    path.Join("binlog", i.Name),
+
+		// For now, we will disable the volatilityMonitor
+		Migration: &config.MigrationConfigSchema{
+			AnyOrder: true,
+		},
 	}
 	if strings.TrimSpace(i.Overlay) == "" || strings.TrimSpace(i.State) == "" {
 		err := os.MkdirAll(filepath.Dir(i.Base), os.ModePerm)
@@ -160,6 +165,16 @@ func CreateSiloDevSchema(i *MigrateFromDevice) (*config.DeviceSchema, error) {
 			ds.Sync.Config.OnlyDirty = true
 		}
 	}
+	/*
+		// Enable writeCache for memory (WIP)
+		if ds.Name == "memory" {
+			ds.WriteCache = &config.WriteCacheSchema{
+				MinSize:     "1g",
+				MaxSize:     "1g",
+				FlushPeriod: "5m",
+			}
+		}
+	*/
 	return ds, nil
 }
 
