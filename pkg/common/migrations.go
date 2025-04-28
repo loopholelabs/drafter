@@ -47,6 +47,10 @@ type MigrateFromDevice struct {
 	BlockSize uint32 `json:"blockSize"`
 	Shared    bool   `json:"shared"`
 
+	UseSparseFile bool `json:"usesparsefile"`
+	AnyOrder      bool `json:"anyorder"`
+	UseWriteCache bool `json:"usewritecache"`
+
 	SharedBase bool `json:"sharedbase"`
 
 	SkipSilo bool `json:"skipsilo"`
@@ -106,11 +110,14 @@ func CreateSiloDevSchema(i *MigrateFromDevice) (*config.DeviceSchema, error) {
 		Size:      fmt.Sprintf("%v", stat.Size()),
 		//		Binlog:    path.Join("binlog", i.Name),
 
-		// For now, we will disable the volatilityMonitor
-		Migration: &config.MigrationConfigSchema{
-			AnyOrder: true,
-		},
 	}
+
+	if i.AnyOrder {
+		ds.Migration = &config.MigrationConfigSchema{
+			AnyOrder: true,
+		}
+	}
+
 	if strings.TrimSpace(i.Overlay) == "" || strings.TrimSpace(i.State) == "" {
 		err := os.MkdirAll(filepath.Dir(i.Base), os.ModePerm)
 		if err != nil {
@@ -129,7 +136,10 @@ func CreateSiloDevSchema(i *MigrateFromDevice) (*config.DeviceSchema, error) {
 			return nil, errors.Join(ErrCouldNotCreateStateDirectory, err)
 		}
 
-		ds.System = "sparsefile"
+		ds.System = "file"
+		if i.UseSparseFile {
+			ds.System = "sparsefile"
+		}
 		ds.Location = i.Overlay
 
 		ds.ROSourceShared = i.SharedBase
@@ -165,16 +175,16 @@ func CreateSiloDevSchema(i *MigrateFromDevice) (*config.DeviceSchema, error) {
 			ds.Sync.Config.OnlyDirty = true
 		}
 	}
-	/*
-		// Enable writeCache for memory (WIP)
-		if ds.Name == "memory" {
-			ds.WriteCache = &config.WriteCacheSchema{
-				MinSize:     "1g",
-				MaxSize:     "1g",
-				FlushPeriod: "5m",
-			}
+
+	// Enable writeCache for memory (WIP)
+	if i.UseWriteCache {
+		ds.WriteCache = &config.WriteCacheSchema{
+			MinSize:     "200m",
+			MaxSize:     "400m",
+			FlushPeriod: "5m",
 		}
-	*/
+	}
+
 	return ds, nil
 }
 
