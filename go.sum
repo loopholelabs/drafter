@@ -234,6 +234,8 @@ github.com/loopholelabs/silo v0.2.15 h1:sTXbbbbPP0XEqLvHSlcOqTPlvUWHAYGFwitdK1Vm
 github.com/loopholelabs/silo v0.2.15/go.mod h1:+ReFvguOgJ/2x8UNDF/VDFFB6Iyn33mAQxQXusEjf+o=
 github.com/loopholelabs/silo v0.2.16-0.20250428144223-c40585ab2108 h1:P3eYU67F37raCC8m6cKv06QuH/CTCffSUPLDAmOS9/g=
 github.com/loopholelabs/silo v0.2.16-0.20250428144223-c40585ab2108/go.mod h1:+ReFvguOgJ/2x8UNDF/VDFFB6Iyn33mAQxQXusEjf+o=
+github.com/loopholelabs/silo v0.2.16-0.20250428151135-2aee7c7a2256 h1:7s7rvxd5AuuSy3MLC0pWiZ68TrGnExBl7rakTR8tXb8=
+github.com/loopholelabs/silo v0.2.16-0.20250428151135-2aee7c7a2256/go.mod h1:+ReFvguOgJ/2x8UNDF/VDFFB6Iyn33mAQxQXusEjf+o=
 github.com/lufia/plan9stats v0.0.0-20240909124753-873cd0166683 h1:7UMa6KCCMjZEMDtTVdcGu0B1GmmC7QJKiCCjyTAWQy0=
 github.com/lufia/plan9stats v0.0.0-20240909124753-873cd0166683/go.mod h1:ilwx/Dta8jXAgpFYFvSWEMwxmbWXyiUHkd5FwyKhb5k=
 github.com/magiconair/properties v1.8.9 h1:nWcCbLq1N2v/cpNsy5WvQ37Fb+YElfq20WJ/a8RkpQM=
