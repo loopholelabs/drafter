@@ -475,7 +475,7 @@ func setupSnapshot(log types.Logger, ctx context.Context) string {
 			AgentVSockPort: uint32(26),
 			ResumeTimeout:  time.Minute,
 		},
-	)
+		func() {})
 
 	if err != nil {
 		panic(err)

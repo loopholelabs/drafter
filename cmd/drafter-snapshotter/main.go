@@ -136,7 +136,7 @@ func main() {
 			AgentVSockPort: uint32(*agentVSockPort),
 			ResumeTimeout:  *resumeTimeout,
 		},
-	)
+		func() {})
 
 	if err != nil {
 		panic(err)

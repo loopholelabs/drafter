@@ -96,7 +96,7 @@ func setupSnapshot(log types.Logger, ctx context.Context, snapDir string, blueDi
 			AgentVSockPort: uint32(26),
 			ResumeTimeout:  time.Minute,
 		},
-	)
+		func() {})
 
 	return err
 }

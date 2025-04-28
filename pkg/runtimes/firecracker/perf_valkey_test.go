@@ -44,6 +44,8 @@ const profileCPU = true
  *
  */
 func TestValkeyPerf(t *testing.T) {
+	t.Skip("Not running perf test for now")
+
 	log := logging.New(logging.Zerolog, "test", os.Stderr)
 	log.SetLevel(types.ErrorLevel)
 

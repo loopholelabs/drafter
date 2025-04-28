@@ -166,6 +166,9 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Close() error {
 
 		// We only need to do this if it hasn't been suspended, but it'll refuse inside Suspend
 		err := rp.Suspend(context.TODO(), time.Minute) // TODO. Timeout
+		if err != nil {
+			return err
+		}
 
 		rp.resumeCancel() // We can cancel this context now
 		rp.hypervisorCancel()
