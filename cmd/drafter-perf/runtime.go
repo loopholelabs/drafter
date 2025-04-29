@@ -28,6 +28,23 @@ type siloConfig struct {
 	useWriteCache bool
 }
 
+func (sc *siloConfig) Summary() string {
+	s := sc.name
+	if sc.useVolatility {
+		s = s + " VolatilityMonitor"
+	}
+	if sc.useCow {
+		s = s + " COW"
+	}
+	if sc.useSparseFile {
+		s = s + " SparseFile"
+	}
+	if sc.useWriteCache {
+		s = s + " WriteCache"
+	}
+	return s
+}
+
 /**
  * runSilo runs a benchmark inside a VM with Silo
  *

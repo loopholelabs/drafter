@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"os"
 	"os/exec"
 	"path"
 	"time"
@@ -78,8 +77,8 @@ func setupSnapshot(log loggingtypes.Logger, ctx context.Context, netns string, v
 			NetNS:          netns,
 			NumaNode:       0,
 			CgroupVersion:  2,
-			Stdout:         os.Stdout,
-			Stderr:         os.Stderr,
+			Stdout:         nil,
+			Stderr:         nil,
 			EnableInput:    false,
 		},
 		rfirecracker.NetworkConfiguration{

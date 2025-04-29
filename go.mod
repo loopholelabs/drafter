@@ -11,7 +11,7 @@ require (
 	github.com/loopholelabs/firecracker-go-sdk v1.0.0
 	github.com/loopholelabs/goroutine-manager v0.1.1
 	github.com/loopholelabs/logging v0.3.2
-	github.com/loopholelabs/silo v0.2.16-0.20250428151135-2aee7c7a2256
+	github.com/loopholelabs/silo v0.2.16-0.20250429190710-8df6bd2ad53e
 	github.com/metal-stack/go-ipam v1.14.8
 	github.com/nixigaj/go-default-route v0.0.0-20231019115740-0722aff7ebf3
 	github.com/pojntfx/panrpc/go v0.0.0-20250417210125-a744df25ac56

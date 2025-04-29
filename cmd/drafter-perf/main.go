@@ -5,16 +5,12 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"path"
 	"time"
 
-	"github.com/loopholelabs/drafter/pkg/common"
 	rfirecracker "github.com/loopholelabs/drafter/pkg/runtimes/firecracker"
 	"github.com/loopholelabs/drafter/pkg/testutil"
 	"github.com/loopholelabs/logging"
 	"github.com/loopholelabs/logging/types"
-	"github.com/loopholelabs/silo/pkg/storage"
-	"github.com/loopholelabs/silo/pkg/storage/sources"
 	"github.com/muesli/gotable"
 )
 
@@ -38,7 +34,9 @@ func main() {
 	cpuTemplate := flag.String("template", "None", "CPU Template")
 	usePVMBootArgs := flag.Bool("pvm", false, "PVM boot args")
 
-	iterations := flag.Int("num", 1000, "Test iterations")
+	//	iterations := flag.Int("num", 1000, "Test iterations")
+
+	runWithNonSilo := true
 
 	flag.Parse()
 
@@ -65,7 +63,7 @@ func main() {
 	}
 
 	// Forward the port so we can connect to it...
-	portCloser, err := ForwardPort(log, netns, "tcp", 6379, 3333)
+	portCloser, err := ForwardPort(log, netns, "tcp", 4567, 3333)
 	if err != nil {
 		panic(err)
 	}
@@ -82,14 +80,53 @@ func main() {
 		vmConfig.BootArgs = rfirecracker.DefaultBootArgs
 	}
 
-	waitReady := func() {} // TODO: Have this wait for conneciton to work
-	err = setupSnapshot(log, ctx, netns, vmConfig, *dBlueDir, *dSnapDir, waitReady)
-	if err != nil {
-		panic(err)
+	for {
+		// Clear the snap dir...
+		os.RemoveAll(*dSnapDir)
+		os.Mkdir(*dSnapDir, 0666)
+
+		// Disable this for now...
+		valkeyUp := true
+
+		waitReady := func() {
+			/*
+				// TODO: Wait here until connection success, so we know VM is all ready to go.
+				// Try to connect to valkey
+				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				defer cancel()
+				ticker := time.NewTicker(1 * time.Second)
+				for {
+					select {
+					case <-ticker.C:
+						// Try to connect to valkey
+						con, err := net.Dial("tcp", "127.0.0.1:3333")
+						if err == nil {
+							con.Close()
+							fmt.Printf(" ### Valkey up!\n")
+							valkeyUp = true
+							return
+						}
+					case <-ctx.Done():
+						fmt.Printf(" ### Unable to connect to valkey!\n")
+					}
+				}
+			*/
+		}
+		err = setupSnapshot(log, ctx, netns, vmConfig, *dBlueDir, *dSnapDir, waitReady)
+		if err != nil {
+			panic(err)
+		}
+
+		// Make sure valkey came up
+		if valkeyUp {
+			break
+		}
 	}
 
-	siloTimingsGet := make(map[string]time.Duration, 0)
-	siloTimingsSet := make(map[string]time.Duration, 0)
+	fmt.Printf("\n\n Starting tests...\n\n")
+
+	//	siloTimingsGet := make(map[string]time.Duration, 0)
+	//	siloTimingsSet := make(map[string]time.Duration, 0)
 	siloTimingsRuntime := make(map[string]time.Duration, 0)
 
 	dummyMetrics := testutil.NewDummyMetrics()
@@ -106,12 +143,17 @@ func main() {
 		var runtimeStart time.Time
 		benchCB := func() {
 			runtimeStart = time.Now()
-			siloSet, siloGet, err := benchValkey(sConf.name, 3333, *iterations)
-			siloTimingsSet[sConf.name] = siloSet
-			siloTimingsGet[sConf.name] = siloGet
+
+			err = benchCICD(sConf.name, 1*time.Hour)
 			if err != nil {
 				panic(err)
 			}
+			// siloSet, siloGet, err := benchValkey(sConf.name, 3333, *iterations)
+			// siloTimingsSet[sConf.name] = siloSet
+			// siloTimingsGet[sConf.name] = siloGet
+			// if err != nil {
+			//	panic(err)
+			// }
 		}
 
 		err = runSilo(ctx, log, dummyMetrics, *dTestDir, *dSnapDir, netns, benchCB, sConf)
@@ -121,20 +163,27 @@ func main() {
 		siloTimingsRuntime[sConf.name] = time.Since(runtimeStart)
 	}
 
-	var nosiloGet time.Duration
-	var nosiloSet time.Duration
+	//	var nosiloGet time.Duration
+	//	var nosiloSet time.Duration
 	var nosiloRuntime time.Duration
-	benchCB := func() {
-		ctime := time.Now()
-		nosiloSet, nosiloGet, err = benchValkey("nosilo", 3333, *iterations)
-		nosiloRuntime = time.Since(ctime)
+
+	if runWithNonSilo {
+		benchCB := func() {
+			ctime := time.Now()
+			err = benchCICD("nosilo", 1*time.Hour)
+			if err != nil {
+				panic(err)
+			}
+			// nosiloSet, nosiloGet, err = benchValkey("nosilo", 3333, *iterations)
+			nosiloRuntime = time.Since(ctime)
+			// if err != nil {
+			//	panic(err)
+			// }
+		}
+		err = runNonSilo(ctx, log, *dTestDir, *dSnapDir, netns, benchCB)
 		if err != nil {
 			panic(err)
 		}
-	}
-	err = runNonSilo(ctx, log, *dTestDir, *dSnapDir, netns, benchCB)
-	if err != nil {
-		panic(err)
 	}
 
 	// Now we print out summary etc
@@ -143,24 +192,22 @@ func main() {
 	fmt.Printf("\n### Results ###\n\n")
 
 	tab := gotable.NewTable([]string{"Name", "WriteC", "vm", "Cow", "SparseF",
-		"Set time", "SetOver", "Get time", "GetOver", "Runtime",
-		"memROps", "memRMB", "memWOps", "memWMB",
-		"memChgBlk", "memChgMB",
+		//		"Set time", "SetOver", "Get time", "GetOver",
+		"Runtime", "RuntimeOver",
 	},
 		[]int64{-20,
 			8, 4, 4, 8,
 			10, 8, 10, 8,
 			10, // runtime
-			8, 8, 8, 8,
-			12, 12,
+			12,
 		},
 		"No data in table.")
 
 	tab.AppendRow([]interface{}{"No Silo", "", "", "", "",
-		fmt.Sprintf("%.1fs", float64(nosiloSet.Milliseconds())/1000), "",
-		fmt.Sprintf("%.1fs", float64(nosiloGet.Milliseconds())/1000), "",
+		//		fmt.Sprintf("%.1fs", float64(nosiloSet.Milliseconds())/1000), "",
+		//		fmt.Sprintf("%.1fs", float64(nosiloGet.Milliseconds())/1000), "",
 		fmt.Sprintf("%.1fs", float64(nosiloRuntime.Milliseconds())/1000), "",
-		"", "", "", "", ""})
+	})
 
 	fbool := func(b bool) string {
 		if b {
@@ -171,77 +218,118 @@ func main() {
 	}
 
 	for _, conf := range siloConfigs {
-		siloSet := siloTimingsSet[conf.name]
-		siloGet := siloTimingsGet[conf.name]
-		overheadSet := (siloSet - nosiloSet) * 100 / nosiloSet
-		overheadGet := (siloGet - nosiloGet) * 100 / nosiloGet
+		// Show some device stats
 
-		//		memMetrics := dummyMetrics.GetMetrics(conf.name, "memory").GetMetrics()
-		memDMetrics := dummyMetrics.GetMetrics(conf.name, "device_memory").GetMetrics()
+		fmt.Printf("== Results for %s\n", conf.Summary())
 
-		// Show some metrics
-		for _, r := range []string{"memory"} { // "disk", "oci", "memory"} {
-			m := dummyMetrics.GetMetrics(conf.name, r)
-			m.ShowStats(fmt.Sprintf("%s_%s", conf.name, r))
+		devTab := gotable.NewTable([]string{"Name",
+			"In R Ops", "In R MB", "In W Ops", "In W MB",
+			"DskR Ops", "DskR MB", "DskW Ops", "DskW MB",
+			"Chg  Blk", "Chg  MB",
+		},
+			[]int64{-20,
+				8, 8, 8, 8,
+				8, 8, 8, 8,
+				8, 8,
+			},
+			"No data in table.")
 
-			m = dummyMetrics.GetMetrics(conf.name, fmt.Sprintf("device_%s", r))
-			m.ShowStats(fmt.Sprintf("dev_%s_%s", conf.name, r))
+		for _, r := range []string{"disk", "oci", "memory"} {
+			dm := getSiloDeviceStats(dummyMetrics, conf.name, r)
+			devTab.AppendRow([]interface{}{
+				r,
+				fmt.Sprintf("%d", dm.InReadOps),
+				fmt.Sprintf("%.1f", float64(dm.InReadBytes)/(1024*1024)),
+				fmt.Sprintf("%d", dm.InWriteOps),
+				fmt.Sprintf("%.1f", float64(dm.InWriteBytes)/(1024*1024)),
 
-			m = dummyMetrics.GetMetrics(conf.name, fmt.Sprintf("device_rodev_%s", r))
-			if m != nil {
-				m.ShowStats(fmt.Sprintf("dev_%s_rodev_%s", conf.name, r))
-			}
+				fmt.Sprintf("%d", dm.DiskReadOps),
+				fmt.Sprintf("%.1f", float64(dm.DiskReadBytes)/(1024*1024)),
+				fmt.Sprintf("%d", dm.DiskWriteOps),
+				fmt.Sprintf("%.1f", float64(dm.DiskWriteBytes)/(1024*1024)),
+
+				fmt.Sprintf("%d", dm.ChangedBlocks),
+				fmt.Sprintf("%.1f", float64(dm.ChangedBytes)/(1024*1024)),
+			})
 		}
 
-		memChangedBlocks := uint64(0)
-		memChangedBytes := uint64(0)
+		devTab.Print()
 
-		// Check how much data changed in memory device here...
-		if conf.useCow && !conf.useSparseFile {
-			n := "memory"
-			fn := common.DeviceFilenames[n]
-			size := int64(*memCount * 1024 * 1024)
-			baseFile := path.Join(*dSnapDir, n)
-			sp0, err := sources.NewFileStorage(baseFile, size)
-			if err != nil {
-				panic(err)
-			}
-			overlayFile := path.Join(path.Join(*dTestDir, conf.name, fmt.Sprintf("%s.overlay", fn)))
-			var sp1 storage.Provider
-			blockSize := 1024 * 1024
-			if conf.useSparseFile {
-				sp1, err = sources.NewFileStorageSparse(overlayFile, uint64(size), blockSize)
-				if err != nil {
-					fmt.Printf("Error %s %v\n", overlayFile, err)
-				}
-			} else {
-				sp1, err = sources.NewFileStorage(overlayFile, size)
-				if err != nil {
-					panic(err)
-				}
-			}
+		fmt.Printf("\n")
 
-			if sp0 != nil && sp1 != nil {
-				memChangedBlocks, memChangedBytes, err = storage.Difference(sp0, sp1, blockSize)
-				fmt.Printf("%s Memory base %d bytes, changed %d bytes, %d blocks.\n", conf.name, size, memChangedBytes, memChangedBlocks)
-			}
-		}
+		/*
+			siloSet := siloTimingsSet[conf.name]
+			siloGet := siloTimingsGet[conf.name]
+			overheadSet := (siloSet - nosiloSet) * 100 / nosiloSet
+			overheadGet := (siloGet - nosiloGet) * 100 / nosiloGet
+		*/
+
+		overhead := (siloTimingsRuntime[conf.name] - nosiloRuntime) * 100 / nosiloRuntime
 
 		tab.AppendRow([]interface{}{conf.name,
 			fbool(conf.useWriteCache), fbool(conf.useVolatility), fbool(conf.useCow), fbool(conf.useSparseFile),
-			fmt.Sprintf("%.1fs", float64(siloSet.Milliseconds())/1000), fmt.Sprintf("%d%%", overheadSet),
-			fmt.Sprintf("%.1fs", float64(siloGet.Milliseconds())/1000), fmt.Sprintf("%d%%", overheadGet),
-			fmt.Sprintf("%.1fs", float64(siloTimingsRuntime[conf.name].Milliseconds())/1000),
-			fmt.Sprintf("%d", memDMetrics.ReadOps),
-			fmt.Sprintf("%.1f", float64(memDMetrics.ReadBytes)/(1024*1024)),
-			fmt.Sprintf("%d", memDMetrics.WriteOps),
-			fmt.Sprintf("%.1f", float64(memDMetrics.WriteBytes)/(1024*1024)),
-			fmt.Sprintf("%d", memChangedBlocks),
-			fmt.Sprintf("%.1f", float64(memChangedBytes)/(1024*1024)),
+			//			fmt.Sprintf("%.1fs", float64(siloSet.Milliseconds())/1000), fmt.Sprintf("%d%%", overheadSet),
+			//			fmt.Sprintf("%.1fs", float64(siloGet.Milliseconds())/1000), fmt.Sprintf("%d%%", overheadGet),
+			fmt.Sprintf("%.1fs", float64(siloTimingsRuntime[conf.name].Milliseconds())/1000), fmt.Sprintf("%d%%", overhead),
 		})
-
 	}
 
 	tab.Print()
+}
 
+type DeviceMetrics struct {
+	DiskReadOps    uint64
+	DiskReadBytes  uint64
+	DiskWriteOps   uint64
+	DiskWriteBytes uint64
+	InReadOps      uint64
+	InReadBytes    uint64
+	InWriteOps     uint64
+	InWriteBytes   uint64
+	ChangedBlocks  uint64
+	ChangedBytes   uint64
+}
+
+/**
+ * Grab out some silo stats from the metrics system
+ *
+ */
+func getSiloDeviceStats(dummyMetrics *testutil.DummyMetrics, name string, deviceName string) *DeviceMetrics {
+	metrics := dummyMetrics.GetMetrics(name, deviceName).GetMetrics()
+	devMetrics := dummyMetrics.GetMetrics(name, fmt.Sprintf("device_%s", deviceName)).GetMetrics()
+	rodev := dummyMetrics.GetMetrics(name, fmt.Sprintf("device_rodev_%s", deviceName))
+
+	// Now grab out what we need from these...
+	dm := &DeviceMetrics{
+		InReadOps:      metrics.ReadOps,
+		InReadBytes:    metrics.ReadBytes,
+		InWriteOps:     metrics.WriteOps,
+		InWriteBytes:   metrics.WriteBytes,
+		DiskReadOps:    devMetrics.ReadOps,
+		DiskReadBytes:  devMetrics.ReadBytes,
+		DiskWriteOps:   devMetrics.WriteOps,
+		DiskWriteBytes: devMetrics.WriteBytes,
+	}
+
+	// If we are using COW, then add these on to the totals.
+	if rodev != nil {
+		devROMetrics := rodev.GetMetrics()
+
+		dm.DiskReadOps += devROMetrics.ReadOps
+		dm.DiskReadBytes += devROMetrics.ReadBytes
+		dm.DiskWriteOps += devROMetrics.WriteOps
+		dm.DiskWriteBytes += devROMetrics.WriteBytes
+
+		cow := dummyMetrics.GetCow(fmt.Sprintf("post_%s", name), deviceName)
+
+		if cow != nil {
+			changedBlocks, changedBytes, err := cow.GetDifference()
+			if err == nil {
+				dm.ChangedBlocks = uint64(changedBlocks)
+				dm.ChangedBytes = uint64(changedBytes)
+			}
+		}
+
+	}
+	return dm
 }
