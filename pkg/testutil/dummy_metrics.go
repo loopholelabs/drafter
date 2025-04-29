@@ -1,7 +1,6 @@
 package testutil
 
 import (
-	"fmt"
 	"sync"
 
 	"github.com/loopholelabs/silo/pkg/storage/dirtytracker"
@@ -94,9 +93,6 @@ func (dm *DummyMetrics) AddWaitingCache(id string, name string, wc *waitingcache
 func (dm *DummyMetrics) RemoveWaitingCache(id string, name string)                       {}
 
 func (dm *DummyMetrics) AddCopyOnWrite(id string, name string, cow *modules.CopyOnWrite) {
-
-	fmt.Printf("AddCopyOnWrite %s %s\n", id, name)
-
 	dm.lock.Lock()
 	defer dm.lock.Unlock()
 	byid, ok := dm.cowById[id]
