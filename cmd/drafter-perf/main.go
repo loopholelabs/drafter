@@ -66,7 +66,12 @@ func main() {
 	}
 
 	// Forward the port so we can connect to it...
-	portCloser, err := ForwardPort(log, netns, "tcp", 4567, 3333)
+	fport := 4567
+	if *valkeyTest {
+		fport = 6379
+	}
+
+	portCloser, err := ForwardPort(log, netns, "tcp", fport, 3333)
 	if err != nil {
 		panic(err)
 	}
@@ -108,6 +113,7 @@ func main() {
 					}
 				case <-ctx.Done():
 					fmt.Printf(" ### Unable to connect to valkey!\n")
+					return
 				}
 			}
 		}
