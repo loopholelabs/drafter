@@ -1,6 +1,7 @@
 package testutil
 
 import (
+	"fmt"
 	"sync"
 
 	"github.com/loopholelabs/silo/pkg/storage/dirtytracker"
@@ -16,11 +17,13 @@ import (
 type DummyMetrics struct {
 	lock        sync.Mutex
 	metricsById map[string]map[string]*modules.Metrics
+	cowById     map[string]map[string]*modules.CopyOnWrite
 }
 
 func NewDummyMetrics() *DummyMetrics {
 	return &DummyMetrics{
 		metricsById: make(map[string]map[string]*modules.Metrics),
+		cowById:     make(map[string]map[string]*modules.CopyOnWrite),
 	}
 }
 
@@ -28,6 +31,16 @@ func (dm *DummyMetrics) GetMetrics(id string, name string) *modules.Metrics {
 	dm.lock.Lock()
 	defer dm.lock.Unlock()
 	byid, ok := dm.metricsById[id]
+	if !ok {
+		return nil
+	}
+	return byid[name]
+}
+
+func (dm *DummyMetrics) GetCow(id string, name string) *modules.CopyOnWrite {
+	dm.lock.Lock()
+	defer dm.lock.Unlock()
+	byid, ok := dm.cowById[id]
 	if !ok {
 		return nil
 	}
@@ -80,5 +93,17 @@ func (dm *DummyMetrics) RemoveNBD(id string, name string)                       
 func (dm *DummyMetrics) AddWaitingCache(id string, name string, wc *waitingcache.Remote) {}
 func (dm *DummyMetrics) RemoveWaitingCache(id string, name string)                       {}
 
-func (dm *DummyMetrics) AddCopyOnWrite(id string, name string, cow *modules.CopyOnWrite) {}
-func (dm *DummyMetrics) RemoveCopyOnWrite(id string, name string)                        {}
+func (dm *DummyMetrics) AddCopyOnWrite(id string, name string, cow *modules.CopyOnWrite) {
+
+	fmt.Printf("AddCopyOnWrite %s %s\n", id, name)
+
+	dm.lock.Lock()
+	defer dm.lock.Unlock()
+	byid, ok := dm.cowById[id]
+	if !ok {
+		byid = make(map[string]*modules.CopyOnWrite)
+		dm.cowById[id] = byid
+	}
+	dm.cowById[id][name] = cow
+}
+func (dm *DummyMetrics) RemoveCopyOnWrite(id string, name string) {}
