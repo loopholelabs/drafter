@@ -15,6 +15,8 @@ import (
 	"github.com/loopholelabs/drafter/pkg/peer"
 	rfirecracker "github.com/loopholelabs/drafter/pkg/runtimes/firecracker"
 	loggingtypes "github.com/loopholelabs/logging/types"
+	"github.com/loopholelabs/silo/pkg/storage/config"
+	"github.com/loopholelabs/silo/pkg/storage/device"
 	"github.com/loopholelabs/silo/pkg/storage/metrics"
 )
 
@@ -31,6 +33,8 @@ type siloConfig struct {
  *
  */
 func runSilo(ctx context.Context, log loggingtypes.Logger, met metrics.SiloMetrics, testDir string, snapDir string, netns string, benchCB func(), conf siloConfig) error {
+	schemas := make(map[string]*config.DeviceSchema)
+
 	firecrackerBin, err := exec.LookPath("firecracker")
 	if err != nil {
 		return err
@@ -89,6 +93,13 @@ func runSilo(ctx context.Context, log loggingtypes.Logger, met metrics.SiloMetri
 			dev.Base = path.Join(testDir, fmt.Sprintf("silo_%s_%s", conf.name, n))
 		}
 		devicesFrom = append(devicesFrom, dev)
+
+		siloSchema, err := common.CreateSiloDevSchema(&dev)
+		if err != nil {
+			return err
+		}
+
+		schemas[n] = siloSchema
 	}
 
 	rp := &rfirecracker.FirecrackerRuntimeProvider[struct{}, ipc.AgentServerRemote[struct{}], struct{}]{
@@ -143,6 +154,16 @@ func runSilo(ctx context.Context, log loggingtypes.Logger, met metrics.SiloMetri
 		return err
 	}
 
+	// Now so we can access the data, lets re-create the Silo devices so they register with the metrics etc
+	// NB At the moment, these will never get closed, but since it's just for debug, it's not terrible.
+	for name, sc := range schemas {
+		sc.Expose = false // We don't need to expose it. Just for internal working.
+		_, _, err = device.NewDeviceWithLoggingMetrics(sc, nil, met, fmt.Sprintf("post_%s", conf.name), name)
+		if err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -178,8 +199,8 @@ func runNonSilo(ctx context.Context, log loggingtypes.Logger, testDir string, sn
 		NetNS:          netns,
 		NumaNode:       0,
 		CgroupVersion:  2,
-		Stdout:         os.Stdout,
-		Stderr:         os.Stderr,
+		Stdout:         nil,
+		Stderr:         nil,
 		EnableInput:    false,
 	})
 	if err != nil {
