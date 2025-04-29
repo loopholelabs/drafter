@@ -49,7 +49,7 @@ func (sc *siloConfig) Summary() string {
  * runSilo runs a benchmark inside a VM with Silo
  *
  */
-func runSilo(ctx context.Context, log loggingtypes.Logger, met metrics.SiloMetrics, testDir string, snapDir string, netns string, benchCB func(), conf siloConfig) error {
+func runSilo(ctx context.Context, log loggingtypes.Logger, met metrics.SiloMetrics, testDir string, snapDir string, netns string, benchCB func(), conf siloConfig, enableInput bool, enableOutput bool) error {
 	schemas := make(map[string]*config.DeviceSchema)
 
 	firecrackerBin, err := exec.LookPath("firecracker")
@@ -119,24 +119,30 @@ func runSilo(ctx context.Context, log loggingtypes.Logger, met metrics.SiloMetri
 		schemas[n] = siloSchema
 	}
 
+	hConf := rfirecracker.FirecrackerMachineConfig{
+		FirecrackerBin: firecrackerBin,
+		JailerBin:      jailerBin,
+		ChrootBaseDir:  testDir,
+		UID:            0,
+		GID:            0,
+		NetNS:          netns,
+		NumaNode:       0,
+		CgroupVersion:  2,
+		Stdout:         nil,
+		Stderr:         nil,
+		EnableInput:    enableInput,
+	}
+
+	if enableOutput {
+		hConf.Stdout = os.Stdout
+		hConf.Stderr = os.Stderr
+	}
 	rp := &rfirecracker.FirecrackerRuntimeProvider[struct{}, ipc.AgentServerRemote[struct{}], struct{}]{
-		Log: log,
-		HypervisorConfiguration: rfirecracker.FirecrackerMachineConfig{
-			FirecrackerBin: firecrackerBin,
-			JailerBin:      jailerBin,
-			ChrootBaseDir:  testDir,
-			UID:            0,
-			GID:            0,
-			NetNS:          netns,
-			NumaNode:       0,
-			CgroupVersion:  2,
-			Stdout:         os.Stdout,
-			Stderr:         os.Stderr,
-			EnableInput:    true,
-		},
-		StateName:        common.DeviceStateName,
-		MemoryName:       common.DeviceMemoryName,
-		AgentServerLocal: struct{}{},
+		Log:                     log,
+		HypervisorConfiguration: hConf,
+		StateName:               common.DeviceStateName,
+		MemoryName:              common.DeviceMemoryName,
+		AgentServerLocal:        struct{}{},
 	}
 
 	myPeer, err := peer.StartPeer(context.TODO(), context.Background(), log, met, nil, conf.name, rp)
@@ -188,7 +194,7 @@ func runSilo(ctx context.Context, log loggingtypes.Logger, met metrics.SiloMetri
  * Run a benchmark with Silo disabled.
  *
  */
-func runNonSilo(ctx context.Context, log loggingtypes.Logger, testDir string, snapDir string, netns string, benchCB func()) error {
+func runNonSilo(ctx context.Context, log loggingtypes.Logger, testDir string, snapDir string, netns string, benchCB func(), enableInput bool, enableOutput bool) error {
 	// NOW TRY WITHOUT SILO
 	agentVsockPort := uint32(26)
 	agentLocal := struct{}{}
@@ -207,7 +213,7 @@ func runNonSilo(ctx context.Context, log loggingtypes.Logger, testDir string, sn
 		return err
 	}
 
-	m, err := rfirecracker.StartFirecrackerMachine(ctx, log, &rfirecracker.FirecrackerMachineConfig{
+	conf := &rfirecracker.FirecrackerMachineConfig{
 		FirecrackerBin: firecrackerBin,
 		JailerBin:      jailerBin,
 		ChrootBaseDir:  testDir,
@@ -216,10 +222,16 @@ func runNonSilo(ctx context.Context, log loggingtypes.Logger, testDir string, sn
 		NetNS:          netns,
 		NumaNode:       0,
 		CgroupVersion:  2,
-		Stdout:         os.Stdout,
-		Stderr:         os.Stderr,
-		EnableInput:    true,
-	})
+		Stdout:         nil,
+		Stderr:         nil,
+		EnableInput:    enableInput,
+	}
+
+	if enableOutput {
+		conf.Stdout = os.Stdout
+		conf.Stderr = os.Stderr
+	}
+	m, err := rfirecracker.StartFirecrackerMachine(ctx, log, conf)
 	if err != nil {
 		return err
 	}

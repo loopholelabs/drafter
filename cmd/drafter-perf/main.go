@@ -41,6 +41,9 @@ func main() {
 	valkeyTest := flag.Bool("valkey", false, "Run valkey benchmark test")
 	valkeyIterations := flag.Int("valkeynum", 1000, "Test iterations")
 
+	enableOutput := flag.Bool("enable-output", false, "Enable VM output")
+	enableInput := flag.Bool("enable-input", false, "Enable VM input")
+
 	flag.Parse()
 
 	err := os.Mkdir(*dTestDir, 0777)
@@ -172,7 +175,7 @@ func main() {
 			}
 		}
 
-		err = runSilo(ctx, log, dummyMetrics, *dTestDir, *dSnapDir, netns, benchCB, sConf)
+		err = runSilo(ctx, log, dummyMetrics, *dTestDir, *dSnapDir, netns, benchCB, sConf, *enableInput, *enableOutput)
 		if err != nil {
 			panic(err)
 		}
@@ -188,18 +191,15 @@ func main() {
 			ctime := time.Now()
 			if *valkeyTest {
 				nosiloSet, nosiloGet, err = benchValkey(*profileCPU, "nosilo", 3333, *valkeyIterations)
-				nosiloRuntime = time.Since(ctime)
-				if err != nil {
-					panic(err)
-				}
 			} else {
 				err = benchCICD(*profileCPU, "nosilo", 1*time.Hour)
-				if err != nil {
-					panic(err)
-				}
 			}
+			if err != nil {
+				panic(err)
+			}
+			nosiloRuntime = time.Since(ctime)
 		}
-		err = runNonSilo(ctx, log, *dTestDir, *dSnapDir, netns, benchCB)
+		err = runNonSilo(ctx, log, *dTestDir, *dSnapDir, netns, benchCB, *enableInput, *enableOutput)
 		if err != nil {
 			panic(err)
 		}
