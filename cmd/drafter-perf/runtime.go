@@ -130,9 +130,9 @@ func runSilo(ctx context.Context, log loggingtypes.Logger, met metrics.SiloMetri
 			NetNS:          netns,
 			NumaNode:       0,
 			CgroupVersion:  2,
-			Stdout:         nil,
-			Stderr:         nil,
-			EnableInput:    false,
+			Stdout:         os.Stdout,
+			Stderr:         os.Stderr,
+			EnableInput:    true,
 		},
 		StateName:        common.DeviceStateName,
 		MemoryName:       common.DeviceMemoryName,
@@ -216,9 +216,9 @@ func runNonSilo(ctx context.Context, log loggingtypes.Logger, testDir string, sn
 		NetNS:          netns,
 		NumaNode:       0,
 		CgroupVersion:  2,
-		Stdout:         nil,
-		Stderr:         nil,
-		EnableInput:    false,
+		Stdout:         os.Stdout,
+		Stderr:         os.Stderr,
+		EnableInput:    true,
 	})
 	if err != nil {
 		return err

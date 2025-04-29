@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
+	"net"
 	"os"
 	"time"
 
@@ -14,9 +16,6 @@ import (
 	"github.com/muesli/gotable"
 )
 
-const dBlueDir = "out/blueprint"
-const profileCPU = true
-
 /**
  *
  * main
@@ -25,6 +24,7 @@ func main() {
 	log := logging.New(logging.Zerolog, "test", os.Stderr)
 	log.SetLevel(types.ErrorLevel)
 
+	profileCPU := flag.Bool("prof", false, "Profile CPU")
 	dTestDir := flag.String("testdir", "testdir", "Test directory")
 	dSnapDir := flag.String("snapdir", "snapdir", "Snap directory")
 	dBlueDir := flag.String("bluedir", "bluedir", "Blue directory")
@@ -33,10 +33,13 @@ func main() {
 	memCount := flag.Int("memory", 1024, "Memory MB")
 	cpuTemplate := flag.String("template", "None", "CPU Template")
 	usePVMBootArgs := flag.Bool("pvm", false, "PVM boot args")
+	runWithNonSilo := flag.Bool("nosilo", false, "Run a test with Silo disabled")
 
-	//	iterations := flag.Int("num", 1000, "Test iterations")
+	runSiloWC := flag.Bool("silowc", false, "Run a test with Silo WriteCache")
+	runSiloAll := flag.Bool("silo", false, "Run all silo tests")
 
-	runWithNonSilo := true
+	valkeyTest := flag.Bool("valkey", false, "Run valkey benchmark test")
+	valkeyIterations := flag.Int("valkeynum", 1000, "Test iterations")
 
 	flag.Parse()
 
@@ -80,62 +83,66 @@ func main() {
 		vmConfig.BootArgs = rfirecracker.DefaultBootArgs
 	}
 
-	for {
-		// Clear the snap dir...
-		os.RemoveAll(*dSnapDir)
-		os.Mkdir(*dSnapDir, 0666)
+	// Clear the snap dir...
+	os.RemoveAll(*dSnapDir)
+	os.Mkdir(*dSnapDir, 0666)
 
-		// Disable this for now...
-		valkeyUp := true
+	valkeyUp := false
 
-		waitReady := func() {
-			/*
-				// TODO: Wait here until connection success, so we know VM is all ready to go.
-				// Try to connect to valkey
-				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-				defer cancel()
-				ticker := time.NewTicker(1 * time.Second)
-				for {
-					select {
-					case <-ticker.C:
-						// Try to connect to valkey
-						con, err := net.Dial("tcp", "127.0.0.1:3333")
-						if err == nil {
-							con.Close()
-							fmt.Printf(" ### Valkey up!\n")
-							valkeyUp = true
-							return
-						}
-					case <-ctx.Done():
-						fmt.Printf(" ### Unable to connect to valkey!\n")
+	waitReady := func() {
+		if *valkeyTest {
+			// Try to connect to valkey
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			ticker := time.NewTicker(1 * time.Second)
+			for {
+				select {
+				case <-ticker.C:
+					// Try to connect to valkey
+					con, err := net.Dial("tcp", "127.0.0.1:3333")
+					if err == nil {
+						con.Close()
+						fmt.Printf(" ### Valkey up!\n")
+						valkeyUp = true
+						return
 					}
+				case <-ctx.Done():
+					fmt.Printf(" ### Unable to connect to valkey!\n")
 				}
-			*/
+			}
 		}
-		err = setupSnapshot(log, ctx, netns, vmConfig, *dBlueDir, *dSnapDir, waitReady)
-		if err != nil {
-			panic(err)
-		}
+	}
+	err = setupSnapshot(log, ctx, netns, vmConfig, *dBlueDir, *dSnapDir, waitReady)
+	if err != nil {
+		panic(err)
+	}
 
-		// Make sure valkey came up
-		if valkeyUp {
-			break
-		}
+	// Make sure valkey came up
+	if *valkeyTest && !valkeyUp {
+		panic(errors.New("Could not start valkey?"))
 	}
 
 	fmt.Printf("\n\n Starting tests...\n\n")
 
-	//	siloTimingsGet := make(map[string]time.Duration, 0)
-	//	siloTimingsSet := make(map[string]time.Duration, 0)
+	siloTimingsGet := make(map[string]time.Duration, 0)
+	siloTimingsSet := make(map[string]time.Duration, 0)
 	siloTimingsRuntime := make(map[string]time.Duration, 0)
 
 	dummyMetrics := testutil.NewDummyMetrics()
 
-	siloConfigs := []siloConfig{
-		{name: "silo", useCow: true, useSparseFile: true, useVolatility: true, useWriteCache: false},
-		{name: "silo_no_vm_no_cow", useCow: false, useSparseFile: false, useVolatility: false, useWriteCache: false},
-		{name: "silo_no_vmsf", useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: false},
-		{name: "silo_no_vmsf_wc", useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: true},
+	siloConfigs := []siloConfig{}
+
+	if *runSiloAll {
+		siloConfigs = []siloConfig{
+			{name: "silo", useCow: true, useSparseFile: true, useVolatility: true, useWriteCache: false},
+			{name: "silo_no_vm_no_cow", useCow: false, useSparseFile: false, useVolatility: false, useWriteCache: false},
+			{name: "silo_no_vmsf", useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: false},
+			{name: "silo_no_vmsf_wc", useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: true},
+		}
+	} else if *runSiloWC {
+		siloConfigs = append(siloConfigs, siloConfig{
+			name: "silo_no_vmsf_wc", useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: true,
+		})
 	}
 
 	// Start testing Silo confs
@@ -144,16 +151,19 @@ func main() {
 		benchCB := func() {
 			runtimeStart = time.Now()
 
-			err = benchCICD(sConf.name, 1*time.Hour)
-			if err != nil {
-				panic(err)
+			if *valkeyTest {
+				siloSet, siloGet, err := benchValkey(*profileCPU, sConf.name, 3333, *valkeyIterations)
+				siloTimingsSet[sConf.name] = siloSet
+				siloTimingsGet[sConf.name] = siloGet
+				if err != nil {
+					panic(err)
+				}
+			} else {
+				err = benchCICD(*profileCPU, sConf.name, 1*time.Hour)
+				if err != nil {
+					panic(err)
+				}
 			}
-			// siloSet, siloGet, err := benchValkey(sConf.name, 3333, *iterations)
-			// siloTimingsSet[sConf.name] = siloSet
-			// siloTimingsGet[sConf.name] = siloGet
-			// if err != nil {
-			//	panic(err)
-			// }
 		}
 
 		err = runSilo(ctx, log, dummyMetrics, *dTestDir, *dSnapDir, netns, benchCB, sConf)
@@ -163,22 +173,25 @@ func main() {
 		siloTimingsRuntime[sConf.name] = time.Since(runtimeStart)
 	}
 
-	//	var nosiloGet time.Duration
-	//	var nosiloSet time.Duration
+	var nosiloGet time.Duration
+	var nosiloSet time.Duration
 	var nosiloRuntime time.Duration
 
-	if runWithNonSilo {
+	if *runWithNonSilo {
 		benchCB := func() {
 			ctime := time.Now()
-			err = benchCICD("nosilo", 1*time.Hour)
-			if err != nil {
-				panic(err)
+			if *valkeyTest {
+				nosiloSet, nosiloGet, err = benchValkey(*profileCPU, "nosilo", 3333, *valkeyIterations)
+				nosiloRuntime = time.Since(ctime)
+				if err != nil {
+					panic(err)
+				}
+			} else {
+				err = benchCICD(*profileCPU, "nosilo", 1*time.Hour)
+				if err != nil {
+					panic(err)
+				}
 			}
-			// nosiloSet, nosiloGet, err = benchValkey("nosilo", 3333, *iterations)
-			nosiloRuntime = time.Since(ctime)
-			// if err != nil {
-			//	panic(err)
-			// }
 		}
 		err = runNonSilo(ctx, log, *dTestDir, *dSnapDir, netns, benchCB)
 		if err != nil {
@@ -191,23 +204,26 @@ func main() {
 
 	fmt.Printf("\n### Results ###\n\n")
 
-	tab := gotable.NewTable([]string{"Name", "WriteC", "vm", "Cow", "SparseF",
-		//		"Set time", "SetOver", "Get time", "GetOver",
-		"Runtime", "RuntimeOver",
-	},
-		[]int64{-20,
-			8, 4, 4, 8,
-			10, 8, 10, 8,
-			10, // runtime
-			12,
-		},
-		"No data in table.")
+	tab := gotable.NewTable([]string{"Name", "WriteC", "vm", "Cow", "SparseF", "Runtime", "RuntimeOver"},
+		[]int64{-20, 8, 4, 4, 8, 10, 12}, "No data in table.")
 
-	tab.AppendRow([]interface{}{"No Silo", "", "", "", "",
-		//		fmt.Sprintf("%.1fs", float64(nosiloSet.Milliseconds())/1000), "",
-		//		fmt.Sprintf("%.1fs", float64(nosiloGet.Milliseconds())/1000), "",
-		fmt.Sprintf("%.1fs", float64(nosiloRuntime.Milliseconds())/1000), "",
-	})
+	if *valkeyTest {
+		tab = gotable.NewTable([]string{"Name", "WriteC", "vm", "Cow", "SparseF",
+			"Set time", "SetOver", "Get time", "GetOver", "Runtime", "RuntimeOver"},
+			[]int64{-20, 8, 4, 4, 8, 10, 8, 10, 8, 10, 12}, "No data in table.")
+	}
+
+	if *valkeyTest {
+		tab.AppendRow([]interface{}{"No Silo", "", "", "", "",
+			fmt.Sprintf("%.1fs", float64(nosiloSet.Milliseconds())/1000), "",
+			fmt.Sprintf("%.1fs", float64(nosiloGet.Milliseconds())/1000), "",
+			fmt.Sprintf("%.1fs", float64(nosiloRuntime.Milliseconds())/1000), "",
+		})
+	} else {
+		tab.AppendRow([]interface{}{"No Silo", "", "", "", "",
+			fmt.Sprintf("%.1fs", float64(nosiloRuntime.Milliseconds())/1000), "",
+		})
+	}
 
 	fbool := func(b bool) string {
 		if b {
@@ -222,56 +238,43 @@ func main() {
 
 		fmt.Printf("== Results for %s\n", conf.Summary())
 
-		devTab := gotable.NewTable([]string{"Name",
-			"In R Ops", "In R MB", "In W Ops", "In W MB",
-			"DskR Ops", "DskR MB", "DskW Ops", "DskW MB",
-			"Chg  Blk", "Chg  MB",
-		},
-			[]int64{-20,
-				8, 8, 8, 8,
-				8, 8, 8, 8,
-				8, 8,
-			},
-			"No data in table.")
+		showDeviceStats(dummyMetrics, conf.name)
 
-		for _, r := range []string{"disk", "oci", "memory"} {
-			dm := getSiloDeviceStats(dummyMetrics, conf.name, r)
-			devTab.AppendRow([]interface{}{
-				r,
-				fmt.Sprintf("%d", dm.InReadOps),
-				fmt.Sprintf("%.1f", float64(dm.InReadBytes)/(1024*1024)),
-				fmt.Sprintf("%d", dm.InWriteOps),
-				fmt.Sprintf("%.1f", float64(dm.InWriteBytes)/(1024*1024)),
+		if *valkeyTest {
 
-				fmt.Sprintf("%d", dm.DiskReadOps),
-				fmt.Sprintf("%.1f", float64(dm.DiskReadBytes)/(1024*1024)),
-				fmt.Sprintf("%d", dm.DiskWriteOps),
-				fmt.Sprintf("%.1f", float64(dm.DiskWriteBytes)/(1024*1024)),
-
-				fmt.Sprintf("%d", dm.ChangedBlocks),
-				fmt.Sprintf("%.1f", float64(dm.ChangedBytes)/(1024*1024)),
-			})
-		}
-
-		devTab.Print()
-
-		fmt.Printf("\n")
-
-		/*
 			siloSet := siloTimingsSet[conf.name]
 			siloGet := siloTimingsGet[conf.name]
-			overheadSet := (siloSet - nosiloSet) * 100 / nosiloSet
-			overheadGet := (siloGet - nosiloGet) * 100 / nosiloGet
-		*/
+			overheadSet := 0
+			overheadGet := 0
+			overhead := 0
+			if nosiloRuntime != 0 {
+				overhead = int((siloTimingsRuntime[conf.name] - nosiloRuntime) * 100 / nosiloRuntime)
+			}
+			if nosiloSet != 0 {
+				overheadSet = int((siloSet - nosiloSet) * 100 / nosiloSet)
+			}
+			if nosiloGet != 0 {
+				overheadGet = int((siloGet - nosiloGet) * 100 / nosiloGet)
+			}
 
-		overhead := (siloTimingsRuntime[conf.name] - nosiloRuntime) * 100 / nosiloRuntime
+			tab.AppendRow([]interface{}{conf.name,
+				fbool(conf.useWriteCache), fbool(conf.useVolatility), fbool(conf.useCow), fbool(conf.useSparseFile),
+				fmt.Sprintf("%.1fs", float64(siloSet.Milliseconds())/1000), fmt.Sprintf("%d%%", overheadSet),
+				fmt.Sprintf("%.1fs", float64(siloGet.Milliseconds())/1000), fmt.Sprintf("%d%%", overheadGet),
+				fmt.Sprintf("%.1fs", float64(siloTimingsRuntime[conf.name].Milliseconds())/1000), fmt.Sprintf("%d%%", overhead),
+			})
 
-		tab.AppendRow([]interface{}{conf.name,
-			fbool(conf.useWriteCache), fbool(conf.useVolatility), fbool(conf.useCow), fbool(conf.useSparseFile),
-			//			fmt.Sprintf("%.1fs", float64(siloSet.Milliseconds())/1000), fmt.Sprintf("%d%%", overheadSet),
-			//			fmt.Sprintf("%.1fs", float64(siloGet.Milliseconds())/1000), fmt.Sprintf("%d%%", overheadGet),
-			fmt.Sprintf("%.1fs", float64(siloTimingsRuntime[conf.name].Milliseconds())/1000), fmt.Sprintf("%d%%", overhead),
-		})
+		} else {
+			overhead := 0
+			if nosiloRuntime != 0 {
+				overhead = int((siloTimingsRuntime[conf.name] - nosiloRuntime) * 100 / nosiloRuntime)
+			}
+
+			tab.AppendRow([]interface{}{conf.name,
+				fbool(conf.useWriteCache), fbool(conf.useVolatility), fbool(conf.useCow), fbool(conf.useSparseFile),
+				fmt.Sprintf("%.1fs", float64(siloTimingsRuntime[conf.name].Milliseconds())/1000), fmt.Sprintf("%d%%", overhead),
+			})
+		}
 	}
 
 	tab.Print()
@@ -332,4 +335,42 @@ func getSiloDeviceStats(dummyMetrics *testutil.DummyMetrics, name string, device
 
 	}
 	return dm
+}
+
+func showDeviceStats(dummyMetrics *testutil.DummyMetrics, name string) {
+	devTab := gotable.NewTable([]string{"Name",
+		"In R Ops", "In R MB", "In W Ops", "In W MB",
+		"DskR Ops", "DskR MB", "DskW Ops", "DskW MB",
+		"Chg  Blk", "Chg  MB",
+	},
+		[]int64{-20,
+			8, 8, 8, 8,
+			8, 8, 8, 8,
+			8, 8,
+		},
+		"No data in table.")
+
+	for _, r := range []string{"disk", "oci", "memory"} {
+		dm := getSiloDeviceStats(dummyMetrics, name, r)
+		devTab.AppendRow([]interface{}{
+			r,
+			fmt.Sprintf("%d", dm.InReadOps),
+			fmt.Sprintf("%.1f", float64(dm.InReadBytes)/(1024*1024)),
+			fmt.Sprintf("%d", dm.InWriteOps),
+			fmt.Sprintf("%.1f", float64(dm.InWriteBytes)/(1024*1024)),
+
+			fmt.Sprintf("%d", dm.DiskReadOps),
+			fmt.Sprintf("%.1f", float64(dm.DiskReadBytes)/(1024*1024)),
+			fmt.Sprintf("%d", dm.DiskWriteOps),
+			fmt.Sprintf("%.1f", float64(dm.DiskWriteBytes)/(1024*1024)),
+
+			fmt.Sprintf("%d", dm.ChangedBlocks),
+			fmt.Sprintf("%.1f", float64(dm.ChangedBytes)/(1024*1024)),
+		})
+	}
+
+	devTab.Print()
+
+	fmt.Printf("\n")
+
 }

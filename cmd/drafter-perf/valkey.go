@@ -14,7 +14,7 @@ import (
 )
 
 // Run some benchmark against the valkey vm
-func benchValkey(name string, port int, iterations int) (time.Duration, time.Duration, error) {
+func benchValkey(profileCPU bool, name string, port int, iterations int) (time.Duration, time.Duration, error) {
 	var err error
 	if profileCPU {
 		f, err := os.Create(fmt.Sprintf("%s.prof", name))

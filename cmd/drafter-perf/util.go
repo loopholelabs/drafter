@@ -62,7 +62,7 @@ func setupSnapshot(log loggingtypes.Logger, ctx context.Context, netns string, v
 		},
 	}
 
-	err = rfirecracker.CreateSnapshot(log, ctx, devices, false,
+	err = rfirecracker.CreateSnapshot(log, ctx, devices, true,
 		vmConfiguration,
 		rfirecracker.LivenessConfiguration{
 			LivenessVSockPort: uint32(25),
