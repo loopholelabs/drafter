@@ -69,16 +69,26 @@ func main() {
 	}
 
 	// Forward the port so we can connect to it...
-	fport := 4567
 	if *valkeyTest {
-		fport = 6379
-	}
+		portCloser, err := ForwardPort(log, netns, "tcp", 6379, 3333)
+		if err != nil {
+			panic(err)
+		}
+		defer portCloser()
+	} else {
+		portCloser1, err := ForwardPort(log, netns, "tcp", 4567, 4567)
+		if err != nil {
+			panic(err)
+		}
+		defer portCloser1()
 
-	portCloser, err := ForwardPort(log, netns, "tcp", fport, 3333)
-	if err != nil {
-		panic(err)
+		portCloser2, err := ForwardPort(log, netns, "tcp", 4568, 4568)
+		if err != nil {
+			panic(err)
+		}
+		defer portCloser2()
+
 	}
-	defer portCloser()
 
 	vmConfig := rfirecracker.VMConfiguration{
 		CPUCount:    int64(*cpuCount),
