@@ -143,10 +143,10 @@ func StartFirecrackerMachine(ctx context.Context, log loggingtypes.Logger, conf 
 		WithFirecrackerArgs("--api-sock", FirecrackerSocketName)
 
 	if conf.Stdout != nil {
-		jBuilder = jBuilder.WithStdout(os.Stdout)
+		jBuilder = jBuilder.WithStdout(conf.Stdout)
 	}
 	if conf.Stderr != nil {
-		jBuilder = jBuilder.WithStdout(os.Stderr)
+		jBuilder = jBuilder.WithStdout(conf.Stderr)
 	}
 	if conf.EnableInput {
 		jBuilder = jBuilder.WithStdin(os.Stdin)
