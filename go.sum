@@ -230,12 +230,6 @@ github.com/loopholelabs/goroutine-manager v0.1.1 h1:qpN9XcfNKp7aw8YI3YoIisCWZHK7
 github.com/loopholelabs/goroutine-manager v0.1.1/go.mod h1:d0r+/HNqnDR/6AXv4Mbz0dJZ7P0nATksCjkt5WWDsqA=
 github.com/loopholelabs/logging v0.3.2 h1:JPfQr/YcYoMlEbgwgoslQs/C2He/nPVCAD1FpdNceRo=
 github.com/loopholelabs/logging v0.3.2/go.mod h1:9p5/U/hNxghtUoD6k2Rzx7X4tr4ik3QzhyYUu1m7D58=
-github.com/loopholelabs/silo v0.2.15 h1:sTXbbbbPP0XEqLvHSlcOqTPlvUWHAYGFwitdK1Vmny8=
-github.com/loopholelabs/silo v0.2.15/go.mod h1:+ReFvguOgJ/2x8UNDF/VDFFB6Iyn33mAQxQXusEjf+o=
-github.com/loopholelabs/silo v0.2.16-0.20250428144223-c40585ab2108 h1:P3eYU67F37raCC8m6cKv06QuH/CTCffSUPLDAmOS9/g=
-github.com/loopholelabs/silo v0.2.16-0.20250428144223-c40585ab2108/go.mod h1:+ReFvguOgJ/2x8UNDF/VDFFB6Iyn33mAQxQXusEjf+o=
-github.com/loopholelabs/silo v0.2.16-0.20250428151135-2aee7c7a2256 h1:7s7rvxd5AuuSy3MLC0pWiZ68TrGnExBl7rakTR8tXb8=
-github.com/loopholelabs/silo v0.2.16-0.20250428151135-2aee7c7a2256/go.mod h1:+ReFvguOgJ/2x8UNDF/VDFFB6Iyn33mAQxQXusEjf+o=
 github.com/loopholelabs/silo v0.2.16-0.20250429190710-8df6bd2ad53e h1:fn9cx1CbH+zlxIZ/h34KBj6V6S6fSWJKhGNlp2+Tdcs=
 github.com/loopholelabs/silo v0.2.16-0.20250429190710-8df6bd2ad53e/go.mod h1:+ReFvguOgJ/2x8UNDF/VDFFB6Iyn33mAQxQXusEjf+o=
 github.com/lufia/plan9stats v0.0.0-20240909124753-873cd0166683 h1:7UMa6KCCMjZEMDtTVdcGu0B1GmmC7QJKiCCjyTAWQy0=

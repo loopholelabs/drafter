@@ -1,10 +1,10 @@
 name: hydrun CI
 
 on:
-  workflow_dispatch
-#  push:
-#    paths-ignore:
-#      - ".github/signatures/**"
+  workflow_dispatch:
+  push:
+    paths-ignore:
+      - ".github/signatures/**"
 #  pull_request:
 #    paths-ignore:
 #      - ".github/signatures/**"
