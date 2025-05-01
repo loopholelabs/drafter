@@ -154,19 +154,34 @@ func main() {
 
 	siloConfigs := []siloConfig{}
 
+	defaultBS := uint32(1024 * 64)
+
 	if *runSiloAll {
 		siloConfigs = []siloConfig{
-			{name: "silo", useCow: true, useSparseFile: true, useVolatility: true, useWriteCache: false},
-			{name: "silo_no_vm_no_cow", useCow: false, useSparseFile: false, useVolatility: false, useWriteCache: false},
-			{name: "silo_no_vmsf", useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: false},
-			{name: "silo_wc_80m_100m", useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: true, writeCacheMin: "80m", writeCacheMax: "100m"},
-			{name: "silo_wc_200m_400m", useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: true, writeCacheMin: "200m", writeCacheMax: "400m"},
-			{name: "silo_wc_600m_800m", useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: true, writeCacheMin: "600m", writeCacheMax: "800m"},
-			{name: "silo_wc_800m_1g", useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: true, writeCacheMin: "800m", writeCacheMax: "1g"},
+
+			{name: "silo", blockSize: defaultBS, useCow: true, useSparseFile: true, useVolatility: true, useWriteCache: false},
+			//				{name: "silo_no_vm_no_cow", blockSize: defaultBS, useCow: false, useSparseFile: false, useVolatility: false, useWriteCache: false},
+			//				{name: "silo_no_vmsf", blockSize: defaultBS, useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: false},
+			//				{name: "silo_wc_80m_100m", blockSize: defaultBS, useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: true, writeCacheMin: "80m", writeCacheMax: "100m"},
+			//				{name: "silo_wc_200m_400m", blockSize: defaultBS, useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: true, writeCacheMin: "200m", writeCacheMax: "400m"},
+			//				{name: "silo_wc_600m_800m", blockSize: defaultBS, useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: true, writeCacheMin: "600m", writeCacheMax: "800m"},
+			//				{name: "silo_wc_800m_1g", blockSize: defaultBS, useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: true, writeCacheMin: "800m", writeCacheMax: "1g"},
+
+			/*
+				{name: "silo_4k", blockSize: 4 * 1024, useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: false},
+				{name: "silo_8k", blockSize: 8 * 1024, useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: false},
+				{name: "silo_16k", blockSize: 16 * 1024, useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: false},
+				{name: "silo_32k", blockSize: 32 * 1024, useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: false},
+				{name: "silo_64k", blockSize: 64 * 1024, useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: false},
+				{name: "silo_128k", blockSize: 128 * 1024, useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: false},
+				{name: "silo_256k", blockSize: 256 * 1024, useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: false},
+				{name: "silo_512k", blockSize: 512 * 1024, useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: false},
+				{name: "silo_1m", blockSize: 1024 * 1024, useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: false},
+			*/
 		}
 	} else if *runSiloWC {
 		siloConfigs = append(siloConfigs, siloConfig{
-			name: fmt.Sprintf("silo_wc_%s_%s", *wcMin, *wcMax), useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: true, writeCacheMin: *wcMin, writeCacheMax: *wcMax,
+			name: fmt.Sprintf("silo_wc_%s_%s", *wcMin, *wcMax), blockSize: defaultBS, useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: true, writeCacheMin: *wcMin, writeCacheMax: *wcMax,
 		})
 	}
 

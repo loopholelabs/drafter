@@ -28,6 +28,7 @@ type siloConfig struct {
 	useWriteCache bool
 	writeCacheMin string
 	writeCacheMax string
+	blockSize     uint32
 }
 
 func (sc *siloConfig) Summary() string {
@@ -71,7 +72,7 @@ func runSilo(ctx context.Context, log loggingtypes.Logger, met metrics.SiloMetri
 
 		dev := common.MigrateFromDevice{
 			Name:       n,
-			BlockSize:  1024 * 1024,
+			BlockSize:  conf.blockSize,
 			Shared:     false,
 			SharedBase: true,
 			AnyOrder:   !conf.useVolatility,
@@ -137,9 +138,20 @@ func runSilo(ctx context.Context, log loggingtypes.Logger, met metrics.SiloMetri
 		EnableInput:    enableInput,
 	}
 
+	// TODO: If we haven't enabled input, we could periodically send \b to push output (sometimes needed)
+
 	if enableOutput {
 		hConf.Stdout = os.Stdout
 		hConf.Stderr = os.Stderr
+	} else {
+		fout, err := os.OpenFile(fmt.Sprintf("%s.stdout", conf.name), os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0660)
+		if err == nil {
+			defer fout.Close()
+			hConf.Stdout = fout
+			hConf.Stderr = fout
+		} else {
+			fmt.Printf("Could not open output file? %v\n", err)
+		}
 	}
 	rp := &rfirecracker.FirecrackerRuntimeProvider[struct{}, ipc.AgentServerRemote[struct{}], struct{}]{
 		Log:                     log,
@@ -234,7 +246,17 @@ func runNonSilo(ctx context.Context, log loggingtypes.Logger, testDir string, sn
 	if enableOutput {
 		conf.Stdout = os.Stdout
 		conf.Stderr = os.Stderr
+	} else {
+		fout, err := os.OpenFile("nosilo.stdout", os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0660)
+		if err == nil {
+			defer fout.Close()
+			conf.Stdout = fout
+			conf.Stderr = fout
+		} else {
+			fmt.Printf("Could not open output file? %v\n", err)
+		}
 	}
+
 	m, err := rfirecracker.StartFirecrackerMachine(ctx, log, conf)
 	if err != nil {
 		return err
