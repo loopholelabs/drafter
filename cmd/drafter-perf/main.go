@@ -36,6 +36,9 @@ func main() {
 	runWithNonSilo := flag.Bool("nosilo", false, "Run a test with Silo disabled")
 
 	runSiloWC := flag.Bool("silowc", false, "Run a test with Silo WriteCache")
+	wcMin := flag.String("wcmin", "80m", "Min writeCache size")
+	wcMax := flag.String("wcmax", "100m", "Max writeCache size")
+
 	runSiloAll := flag.Bool("silo", false, "Run all silo tests")
 
 	valkeyTest := flag.Bool("valkey", false, "Run valkey benchmark test")
@@ -156,17 +159,21 @@ func main() {
 			{name: "silo", useCow: true, useSparseFile: true, useVolatility: true, useWriteCache: false},
 			{name: "silo_no_vm_no_cow", useCow: false, useSparseFile: false, useVolatility: false, useWriteCache: false},
 			{name: "silo_no_vmsf", useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: false},
-			{name: "silo_no_vmsf_wc", useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: true},
+			{name: "silo_wc_80m_100m", useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: true, writeCacheMin: "80m", writeCacheMax: "100m"},
+			{name: "silo_wc_200m_400m", useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: true, writeCacheMin: "200m", writeCacheMax: "400m"},
+			{name: "silo_wc_600m_800m", useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: true, writeCacheMin: "600m", writeCacheMax: "800m"},
+			{name: "silo_wc_800m_1g", useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: true, writeCacheMin: "800m", writeCacheMax: "1g"},
 		}
 	} else if *runSiloWC {
 		siloConfigs = append(siloConfigs, siloConfig{
-			name: "silo_no_vmsf_wc", useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: true,
+			name: fmt.Sprintf("silo_wc_%s_%s", *wcMin, *wcMax), useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: true, writeCacheMin: *wcMin, writeCacheMax: *wcMax,
 		})
 	}
 
 	// Start testing Silo confs
 	for _, sConf := range siloConfigs {
 		var runtimeStart time.Time
+		var runtimeEnd time.Time
 		benchCB := func() {
 			runtimeStart = time.Now()
 
@@ -177,11 +184,13 @@ func main() {
 				if err != nil {
 					panic(err)
 				}
+				runtimeEnd = time.Now()
 			} else {
 				err = benchCICD(*profileCPU, sConf.name, 1*time.Hour)
 				if err != nil {
 					panic(err)
 				}
+				runtimeEnd = time.Now()
 			}
 		}
 
@@ -189,7 +198,7 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
-		siloTimingsRuntime[sConf.name] = time.Since(runtimeStart)
+		siloTimingsRuntime[sConf.name] = runtimeEnd.Sub(runtimeStart)
 	}
 
 	var nosiloGet time.Duration

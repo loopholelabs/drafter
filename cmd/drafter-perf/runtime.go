@@ -26,6 +26,8 @@ type siloConfig struct {
 	useSparseFile bool
 	useVolatility bool
 	useWriteCache bool
+	writeCacheMin string
+	writeCacheMax string
 }
 
 func (sc *siloConfig) Summary() string {
@@ -77,6 +79,8 @@ func runSilo(ctx context.Context, log loggingtypes.Logger, met metrics.SiloMetri
 
 		if conf.useWriteCache && n == "memory" {
 			dev.UseWriteCache = true
+			dev.WriteCacheMin = conf.writeCacheMin
+			dev.WriteCacheMax = conf.writeCacheMax
 		}
 
 		if conf.useCow {
