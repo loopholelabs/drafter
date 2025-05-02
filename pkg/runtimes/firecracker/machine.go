@@ -71,6 +71,8 @@ type FirecrackerMachineConfig struct {
 	Stdout         io.Writer
 	Stderr         io.Writer
 	EnableInput    bool
+
+	NoMapShared bool
 }
 
 type NetworkConfiguration struct {
@@ -308,7 +310,7 @@ func (fs *FirecrackerMachine) ResumeSnapshot(ctx context.Context, statePath stri
 		},
 		ResumeVM:     true,
 		SnapshotPath: &statePath,
-		Shared:       true,
+		Shared:       !fs.Conf.NoMapShared,
 	})
 
 	if err != nil {
