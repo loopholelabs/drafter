@@ -232,6 +232,8 @@ github.com/loopholelabs/logging v0.3.2 h1:JPfQr/YcYoMlEbgwgoslQs/C2He/nPVCAD1Fpd
 github.com/loopholelabs/logging v0.3.2/go.mod h1:9p5/U/hNxghtUoD6k2Rzx7X4tr4ik3QzhyYUu1m7D58=
 github.com/loopholelabs/silo v0.2.16-0.20250429190710-8df6bd2ad53e h1:fn9cx1CbH+zlxIZ/h34KBj6V6S6fSWJKhGNlp2+Tdcs=
 github.com/loopholelabs/silo v0.2.16-0.20250429190710-8df6bd2ad53e/go.mod h1:+ReFvguOgJ/2x8UNDF/VDFFB6Iyn33mAQxQXusEjf+o=
+github.com/loopholelabs/silo v0.2.17-0.20250506165452-8c33dfad42d4 h1:qChfieJpTaoq5Z4vMcJLuMB6KtxKFm9W8dyD6fkFNTU=
+github.com/loopholelabs/silo v0.2.17-0.20250506165452-8c33dfad42d4/go.mod h1:+ReFvguOgJ/2x8UNDF/VDFFB6Iyn33mAQxQXusEjf+o=
 github.com/lufia/plan9stats v0.0.0-20240909124753-873cd0166683 h1:7UMa6KCCMjZEMDtTVdcGu0B1GmmC7QJKiCCjyTAWQy0=
 github.com/lufia/plan9stats v0.0.0-20240909124753-873cd0166683/go.mod h1:ilwx/Dta8jXAgpFYFvSWEMwxmbWXyiUHkd5FwyKhb5k=
 github.com/magiconair/properties v1.8.9 h1:nWcCbLq1N2v/cpNsy5WvQ37Fb+YElfq20WJ/a8RkpQM=
