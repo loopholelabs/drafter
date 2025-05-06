@@ -45,7 +45,6 @@ func TestMigrationBasicHashChecks(t *testing.T) {
 	})
 }
 
-/*
 func TestMigrationBasicHashChecksSoftDirty(t *testing.T) {
 	migration(t, &migrationConfig{
 		numMigrations:  2,
@@ -61,7 +60,6 @@ func TestMigrationBasicHashChecksSoftDirty(t *testing.T) {
 		noMapShared:    true,
 	})
 }
-*/
 
 func TestMigrationBasicWithS3(t *testing.T) {
 	migration(t, &migrationConfig{
