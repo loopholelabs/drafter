@@ -1,0 +1,268 @@
+//go:build integration
+// +build integration
+
+package firecracker
+
+import (
+	"context"
+	"crypto/sha256"
+	"fmt"
+	"io"
+	"math/rand"
+	"os"
+	"os/exec"
+	"path"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/loopholelabs/drafter/pkg/common"
+	"github.com/loopholelabs/drafter/pkg/ipc"
+	"github.com/loopholelabs/drafter/pkg/peer"
+	"github.com/loopholelabs/drafter/pkg/testutil"
+	"github.com/loopholelabs/logging"
+	"github.com/loopholelabs/logging/types"
+	"github.com/loopholelabs/silo/pkg/storage/migrator"
+	"github.com/stretchr/testify/assert"
+)
+
+func TestMigrationBasicSoftDirtyHashChecks(t *testing.T) {
+	migrationSoftDirty(t, &migrationConfig{
+		numMigrations:  2,
+		minCycles:      1,
+		maxCycles:      1,
+		cycleThrottle:  100 * time.Millisecond,
+		maxDirtyBlocks: 10,
+		cpuCount:       1,
+		memorySize:     1024,
+		pauseWaitMax:   3 * time.Second,
+		enableS3:       false,
+		hashChecks:     true,
+	})
+}
+
+func migrationSoftDirty(t *testing.T, config *migrationConfig) {
+
+	err := os.Mkdir(testPeerDirCowS3, 0777)
+	assert.NoError(t, err)
+	t.Cleanup(func() {
+		err := os.RemoveAll(testPeerDirCowS3)
+		assert.NoError(t, err)
+	})
+
+	log := logging.New(logging.Zerolog, "test", os.Stderr)
+	log.SetLevel(types.ErrorLevel)
+
+	ns := testutil.SetupNAT(t, "", "dra")
+
+	netns, err := ns.ClaimNamespace()
+	assert.NoError(t, err)
+
+	grandTotalBlocksP2P := 0
+	grandTotalBlocksS3 := 0
+
+	devicesTo, snapDir, s3Endpoint := setupDevicesCowS3(t, log, netns, config)
+
+	firecrackerBin, err := exec.LookPath("firecracker")
+	assert.NoError(t, err)
+
+	jailerBin, err := exec.LookPath("jailer")
+	assert.NoError(t, err)
+
+	rp := &FirecrackerRuntimeProvider[struct{}, ipc.AgentServerRemote[struct{}], struct{}]{
+		Log: log,
+		HypervisorConfiguration: FirecrackerMachineConfig{
+			FirecrackerBin: firecrackerBin,
+			JailerBin:      jailerBin,
+			ChrootBaseDir:  testPeerDirCowS3,
+			UID:            0,
+			GID:            0,
+			NetNS:          netns,
+			NumaNode:       0,
+			CgroupVersion:  2,
+			Stdout:         nil,
+			Stderr:         nil,
+			EnableInput:    false,
+			NoMapShared:    true,
+		},
+		StateName:        common.DeviceStateName,
+		MemoryName:       common.DeviceMemoryName,
+		AgentServerLocal: struct{}{},
+	}
+
+	myPeer, err := peer.StartPeer(context.TODO(), context.Background(), log, nil, nil, "cow_test", rp)
+	assert.NoError(t, err)
+
+	hooks1 := peer.MigrateFromHooks{
+		OnLocalDeviceRequested:     func(id uint32, path string) {},
+		OnLocalDeviceExposed:       func(id uint32, path string) {},
+		OnLocalAllDevicesRequested: func() {},
+		OnXferCustomData:           func(data []byte) {},
+	}
+
+	devicesFrom := getDevicesFrom(t, snapDir, s3Endpoint, 0, config)
+	err = myPeer.MigrateFrom(context.TODO(), devicesFrom, nil, nil, hooks1)
+	assert.NoError(t, err)
+
+	err = myPeer.Resume(context.TODO(), 10*time.Second, 10*time.Second)
+	assert.NoError(t, err)
+
+	// Now we have a FIRST "resumed peer"
+
+	// Lets send it on a migration journey...
+
+	var lastPeer = myPeer
+
+	for migration := 0; migration < config.numMigrations; migration++ {
+
+		// Wait for some random time...
+		if config.pauseWaitMax.Milliseconds() > 0 {
+			waitTime := rand.Intn(int(config.pauseWaitMax.Milliseconds()))
+			time.Sleep(time.Duration(waitTime) * time.Millisecond)
+		}
+
+		// Create a new RuntimeProvider
+		rp2 := &FirecrackerRuntimeProvider[struct{}, ipc.AgentServerRemote[struct{}], struct{}]{
+			Log: log,
+			HypervisorConfiguration: FirecrackerMachineConfig{
+				FirecrackerBin: firecrackerBin,
+				JailerBin:      jailerBin,
+				ChrootBaseDir:  testPeerDirCowS3,
+				UID:            0,
+				GID:            0,
+				NetNS:          netns,
+				NumaNode:       0,
+				CgroupVersion:  2,
+				Stdout:         nil,
+				Stderr:         nil,
+				EnableInput:    false,
+				NoMapShared:    true,
+			},
+			StateName:        common.DeviceStateName,
+			MemoryName:       common.DeviceMemoryName,
+			AgentServerLocal: struct{}{},
+		}
+
+		nextPeer, err := peer.StartPeer(context.TODO(), context.Background(), log, nil, nil, "cow_test", rp2)
+		assert.NoError(t, err)
+
+		r1, w1 := io.Pipe()
+		r2, w2 := io.Pipe()
+
+		hooks := peer.MigrateToHooks{
+			OnBeforeSuspend:          func() {},
+			OnAfterSuspend:           func() {},
+			OnAllMigrationsCompleted: func() {},
+			OnProgress:               func(p map[string]*migrator.MigrationProgress) {},
+			GetXferCustomData:        func() []byte { return []byte{} },
+		}
+
+		migrateStartTime := time.Now()
+
+		var wg sync.WaitGroup
+		var sendingErr error
+		wg.Add(1)
+		go func() {
+			err := lastPeer.MigrateTo(context.TODO(), devicesTo, 10*time.Second, 10, []io.Reader{r1}, []io.Writer{w2}, hooks)
+			assert.NoError(t, err)
+			sendingErr = err
+
+			// Close the connection from here...
+			// Close from the sending side
+			r1.Close()
+			w2.Close()
+
+			wg.Done()
+		}()
+
+		var completedWg sync.WaitGroup
+		completedWg.Add(1)
+		hooks2 := peer.MigrateFromHooks{
+			OnLocalDeviceRequested:     func(id uint32, path string) {},
+			OnLocalDeviceExposed:       func(id uint32, path string) {},
+			OnLocalAllDevicesRequested: func() {},
+			OnXferCustomData:           func(data []byte) {},
+			OnCompletion: func() {
+				completedWg.Done()
+			},
+		}
+		devicesFrom = getDevicesFrom(t, snapDir, s3Endpoint, migration+1, config)
+		err = nextPeer.MigrateFrom(context.TODO(), devicesFrom, []io.Reader{r2}, []io.Writer{w1}, hooks2)
+		assert.NoError(t, err)
+
+		// Wait for sending side to complete
+		wg.Wait()
+
+		evacuationTook := time.Since(migrateStartTime)
+
+		// Make sure we got the completion callback
+		completedWg.Wait()
+
+		migrationTook := time.Since(migrateStartTime)
+
+		// Tot up some data...
+		totalBlocksP2P := 0
+		totalBlocksS3 := 0
+		for _, n := range nextPeer.GetDG().GetAllNames() {
+			di := nextPeer.GetDG().GetDeviceInformationByName(n)
+			me := di.From.GetMetrics()
+			totalBlocksP2P += len(me.AvailableP2P)
+			totalBlocksS3 += len(me.AvailableAltSources)
+			/*
+				wc := di.WaitingCacheLocal.GetMetrics()
+				fmt.Printf("From Migrated %s (%d P2P) (%d S3) / %d\n", n, len(me.AvailableP2P), len(me.AvailableAltSources), di.NumBlocks)
+				fmt.Printf("WC available local %d, remote %d\n", wc.AvailableLocal, wc.AvailableRemote)
+
+				fmt.Printf("WritesAllowed (P2P %d S3 %d)\n", me.WritesAllowedP2P, me.WritesAllowedAltSources)
+				fmt.Printf("WritesBlocked (P2P %d S3 %d)\n", me.WritesBlockedP2P, me.WritesBlockedAltSources)
+			*/
+		}
+
+		if config.hashChecks && err == nil && sendingErr == nil {
+			// Make sure everything migrated as expected...
+			for _, n := range append(common.KnownNames, "oci") {
+
+				buff1, err := os.ReadFile(path.Join(rp.DevicePath(), n))
+				assert.NoError(t, err)
+				buff2, err := os.ReadFile(path.Join(rp2.DevicePath(), n))
+				assert.NoError(t, err)
+
+				// Compare hashes so we don't get tons of output if they do differ.
+				hash1 := sha256.Sum256(buff1)
+				hash2 := sha256.Sum256(buff2)
+
+				fmt.Printf(" # Migration %d End hash %s ~ %x => %x\n", migration+1, n, hash1, hash2)
+
+				// Check the data is identical
+				assert.Equal(t, hash1, hash2)
+			}
+		}
+
+		grandTotalBlocksP2P += totalBlocksP2P
+		grandTotalBlocksS3 += totalBlocksS3
+
+		// Close the last peer
+		err = lastPeer.Close()
+		assert.NoError(t, err)
+
+		pMetrics := lastPeer.GetMetrics()
+
+		// We can resume here safely
+		err = nextPeer.Resume(context.TODO(), 10*time.Second, 10*time.Second)
+		assert.NoError(t, err)
+
+		lastPeer = nextPeer
+
+		fmt.Printf("MIGRATION %d COMPLETED evacuated in %dms migrated in %dms (%d P2P) (%d S3) (%d flush ops in %dms)\n", migration+1,
+			evacuationTook.Milliseconds(), migrationTook.Milliseconds(), totalBlocksP2P, totalBlocksS3, pMetrics.FlushDataOps, pMetrics.FlushDataTimeMs)
+	}
+
+	// Close the final peer
+	err = lastPeer.Close()
+	assert.NoError(t, err)
+
+	// We would expect to have migrated data both via P2P, and also via S3.
+	assert.Greater(t, grandTotalBlocksP2P, 0)
+	//	assert.Greater(t, grandTotalBlocksS3, 0)
+
+}

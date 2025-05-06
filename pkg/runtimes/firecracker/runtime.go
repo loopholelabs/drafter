@@ -13,6 +13,9 @@ import (
 	"github.com/loopholelabs/drafter/pkg/common"
 	"github.com/loopholelabs/drafter/pkg/ipc"
 	"github.com/loopholelabs/logging/types"
+	"github.com/loopholelabs/silo/pkg/storage/devicegroup"
+	"github.com/loopholelabs/silo/pkg/storage/expose"
+	"github.com/loopholelabs/silo/pkg/storage/sources"
 )
 
 var ErrConfigFileNotFound = errors.New("config file not found")
@@ -135,17 +138,21 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Start(ctx context.Context, rescue
 	return err
 }
 
-func (rp *FirecrackerRuntimeProvider[L, R, G]) FlushData(ctx context.Context) error {
+func (rp *FirecrackerRuntimeProvider[L, R, G]) FlushData(ctx context.Context, dg *devicegroup.DeviceGroup) error {
 	if rp.Log != nil {
 		rp.Log.Info().Msg("resumed runner Msync")
 	}
 
-	err := rp.Machine.CreateSnapshot(ctx, common.DeviceStateName, "", SDKSnapshotTypeMsync)
-	if err != nil {
-		if rp.Log != nil {
-			rp.Log.Error().Err(err).Msg("error in resumed runner Msync")
+	if !rp.HypervisorConfiguration.NoMapShared {
+		err := rp.Machine.CreateSnapshot(ctx, common.DeviceStateName, "", SDKSnapshotTypeMsync)
+		if err != nil {
+			if rp.Log != nil {
+				rp.Log.Error().Err(err).Msg("error in resumed runner Msync")
+			}
+			return errors.Join(ErrCouldNotCreateSnapshot, err)
 		}
-		return errors.Join(ErrCouldNotCreateSnapshot, err)
+	} else {
+		// TODO: We should probably do a softDirty page read here.
 	}
 	return nil
 }
@@ -158,14 +165,14 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) GetVMPid() int {
 	return rp.Machine.VMPid
 }
 
-func (rp *FirecrackerRuntimeProvider[L, R, G]) Close() error {
+func (rp *FirecrackerRuntimeProvider[L, R, G]) Close(dg *devicegroup.DeviceGroup) error {
 	if rp.agent != nil {
 		if rp.Log != nil {
 			rp.Log.Debug().Msg("Closing resumed runner")
 		}
 
 		// We only need to do this if it hasn't been suspended, but it'll refuse inside Suspend
-		err := rp.Suspend(context.TODO(), 10*time.Minute) // TODO. Timeout
+		err := rp.Suspend(context.TODO(), 10*time.Minute, dg) // TODO. Timeout
 		if err != nil {
 			return err
 		}
@@ -198,7 +205,7 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Close() error {
 	return nil
 }
 
-func (rp *FirecrackerRuntimeProvider[L, R, G]) Suspend(ctx context.Context, suspendTimeout time.Duration) error {
+func (rp *FirecrackerRuntimeProvider[L, R, G]) Suspend(ctx context.Context, suspendTimeout time.Duration, dg *devicegroup.DeviceGroup) error {
 	rp.runningLock.Lock()
 	defer rp.runningLock.Unlock()
 
@@ -242,6 +249,33 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Suspend(ctx context.Context, susp
 	}
 
 	rp.running = false
+
+	if rp.HypervisorConfiguration.NoMapShared {
+		if rp.Log != nil {
+			rp.Log.Info().Msg("Grabbing final softDirty memory changes")
+		}
+		// Do a softDirty memory read here, and write it to the memory device.
+		// Currently, we do the write through NBD, but we could shortcut later if we wish.
+		pm := expose.NewProcessMemory(rp.Machine.VMPid)
+		di := dg.GetDeviceInformationByName("memory")
+		addrStart, addrEnd, err := pm.GetMemoryRange("/memory")
+		if err != nil {
+			return err
+		}
+		prov, err := sources.NewFileStorage(path.Join("/dev", di.Exp.Device()), int64(di.Size))
+		if err != nil {
+			return err
+		}
+
+		_, err = pm.CopySoftDirtyMemory(addrStart, addrEnd, prov)
+		if err != nil {
+			return err
+		}
+		err = prov.Close()
+		if err != nil {
+			return err
+		}
+	}
 
 	return nil
 }

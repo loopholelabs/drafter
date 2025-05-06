@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/loopholelabs/drafter/pkg/common"
+	"github.com/loopholelabs/silo/pkg/storage/devicegroup"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -32,9 +33,9 @@ func (rp *MockRuntimeProvider) Start(ctx context.Context, rescueCtx context.Cont
 	return nil
 }
 
-func (rp *MockRuntimeProvider) Close() error {
+func (rp *MockRuntimeProvider) Close(dg *devicegroup.DeviceGroup) error {
 	fmt.Printf(" ### Close %s\n", rp.HomePath)
-	rp.Suspend(context.TODO(), 10*time.Second)
+	rp.Suspend(context.TODO(), 10*time.Second, dg)
 	return nil
 }
 
@@ -46,7 +47,7 @@ func (rp *MockRuntimeProvider) GetVMPid() int {
 	return 0
 }
 
-func (rp *MockRuntimeProvider) Suspend(ctx context.Context, timeout time.Duration) error {
+func (rp *MockRuntimeProvider) Suspend(ctx context.Context, timeout time.Duration, dg *devicegroup.DeviceGroup) error {
 	fmt.Printf(" ### Suspend %s\n", rp.HomePath)
 
 	if rp.writeCancel != nil {
@@ -57,7 +58,7 @@ func (rp *MockRuntimeProvider) Suspend(ctx context.Context, timeout time.Duratio
 	return nil
 }
 
-func (rp *MockRuntimeProvider) FlushData(ctx context.Context) error {
+func (rp *MockRuntimeProvider) FlushData(ctx context.Context, dg *devicegroup.DeviceGroup) error {
 	fmt.Printf(" ### FlushData %s\n", rp.HomePath)
 
 	for _, devName := range common.KnownNames {

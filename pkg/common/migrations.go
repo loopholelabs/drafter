@@ -47,11 +47,12 @@ type MigrateFromDevice struct {
 	BlockSize uint32 `json:"blockSize"`
 	Shared    bool   `json:"shared"`
 
-	UseSparseFile bool   `json:"usesparsefile"`
-	AnyOrder      bool   `json:"anyorder"`
-	UseWriteCache bool   `json:"usewritecache"`
-	WriteCacheMin string `json:"writecachemin"`
-	WriteCacheMax string `json:"writecachemax"`
+	UseSparseFile       bool   `json:"usesparsefile"`
+	AnyOrder            bool   `json:"anyorder"`
+	UseWriteCache       bool   `json:"usewritecache"`
+	WriteCacheMin       string `json:"writecachemin"`
+	WriteCacheMax       string `json:"writecachemax"`
+	WriteCacheBlocksize string `json:"writecacheblocksize"`
 
 	SharedBase bool `json:"sharedbase"`
 
@@ -184,6 +185,7 @@ func CreateSiloDevSchema(i *MigrateFromDevice) (*config.DeviceSchema, error) {
 			MinSize:     i.WriteCacheMin,
 			MaxSize:     i.WriteCacheMax,
 			FlushPeriod: "5m",
+			BlockSize:   i.WriteCacheBlocksize,
 		}
 	}
 

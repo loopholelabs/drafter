@@ -164,6 +164,23 @@ func StartFirecrackerMachine(ctx context.Context, log loggingtypes.Logger, conf 
 			Setpgid: true,
 			Pgid:    0,
 		}
+
+		// Set something up to send backspace lots
+		r, w := io.Pipe()
+
+		jBuilder = jBuilder.WithStdin(r)
+		go func() {
+			tick := time.NewTicker(50 * time.Millisecond)
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-tick.C:
+					// Write some backspaces
+					w.Write([]byte("\b\b\b\b\b\b\b\b"))
+				}
+			}
+		}()
 	}
 
 	err = server.cmd.Start()
