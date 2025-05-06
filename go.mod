@@ -2,6 +2,8 @@ module github.com/loopholelabs/drafter
 
 go 1.23.8
 
+// replace github.com/loopholelabs/silo => ../silo
+
 require (
 	github.com/coreos/go-iptables v0.8.0
 	github.com/freddierice/go-losetup/v2 v2.0.1
@@ -13,11 +15,13 @@ require (
 	github.com/loopholelabs/logging v0.3.2
 	github.com/loopholelabs/silo v0.2.16-0.20250429190710-8df6bd2ad53e
 	github.com/metal-stack/go-ipam v1.14.8
+	github.com/muesli/gotable v0.0.0-20210307142814-960606545b8b
 	github.com/nixigaj/go-default-route v0.0.0-20231019115740-0722aff7ebf3
 	github.com/pojntfx/panrpc/go v0.0.0-20250417210125-a744df25ac56
 	github.com/prometheus/client_golang v1.22.0
 	github.com/sirupsen/logrus v1.9.3
 	github.com/stretchr/testify v1.10.0
+	github.com/tklauser/ps v0.0.3
 	github.com/valkey-io/valkey-go v1.0.57
 	github.com/vishvananda/netlink v1.3.0
 	github.com/vishvananda/netns v0.0.5
@@ -94,7 +98,6 @@ require (
 	github.com/moby/sys/user v0.3.0 // indirect
 	github.com/moby/term v0.5.0 // indirect
 	github.com/montanaflynn/stats v0.7.1 // indirect
-	github.com/muesli/gotable v0.0.0-20210307142814-960606545b8b // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/oklog/ulid v1.3.1 // indirect
 	github.com/onsi/ginkgo/v2 v2.22.1 // indirect
