@@ -51,7 +51,7 @@ func migrationSoftDirty(t *testing.T, config *migrationConfig) {
 	})
 
 	log := logging.New(logging.Zerolog, "test", os.Stderr)
-	log.SetLevel(types.ErrorLevel)
+	log.SetLevel(types.DebugLevel)
 
 	ns := testutil.SetupNAT(t, "", "dra")
 

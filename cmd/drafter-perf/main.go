@@ -154,19 +154,27 @@ func main() {
 
 	siloConfigs := []siloConfig{}
 
-	defaultBS := uint32(1024 * 64)
+	defaultBS := uint32(1024 * 1024)
 
 	if *runSiloAll {
 		siloConfigs = []siloConfig{
+			//			{name: "silo", blockSize: defaultBS, useCow: true, useSparseFile: true, useVolatility: true, useWriteCache: false, grabPeriod: 0},
 
-			{name: "silo", blockSize: defaultBS, useCow: true, useSparseFile: true, useVolatility: true, useWriteCache: false},
+			//			{name: "silo_100ms", blockSize: defaultBS, useCow: true, useSparseFile: true, useVolatility: true, useWriteCache: false, grabPeriod: 100 * time.Millisecond},
+			{name: "silo_1s", blockSize: defaultBS, useCow: true, useSparseFile: true, useVolatility: true, useWriteCache: false, grabPeriod: 1 * time.Second},
+			//			{name: "silo_2s", blockSize: defaultBS, useCow: true, useSparseFile: true, useVolatility: true, useWriteCache: false, grabPeriod: 2 * time.Second},
+			//			{name: "silo_5s", blockSize: defaultBS, useCow: true, useSparseFile: true, useVolatility: true, useWriteCache: false, grabPeriod: 5 * time.Second},
+			//			{name: "silo_10s", blockSize: defaultBS, useCow: true, useSparseFile: true, useVolatility: true, useWriteCache: false, grabPeriod: 10 * time.Second},
+			//			{name: "silo_30s", blockSize: defaultBS, useCow: true, useSparseFile: true, useVolatility: true, useWriteCache: false, grabPeriod: 30 * time.Second},
+
 			//				{name: "silo_no_vm_no_cow", blockSize: defaultBS, useCow: false, useSparseFile: false, useVolatility: false, useWriteCache: false},
 			//				{name: "silo_no_vmsf", blockSize: defaultBS, useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: false},
-			//				{name: "silo_wc_80m_100m", blockSize: defaultBS, useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: true, writeCacheMin: "80m", writeCacheMax: "100m"},
+			//			{name: "silo_wc_1g_1.2g", blockSize: defaultBS, useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: true, writeCacheMin: "1000m", writeCacheMax: "1200m"},
+			//			{name: "silo_wc_2g_2.2g", blockSize: defaultBS, useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: true, writeCacheMin: "2000m", writeCacheMax: "2200m"},
+			//			{name: "silo_wc_4g_4.2g", blockSize: defaultBS, useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: true, writeCacheMin: "4000m", writeCacheMax: "4200m"},
 			//				{name: "silo_wc_200m_400m", blockSize: defaultBS, useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: true, writeCacheMin: "200m", writeCacheMax: "400m"},
 			//				{name: "silo_wc_600m_800m", blockSize: defaultBS, useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: true, writeCacheMin: "600m", writeCacheMax: "800m"},
 			//				{name: "silo_wc_800m_1g", blockSize: defaultBS, useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: true, writeCacheMin: "800m", writeCacheMax: "1g"},
-
 			/*
 				{name: "silo_4k", blockSize: 4 * 1024, useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: false},
 				{name: "silo_8k", blockSize: 8 * 1024, useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: false},
@@ -201,7 +209,7 @@ func main() {
 				}
 				runtimeEnd = time.Now()
 			} else {
-				err = benchCICD(*profileCPU, sConf.name, 1*time.Hour)
+				err = benchCICD(*profileCPU, sConf.name, 1*time.Hour, sConf.grabPeriod)
 				if err != nil {
 					panic(err)
 				}
@@ -226,7 +234,7 @@ func main() {
 			if *valkeyTest {
 				nosiloSet, nosiloGet, err = benchValkey(*profileCPU, "nosilo", 3333, *valkeyIterations)
 			} else {
-				err = benchCICD(*profileCPU, "nosilo", 1*time.Hour)
+				err = benchCICD(*profileCPU, "nosilo", 1*time.Hour, 10*time.Second)
 			}
 			if err != nil {
 				panic(err)

@@ -21,14 +21,16 @@ import (
 )
 
 type siloConfig struct {
-	name          string
-	useCow        bool
-	useSparseFile bool
-	useVolatility bool
-	useWriteCache bool
-	writeCacheMin string
-	writeCacheMax string
-	blockSize     uint32
+	name                string
+	useCow              bool
+	useSparseFile       bool
+	useVolatility       bool
+	useWriteCache       bool
+	writeCacheMin       string
+	writeCacheMax       string
+	writeCacheBlocksize string
+	blockSize           uint32
+	grabPeriod          time.Duration
 }
 
 func (sc *siloConfig) Summary() string {
@@ -82,6 +84,7 @@ func runSilo(ctx context.Context, log loggingtypes.Logger, met metrics.SiloMetri
 			dev.UseWriteCache = true
 			dev.WriteCacheMin = conf.writeCacheMin
 			dev.WriteCacheMax = conf.writeCacheMax
+			dev.WriteCacheBlocksize = conf.writeCacheBlocksize
 		}
 
 		if conf.useCow {
@@ -136,6 +139,7 @@ func runSilo(ctx context.Context, log loggingtypes.Logger, met metrics.SiloMetri
 		Stdout:         nil,
 		Stderr:         nil,
 		EnableInput:    enableInput,
+		NoMapShared:    true,
 	}
 
 	// TODO: If we haven't enabled input, we could periodically send \b to push output (sometimes needed)

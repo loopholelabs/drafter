@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path"
 	"sync"
@@ -14,8 +15,6 @@ import (
 	"github.com/loopholelabs/drafter/pkg/ipc"
 	"github.com/loopholelabs/logging/types"
 	"github.com/loopholelabs/silo/pkg/storage/devicegroup"
-	"github.com/loopholelabs/silo/pkg/storage/expose"
-	"github.com/loopholelabs/silo/pkg/storage/sources"
 )
 
 var ErrConfigFileNotFound = errors.New("config file not found")
@@ -77,12 +76,16 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Resume(resumeTimeout time.Duratio
 	resumeSnapshotAndAcceptCtx, cancelResumeSnapshotAndAcceptCtx := context.WithTimeout(resumeCtx, resumeTimeout)
 	defer cancelResumeSnapshotAndAcceptCtx()
 
+	fmt.Printf("ResumeSnapshot\n")
+
 	err = rp.Machine.ResumeSnapshot(resumeSnapshotAndAcceptCtx, common.DeviceStateName, common.DeviceMemoryName)
 	if err != nil {
 		return err
 	}
 
 	rp.running = true
+
+	fmt.Printf("StartAgentRPC\n")
 
 	// Start the RPC stuff...
 	rp.agent, err = ipc.StartAgentRPC[L, R](
@@ -250,32 +253,50 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Suspend(ctx context.Context, susp
 
 	rp.running = false
 
-	if rp.HypervisorConfiguration.NoMapShared {
-		if rp.Log != nil {
-			rp.Log.Info().Msg("Grabbing final softDirty memory changes")
-		}
-		// Do a softDirty memory read here, and write it to the memory device.
-		// Currently, we do the write through NBD, but we could shortcut later if we wish.
-		pm := expose.NewProcessMemory(rp.Machine.VMPid)
-		di := dg.GetDeviceInformationByName("memory")
-		addrStart, addrEnd, err := pm.GetMemoryRange("/memory")
-		if err != nil {
-			return err
-		}
-		prov, err := sources.NewFileStorage(path.Join("/dev", di.Exp.Device()), int64(di.Size))
-		if err != nil {
-			return err
-		}
+	/*
+		if rp.HypervisorConfiguration.NoMapShared {
+			if rp.Log != nil {
+				rp.Log.Info().Msg("Grabbing final softDirty memory changes")
+			}
+			// Do a softDirty memory read here, and write it to the memory device.
+			// Currently, we do the write through NBD, but we could shortcut later if we wish.
+			pm := expose.NewProcessMemory(rp.Machine.VMPid)
+			di := dg.GetDeviceInformationByName("memory")
+			addrStart, addrEnd, err := pm.GetMemoryRange("/memory")
+			if err != nil {
+				return err
+			}
+			if rp.Log != nil {
+				rp.Log.Info().Uint64("addrEnd", addrEnd).Uint64("addrStart", addrStart).Msg("SoftDirty memory changes")
+			}
 
-		_, err = pm.CopySoftDirtyMemory(addrStart, addrEnd, prov)
-		if err != nil {
-			return err
+			n, err := pm.CopySoftDirtyMemory(addrStart, addrEnd, di.Exp.GetProvider())
+			if err != nil {
+				return err
+			}
+			if rp.Log != nil {
+				rp.Log.Info().Uint64("bytes", n).Msg("SoftDirty copied memory to silo provider")
+			}
+
+			// Kinda hacky. We also write it through the nbd device, so hash verify works from there...
+			prov, err := sources.NewFileStorage(path.Join("/dev", di.Exp.Device()), int64(di.Size))
+			if err != nil {
+				return err
+			}
+
+			n, err = pm.CopySoftDirtyMemory(addrStart, addrEnd, prov)
+			if err != nil {
+				return err
+			}
+			if rp.Log != nil {
+				rp.Log.Info().Uint64("bytes", n).Msg("SoftDirty copied memory")
+			}
+			err = prov.Close()
+			if err != nil {
+				return err
+			}
 		}
-		err = prov.Close()
-		if err != nil {
-			return err
-		}
-	}
+	*/
 
 	return nil
 }

@@ -140,8 +140,8 @@ func setupSnapshot(t *testing.T, log types.Logger, ctx context.Context, netns st
 			NetNS:          netns,
 			NumaNode:       0,
 			CgroupVersion:  2,
-			Stdout:         os.Stdout,
-			Stderr:         os.Stderr,
+			Stdout:         nil,
+			Stderr:         nil,
 			EnableInput:    false,
 		},
 		NetworkConfiguration{

@@ -185,7 +185,7 @@ func CreateSiloDevSchema(i *MigrateFromDevice) (*config.DeviceSchema, error) {
 			MinSize:     i.WriteCacheMin,
 			MaxSize:     i.WriteCacheMax,
 			FlushPeriod: "5m",
-			BlockSize:   i.WriteCacheBlocksize,
+			//			BlockSize:   i.WriteCacheBlocksize,
 		}
 	}
 

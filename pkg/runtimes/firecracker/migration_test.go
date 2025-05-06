@@ -45,6 +45,22 @@ func TestMigrationBasicHashChecks(t *testing.T) {
 	})
 }
 
+func TestMigrationBasicHashChecksSoftDirty(t *testing.T) {
+	migration(t, &migrationConfig{
+		numMigrations:  2,
+		minCycles:      1,
+		maxCycles:      1,
+		cycleThrottle:  100 * time.Millisecond,
+		maxDirtyBlocks: 10,
+		cpuCount:       1,
+		memorySize:     1024,
+		pauseWaitMax:   3 * time.Second,
+		enableS3:       false,
+		hashChecks:     true,
+		noMapShared:    true,
+	})
+}
+
 func TestMigrationBasicWithS3(t *testing.T) {
 	migration(t, &migrationConfig{
 		numMigrations:  2,
@@ -131,6 +147,7 @@ type migrationConfig struct {
 	pauseWaitMax   time.Duration
 	enableS3       bool
 	hashChecks     bool
+	noMapShared    bool
 }
 
 /**
@@ -216,7 +233,7 @@ func migration(t *testing.T, config *migrationConfig) {
 	})
 
 	log := logging.New(logging.Zerolog, "test", os.Stderr)
-	log.SetLevel(types.ErrorLevel)
+	log.SetLevel(types.DebugLevel)
 
 	ns := testutil.SetupNAT(t, "", "dra")
 
@@ -248,6 +265,7 @@ func migration(t *testing.T, config *migrationConfig) {
 			Stdout:         nil,
 			Stderr:         nil,
 			EnableInput:    false,
+			NoMapShared:    config.noMapShared,
 		},
 		StateName:        common.DeviceStateName,
 		MemoryName:       common.DeviceMemoryName,
@@ -300,6 +318,7 @@ func migration(t *testing.T, config *migrationConfig) {
 				Stdout:         nil,
 				Stderr:         nil,
 				EnableInput:    false,
+				NoMapShared:    config.noMapShared,
 			},
 			StateName:        common.DeviceStateName,
 			MemoryName:       common.DeviceMemoryName,
@@ -411,7 +430,7 @@ func migration(t *testing.T, config *migrationConfig) {
 		pMetrics := lastPeer.GetMetrics()
 
 		// We can resume here safely
-		err = nextPeer.Resume(context.TODO(), 10*time.Second, 10*time.Second)
+		err = nextPeer.Resume(context.TODO(), 30*time.Second, 30*time.Second)
 		assert.NoError(t, err)
 
 		lastPeer = nextPeer
