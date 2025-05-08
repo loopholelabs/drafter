@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"os"
 	"path"
 	"sync"
@@ -33,6 +32,8 @@ type FirecrackerRuntimeProvider[L ipc.AgentServerLocal, R ipc.AgentServerRemote[
 	StateName               string
 	MemoryName              string
 
+	memoryLock sync.Mutex
+
 	hypervisorCtx    context.Context
 	hypervisorCancel context.CancelFunc
 	resumeCtx        context.Context
@@ -40,6 +41,8 @@ type FirecrackerRuntimeProvider[L ipc.AgentServerLocal, R ipc.AgentServerRemote[
 
 	runningLock sync.Mutex
 	running     bool
+
+	RunningCB func(r bool)
 
 	// RPC Bits
 	agent            *ipc.AgentRPC[L, R, G]
@@ -78,16 +81,12 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Resume(resumeTimeout time.Duratio
 	resumeSnapshotAndAcceptCtx, cancelResumeSnapshotAndAcceptCtx := context.WithTimeout(resumeCtx, resumeTimeout)
 	defer cancelResumeSnapshotAndAcceptCtx()
 
-	fmt.Printf("ResumeSnapshot\n")
-
 	err = rp.Machine.ResumeSnapshot(resumeSnapshotAndAcceptCtx, common.DeviceStateName, common.DeviceMemoryName)
 	if err != nil {
 		return err
 	}
 
-	rp.running = true
-
-	fmt.Printf("StartAgentRPC\n")
+	rp.setRunning(true)
 
 	// Start the RPC stuff...
 	rp.agent, err = ipc.StartAgentRPC[L, R](
@@ -113,6 +112,16 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Resume(resumeTimeout time.Duratio
 	}
 
 	return nil
+}
+
+func (rp *FirecrackerRuntimeProvider[L, R, G]) setRunning(r bool) {
+	rp.running = r
+
+	if rp.RunningCB != nil {
+		rp.RunningCB(r)
+	}
+
+	// TODO: Start or stop a ticker to grab memory changes...
 }
 
 func (rp *FirecrackerRuntimeProvider[L, R, G]) GetRemote(ctx context.Context) (R, error) {
@@ -157,7 +166,10 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) FlushData(ctx context.Context, dg
 			return errors.Join(ErrCouldNotCreateSnapshot, err)
 		}
 	} else {
-		// TODO: We should probably do a softDirty page read here.
+		err := rp.grabMemoryChanges(dg)
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -253,49 +265,86 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Suspend(ctx context.Context, susp
 		return errors.Join(ErrCouldNotCreateSnapshot, err)
 	}
 
-	rp.running = false
+	rp.setRunning(false)
 
 	if rp.HypervisorConfiguration.NoMapShared {
-		if rp.Log != nil {
-			rp.Log.Info().Msg("Grabbing final softDirty memory changes")
-		}
-		// Do a softDirty memory read here, and write it to the memory device.
-		// Currently, we do the write through NBD, but we could shortcut later if we wish.
-		pm := expose.NewProcessMemory(rp.Machine.VMPid)
-		di := dg.GetDeviceInformationByName("memory")
-		addrStart, addrEnd, err := pm.GetMemoryRange("/memory")
+		err = rp.grabMemoryChanges(dg)
 		if err != nil {
 			return err
 		}
-		if rp.Log != nil {
-			rp.Log.Info().Uint64("addrEnd", addrEnd).Uint64("addrStart", addrStart).Msg("SoftDirty memory changes")
-		}
+	}
 
-		n, err := pm.CopySoftDirtyMemory(addrStart, addrEnd, di.Exp.GetProvider())
-		if err != nil {
-			return err
-		}
-		if rp.Log != nil {
-			rp.Log.Info().Uint64("bytes", n).Msg("SoftDirty copied memory to silo provider")
-		}
+	return nil
+}
 
-		// Kinda hacky. We also write it through the nbd device, so hash verify works from there...
-		prov, err := sources.NewFileStorage(path.Join("/dev", di.Exp.Device()), int64(di.Size))
-		if err != nil {
-			return err
-		}
+func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChanges(dg *devicegroup.DeviceGroup) error {
+	rp.memoryLock.Lock()
+	defer rp.memoryLock.Unlock()
 
-		n, err = pm.CopySoftDirtyMemory(addrStart, addrEnd, prov)
+	if rp.Log != nil {
+		rp.Log.Debug().Msg("Grabbing softDirty memory changes")
+	}
+	// Do a softDirty memory read here, and write it to the memory device.
+	// Currently, we do the write through NBD, but we could shortcut later if we wish.
+	pm := expose.NewProcessMemory(rp.Machine.VMPid)
+	di := dg.GetDeviceInformationByName("memory")
+	addrStart, addrEnd, err := pm.GetMemoryRange("/memory")
+	if err != nil {
+		return err
+	}
+	if rp.Log != nil {
+		rp.Log.Debug().Uint64("addrEnd", addrEnd).Uint64("addrStart", addrStart).Msg("SoftDirty memory changes")
+	}
+
+	lockcb := func() {
+		err := pm.PauseProcess()
 		if err != nil {
-			return err
+			if rp.Log != nil {
+				rp.Log.Error().Err(err).Msg("Could not pause process")
+			}
 		}
-		if rp.Log != nil {
-			rp.Log.Info().Uint64("bytes", n).Msg("SoftDirty copied memory")
-		}
-		err = prov.Close()
+	}
+
+	unlockcb := func() {
+		err := pm.ResumeProcess()
 		if err != nil {
-			return err
+			if rp.Log != nil {
+				rp.Log.Error().Err(err).Msg("Could not resume process")
+			}
 		}
+	}
+
+	ranges, err := pm.ReadSoftDirtyMemoryRangeList(addrStart, addrEnd, lockcb, unlockcb)
+	if err != nil {
+		return err
+	}
+
+	// Copy to the Silo provider
+	n, err := pm.CopyMemoryRanges(addrStart, ranges, di.Exp.GetProvider())
+	if err != nil {
+		return err
+	}
+	if rp.Log != nil {
+		rp.Log.Debug().Uint64("bytes", n).Msg("SoftDirty copied memory to silo provider")
+	}
+
+	// Kinda hacky. We also write it through the nbd device, so hash verify works from there...
+	// We should
+	prov, err := sources.NewFileStorage(path.Join("/dev", di.Exp.Device()), int64(di.Size))
+	if err != nil {
+		return err
+	}
+
+	n, err = pm.CopyMemoryRanges(addrStart, ranges, prov)
+	if err != nil {
+		return err
+	}
+	if rp.Log != nil {
+		rp.Log.Info().Uint64("bytes", n).Msg("SoftDirty copied memory")
+	}
+	err = prov.Close()
+	if err != nil {
+		return err
 	}
 
 	return nil
