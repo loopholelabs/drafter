@@ -97,7 +97,7 @@ func (peer *Peer) Close() error {
 	}
 
 	// Try to close the runtimeProvider first
-	errRuntime := peer.runtimeProvider.Close()
+	errRuntime := peer.runtimeProvider.Close(peer.GetDG())
 	if errRuntime != nil {
 		peer.log.Error().Err(errRuntime).Msg("Error closing runtime")
 	}
@@ -405,7 +405,7 @@ func (peer *Peer) MigrateTo(ctx context.Context, devices []common.MigrateToDevic
 	}
 
 	suspend := func(ctx context.Context, timeout time.Duration) error {
-		err := peer.runtimeProvider.Suspend(ctx, timeout)
+		err := peer.runtimeProvider.Suspend(ctx, timeout, peer.GetDG())
 		if err == nil {
 			atomic.StoreInt64(&peer.metricVMRunning, 0)
 
@@ -419,7 +419,7 @@ func (peer *Peer) MigrateTo(ctx context.Context, devices []common.MigrateToDevic
 
 	flushData := func(ctx context.Context) error {
 		ctime := time.Now()
-		err := peer.runtimeProvider.FlushData(ctx)
+		err := peer.runtimeProvider.FlushData(ctx, peer.GetDG())
 		ms := time.Since(ctime).Milliseconds()
 		if err == nil {
 			atomic.AddInt64(&peer.metricFlushDataOps, 1)

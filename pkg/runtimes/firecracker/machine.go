@@ -71,6 +71,8 @@ type FirecrackerMachineConfig struct {
 	Stdout         io.Writer
 	Stderr         io.Writer
 	EnableInput    bool
+
+	NoMapShared bool
 }
 
 type NetworkConfiguration struct {
@@ -143,10 +145,10 @@ func StartFirecrackerMachine(ctx context.Context, log loggingtypes.Logger, conf 
 		WithFirecrackerArgs("--api-sock", FirecrackerSocketName)
 
 	if conf.Stdout != nil {
-		jBuilder = jBuilder.WithStdout(os.Stdout)
+		jBuilder = jBuilder.WithStdout(conf.Stdout)
 	}
 	if conf.Stderr != nil {
-		jBuilder = jBuilder.WithStdout(os.Stderr)
+		jBuilder = jBuilder.WithStdout(conf.Stderr)
 	}
 	if conf.EnableInput {
 		jBuilder = jBuilder.WithStdin(os.Stdin)
@@ -162,6 +164,23 @@ func StartFirecrackerMachine(ctx context.Context, log loggingtypes.Logger, conf 
 			Setpgid: true,
 			Pgid:    0,
 		}
+
+		// Set something up to send backspace lots
+		r, w := io.Pipe()
+
+		jBuilder = jBuilder.WithStdin(r)
+		go func() {
+			tick := time.NewTicker(50 * time.Millisecond)
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-tick.C:
+					// Write some backspaces
+					w.Write([]byte("\b\b\b\b\b\b\b\b"))
+				}
+			}
+		}()
 	}
 
 	err = server.cmd.Start()
@@ -308,7 +327,7 @@ func (fs *FirecrackerMachine) ResumeSnapshot(ctx context.Context, statePath stri
 		},
 		ResumeVM:     true,
 		SnapshotPath: &statePath,
-		Shared:       true,
+		Shared:       !fs.Conf.NoMapShared,
 	})
 
 	if err != nil {

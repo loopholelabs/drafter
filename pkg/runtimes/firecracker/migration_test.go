@@ -45,6 +45,22 @@ func TestMigrationBasicHashChecks(t *testing.T) {
 	})
 }
 
+func TestMigrationBasicHashChecksSoftDirty(t *testing.T) {
+	migration(t, &migrationConfig{
+		numMigrations:  2,
+		minCycles:      1,
+		maxCycles:      1,
+		cycleThrottle:  100 * time.Millisecond,
+		maxDirtyBlocks: 10,
+		cpuCount:       1,
+		memorySize:     1024,
+		pauseWaitMax:   3 * time.Second,
+		enableS3:       false,
+		hashChecks:     true,
+		noMapShared:    true,
+	})
+}
+
 func TestMigrationBasicWithS3(t *testing.T) {
 	migration(t, &migrationConfig{
 		numMigrations:  2,
@@ -120,6 +136,38 @@ func TestMigrationNoCycle(t *testing.T) {
 	})
 }
 
+func TestMigrationMultiCycleSoftDirty(t *testing.T) {
+	migration(t, &migrationConfig{
+		numMigrations:  2,
+		minCycles:      10,
+		maxCycles:      20,
+		cycleThrottle:  100 * time.Millisecond,
+		maxDirtyBlocks: 10,
+		cpuCount:       1,
+		memorySize:     1024,
+		pauseWaitMax:   3 * time.Second,
+		enableS3:       false,
+		hashChecks:     false,
+		noMapShared:    true,
+	})
+}
+
+func TestMigrationNoCycleSoftDirty(t *testing.T) {
+	migration(t, &migrationConfig{
+		numMigrations:  2,
+		minCycles:      0,
+		maxCycles:      0,
+		cycleThrottle:  100 * time.Millisecond,
+		maxDirtyBlocks: 10,
+		cpuCount:       1,
+		memorySize:     1024,
+		pauseWaitMax:   3 * time.Second,
+		enableS3:       false,
+		hashChecks:     false,
+		noMapShared:    true,
+	})
+}
+
 type migrationConfig struct {
 	numMigrations  int
 	minCycles      int
@@ -131,6 +179,7 @@ type migrationConfig struct {
 	pauseWaitMax   time.Duration
 	enableS3       bool
 	hashChecks     bool
+	noMapShared    bool
 }
 
 /**
@@ -248,6 +297,7 @@ func migration(t *testing.T, config *migrationConfig) {
 			Stdout:         nil,
 			Stderr:         nil,
 			EnableInput:    false,
+			NoMapShared:    config.noMapShared,
 		},
 		StateName:        common.DeviceStateName,
 		MemoryName:       common.DeviceMemoryName,
@@ -279,14 +329,26 @@ func migration(t *testing.T, config *migrationConfig) {
 
 	for migration := 0; migration < config.numMigrations; migration++ {
 
+		var shutdownTime time.Time
+		var resumeTime time.Time
+
 		// Wait for some random time...
 		if config.pauseWaitMax.Milliseconds() > 0 {
 			waitTime := rand.Intn(int(config.pauseWaitMax.Milliseconds()))
 			time.Sleep(time.Duration(waitTime) * time.Millisecond)
 		}
 
+		rp.RunningCB = func(r bool) {
+			if !r {
+				// This peer is shutting down. Record the time that happened.
+				shutdownTime = time.Now()
+			}
+		}
+
+		lastrp := rp
+
 		// Create a new RuntimeProvider
-		rp2 := &FirecrackerRuntimeProvider[struct{}, ipc.AgentServerRemote[struct{}], struct{}]{
+		rp = &FirecrackerRuntimeProvider[struct{}, ipc.AgentServerRemote[struct{}], struct{}]{
 			Log: log,
 			HypervisorConfiguration: FirecrackerMachineConfig{
 				FirecrackerBin: firecrackerBin,
@@ -300,13 +362,21 @@ func migration(t *testing.T, config *migrationConfig) {
 				Stdout:         nil,
 				Stderr:         nil,
 				EnableInput:    false,
+				NoMapShared:    config.noMapShared,
 			},
 			StateName:        common.DeviceStateName,
 			MemoryName:       common.DeviceMemoryName,
 			AgentServerLocal: struct{}{},
 		}
 
-		nextPeer, err := peer.StartPeer(context.TODO(), context.Background(), log, nil, nil, "cow_test", rp2)
+		rp.RunningCB = func(r bool) {
+			if r {
+				// This peer resumed. Record the time that happened
+				resumeTime = time.Now()
+			}
+		}
+
+		nextPeer, err := peer.StartPeer(context.TODO(), context.Background(), log, nil, nil, "cow_test", rp)
 		assert.NoError(t, err)
 
 		r1, w1 := io.Pipe()
@@ -385,9 +455,9 @@ func migration(t *testing.T, config *migrationConfig) {
 			// Make sure everything migrated as expected...
 			for _, n := range append(common.KnownNames, "oci") {
 
-				buff1, err := os.ReadFile(path.Join(rp.DevicePath(), n))
+				buff1, err := os.ReadFile(path.Join(lastrp.DevicePath(), n))
 				assert.NoError(t, err)
-				buff2, err := os.ReadFile(path.Join(rp2.DevicePath(), n))
+				buff2, err := os.ReadFile(path.Join(rp.DevicePath(), n))
 				assert.NoError(t, err)
 
 				// Compare hashes so we don't get tons of output if they do differ.
@@ -411,13 +481,18 @@ func migration(t *testing.T, config *migrationConfig) {
 		pMetrics := lastPeer.GetMetrics()
 
 		// We can resume here safely
-		err = nextPeer.Resume(context.TODO(), 10*time.Second, 10*time.Second)
+		err = nextPeer.Resume(context.TODO(), 30*time.Second, 30*time.Second)
 		assert.NoError(t, err)
 
 		lastPeer = nextPeer
 
-		fmt.Printf("MIGRATION %d COMPLETED evacuated in %dms migrated in %dms (%d P2P) (%d S3) (%d flush ops in %dms)\n", migration+1,
-			evacuationTook.Milliseconds(), migrationTook.Milliseconds(), totalBlocksP2P, totalBlocksS3, pMetrics.FlushDataOps, pMetrics.FlushDataTimeMs)
+		downtimeString := ""
+		if !resumeTime.IsZero() && !shutdownTime.IsZero() {
+			downtimeString = resumeTime.Sub(shutdownTime).String()
+		}
+
+		fmt.Printf("MIGRATION %d COMPLETED evacuated in %dms migrated in %dms (%d P2P) (%d S3) (%d flush ops in %dms) downtime %s\n", migration+1,
+			evacuationTook.Milliseconds(), migrationTook.Milliseconds(), totalBlocksP2P, totalBlocksS3, pMetrics.FlushDataOps, pMetrics.FlushDataTimeMs, downtimeString)
 	}
 
 	// Close the final peer

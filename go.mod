@@ -4,6 +4,8 @@ go 1.23.0
 
 toolchain go1.24.1
 
+// replace github.com/loopholelabs/silo => ../silo
+
 require (
 	github.com/coreos/go-iptables v0.8.0
 	github.com/freddierice/go-losetup/v2 v2.0.1
@@ -13,7 +15,7 @@ require (
 	github.com/loopholelabs/firecracker-go-sdk v1.0.0
 	github.com/loopholelabs/goroutine-manager v0.1.1
 	github.com/loopholelabs/logging v0.3.2
-	github.com/loopholelabs/silo v0.2.16-0.20250429190710-8df6bd2ad53e
+	github.com/loopholelabs/silo v0.2.17-0.20250506165452-8c33dfad42d4
 	github.com/metal-stack/go-ipam v1.14.8
 	github.com/muesli/gotable v0.0.0-20210307142814-960606545b8b
 	github.com/nixigaj/go-default-route v0.0.0-20231019115740-0722aff7ebf3
@@ -21,6 +23,7 @@ require (
 	github.com/prometheus/client_golang v1.22.0
 	github.com/sirupsen/logrus v1.9.3
 	github.com/stretchr/testify v1.10.0
+	github.com/tklauser/ps v0.0.3
 	github.com/valkey-io/valkey-go v1.0.57
 	github.com/vishvananda/netlink v1.3.0
 	github.com/vishvananda/netns v0.0.5
