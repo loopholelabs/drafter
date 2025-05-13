@@ -296,22 +296,24 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChanges(dg *devicegroup
 		rp.Log.Debug().Uint64("addrEnd", addrEnd).Uint64("addrStart", addrStart).Msg("SoftDirty memory changes")
 	}
 
-	lockcb := func() {
+	lockcb := func() error {
 		err := pm.PauseProcess()
 		if err != nil {
 			if rp.Log != nil {
 				rp.Log.Error().Err(err).Msg("Could not pause process")
 			}
 		}
+		return err
 	}
 
-	unlockcb := func() {
+	unlockcb := func() error {
 		err := pm.ResumeProcess()
 		if err != nil {
 			if rp.Log != nil {
 				rp.Log.Error().Err(err).Msg("Could not resume process")
 			}
 		}
+		return err
 	}
 
 	ranges, err := pm.ReadSoftDirtyMemoryRangeList(addrStart, addrEnd, lockcb, unlockcb)
