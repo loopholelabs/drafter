@@ -157,22 +157,25 @@ func checkProcess(ctx context.Context, grabPeriod time.Duration) {
 func grabDirtyMemory(pm *expose.ProcessMemory, pid int, prov storage.Provider, start uint64, end uint64) error {
 	ctime := time.Now()
 
-	pp := func() {
+	pp := func() error {
 		err := pm.PauseProcess()
 		if err != nil {
 			fmt.Printf("Error pausing process %v\n", err)
 		}
+		return err
 	}
-	rp := func() {
+	rp := func() error {
 		err := pm.ClearSoftDirty()
 		if err != nil {
 			fmt.Printf("Error clearing soft dirty %v\n", err)
+			return err
 		}
 
 		err = pm.ResumeProcess()
 		if err != nil {
 			fmt.Printf("Error pausing process %v\n", err)
 		}
+		return err
 	}
 
 	// Read the soft dirty memory ranges
