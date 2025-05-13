@@ -75,7 +75,7 @@ func (rp *MockRuntimeProvider) FlushData(ctx context.Context, dg *devicegroup.De
 	return nil
 }
 
-func (rp *MockRuntimeProvider) Resume(resumeTimeout time.Duration, rescueTimeout time.Duration, errChan chan error) error {
+func (rp *MockRuntimeProvider) Resume(ctx context.Context, rescueTimeout time.Duration, errChan chan error) error {
 	fmt.Printf(" ### Resume %s\n", rp.HomePath)
 
 	for _, n := range common.KnownNames {

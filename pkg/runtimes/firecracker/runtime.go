@@ -36,8 +36,6 @@ type FirecrackerRuntimeProvider[L ipc.AgentServerLocal, R ipc.AgentServerRemote[
 
 	hypervisorCtx    context.Context
 	hypervisorCancel context.CancelFunc
-	resumeCtx        context.Context
-	resumeCancel     context.CancelFunc
 
 	runningLock sync.Mutex
 	running     bool
@@ -49,13 +47,9 @@ type FirecrackerRuntimeProvider[L ipc.AgentServerLocal, R ipc.AgentServerRemote[
 	AgentServerLocal L
 }
 
-func (rp *FirecrackerRuntimeProvider[L, R, G]) Resume(resumeTimeout time.Duration, rescueTimeout time.Duration, errChan chan error) error {
+func (rp *FirecrackerRuntimeProvider[L, R, G]) Resume(ctx context.Context, rescueTimeout time.Duration, errChan chan error) error {
 	rp.runningLock.Lock()
 	defer rp.runningLock.Unlock()
-
-	resumeCtx, resumeCancel := context.WithCancel(context.TODO())
-	rp.resumeCtx = resumeCtx
-	rp.resumeCancel = resumeCancel
 
 	// Read from the config device
 	configFileData, err := os.ReadFile(path.Join(rp.DevicePath(), common.DeviceConfigName))
@@ -78,10 +72,7 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Resume(resumeTimeout time.Duratio
 		return errors.Join(ErrCouldNotDecodeConfigFile, err)
 	}
 
-	resumeSnapshotAndAcceptCtx, cancelResumeSnapshotAndAcceptCtx := context.WithTimeout(resumeCtx, resumeTimeout)
-	defer cancelResumeSnapshotAndAcceptCtx()
-
-	err = rp.Machine.ResumeSnapshot(resumeSnapshotAndAcceptCtx, common.DeviceStateName, common.DeviceMemoryName)
+	err = rp.Machine.ResumeSnapshot(ctx, common.DeviceStateName, common.DeviceMemoryName)
 	if err != nil {
 		return err
 	}
@@ -97,16 +88,13 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Resume(resumeTimeout time.Duratio
 	}
 
 	// Call after resume RPC
-	afterResumeCtx, cancelAfterResumeCtx := context.WithTimeout(resumeCtx, resumeTimeout)
-	defer cancelAfterResumeCtx()
-
-	r, err := rp.agent.GetRemote(afterResumeCtx)
+	r, err := rp.agent.GetRemote(ctx)
 	if err != nil {
 		return err
 	}
 
 	remote := *(*ipc.AgentServerRemote[G])(unsafe.Pointer(&r))
-	err = remote.AfterResume(afterResumeCtx)
+	err = remote.AfterResume(ctx)
 	if err != nil {
 		return err
 	}
@@ -194,7 +182,6 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Close(dg *devicegroup.DeviceGroup
 			return err
 		}
 
-		rp.resumeCancel() // We can cancel this context now
 		rp.hypervisorCancel()
 
 		err = rp.agent.Close()
