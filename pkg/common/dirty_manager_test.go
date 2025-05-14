@@ -81,7 +81,11 @@ func TestDirtyManager(t *testing.T) {
 		assert.True(t, more)
 		more, err = dm.PostMigrateDirty(devName, blocks)
 		assert.NoError(t, err)
-		//		assert.True(t, more)
+		if count > 5 {
+			assert.False(t, more)
+		} else {
+			assert.True(t, more)
+		}
 		count++
 
 		// It should have run some things since it's past min
