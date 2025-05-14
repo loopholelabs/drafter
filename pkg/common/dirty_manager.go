@@ -2,7 +2,6 @@ package common
 
 import (
 	"errors"
-	"fmt"
 	"sync"
 	"time"
 )
@@ -51,7 +50,6 @@ func (dm *DirtyManager) PreGetDirty(name string) error {
 
 	dm.Devices[name].SuspendedAtPreGetDirty = isSuspended
 
-	fmt.Printf("%s JDM PreGetDirty %s\n", time.Now(), name)
 	// If the VM is still running, do an Msync for the memory...
 	if !isSuspended && name == DeviceMemoryName {
 		if dm.Devices[name].MaxCycles > 0 {

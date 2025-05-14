@@ -265,7 +265,7 @@ func migration(t *testing.T, config *migrationConfig) {
 	})
 
 	log := logging.New(logging.Zerolog, "test", os.Stderr)
-	log.SetLevel(types.ErrorLevel)
+	//	log.SetLevel(types.TraceLevel)
 
 	ns := testutil.SetupNAT(t, "", "dra")
 
@@ -294,8 +294,8 @@ func migration(t *testing.T, config *migrationConfig) {
 			NetNS:          netns,
 			NumaNode:       0,
 			CgroupVersion:  2,
-			Stdout:         os.Stdout,
-			Stderr:         os.Stderr,
+			Stdout:         nil,
+			Stderr:         nil,
 			EnableInput:    false,
 			NoMapShared:    config.noMapShared,
 		},
@@ -359,8 +359,8 @@ func migration(t *testing.T, config *migrationConfig) {
 				NetNS:          netns,
 				NumaNode:       0,
 				CgroupVersion:  2,
-				Stdout:         os.Stdout,
-				Stderr:         os.Stderr,
+				Stdout:         nil,
+				Stderr:         nil,
 				EnableInput:    false,
 				NoMapShared:    config.noMapShared,
 			},
