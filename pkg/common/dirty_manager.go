@@ -2,6 +2,7 @@ package common
 
 import (
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 )
@@ -19,6 +20,7 @@ type DeviceStatus struct {
 	MaxCycles                     int
 	Ready                         bool
 	ReadyAndSentDirty             bool
+	SuspendedAtPreGetDirty        bool
 }
 
 type DirtyManager struct {
@@ -45,8 +47,13 @@ func NewDirtyManager(vmState *VMStateMgr, devices map[string]*DeviceStatus, auth
 }
 
 func (dm *DirtyManager) PreGetDirty(name string) error {
+	isSuspended := dm.VMState.CheckSuspendedVM()
+
+	dm.Devices[name].SuspendedAtPreGetDirty = isSuspended
+
+	fmt.Printf("%s JDM PreGetDirty %s\n", time.Now(), name)
 	// If the VM is still running, do an Msync for the memory...
-	if !dm.VMState.CheckSuspendedVM() && name == DeviceMemoryName {
+	if !isSuspended && name == DeviceMemoryName {
 		if dm.Devices[name].MaxCycles > 0 {
 			err := dm.VMState.Msync()
 			if err != nil {
@@ -58,9 +65,8 @@ func (dm *DirtyManager) PreGetDirty(name string) error {
 }
 
 func (dm *DirtyManager) PostGetDirty(name string, blocks []uint) (bool, error) {
-
-	// If there were no dirty blocks, and the VM is stopped, return false (finish doing dirty sync)
-	if len(blocks) == 0 && dm.VMState.CheckSuspendedVM() {
+	// If there were no dirty blocks, and the VM was stopped, return false (finish doing dirty sync)
+	if len(blocks) == 0 && dm.Devices[name].SuspendedAtPreGetDirty {
 		err := dm.markReadyDeviceSentDirty(name)
 		return false, err
 	}
@@ -116,11 +122,13 @@ func (dm *DirtyManager) markReadyDeviceSentDirty(name string) error {
 func (dm *DirtyManager) PostMigrateDirty(name string, blocks []uint) (bool, error) {
 
 	// If it is suspended, mark as ready and sent dirty list
-	if dm.VMState.CheckSuspendedVM() {
+	if dm.Devices[name].SuspendedAtPreGetDirty {
 		err := dm.markReadyDeviceSentDirty(name)
 		if err != nil {
 			return false, err
 		}
+		// We can quit here, since it was already suspended, and we just completed dirty
+		return false, nil
 	}
 
 	di := dm.Devices[name]
