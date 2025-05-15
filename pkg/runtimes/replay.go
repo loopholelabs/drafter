@@ -70,11 +70,15 @@ func (rp *ReplayRuntimeProvider) Start(ctx context.Context, rescueCtx context.Co
 }
 
 func (rp *ReplayRuntimeProvider) Close(dg *devicegroup.DeviceGroup) error {
-	rp.Suspend(context.TODO(), 10*time.Second, dg)
+	err := rp.Suspend(context.TODO(), 10*time.Second, dg)
+	if err != nil {
+		return err
+	}
 	for n, prov := range rp.providers {
 		err := prov.Close()
 		if err != nil {
 			fmt.Printf("Error closing provider %s %v\n", n, err)
+			return err
 		}
 	}
 	return nil

@@ -154,9 +154,6 @@ func StartFirecrackerMachine(ctx context.Context, log loggingtypes.Logger, conf 
 		jBuilder = jBuilder.WithStdin(os.Stdin)
 	}
 
-	// Create the command
-	server.cmd = jBuilder.Build(ctx)
-
 	if !conf.EnableInput {
 		// Don't forward CTRL-C etc. signals from parent to child process
 		// We can't enable this if we set the cmd stdin or we deadlock
@@ -177,11 +174,19 @@ func StartFirecrackerMachine(ctx context.Context, log loggingtypes.Logger, conf 
 					return
 				case <-tick.C:
 					// Write some backspaces
-					w.Write([]byte("\b\b\b\b\b\b\b\b"))
+					_, err := w.Write([]byte("\b\b\b\b\b\b\b\b"))
+					if err != nil {
+						if log != nil {
+							log.Debug().Err(err).Msg("error writing to fc stdin")
+						}
+					}
 				}
 			}
 		}()
 	}
+
+	// Create the command
+	server.cmd = jBuilder.Build(ctx)
 
 	err = server.cmd.Start()
 	if err != nil {
