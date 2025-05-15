@@ -232,6 +232,9 @@ func handleConnection(migration int, conn net.Conn, log types.Logger, firecracke
 	}
 	devicesFrom := getDevicesFrom(*snapshotsDir, migration+1)
 	err = nextPeer.MigrateFrom(context.TODO(), devicesFrom, []io.Reader{conn}, []io.Writer{conn}, hooks2)
+	if err != nil {
+		return err
+	}
 
 	if *waitForComplete {
 		completedWg.Wait()
