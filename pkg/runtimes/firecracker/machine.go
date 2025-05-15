@@ -153,31 +153,31 @@ func StartFirecrackerMachine(ctx context.Context, log loggingtypes.Logger, conf 
 	if conf.EnableInput {
 		jBuilder = jBuilder.WithStdin(os.Stdin)
 	}
+	/*
+		if !conf.EnableInput {
+			// Set something up to send backspace lots
+			r, w := io.Pipe()
 
-	if !conf.EnableInput {
-		// Set something up to send backspace lots
-		r, w := io.Pipe()
-
-		jBuilder = jBuilder.WithStdin(r)
-		go func() {
-			tick := time.NewTicker(50 * time.Millisecond)
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case <-tick.C:
-					// Write some backspaces
-					_, err := w.Write([]byte("\b\b\b\b\b\b\b\b"))
-					if err != nil {
-						if log != nil {
-							log.Debug().Err(err).Msg("error writing to fc stdin")
+			jBuilder = jBuilder.WithStdin(r)
+			go func() {
+				tick := time.NewTicker(50 * time.Millisecond)
+				for {
+					select {
+					case <-ctx.Done():
+						return
+					case <-tick.C:
+						// Write some backspaces
+						_, err := w.Write([]byte("\b\b\b\b\b\b\b\b"))
+						if err != nil {
+							if log != nil {
+								log.Debug().Err(err).Msg("error writing to fc stdin")
+							}
 						}
 					}
 				}
-			}
-		}()
-	}
-
+			}()
+		}
+	*/
 	// Create the command
 	server.cmd = jBuilder.Build(ctx)
 
@@ -272,7 +272,7 @@ func StartFirecrackerMachine(ctx context.Context, log loggingtypes.Logger, conf 
  */
 func (fs *FirecrackerMachine) Close() error {
 	if fs.log != nil {
-		fs.log.Info().Str("VMPath", fs.VMPath).Msg("Firecracker machine closing")
+		fs.log.Info().Str("VMPath", fs.VMPath).Int("VMPid", fs.VMPid).Msg("Firecracker machine closing")
 	}
 
 	if fs.cmd.Process != nil {
@@ -284,6 +284,9 @@ func (fs *FirecrackerMachine) Close() error {
 			if err != nil {
 				fs.closeLock.Unlock()
 				return err
+			}
+			if fs.log != nil {
+				fs.log.Info().Str("VMPath", fs.VMPath).Int("VMPid", fs.VMPid).Msg("Sent kill to firecracker")
 			}
 		}
 		fs.closeLock.Unlock()
