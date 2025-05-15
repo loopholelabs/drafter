@@ -155,13 +155,6 @@ func StartFirecrackerMachine(ctx context.Context, log loggingtypes.Logger, conf 
 	}
 
 	if !conf.EnableInput {
-		// Don't forward CTRL-C etc. signals from parent to child process
-		// We can't enable this if we set the cmd stdin or we deadlock
-		server.cmd.SysProcAttr = &unix.SysProcAttr{
-			Setpgid: true,
-			Pgid:    0,
-		}
-
 		// Set something up to send backspace lots
 		r, w := io.Pipe()
 
@@ -187,6 +180,15 @@ func StartFirecrackerMachine(ctx context.Context, log loggingtypes.Logger, conf 
 
 	// Create the command
 	server.cmd = jBuilder.Build(ctx)
+
+	if !conf.EnableInput {
+		// Don't forward CTRL-C etc. signals from parent to child process
+		// We can't enable this if we set the cmd stdin or we deadlock
+		server.cmd.SysProcAttr = &unix.SysProcAttr{
+			Setpgid: true,
+			Pgid:    0,
+		}
+	}
 
 	err = server.cmd.Start()
 	if err != nil {
