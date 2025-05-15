@@ -109,7 +109,7 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) setRunning(r bool) {
 		rp.RunningCB(r)
 	}
 
-	// TODO: Start or stop a ticker to grab memory changes...
+	// TODO: Start or stop a ticker to grab soft dirty memory changes...
 }
 
 func (rp *FirecrackerRuntimeProvider[L, R, G]) GetRemote(ctx context.Context) (R, error) {
@@ -142,14 +142,14 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Start(ctx context.Context, rescue
 
 func (rp *FirecrackerRuntimeProvider[L, R, G]) FlushData(ctx context.Context, dg *devicegroup.DeviceGroup) error {
 	if rp.Log != nil {
-		rp.Log.Info().Msg("resumed runner Msync")
+		rp.Log.Info().Msg("Firecracker FlushData")
 	}
 
 	if !rp.HypervisorConfiguration.NoMapShared {
 		err := rp.Machine.CreateSnapshot(ctx, common.DeviceStateName, "", SDKSnapshotTypeMsync)
 		if err != nil {
 			if rp.Log != nil {
-				rp.Log.Error().Err(err).Msg("error in resumed runner Msync")
+				rp.Log.Error().Err(err).Msg("error in firecracker Msync")
 			}
 			return errors.Join(ErrCouldNotCreateSnapshot, err)
 		}
@@ -173,7 +173,7 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) GetVMPid() int {
 func (rp *FirecrackerRuntimeProvider[L, R, G]) Close(dg *devicegroup.DeviceGroup) error {
 	if rp.agent != nil {
 		if rp.Log != nil {
-			rp.Log.Debug().Msg("Closing resumed runner")
+			rp.Log.Debug().Msg("Firecracker runtime close")
 		}
 
 		// We only need to do this if it hasn't been suspended, but it'll refuse inside Suspend
@@ -221,7 +221,7 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Suspend(ctx context.Context, susp
 	}
 
 	if rp.Log != nil {
-		rp.Log.Debug().Msg("firecracker SuspendAndCloseAgentServer")
+		rp.Log.Debug().Msg("firecracker runtime SuspendAndCloseAgentServer")
 	}
 
 	suspendCtx, cancelSuspendCtx := context.WithTimeout(ctx, suspendTimeout)
@@ -244,7 +244,7 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Suspend(ctx context.Context, susp
 	}
 
 	if rp.Log != nil {
-		rp.Log.Debug().Msg("resumedRunner createSnapshot")
+		rp.Log.Debug().Msg("firecracker runtime CreateSnapshot")
 	}
 
 	err = rp.Machine.CreateSnapshot(suspendCtx, common.DeviceStateName, "", SDKSnapshotTypeMsyncAndState)
