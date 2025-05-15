@@ -81,7 +81,12 @@ func main() {
 			},
 		))
 
-		go http.ListenAndServe(*serveMetrics, nil)
+		go func() {
+			err := http.ListenAndServe(*serveMetrics, nil)
+			if err != nil {
+				panic(err)
+			}
+		}()
 	}
 
 	err := os.Mkdir(testPeerDirCowS3, 0777)
