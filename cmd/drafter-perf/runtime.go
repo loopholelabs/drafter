@@ -138,11 +138,12 @@ func runSilo(ctx context.Context, log loggingtypes.Logger, met metrics.SiloMetri
 		CgroupVersion:  2,
 		Stdout:         nil,
 		Stderr:         nil,
-		EnableInput:    enableInput,
 		NoMapShared:    true,
 	}
 
-	// TODO: If we haven't enabled input, we could periodically send \b to push output (sometimes needed)
+	if enableInput {
+		hConf.Stdin = os.Stdin
+	}
 
 	if enableOutput {
 		hConf.Stdout = os.Stdout
@@ -244,7 +245,10 @@ func runNonSilo(ctx context.Context, log loggingtypes.Logger, testDir string, sn
 		CgroupVersion:  2,
 		Stdout:         nil,
 		Stderr:         nil,
-		EnableInput:    enableInput,
+	}
+
+	if enableInput {
+		conf.Stdin = os.Stdin
 	}
 
 	if enableOutput {

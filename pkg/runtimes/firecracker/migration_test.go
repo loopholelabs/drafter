@@ -296,7 +296,7 @@ func migration(t *testing.T, config *migrationConfig) {
 			CgroupVersion:  2,
 			Stdout:         nil,
 			Stderr:         nil,
-			EnableInput:    false,
+			Stdin:          nil,
 			NoMapShared:    config.noMapShared,
 		},
 		StateName:        common.DeviceStateName,
@@ -361,7 +361,7 @@ func migration(t *testing.T, config *migrationConfig) {
 				CgroupVersion:  2,
 				Stdout:         nil,
 				Stderr:         nil,
-				EnableInput:    false,
+				Stdin:          nil,
 				NoMapShared:    config.noMapShared,
 			},
 			StateName:        common.DeviceStateName,
@@ -369,10 +369,16 @@ func migration(t *testing.T, config *migrationConfig) {
 			AgentServerLocal: struct{}{},
 		}
 
+		// We can push output here if we need to...
+		// opCtx, opCancel := context.WithCancel(context.TODO())
+		// rp.HypervisorConfiguration.Stdin = NewOutputPusher(opCtx, log)
+
 		rp.RunningCB = func(r bool) {
 			if r {
 				// This peer resumed. Record the time that happened
 				resumeTime = time.Now()
+			} else {
+				//		opCancel() // Stop pushing output
 			}
 		}
 

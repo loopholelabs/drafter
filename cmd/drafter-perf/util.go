@@ -79,7 +79,7 @@ func setupSnapshot(log loggingtypes.Logger, ctx context.Context, netns string, v
 			CgroupVersion:  2,
 			Stdout:         nil,
 			Stderr:         nil,
-			EnableInput:    false,
+			Stdin:          nil,
 		},
 		rfirecracker.NetworkConfiguration{
 			Interface: "tap0",

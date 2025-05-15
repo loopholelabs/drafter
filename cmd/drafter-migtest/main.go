@@ -123,7 +123,7 @@ func main() {
 		CgroupVersion:  2,
 		Stdout:         os.Stdout,
 		Stderr:         os.Stderr,
-		EnableInput:    false,
+		Stdin:          nil,
 	}
 
 	rp := &rfirecracker.FirecrackerRuntimeProvider[struct{}, ipc.AgentServerRemote[struct{}], struct{}]{
@@ -182,7 +182,7 @@ func main() {
 				CgroupVersion:  2,
 				Stdout:         os.Stdout,
 				Stderr:         os.Stderr,
-				EnableInput:    false,
+				Stdin:          nil,
 			},
 			StateName:        common.DeviceStateName,
 			MemoryName:       common.DeviceMemoryName,
@@ -470,7 +470,7 @@ func setupSnapshot(log types.Logger, ctx context.Context) string {
 			CgroupVersion:  2,
 			Stdout:         nil,
 			Stderr:         nil,
-			EnableInput:    false,
+			Stdin:          nil,
 		},
 		rfirecracker.NetworkConfiguration{
 			Interface: "tap0",

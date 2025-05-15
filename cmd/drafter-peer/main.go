@@ -136,7 +136,10 @@ func main() {
 		NetNS:          *netns,
 		NumaNode:       *numaNode,
 		CgroupVersion:  *cgroupVersion,
-		EnableInput:    *enableInput,
+	}
+
+	if *enableInput {
+		fcconfig.Stdin = os.Stdin
 	}
 
 	if *enableOutput {
