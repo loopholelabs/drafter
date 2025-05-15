@@ -270,7 +270,10 @@ func runNonSilo(ctx context.Context, log loggingtypes.Logger, testDir string, sn
 	for _, d := range deviceFiles {
 		src := path.Join(snapDir, d)
 		dst := path.Join(m.VMPath, d)
-		os.Link(src, dst)
+		err = os.Link(src, dst)
+		if err != nil {
+			return err
+		}
 	}
 
 	resumeSnapshotAndAcceptCtx, cancelResumeSnapshotAndAcceptCtx := context.WithTimeout(ctx, 10*time.Second)

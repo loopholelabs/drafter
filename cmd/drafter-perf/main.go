@@ -106,7 +106,10 @@ func main() {
 
 	// Clear the snap dir...
 	os.RemoveAll(*dSnapDir)
-	os.Mkdir(*dSnapDir, 0666)
+	err = os.Mkdir(*dSnapDir, 0666)
+	if err != nil {
+		panic(err)
+	}
 
 	valkeyUp := false
 

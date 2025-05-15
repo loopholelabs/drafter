@@ -99,6 +99,10 @@ func ForwardPort(log loggingtypes.Logger, ns string, protocol string, portFrom i
 
 	hostVeth := "10.0.8.0/22"
 	_, hostVethCIDR, err := net.ParseCIDR(hostVeth)
+	if err != nil {
+		cancel()
+		return nil, err
+	}
 
 	portForwards := []forwarder.PortForward{
 		{
@@ -116,29 +120,39 @@ func ForwardPort(log loggingtypes.Logger, ns string, protocol string, portFrom i
 
 		forwarder.PortForwardHooks{
 			OnAfterPortForward: func(portID int, netns, internalIP, internalPort, externalIP, externalPort, protocol string) {
-				log.Info().
-					Int("portID", portID).
-					Str("netns", netns).
-					Str("internalIP", internalIP).
-					Str("internalPort", internalPort).
-					Str("externalIP", externalIP).
-					Str("externalPort", externalPort).
-					Str("protocol", protocol).
-					Msg("Forwarding port")
+				if log != nil {
+					log.Info().
+						Int("portID", portID).
+						Str("netns", netns).
+						Str("internalIP", internalIP).
+						Str("internalPort", internalPort).
+						Str("externalIP", externalIP).
+						Str("externalPort", externalPort).
+						Str("protocol", protocol).
+						Msg("Forwarding port")
+				}
 			},
 			OnBeforePortUnforward: func(portID int) {
-				log.Info().
-					Int("portID", portID).
-					Msg("Unforwarding port")
+				if log != nil {
+					log.Info().
+						Int("portID", portID).
+						Msg("Unforwarding port")
+				}
 			},
 		},
 	)
 	if err != nil {
+		cancel()
 		return nil, err
 	}
 
 	return func() {
-		forwardedPorts.Close()
+		err := forwardedPorts.Close()
+		if err != nil {
+			if log != nil {
+				log.Error().Err(err).Msg("could not close forwardedPorts")
+			}
+		}
 		cancel()
 	}, nil
 }
@@ -194,14 +208,17 @@ func SetupNAT(hostInterface string, namespacePrefix string) (*nat.Namespaces, fu
 		2, // We only need a couple of namespaces
 	)
 	if err != nil {
+		cancel()
 		return nil, nil, err
 	}
 
 	return namespaces, func() {
-		namespaces.Close()
-		// FIXME. For now, there may be "could not release child prefix"
-		// assert.NoError(t, err)
-
+		err := namespaces.Close()
+		if err != nil {
+			fmt.Printf("Could not close namespace %v", err)
+			// FIXME. For now, there may be "could not release child prefix"
+			// assert.NoError(t, err)
+		}
 		cancel()
 	}, nil
 }
