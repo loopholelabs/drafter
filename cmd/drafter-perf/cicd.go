@@ -32,7 +32,10 @@ func benchCICD(profileCPU bool, name string, timeout time.Duration, grabPeriod t
 		if err != nil {
 			panic(err)
 		}
-		pprof.StartCPUProfile(f)
+		err = pprof.StartCPUProfile(f)
+		if err != nil {
+			panic(err)
+		}
 		defer func() {
 			pprof.StopCPUProfile()
 			f.Close()
