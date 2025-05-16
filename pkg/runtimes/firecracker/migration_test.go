@@ -169,6 +169,23 @@ func TestMigrationNoCycleSoftDirty(t *testing.T) {
 	})
 }
 
+func TestMigrationNoCycleSoftDirty1s(t *testing.T) {
+	migration(t, &migrationConfig{
+		numMigrations:  3,
+		minCycles:      0,
+		maxCycles:      0,
+		cycleThrottle:  100 * time.Millisecond,
+		maxDirtyBlocks: 10,
+		cpuCount:       1,
+		memorySize:     1024,
+		pauseWaitMax:   10 * time.Second,
+		enableS3:       false,
+		hashChecks:     false,
+		noMapShared:    true,
+		grabInterval:   time.Second,
+	})
+}
+
 type migrationConfig struct {
 	numMigrations  int
 	minCycles      int
@@ -181,6 +198,7 @@ type migrationConfig struct {
 	enableS3       bool
 	hashChecks     bool
 	noMapShared    bool
+	grabInterval   time.Duration
 }
 
 /**
@@ -305,6 +323,8 @@ func migration(t *testing.T, config *migrationConfig) {
 		AgentServerLocal: struct{}{},
 	}
 
+	rp.GrabInterval = config.grabInterval
+
 	myPeer, err := peer.StartPeer(context.TODO(), context.Background(), log, nil, nil, "cow_test", rp)
 	assert.NoError(t, err)
 
@@ -369,6 +389,8 @@ func migration(t *testing.T, config *migrationConfig) {
 			MemoryName:       common.DeviceMemoryName,
 			AgentServerLocal: struct{}{},
 		}
+
+		rp.GrabInterval = config.grabInterval
 
 		// We can push output here if we need to...
 		// opCtx, opCancel := context.WithCancel(context.TODO())
