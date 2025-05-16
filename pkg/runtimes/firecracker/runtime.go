@@ -73,6 +73,9 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Resume(ctx context.Context, rescu
 			return err
 		}
 		dst, err := os.OpenFile(path.Join(rp.DevicePath(), common.DeviceMemoryName), os.O_CREATE|os.O_RDWR, 0666)
+		if err != nil {
+			return err
+		}
 		swapStart := time.Now()
 		bytes, err := io.Copy(dst, src)
 		if err != nil {
