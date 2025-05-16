@@ -356,7 +356,7 @@ func (peer *Peer) Resume(ctx context.Context, resumeTimeout time.Duration, rescu
 	}
 
 	resumeCtx, resumeCancel := context.WithTimeout(ctx, resumeTimeout)
-	err := peer.runtimeProvider.Resume(resumeCtx, rescueTimeout, peer.backgroundErr)
+	err := peer.runtimeProvider.Resume(resumeCtx, rescueTimeout, peer.GetDG(), peer.backgroundErr)
 	resumeCancel()
 
 	if err != nil {

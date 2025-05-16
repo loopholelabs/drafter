@@ -115,7 +115,7 @@ func (rp *ReplayRuntimeProvider) FlushData(ctx context.Context, dg *devicegroup.
 	return nil
 }
 
-func (rp *ReplayRuntimeProvider) Resume(ctx context.Context, rescueTimeout time.Duration, errChan chan error) error {
+func (rp *ReplayRuntimeProvider) Resume(ctx context.Context, rescueTimeout time.Duration, dg *devicegroup.DeviceGroup, errChan chan error) error {
 	fmt.Printf("### Resume\n")
 	if rp.replayers == nil {
 		err := rp.init()
