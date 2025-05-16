@@ -54,7 +54,7 @@ func (sc *siloConfig) Summary() string {
  * runSilo runs a benchmark inside a VM with Silo
  *
  */
-func runSilo(ctx context.Context, log loggingtypes.Logger, met metrics.SiloMetrics, testDir string, snapDir string, netns string, benchCB func(), conf siloConfig, enableInput bool, enableOutput bool) error {
+func runSilo(ctx context.Context, log loggingtypes.Logger, met metrics.SiloMetrics, testDir string, snapDir string, netns string, benchCB func(), conf siloConfig, enableInput bool, enableOutput bool, migrateAfter string) error {
 	schemas := make(map[string]*config.DeviceSchema)
 
 	firecrackerBin, err := exec.LookPath("firecracker")
@@ -138,11 +138,17 @@ func runSilo(ctx context.Context, log loggingtypes.Logger, met metrics.SiloMetri
 		CgroupVersion:  2,
 		Stdout:         nil,
 		Stderr:         nil,
-		EnableInput:    enableInput,
-		NoMapShared:    true,
+		NoMapShared:    false,
 	}
 
-	// TODO: If we haven't enabled input, we could periodically send \b to push output (sometimes needed)
+	// If we're grabbing memory
+	if conf.grabPeriod > 0 {
+		hConf.NoMapShared = true
+	}
+
+	if enableInput {
+		hConf.Stdin = os.Stdin
+	}
 
 	if enableOutput {
 		hConf.Stdout = os.Stdout
@@ -163,6 +169,19 @@ func runSilo(ctx context.Context, log loggingtypes.Logger, met metrics.SiloMetri
 		StateName:               common.DeviceStateName,
 		MemoryName:              common.DeviceMemoryName,
 		AgentServerLocal:        struct{}{},
+		GrabInterval:            conf.grabPeriod,
+	}
+
+	// Use something to push output (sometimes needed)
+	if !enableInput {
+		pusherCtx, pusherCancel := context.WithCancel(context.Background())
+		r := rfirecracker.NewOutputPusher(pusherCtx, log)
+		rp.HypervisorConfiguration.Stdin = r
+		rp.RunningCB = func(r bool) {
+			if !r {
+				pusherCancel()
+			}
+		}
 	}
 
 	myPeer, err := peer.StartPeer(context.TODO(), context.Background(), log, met, nil, conf.name, rp)
@@ -185,7 +204,7 @@ func runSilo(ctx context.Context, log loggingtypes.Logger, met metrics.SiloMetri
 		return err
 	}
 
-	err = myPeer.Resume(context.TODO(), 10*time.Second, 10*time.Second)
+	err = myPeer.Resume(context.TODO(), 1*time.Minute, 10*time.Second)
 	if err != nil {
 		return err
 	}
@@ -244,7 +263,10 @@ func runNonSilo(ctx context.Context, log loggingtypes.Logger, testDir string, sn
 		CgroupVersion:  2,
 		Stdout:         nil,
 		Stderr:         nil,
-		EnableInput:    enableInput,
+	}
+
+	if enableInput {
+		conf.Stdin = os.Stdin
 	}
 
 	if enableOutput {
@@ -270,7 +292,10 @@ func runNonSilo(ctx context.Context, log loggingtypes.Logger, testDir string, sn
 	for _, d := range deviceFiles {
 		src := path.Join(snapDir, d)
 		dst := path.Join(m.VMPath, d)
-		os.Link(src, dst)
+		err = os.Link(src, dst)
+		if err != nil {
+			return err
+		}
 	}
 
 	resumeSnapshotAndAcceptCtx, cancelResumeSnapshotAndAcceptCtx := context.WithTimeout(ctx, 10*time.Second)

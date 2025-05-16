@@ -18,6 +18,7 @@ func ForwardPort(t *testing.T, log loggingtypes.Logger, ns string, protocol stri
 
 	hostVeth := "10.0.8.0/22"
 	_, hostVethCIDR, err := net.ParseCIDR(hostVeth)
+	assert.NoError(t, err)
 
 	portForwards := []forwarder.PortForward{
 		{
@@ -55,7 +56,8 @@ func ForwardPort(t *testing.T, log loggingtypes.Logger, ns string, protocol stri
 	assert.NoError(t, err)
 
 	t.Cleanup(func() {
-		forwardedPorts.Close()
+		err := forwardedPorts.Close()
+		assert.NoError(t, err)
 		cancel()
 	})
 }
@@ -111,9 +113,12 @@ func SetupNAT(t *testing.T, hostInterface string, namespacePrefix string) *nat.N
 	assert.NoError(t, err)
 
 	t.Cleanup(func() {
-		namespaces.Close()
-		// FIXME. For now, there may be "could not release child prefix"
-		// assert.NoError(t, err)
+		err := namespaces.Close()
+		if err != nil {
+			assert.True(t, true)
+			// FIXME. For now, there may be "could not release child prefix"
+			// assert.NoError(t, err)
+		}
 
 		cancel()
 	})

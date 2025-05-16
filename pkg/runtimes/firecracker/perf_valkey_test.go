@@ -183,7 +183,7 @@ func TestValkeyPerf(t *testing.T) {
 				CgroupVersion:  2,
 				Stdout:         nil,
 				Stderr:         nil,
-				EnableInput:    false,
+				Stdin:          nil,
 			},
 			StateName:        common.DeviceStateName,
 			MemoryName:       common.DeviceMemoryName,
@@ -235,7 +235,7 @@ func TestValkeyPerf(t *testing.T) {
 		CgroupVersion:  2,
 		Stdout:         nil,
 		Stderr:         nil,
-		EnableInput:    false,
+		Stdin:          nil,
 	})
 	assert.NoError(t, err)
 

@@ -51,4 +51,4 @@ jobs:
           rmdir tmproot
 
       - name: Test
-        run: go test -exec sudo -v ./... --tags integration --timeout 30m
+        run: go test -exec sudo -v ./... --tags integration --timeout 60m

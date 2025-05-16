@@ -206,7 +206,7 @@ func handleConnection(migration int, conn net.Conn, log types.Logger, firecracke
 			CgroupVersion:  2,
 			Stdout:         os.Stdout,
 			Stderr:         os.Stderr,
-			EnableInput:    false,
+			Stdin:          nil,
 		},
 		StateName:        common.DeviceStateName,
 		MemoryName:       common.DeviceMemoryName,
@@ -232,6 +232,9 @@ func handleConnection(migration int, conn net.Conn, log types.Logger, firecracke
 	}
 	devicesFrom := getDevicesFrom(*snapshotsDir, migration+1)
 	err = nextPeer.MigrateFrom(context.TODO(), devicesFrom, []io.Reader{conn}, []io.Writer{conn}, hooks2)
+	if err != nil {
+		return err
+	}
 
 	if *waitForComplete {
 		completedWg.Wait()
@@ -302,7 +305,7 @@ func setupFirstPeer(log types.Logger, firecrackerBin string, jailerBin string, s
 			CgroupVersion:  2,
 			Stdout:         os.Stdout,
 			Stderr:         os.Stderr,
-			EnableInput:    false,
+			Stdin:          nil,
 		},
 		StateName:        common.DeviceStateName,
 		MemoryName:       common.DeviceMemoryName,

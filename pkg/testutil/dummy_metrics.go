@@ -77,10 +77,9 @@ func (dm *DummyMetrics) RemoveVolatilityMonitor(id string, name string) {}
 func (dm *DummyMetrics) AddMetrics(id string, name string, mm *modules.Metrics) {
 	dm.lock.Lock()
 	defer dm.lock.Unlock()
-	byid, ok := dm.metricsById[id]
+	_, ok := dm.metricsById[id]
 	if !ok {
-		byid = make(map[string]*modules.Metrics)
-		dm.metricsById[id] = byid
+		dm.metricsById[id] = make(map[string]*modules.Metrics)
 	}
 	dm.metricsById[id][name] = mm
 }
@@ -95,10 +94,9 @@ func (dm *DummyMetrics) RemoveWaitingCache(id string, name string)              
 func (dm *DummyMetrics) AddCopyOnWrite(id string, name string, cow *modules.CopyOnWrite) {
 	dm.lock.Lock()
 	defer dm.lock.Unlock()
-	byid, ok := dm.cowById[id]
+	_, ok := dm.cowById[id]
 	if !ok {
-		byid = make(map[string]*modules.CopyOnWrite)
-		dm.cowById[id] = byid
+		dm.cowById[id] = make(map[string]*modules.CopyOnWrite)
 	}
 	dm.cowById[id][name] = cow
 }

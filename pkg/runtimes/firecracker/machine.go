@@ -70,7 +70,7 @@ type FirecrackerMachineConfig struct {
 	CgroupVersion  int
 	Stdout         io.Writer
 	Stderr         io.Writer
-	EnableInput    bool
+	Stdin          io.Reader
 
 	NoMapShared bool
 }
@@ -150,37 +150,20 @@ func StartFirecrackerMachine(ctx context.Context, log loggingtypes.Logger, conf 
 	if conf.Stderr != nil {
 		jBuilder = jBuilder.WithStdout(conf.Stderr)
 	}
-	if conf.EnableInput {
-		jBuilder = jBuilder.WithStdin(os.Stdin)
+	if conf.Stdin != nil {
+		jBuilder = jBuilder.WithStdin(conf.Stdin)
 	}
 
 	// Create the command
 	server.cmd = jBuilder.Build(ctx)
 
-	if !conf.EnableInput {
+	if conf.Stdin == nil {
 		// Don't forward CTRL-C etc. signals from parent to child process
 		// We can't enable this if we set the cmd stdin or we deadlock
 		server.cmd.SysProcAttr = &unix.SysProcAttr{
 			Setpgid: true,
 			Pgid:    0,
 		}
-
-		// Set something up to send backspace lots
-		r, w := io.Pipe()
-
-		jBuilder = jBuilder.WithStdin(r)
-		go func() {
-			tick := time.NewTicker(50 * time.Millisecond)
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case <-tick.C:
-					// Write some backspaces
-					w.Write([]byte("\b\b\b\b\b\b\b\b"))
-				}
-			}
-		}()
 	}
 
 	err = server.cmd.Start()
@@ -265,7 +248,7 @@ func StartFirecrackerMachine(ctx context.Context, log loggingtypes.Logger, conf 
  */
 func (fs *FirecrackerMachine) Close() error {
 	if fs.log != nil {
-		fs.log.Info().Str("VMPath", fs.VMPath).Msg("Firecracker machine closing")
+		fs.log.Info().Str("VMPath", fs.VMPath).Int("VMPid", fs.VMPid).Msg("Firecracker machine closing")
 	}
 
 	if fs.cmd.Process != nil {
@@ -277,6 +260,9 @@ func (fs *FirecrackerMachine) Close() error {
 			if err != nil {
 				fs.closeLock.Unlock()
 				return err
+			}
+			if fs.log != nil {
+				fs.log.Info().Str("VMPath", fs.VMPath).Int("VMPid", fs.VMPid).Msg("Sent kill to firecracker")
 			}
 		}
 		fs.closeLock.Unlock()
@@ -428,4 +414,35 @@ func (fs *FirecrackerMachine) StartVM(ctx context.Context, kernelPath string,
 	}
 
 	return nil
+}
+
+// outputPusher creates an output pusher
+func NewOutputPusher(ctx context.Context, log loggingtypes.Logger) io.Reader {
+	// Set something up to send backspace lots
+	r, w := io.Pipe()
+
+	go func() {
+		tick := time.NewTicker(100 * time.Millisecond)
+		for {
+			select {
+			case <-ctx.Done():
+				err := w.Close() // Close it, so that the the process ends cleanly
+				if err != nil {
+					if log != nil {
+						log.Debug().Err(err).Msg("error closing fc stdin")
+					}
+				}
+				return
+			case <-tick.C:
+				// Write some backspaces
+				_, err := w.Write([]byte("\b\b\b\b\b\b\b\b"))
+				if err != nil {
+					if log != nil {
+						log.Debug().Err(err).Msg("error writing to fc stdin")
+					}
+				}
+			}
+		}
+	}()
+	return r
 }

@@ -84,7 +84,12 @@ func main() {
 			},
 		))
 
-		go http.ListenAndServe(*serveMetrics, nil)
+		go func() {
+			err := http.ListenAndServe(*serveMetrics, nil)
+			if err != nil {
+				panic(err)
+			}
+		}()
 	}
 
 	devices, err := decodeDevices(*rawDevices)
@@ -131,7 +136,10 @@ func main() {
 		NetNS:          *netns,
 		NumaNode:       *numaNode,
 		CgroupVersion:  *cgroupVersion,
-		EnableInput:    *enableInput,
+	}
+
+	if *enableInput {
+		fcconfig.Stdin = os.Stdin
 	}
 
 	if *enableOutput {

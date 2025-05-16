@@ -21,7 +21,11 @@ func benchValkey(profileCPU bool, name string, port int, iterations int) (time.D
 		if err != nil {
 			panic(err)
 		}
-		pprof.StartCPUProfile(f)
+		err = pprof.StartCPUProfile(f)
+		if err != nil {
+			panic(err)
+		}
+
 		defer func() {
 			pprof.StopCPUProfile()
 			f.Close()

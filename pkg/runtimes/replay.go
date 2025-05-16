@@ -70,11 +70,15 @@ func (rp *ReplayRuntimeProvider) Start(ctx context.Context, rescueCtx context.Co
 }
 
 func (rp *ReplayRuntimeProvider) Close(dg *devicegroup.DeviceGroup) error {
-	rp.Suspend(context.TODO(), 10*time.Second, dg)
+	err := rp.Suspend(context.TODO(), 10*time.Second, dg)
+	if err != nil {
+		return err
+	}
 	for n, prov := range rp.providers {
 		err := prov.Close()
 		if err != nil {
 			fmt.Printf("Error closing provider %s %v\n", n, err)
+			return err
 		}
 	}
 	return nil
@@ -111,7 +115,7 @@ func (rp *ReplayRuntimeProvider) FlushData(ctx context.Context, dg *devicegroup.
 	return nil
 }
 
-func (rp *ReplayRuntimeProvider) Resume(resumeTimeout time.Duration, rescueTimeout time.Duration, errChan chan error) error {
+func (rp *ReplayRuntimeProvider) Resume(ctx context.Context, rescueTimeout time.Duration, dg *devicegroup.DeviceGroup, errChan chan error) error {
 	fmt.Printf("### Resume\n")
 	if rp.replayers == nil {
 		err := rp.init()

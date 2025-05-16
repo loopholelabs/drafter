@@ -35,8 +35,7 @@ func (rp *MockRuntimeProvider) Start(ctx context.Context, rescueCtx context.Cont
 
 func (rp *MockRuntimeProvider) Close(dg *devicegroup.DeviceGroup) error {
 	fmt.Printf(" ### Close %s\n", rp.HomePath)
-	rp.Suspend(context.TODO(), 10*time.Second, dg)
-	return nil
+	return rp.Suspend(context.TODO(), 10*time.Second, dg)
 }
 
 func (rp *MockRuntimeProvider) DevicePath() string {
@@ -75,7 +74,7 @@ func (rp *MockRuntimeProvider) FlushData(ctx context.Context, dg *devicegroup.De
 	return nil
 }
 
-func (rp *MockRuntimeProvider) Resume(resumeTimeout time.Duration, rescueTimeout time.Duration, errChan chan error) error {
+func (rp *MockRuntimeProvider) Resume(ctx context.Context, rescueTimeout time.Duration, dg *devicegroup.DeviceGroup, errChan chan error) error {
 	fmt.Printf(" ### Resume %s\n", rp.HomePath)
 
 	for _, n := range common.KnownNames {
@@ -106,7 +105,8 @@ func (rp *MockRuntimeProvider) Resume(resumeTimeout time.Duration, rescueTimeout
 
 					size := rp.DeviceSizes[devName]
 					data := make([]byte, 4096)
-					crand.Read(data)
+					_, err = crand.Read(data)
+					assert.NoError(rp.T, err)
 					offset := rand.Intn(size - len(data))
 
 					fmt.Printf(" ### WriteAt %s %s offset %d\n", rp.HomePath, devName, offset)

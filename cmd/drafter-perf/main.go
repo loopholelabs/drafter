@@ -22,23 +22,26 @@ import (
  */
 func main() {
 	log := logging.New(logging.Zerolog, "test", os.Stderr)
-	log.SetLevel(types.ErrorLevel)
+	log.SetLevel(types.InfoLevel)
 
 	profileCPU := flag.Bool("prof", false, "Profile CPU")
 	dTestDir := flag.String("testdir", "testdir", "Test directory")
 	dSnapDir := flag.String("snapdir", "snapdir", "Snap directory")
 	dBlueDir := flag.String("bluedir", "bluedir", "Blue directory")
+	noCleanup := flag.Bool("no-cleanup", false, "If true, then don't remove any files at the end")
 
 	cpuCount := flag.Int("cpus", 1, "CPU count")
 	memCount := flag.Int("memory", 1024, "Memory MB")
 	cpuTemplate := flag.String("template", "None", "CPU Template")
 	usePVMBootArgs := flag.Bool("pvm", false, "PVM boot args")
+
+	// No silo
 	runWithNonSilo := flag.Bool("nosilo", false, "Run a test with Silo disabled")
 
+	// TODO: Shift to using a json config for these...
 	runSiloWC := flag.Bool("silowc", false, "Run a test with Silo WriteCache")
 	wcMin := flag.String("wcmin", "80m", "Min writeCache size")
 	wcMax := flag.String("wcmax", "100m", "Max writeCache size")
-
 	runSiloAll := flag.Bool("silo", false, "Run all silo tests")
 
 	valkeyTest := flag.Bool("valkey", false, "Run valkey benchmark test")
@@ -47,15 +50,19 @@ func main() {
 	enableOutput := flag.Bool("enable-output", false, "Enable VM output")
 	enableInput := flag.Bool("enable-input", false, "Enable VM input")
 
+	migrateAfter := flag.String("migrate-after", "", "Migrate the VM after a time period")
+
 	flag.Parse()
 
 	err := os.Mkdir(*dTestDir, 0777)
 	if err != nil {
 		panic(err)
 	}
-	defer func() {
-		os.RemoveAll(*dTestDir)
-	}()
+	if !*noCleanup {
+		defer func() {
+			os.RemoveAll(*dTestDir)
+		}()
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -106,7 +113,10 @@ func main() {
 
 	// Clear the snap dir...
 	os.RemoveAll(*dSnapDir)
-	os.Mkdir(*dSnapDir, 0666)
+	err = os.Mkdir(*dSnapDir, 0666)
+	if err != nil {
+		panic(err)
+	}
 
 	valkeyUp := false
 
@@ -134,6 +144,7 @@ func main() {
 			}
 		}
 	}
+
 	err = setupSnapshot(log, ctx, netns, vmConfig, *dBlueDir, *dSnapDir, waitReady)
 	if err != nil {
 		panic(err)
@@ -144,7 +155,7 @@ func main() {
 		panic(errors.New("Could not start valkey?"))
 	}
 
-	fmt.Printf("\n\n Starting tests...\n\n")
+	log.Info().Msg("Starting tests...")
 
 	siloTimingsGet := make(map[string]time.Duration, 0)
 	siloTimingsSet := make(map[string]time.Duration, 0)
@@ -154,18 +165,20 @@ func main() {
 
 	siloConfigs := []siloConfig{}
 
-	defaultBS := uint32(1024 * 1024)
+	defaultBS := uint32(1024 * 1024) // Default block size
 
 	if *runSiloAll {
+		// TODO: This will come in from json config
+
 		siloConfigs = []siloConfig{
 			//			{name: "silo", blockSize: defaultBS, useCow: true, useSparseFile: true, useVolatility: true, useWriteCache: false, grabPeriod: 0},
 
-			//			{name: "silo_100ms", blockSize: defaultBS, useCow: true, useSparseFile: true, useVolatility: true, useWriteCache: false, grabPeriod: 100 * time.Millisecond},
+			{name: "silo_100ms", blockSize: defaultBS, useCow: true, useSparseFile: true, useVolatility: true, useWriteCache: false, grabPeriod: 100 * time.Millisecond},
 			{name: "silo_1s", blockSize: defaultBS, useCow: true, useSparseFile: true, useVolatility: true, useWriteCache: false, grabPeriod: 1 * time.Second},
-			//			{name: "silo_2s", blockSize: defaultBS, useCow: true, useSparseFile: true, useVolatility: true, useWriteCache: false, grabPeriod: 2 * time.Second},
-			//			{name: "silo_5s", blockSize: defaultBS, useCow: true, useSparseFile: true, useVolatility: true, useWriteCache: false, grabPeriod: 5 * time.Second},
-			//			{name: "silo_10s", blockSize: defaultBS, useCow: true, useSparseFile: true, useVolatility: true, useWriteCache: false, grabPeriod: 10 * time.Second},
-			//			{name: "silo_30s", blockSize: defaultBS, useCow: true, useSparseFile: true, useVolatility: true, useWriteCache: false, grabPeriod: 30 * time.Second},
+			{name: "silo_2s", blockSize: defaultBS, useCow: true, useSparseFile: true, useVolatility: true, useWriteCache: false, grabPeriod: 2 * time.Second},
+			{name: "silo_5s", blockSize: defaultBS, useCow: true, useSparseFile: true, useVolatility: true, useWriteCache: false, grabPeriod: 5 * time.Second},
+			{name: "silo_10s", blockSize: defaultBS, useCow: true, useSparseFile: true, useVolatility: true, useWriteCache: false, grabPeriod: 10 * time.Second},
+			{name: "silo_30s", blockSize: defaultBS, useCow: true, useSparseFile: true, useVolatility: true, useWriteCache: false, grabPeriod: 30 * time.Second},
 
 			//				{name: "silo_no_vm_no_cow", blockSize: defaultBS, useCow: false, useSparseFile: false, useVolatility: false, useWriteCache: false},
 			//				{name: "silo_no_vmsf", blockSize: defaultBS, useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: false},
@@ -209,7 +222,7 @@ func main() {
 				}
 				runtimeEnd = time.Now()
 			} else {
-				err = benchCICD(*profileCPU, sConf.name, 1*time.Hour, sConf.grabPeriod)
+				err = benchCICD(*profileCPU, sConf.name, 1*time.Hour)
 				if err != nil {
 					panic(err)
 				}
@@ -217,7 +230,7 @@ func main() {
 			}
 		}
 
-		err = runSilo(ctx, log, dummyMetrics, *dTestDir, *dSnapDir, netns, benchCB, sConf, *enableInput, *enableOutput)
+		err = runSilo(ctx, log, dummyMetrics, *dTestDir, *dSnapDir, netns, benchCB, sConf, *enableInput, *enableOutput, *migrateAfter)
 		if err != nil {
 			panic(err)
 		}
@@ -234,7 +247,7 @@ func main() {
 			if *valkeyTest {
 				nosiloSet, nosiloGet, err = benchValkey(*profileCPU, "nosilo", 3333, *valkeyIterations)
 			} else {
-				err = benchCICD(*profileCPU, "nosilo", 1*time.Hour, 10*time.Second)
+				err = benchCICD(*profileCPU, "nosilo", 1*time.Hour)
 			}
 			if err != nil {
 				panic(err)

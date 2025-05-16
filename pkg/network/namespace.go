@@ -98,7 +98,13 @@ func (n *Namespace) Open() error {
 		return errors.Join(ErrCouldNotGetOriginalNamespace, err)
 	}
 	defer originalNSHandle.Close()
-	defer netns.Set(originalNSHandle)
+	defer func() {
+		err := netns.Set(originalNSHandle)
+		if err != nil {
+			// TODO: We need to handle this error
+			fmt.Printf("Error setting netns back %v", err)
+		}
+	}()
 
 	nsHandle, err := netns.NewNamed(n.id)
 	if err != nil {
@@ -304,7 +310,13 @@ func (n *Namespace) Close() error {
 		return errors.Join(ErrCouldNotGetOriginalNamespace, err)
 	}
 	defer originalNSHandle.Close()
-	defer netns.Set(originalNSHandle)
+	defer func() {
+		err := netns.Set(originalNSHandle)
+		if err != nil {
+			// TODO: We need to handle this error
+			fmt.Printf("Error setting netns back %v", err)
+		}
+	}()
 
 	nsHandle, err := netns.GetFromName(n.id)
 	if err != nil {

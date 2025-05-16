@@ -142,7 +142,7 @@ func setupSnapshot(t *testing.T, log types.Logger, ctx context.Context, netns st
 			CgroupVersion:  2,
 			Stdout:         nil,
 			Stderr:         nil,
-			EnableInput:    false,
+			Stdin:          nil,
 		},
 		NetworkConfiguration{
 			Interface: "tap0",

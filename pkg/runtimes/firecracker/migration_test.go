@@ -22,6 +22,7 @@ import (
 	"github.com/loopholelabs/drafter/pkg/testutil"
 	"github.com/loopholelabs/logging"
 	"github.com/loopholelabs/logging/types"
+	"github.com/loopholelabs/silo/pkg/storage"
 	"github.com/loopholelabs/silo/pkg/storage/migrator"
 	"github.com/loopholelabs/silo/pkg/storage/sources"
 	"github.com/loopholelabs/silo/pkg/testutils"
@@ -265,7 +266,7 @@ func migration(t *testing.T, config *migrationConfig) {
 	})
 
 	log := logging.New(logging.Zerolog, "test", os.Stderr)
-	log.SetLevel(types.ErrorLevel)
+	//	log.SetLevel(types.TraceLevel)
 
 	ns := testutil.SetupNAT(t, "", "dra")
 
@@ -296,7 +297,7 @@ func migration(t *testing.T, config *migrationConfig) {
 			CgroupVersion:  2,
 			Stdout:         nil,
 			Stderr:         nil,
-			EnableInput:    false,
+			Stdin:          nil,
 			NoMapShared:    config.noMapShared,
 		},
 		StateName:        common.DeviceStateName,
@@ -361,7 +362,7 @@ func migration(t *testing.T, config *migrationConfig) {
 				CgroupVersion:  2,
 				Stdout:         nil,
 				Stderr:         nil,
-				EnableInput:    false,
+				Stdin:          nil,
 				NoMapShared:    config.noMapShared,
 			},
 			StateName:        common.DeviceStateName,
@@ -369,10 +370,16 @@ func migration(t *testing.T, config *migrationConfig) {
 			AgentServerLocal: struct{}{},
 		}
 
+		// We can push output here if we need to...
+		// opCtx, opCancel := context.WithCancel(context.TODO())
+		// rp.HypervisorConfiguration.Stdin = NewOutputPusher(opCtx, log)
+
 		rp.RunningCB = func(r bool) {
 			if r {
 				// This peer resumed. Record the time that happened
 				resumeTime = time.Now()
+			} else {
+				//		opCancel() // Stop pushing output
 			}
 		}
 
@@ -455,19 +462,30 @@ func migration(t *testing.T, config *migrationConfig) {
 			// Make sure everything migrated as expected...
 			for _, n := range append(common.KnownNames, "oci") {
 
-				buff1, err := os.ReadFile(path.Join(lastrp.DevicePath(), n))
-				assert.NoError(t, err)
-				buff2, err := os.ReadFile(path.Join(rp.DevicePath(), n))
-				assert.NoError(t, err)
+				// If we're doing soft dirty, it doesn't go through NBD, so we should do the comparison in silo provider...
+				if rp.HypervisorConfiguration.NoMapShared && n == common.DeviceMemoryName {
+					prov1 := lastPeer.GetDG().GetDeviceInformationByName(n).Exp.GetProvider()
+					prov2 := nextPeer.GetDG().GetDeviceInformationByName(n).Exp.GetProvider()
+					eq, err := storage.Equals(prov1, prov2, 1024*1024)
+					assert.NoError(t, err)
+					assert.True(t, eq)
+					fmt.Printf(" # Migration %d End hash %s ok\n", migration+1, n)
+				} else {
 
-				// Compare hashes so we don't get tons of output if they do differ.
-				hash1 := sha256.Sum256(buff1)
-				hash2 := sha256.Sum256(buff2)
+					buff1, err := os.ReadFile(path.Join(lastrp.DevicePath(), n))
+					assert.NoError(t, err)
+					buff2, err := os.ReadFile(path.Join(rp.DevicePath(), n))
+					assert.NoError(t, err)
 
-				fmt.Printf(" # Migration %d End hash %s ~ %x => %x\n", migration+1, n, hash1, hash2)
+					// Compare hashes so we don't get tons of output if they do differ.
+					hash1 := sha256.Sum256(buff1)
+					hash2 := sha256.Sum256(buff2)
 
-				// Check the data is identical
-				assert.Equal(t, hash1, hash2)
+					fmt.Printf(" # Migration %d End hash %s ~ %x => %x\n", migration+1, n, hash1, hash2)
+
+					// Check the data is identical
+					assert.Equal(t, hash1, hash2)
+				}
 			}
 		}
 
