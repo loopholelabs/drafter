@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
-	"io"
 	"os"
 	"path"
 	"sync"
@@ -59,30 +57,6 @@ type FirecrackerRuntimeProvider[L ipc.AgentServerLocal, R ipc.AgentServerRemote[
 func (rp *FirecrackerRuntimeProvider[L, R, G]) Resume(ctx context.Context, rescueTimeout time.Duration, dg *devicegroup.DeviceGroup, errChan chan error) error {
 	rp.runningLock.Lock()
 	defer rp.runningLock.Unlock()
-
-	if rp.HypervisorConfiguration.NoMapShared {
-		// If we're not going map_shared, we should separate the memory...
-		err := os.Rename(path.Join(rp.DevicePath(), common.DeviceMemoryName), path.Join(rp.DevicePath(), "memory_grab"))
-		if err != nil {
-			return err
-		}
-		// Create a new memory for firecracker...
-		// TODO: This should link to the silo base, but for now we'll write the file...
-		src, err := os.Open(path.Join(rp.DevicePath(), "memory_grab"))
-		if err != nil {
-			return err
-		}
-		dst, err := os.OpenFile(path.Join(rp.DevicePath(), common.DeviceMemoryName), os.O_CREATE|os.O_RDWR, 0666)
-		if err != nil {
-			return err
-		}
-		swapStart := time.Now()
-		bytes, err := io.Copy(dst, src)
-		if err != nil {
-			return err
-		}
-		fmt.Printf("Swapped out memory file %d bytes took %dms\n", bytes, time.Since(swapStart).Milliseconds())
-	}
 
 	// Read from the config device
 	configFileData, err := os.ReadFile(path.Join(rp.DevicePath(), common.DeviceConfigName))
