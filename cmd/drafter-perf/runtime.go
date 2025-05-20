@@ -172,6 +172,10 @@ func runSilo(ctx context.Context, log loggingtypes.Logger, met metrics.SiloMetri
 		GrabInterval:            conf.grabPeriod,
 	}
 
+	if hConf.NoMapShared {
+		rp.Grabbing = true
+	}
+
 	// Use something to push output (sometimes needed)
 	if !enableInput {
 		pusherCtx, pusherCancel := context.WithCancel(context.Background())
@@ -203,7 +207,28 @@ func runSilo(ctx context.Context, log loggingtypes.Logger, met metrics.SiloMetri
 	if err != nil {
 		return err
 	}
+	/*
+		// Hook into the memory so we can see activity
+		memExp := myPeer.GetDG().GetDeviceInformationByName(common.DeviceMemoryName).Exp
+		hooks := modules.NewHooks(memExp.GetProvider())
+		hooks.PostWrite = func(buffer []byte, offset int64, n int, err error) (int, error) {
+			for i := 0; i < len(buffer); i += 4096 {
+				hash := sha256.Sum256(buffer[i : i+4096])
+				fmt.Printf("# VM.WriteAt %016x %x %s\n", offset+int64(i), hash, time.Now())
+			}
+			return n, err
+		}
 
+		hooks.PostRead = func(buffer []byte, offset int64, n int, err error) (int, error) {
+			for i := 0; i < len(buffer); i += 4096 {
+				hash := sha256.Sum256(buffer[i : i+4096])
+				fmt.Printf("# VM.ReadAt %016x %x %s\n", offset+int64(i), hash, time.Now())
+			}
+			return n, err
+		}
+
+		memExp.SetProvider(hooks)
+	*/
 	err = myPeer.Resume(context.TODO(), 1*time.Minute, 10*time.Second)
 	if err != nil {
 		return err
