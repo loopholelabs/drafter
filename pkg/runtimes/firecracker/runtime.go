@@ -358,34 +358,52 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChanges() error {
 		return nil
 	}
 
-	lockcb()
-
 	totalBytes := int64(0)
 
+	type CopyData struct {
+		ranges    []expose.MemoryRange
+		addrStart uint64
+		offset    uint64
+	}
+
+	copyData := make([]CopyData, 0)
+
+	err = lockcb()
+	if err != nil {
+		return err
+	}
+
 	for _, r := range memRanges {
-
-		addrStart := r.Start
-		addrEnd := r.End
-		offset := r.Offset
-
 		if rp.Log != nil {
-			rp.Log.Debug().Uint64("offset", offset).Uint64("addrEnd", addrEnd).Uint64("addrStart", addrStart).Msg("SoftDirty memory changes")
+			rp.Log.Debug().Uint64("offset", r.Offset).Uint64("addrEnd", r.End).Uint64("addrStart", r.Start).Msg("SoftDirty memory changes")
 		}
 
-		ranges, err := pm.ReadSoftDirtyMemoryRangeList(addrStart, addrEnd, func() error { return nil }, func() error { return nil }) // lockcb, unlockcb)
+		ranges, err := pm.ReadSoftDirtyMemoryRangeList(r.Start, r.End, func() error { return nil }, func() error { return nil }) // lockcb, unlockcb)
 		if err != nil {
+			_ = unlockcb() // Try our best to unlock...
 			return err
 		}
 
+		copyData = append(copyData, CopyData{
+			ranges:    ranges,
+			addrStart: r.Start,
+			offset:    r.Offset,
+		})
+	}
+	err = unlockcb()
+	if err != nil {
+		return err
+	}
+
+	// Outside the stop/cont, we now copy the regions we need.
+	for _, tt := range copyData {
 		// Copy to the Silo provider
-		b, err := pm.CopyMemoryRanges(int64(addrStart)-int64(offset), ranges, rp.grabberProv)
+		b, err := pm.CopyMemoryRanges(int64(tt.addrStart)-int64(tt.offset), tt.ranges, rp.grabberProv)
 		if err != nil {
 			return err
 		}
 		totalBytes += int64(b)
 	}
-
-	unlockcb()
 
 	if rp.Log != nil {
 		rp.Log.Info().Int64("bytes", totalBytes).Int64("ms", resumeTime.Sub(pauseTime).Milliseconds()).Msg("SoftDirty copied memory to the silo provider")
