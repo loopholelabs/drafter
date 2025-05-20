@@ -44,6 +44,7 @@ type FirecrackerRuntimeProvider[L ipc.AgentServerLocal, R ipc.AgentServerRemote[
 	RunningCB func(r bool)
 
 	// Grabber
+	Grabbing      bool
 	grabberCtx    context.Context
 	grabberCancel context.CancelFunc
 	grabberWg     sync.WaitGroup
@@ -192,18 +193,18 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) FlushData(ctx context.Context, dg
 		rp.Log.Info().Msg("Firecracker FlushData")
 	}
 
-	if !rp.HypervisorConfiguration.NoMapShared {
+	if rp.Grabbing {
+		err := rp.grabMemoryChanges()
+		if err != nil {
+			return err
+		}
+	} else {
 		err := rp.Machine.CreateSnapshot(ctx, common.DeviceStateName, "", SDKSnapshotTypeMsync)
 		if err != nil {
 			if rp.Log != nil {
 				rp.Log.Error().Err(err).Msg("error in firecracker Msync")
 			}
 			return errors.Join(ErrCouldNotCreateSnapshot, err)
-		}
-	} else {
-		err := rp.grabMemoryChanges()
-		if err != nil {
-			return err
 		}
 	}
 	return nil
@@ -301,7 +302,7 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Suspend(ctx context.Context, susp
 
 	rp.setRunning(false)
 
-	if rp.HypervisorConfiguration.NoMapShared {
+	if rp.Grabbing {
 		err = rp.grabMemoryChanges()
 		if err != nil {
 			return err
@@ -321,12 +322,9 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChanges() error {
 
 	// Do a softDirty memory read here, and write it to the silo memory device.
 	pm := expose.NewProcessMemory(rp.Machine.VMPid)
-	addrStart, addrEnd, err := pm.GetMemoryRange("/memory")
+	memRanges, err := pm.GetMemoryRange("/memory")
 	if err != nil {
 		return err
-	}
-	if rp.Log != nil {
-		rp.Log.Debug().Uint64("addrEnd", addrEnd).Uint64("addrStart", addrStart).Msg("SoftDirty memory changes")
 	}
 
 	var pauseTime time.Time
@@ -360,18 +358,37 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChanges() error {
 		return nil
 	}
 
-	ranges, err := pm.ReadSoftDirtyMemoryRangeList(addrStart, addrEnd, lockcb, unlockcb)
-	if err != nil {
-		return err
+	lockcb()
+
+	totalBytes := int64(0)
+
+	for _, r := range memRanges {
+
+		addrStart := r.Start
+		addrEnd := r.End
+		offset := r.Offset
+
+		if rp.Log != nil {
+			rp.Log.Debug().Uint64("offset", offset).Uint64("addrEnd", addrEnd).Uint64("addrStart", addrStart).Msg("SoftDirty memory changes")
+		}
+
+		ranges, err := pm.ReadSoftDirtyMemoryRangeList(addrStart, addrEnd, func() error { return nil }, func() error { return nil }) // lockcb, unlockcb)
+		if err != nil {
+			return err
+		}
+
+		// Copy to the Silo provider
+		b, err := pm.CopyMemoryRanges(int64(addrStart)-int64(offset), ranges, rp.grabberProv)
+		if err != nil {
+			return err
+		}
+		totalBytes += int64(b)
 	}
 
-	// Copy to the Silo provider
-	n, err := pm.CopyMemoryRanges(addrStart, ranges, rp.grabberProv)
-	if err != nil {
-		return err
-	}
+	unlockcb()
+
 	if rp.Log != nil {
-		rp.Log.Info().Uint64("bytes", n).Int64("ms", resumeTime.Sub(pauseTime).Milliseconds()).Msg("SoftDirty copied memory to the silo provider")
+		rp.Log.Info().Int64("bytes", totalBytes).Int64("ms", resumeTime.Sub(pauseTime).Milliseconds()).Msg("SoftDirty copied memory to the silo provider")
 	}
 
 	return nil

@@ -313,14 +313,15 @@ func migration(t *testing.T, config *migrationConfig) {
 			NetNS:          netns,
 			NumaNode:       0,
 			CgroupVersion:  2,
-			Stdout:         nil,
-			Stderr:         nil,
+			Stdout:         os.Stdout,
+			Stderr:         os.Stderr,
 			Stdin:          nil,
 			NoMapShared:    config.noMapShared,
 		},
 		StateName:        common.DeviceStateName,
 		MemoryName:       common.DeviceMemoryName,
 		AgentServerLocal: struct{}{},
+		Grabbing:         config.noMapShared,
 	}
 
 	rp.GrabInterval = config.grabInterval
@@ -380,14 +381,15 @@ func migration(t *testing.T, config *migrationConfig) {
 				NetNS:          netns,
 				NumaNode:       0,
 				CgroupVersion:  2,
-				Stdout:         nil,
-				Stderr:         nil,
+				Stdout:         os.Stdout,
+				Stderr:         os.Stderr,
 				Stdin:          nil,
 				NoMapShared:    config.noMapShared,
 			},
 			StateName:        common.DeviceStateName,
 			MemoryName:       common.DeviceMemoryName,
 			AgentServerLocal: struct{}{},
+			Grabbing:         config.noMapShared,
 		}
 
 		rp.GrabInterval = config.grabInterval
