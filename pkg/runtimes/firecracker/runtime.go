@@ -8,48 +8,56 @@ import (
 	"path"
 	"sync"
 	"time"
+	"unsafe"
 
 	"github.com/loopholelabs/drafter/pkg/common"
 	"github.com/loopholelabs/drafter/pkg/ipc"
 	"github.com/loopholelabs/logging/types"
+	"github.com/loopholelabs/silo/pkg/storage"
+	"github.com/loopholelabs/silo/pkg/storage/devicegroup"
+	"github.com/loopholelabs/silo/pkg/storage/expose"
 )
 
 var ErrConfigFileNotFound = errors.New("config file not found")
 var ErrCouldNotOpenConfigFile = errors.New("could not open config file")
 var ErrCouldNotDecodeConfigFile = errors.New("could not decode config file")
 var ErrCouldNotResumeRunner = errors.New("could not resume runner")
+var ErrCouldNotRemoveVMDir = errors.New("could not remove vm dir")
+var ErrCouldNotResumeSnapshot = errors.New("could not resume snapshot")
 
 type FirecrackerRuntimeProvider[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] struct {
 	Log                     types.Logger
-	Runner                  *Runner
-	ResumedRunner           *ResumedRunner[L, R, G]
-	HypervisorConfiguration HypervisorConfiguration
+	Machine                 *FirecrackerMachine
+	HypervisorConfiguration FirecrackerMachineConfig
 	StateName               string
 	MemoryName              string
+	GrabInterval            time.Duration
+
+	memoryLock sync.Mutex
 
 	hypervisorCtx    context.Context
 	hypervisorCancel context.CancelFunc
-	resumeCtx        context.Context
-	resumeCancel     context.CancelFunc
-
-	SnapshotLoadConfiguration SnapshotLoadConfiguration
 
 	runningLock sync.Mutex
 	running     bool
 
+	RunningCB func(r bool)
+
+	// Grabber
+	Grabbing      bool
+	grabberCtx    context.Context
+	grabberCancel context.CancelFunc
+	grabberWg     sync.WaitGroup
+	grabberProv   storage.Provider
+
 	// RPC Bits
-	Remote           R
+	agent            *ipc.AgentRPC[L, R, G]
 	AgentServerLocal L
-	AgentServerHooks ipc.AgentServerAcceptHooks[R, G]
 }
 
-func (rp *FirecrackerRuntimeProvider[L, R, G]) Resume(resumeTimeout time.Duration, rescueTimeout time.Duration, errChan chan error) error {
+func (rp *FirecrackerRuntimeProvider[L, R, G]) Resume(ctx context.Context, rescueTimeout time.Duration, dg *devicegroup.DeviceGroup, errChan chan error) error {
 	rp.runningLock.Lock()
 	defer rp.runningLock.Unlock()
-
-	resumeCtx, resumeCancel := context.WithCancel(context.TODO())
-	rp.resumeCtx = resumeCtx
-	rp.resumeCancel = resumeCancel
 
 	// Read from the config device
 	configFileData, err := os.ReadFile(path.Join(rp.DevicePath(), common.DeviceConfigName))
@@ -72,34 +80,88 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Resume(resumeTimeout time.Duratio
 		return errors.Join(ErrCouldNotDecodeConfigFile, err)
 	}
 
-	rp.ResumedRunner, err = Resume[L, R, G](
-		rp.Runner,
-		resumeCtx,
-		resumeTimeout,
-		rescueTimeout,
-		packageConfig.AgentVSockPort,
-		rp.AgentServerLocal,
-		rp.AgentServerHooks,
-		rp.SnapshotLoadConfiguration,
-	)
+	err = rp.Machine.ResumeSnapshot(ctx, common.DeviceStateName, common.DeviceMemoryName)
 	if err != nil {
 		return err
 	}
 
-	rp.Remote = *rp.ResumedRunner.rpc.Remote
+	// Setup the grabber provider
+	di := dg.GetDeviceInformationByName(common.DeviceMemoryName)
+	rp.grabberProv = di.Exp.GetProvider()
 
-	go func() {
-		err := rp.ResumedRunner.Wait()
-		if err != nil {
-			select {
-			case errChan <- err:
-			default:
-			}
-		}
-	}()
+	rp.setRunning(true)
 
-	rp.running = true
+	// Start the RPC stuff...
+	rp.agent, err = ipc.StartAgentRPC[L, R](
+		rp.Log, path.Join(rp.Machine.VMPath, VSockName),
+		packageConfig.AgentVSockPort, rp.AgentServerLocal)
+	if err != nil {
+		return err
+	}
+
+	// Call after resume RPC
+	r, err := rp.agent.GetRemote(ctx)
+	if err != nil {
+		return err
+	}
+
+	remote := *(*ipc.AgentServerRemote[G])(unsafe.Pointer(&r))
+	err = remote.AfterResume(ctx)
+	if err != nil {
+		return err
+	}
+
 	return nil
+}
+
+func (rp *FirecrackerRuntimeProvider[L, R, G]) setRunning(r bool) {
+	if rp.running == r {
+		return // No change. Ignore it
+	}
+
+	rp.running = r
+
+	if rp.RunningCB != nil {
+		rp.RunningCB(r)
+	}
+
+	if rp.GrabInterval != 0 {
+		if r {
+			// Setup the grabber
+			rp.grabberCtx, rp.grabberCancel = context.WithCancel(context.Background())
+			rp.grabberWg.Add(1)
+			go func() {
+				ticker := time.NewTicker(rp.GrabInterval)
+				defer ticker.Stop()
+				for {
+					select {
+					case <-rp.grabberCtx.Done():
+						rp.grabberWg.Done()
+						if rp.Log != nil {
+							rp.Log.Error().Msg("memory grabber finished")
+						}
+						return
+					case <-ticker.C:
+						err := rp.grabMemoryChanges()
+						if err != nil {
+							if rp.Log != nil {
+								rp.Log.Error().Err(err).Msg("could not grab memory changes")
+							}
+						}
+
+					}
+				}
+			}()
+		} else {
+			// Cancel the grabber, and wait for it to finish
+			rp.grabberCancel()
+			rp.grabberWg.Wait()
+		}
+	}
+}
+
+func (rp *FirecrackerRuntimeProvider[L, R, G]) GetRemote(ctx context.Context) (R, error) {
+	return rp.agent.GetRemote(ctx)
 }
 
 func (rp *FirecrackerRuntimeProvider[L, R, G]) Start(ctx context.Context, rescueCtx context.Context, errChan chan error) error {
@@ -108,16 +170,13 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Start(ctx context.Context, rescue
 	rp.hypervisorCtx = hypervisorCtx
 	rp.hypervisorCancel = hypervisorCancel
 
-	run, err := StartRunner(
-		rp.Log,
-		hypervisorCtx,
-		rescueCtx,
-		rp.HypervisorConfiguration,
-	)
+	var err error
+	rp.Machine, err = StartFirecrackerMachine(hypervisorCtx, rp.Log, &rp.HypervisorConfiguration)
+
 	if err == nil {
-		rp.Runner = run
+		// Wait for the machine, and relay it to the errChan
 		go func() {
-			err := run.Wait()
+			err := rp.Machine.Wait()
 			if err != nil {
 				select {
 				case errChan <- err:
@@ -129,53 +188,76 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Start(ctx context.Context, rescue
 	return err
 }
 
-func (rp *FirecrackerRuntimeProvider[L, R, G]) FlushData(ctx context.Context) error {
-	return rp.ResumedRunner.Msync(ctx)
-}
+func (rp *FirecrackerRuntimeProvider[L, R, G]) FlushData(ctx context.Context, dg *devicegroup.DeviceGroup) error {
+	if rp.Log != nil {
+		rp.Log.Info().Msg("Firecracker FlushData")
+	}
 
-func (rp *FirecrackerRuntimeProvider[L, R, G]) DevicePath() string {
-	return rp.Runner.VMPath
-}
-
-func (rp *FirecrackerRuntimeProvider[L, R, G]) GetVMPid() int {
-	return rp.Runner.VMPid
-}
-
-func (rp *FirecrackerRuntimeProvider[L, R, G]) Close() error {
-	if rp.ResumedRunner != nil {
-		if rp.Log != nil {
-			rp.Log.Debug().Msg("Closing resumed runner")
-		}
-
-		// We only need to do this if it hasn't been suspended, but it'll refuse inside Suspend
-		err := rp.Suspend(context.TODO(), time.Minute) // TODO. Timeout
-
-		rp.resumeCancel() // We can cancel this context now
-		rp.hypervisorCancel()
-
-		err = rp.ResumedRunner.Close()
+	if rp.Grabbing {
+		err := rp.grabMemoryChanges()
 		if err != nil {
 			return err
 		}
-		err = rp.ResumedRunner.Wait()
+	} else {
+		err := rp.Machine.CreateSnapshot(ctx, common.DeviceStateName, "", SDKSnapshotTypeMsync)
 		if err != nil {
-			return err
-		}
-		rp.ResumedRunner = nil // Just to make sure if there's further calls to Close
-
-	} else if rp.Runner != nil {
-		if rp.Log != nil {
-			rp.Log.Debug().Msg("Closing runner")
-		}
-		err := rp.Runner.Close()
-		if err != nil {
-			return err
+			if rp.Log != nil {
+				rp.Log.Error().Err(err).Msg("error in firecracker Msync")
+			}
+			return errors.Join(ErrCouldNotCreateSnapshot, err)
 		}
 	}
 	return nil
 }
 
-func (rp *FirecrackerRuntimeProvider[L, R, G]) Suspend(ctx context.Context, resumeTimeout time.Duration) error {
+func (rp *FirecrackerRuntimeProvider[L, R, G]) DevicePath() string {
+	return rp.Machine.VMPath
+}
+
+func (rp *FirecrackerRuntimeProvider[L, R, G]) GetVMPid() int {
+	return rp.Machine.VMPid
+}
+
+func (rp *FirecrackerRuntimeProvider[L, R, G]) Close(dg *devicegroup.DeviceGroup) error {
+	if rp.agent != nil {
+		if rp.Log != nil {
+			rp.Log.Debug().Msg("Firecracker runtime close")
+		}
+
+		// We only need to do this if it hasn't been suspended, but it'll refuse inside Suspend
+		err := rp.Suspend(context.TODO(), 10*time.Minute, dg) // TODO. Timeout
+		if err != nil {
+			return err
+		}
+
+		rp.hypervisorCancel()
+
+		err = rp.agent.Close()
+		if err != nil {
+			return err
+		}
+	}
+
+	if rp.Machine != nil {
+		if rp.Log != nil {
+			rp.Log.Debug().Msg("Closing machine")
+		}
+		err := rp.Machine.Close()
+		if err != nil {
+			return errors.Join(ErrCouldNotCloseServer, err)
+		}
+		/*
+		   FOR NOW, DON'T REMOVE DATA
+		   		err = os.RemoveAll(filepath.Dir(rp.Machine.VMPath))
+		   		if err != nil {
+		   			return errors.Join(ErrCouldNotRemoveVMDir, err)
+		   		}
+		*/
+	}
+	return nil
+}
+
+func (rp *FirecrackerRuntimeProvider[L, R, G]) Suspend(ctx context.Context, suspendTimeout time.Duration, dg *devicegroup.DeviceGroup) error {
 	rp.runningLock.Lock()
 	defer rp.runningLock.Unlock()
 
@@ -187,18 +269,145 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Suspend(ctx context.Context, resu
 	}
 
 	if rp.Log != nil {
-		rp.Log.Debug().Msg("firecracker SuspendAndCloseAgentServer")
+		rp.Log.Debug().Msg("firecracker runtime SuspendAndCloseAgentServer")
 	}
-	err := rp.ResumedRunner.SuspendAndCloseAgentServer(
-		ctx,
-		resumeTimeout,
-	)
+
+	suspendCtx, cancelSuspendCtx := context.WithTimeout(ctx, suspendTimeout)
+	defer cancelSuspendCtx()
+
+	r, err := rp.agent.GetRemote(suspendCtx)
 	if err != nil {
-		if rp.Log != nil {
-			rp.Log.Warn().Err(err).Msg("error from SuspendAndCloseAgentServer")
-		}
-	} else {
-		rp.running = false
+		return err
 	}
-	return err
+
+	remote := *(*ipc.AgentServerRemote[G])(unsafe.Pointer(&r))
+	err = remote.BeforeSuspend(suspendCtx)
+	if err != nil {
+		return errors.Join(ErrCouldNotCallBeforeSuspendRPC, err)
+	}
+
+	err = rp.agent.Close()
+	if err != nil {
+		return err
+	}
+
+	if rp.Log != nil {
+		rp.Log.Debug().Msg("firecracker runtime CreateSnapshot")
+	}
+
+	err = rp.Machine.CreateSnapshot(suspendCtx, common.DeviceStateName, "", SDKSnapshotTypeMsyncAndState)
+	if err != nil {
+		return errors.Join(ErrCouldNotCreateSnapshot, err)
+	}
+
+	rp.setRunning(false)
+
+	if rp.Grabbing {
+		err = rp.grabMemoryChanges()
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChanges() error {
+	rp.memoryLock.Lock()
+	defer rp.memoryLock.Unlock()
+
+	if rp.Log != nil {
+		rp.Log.Debug().Msg("Grabbing softDirty memory changes")
+	}
+
+	// Do a softDirty memory read here, and write it to the silo memory device.
+	pm := expose.NewProcessMemory(rp.Machine.VMPid)
+	memRanges, err := pm.GetMemoryRange("/memory")
+	if err != nil {
+		return err
+	}
+
+	var pauseTime time.Time
+	var resumeTime time.Time
+
+	lockcb := func() error {
+		err := pm.PauseProcess()
+		pauseTime = time.Now()
+		if err != nil {
+			if rp.Log != nil {
+				rp.Log.Error().Err(err).Msg("Could not pause process")
+			}
+		}
+		return err
+	}
+
+	unlockcb := func() error {
+		err := pm.ClearSoftDirty()
+		if err != nil {
+			return err
+		}
+
+		err = pm.ResumeProcess()
+		resumeTime = time.Now()
+		if err != nil {
+			if rp.Log != nil {
+				rp.Log.Error().Err(err).Msg("Could not resume process")
+			}
+			return err
+		}
+		return nil
+	}
+
+	totalBytes := int64(0)
+
+	type CopyData struct {
+		ranges    []expose.MemoryRange
+		addrStart uint64
+		offset    uint64
+	}
+
+	copyData := make([]CopyData, 0)
+
+	err = lockcb()
+	if err != nil {
+		return err
+	}
+
+	for _, r := range memRanges {
+		if rp.Log != nil {
+			rp.Log.Debug().Uint64("offset", r.Offset).Uint64("addrEnd", r.End).Uint64("addrStart", r.Start).Msg("SoftDirty memory changes")
+		}
+
+		ranges, err := pm.ReadSoftDirtyMemoryRangeList(r.Start, r.End, func() error { return nil }, func() error { return nil }) // lockcb, unlockcb)
+		if err != nil {
+			_ = unlockcb() // Try our best to unlock...
+			return err
+		}
+
+		copyData = append(copyData, CopyData{
+			ranges:    ranges,
+			addrStart: r.Start,
+			offset:    r.Offset,
+		})
+	}
+	err = unlockcb()
+	if err != nil {
+		return err
+	}
+
+	// Outside the stop/cont, we now copy the regions we need.
+	for _, tt := range copyData {
+		// Copy to the Silo provider
+		b, err := pm.CopyMemoryRanges(int64(tt.addrStart)-int64(tt.offset), tt.ranges, rp.grabberProv)
+		if err != nil {
+			return err
+		}
+		totalBytes += int64(b)
+	}
+
+	if rp.Log != nil {
+		rp.Log.Info().Int64("bytes", totalBytes).Int64("ms", resumeTime.Sub(pauseTime).Milliseconds()).Msg("SoftDirty copied memory to the silo provider")
+	}
+
+	return nil
 }

@@ -2,131 +2,132 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
-	"log"
+	"io"
 	"os"
 	"os/exec"
 	"os/signal"
+	"runtime/debug"
 	"strings"
 	"time"
 
 	"github.com/loopholelabs/drafter/pkg/ipc"
-	"github.com/loopholelabs/goroutine-manager/pkg/manager"
+	"github.com/loopholelabs/drafter/pkg/runtimes/firecracker/vsock"
+	"github.com/loopholelabs/logging"
+	loggingtypes "github.com/loopholelabs/logging/types"
 )
 
 func main() {
 	vsockPort := flag.Uint("vsock-port", 26, "VSock port")
 	vsockTimeout := flag.Duration("vsock-timeout", time.Minute, "VSock dial timeout")
-
 	shellCmd := flag.String("shell-cmd", "sh", "Shell to use to run the before suspend and after resume commands")
 	beforeSuspendCmd := flag.String("before-suspend-cmd", "", "Command to run before the VM is suspended (leave empty to disable)")
 	afterResumeCmd := flag.String("after-resume-cmd", "", "Command to run after the VM has been resumed (leave empty to disable)")
 
 	flag.Parse()
 
+	log := logging.New(logging.Zerolog, "agent", os.Stderr)
+
+	// Get vcs revision
+	var Commit = func() string {
+		if info, ok := debug.ReadBuildInfo(); ok {
+			for _, setting := range info.Settings {
+				if setting.Key == "vcs.revision" {
+					return setting.Value
+				}
+			}
+		}
+		return ""
+	}()
+
+	log.Info().Str("vcs.revision", Commit).Msg("Starting agent")
+
+	log.Info().Uint("vsock-port", *vsockPort).
+		Int64("vsock-timeout-ms", (*vsockTimeout).Milliseconds()).
+		Str("shell-cmd", *shellCmd).
+		Str("before-suspend-cmd", *beforeSuspendCmd).
+		Str("after-resume-cmd", *afterResumeCmd).
+		Msg("Starting drafter-agent NEW")
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	var errs error
-	defer func() {
-		if errs != nil {
-			panic(errs)
-		}
-	}()
-
-	goroutineManager := manager.NewGoroutineManager(
-		ctx,
-		&errs,
-		manager.GoroutineManagerHooks{},
-	)
-	defer goroutineManager.Wait()
-	defer goroutineManager.StopAllGoroutines()
-	defer goroutineManager.CreateBackgroundPanicCollector()()
+	done := make(chan os.Signal, 1)
+	signal.Notify(done, os.Interrupt)
 
 	go func() {
-		done := make(chan os.Signal, 1)
-		signal.Notify(done, os.Interrupt)
-
 		<-done
-
-		log.Println("Exiting gracefully")
-
+		log.Info().Msg("Exiting gracefully")
 		cancel()
 	}()
 
-	agentClient := ipc.NewAgentClient[struct{}](
-		struct{}{},
-
-		func(ctx context.Context) error {
-			log.Println("Running pre-suspend command")
-
-			if strings.TrimSpace(*beforeSuspendCmd) != "" {
-				cmd := exec.CommandContext(ctx, *shellCmd, "-c", *beforeSuspendCmd)
-				cmd.Stdout = os.Stdout
-				cmd.Stderr = os.Stderr
-
-				if err := cmd.Run(); err != nil {
-					return err
-				}
-			}
-
-			return nil
-		},
-		func(ctx context.Context) error {
-			log.Println("Running after-resume command")
-
-			if strings.TrimSpace(*afterResumeCmd) != "" {
-				cmd := exec.CommandContext(ctx, *shellCmd, "-c", *afterResumeCmd)
-				cmd.Stdout = os.Stdout
-				cmd.Stderr = os.Stderr
-
-				if err := cmd.Run(); err != nil {
-					return err
-				}
-			}
-
-			return nil
-		},
-	)
-
-	for {
-		if err := func() error {
-			log.Println("Connecting to host")
-
-			dialCtx, cancelDialCtx := context.WithTimeout(goroutineManager.Context(), *vsockTimeout)
-			defer cancelDialCtx()
-
-			connectedAgentClient, err := ipc.StartAgentClient[*ipc.AgentClientLocal[struct{}], struct{}](
-				dialCtx,
-				goroutineManager.Context(),
-
-				ipc.VSockCIDHost,
-				uint32(*vsockPort),
-
-				agentClient,
-				ipc.StartAgentClientHooks[struct{}]{},
-			)
+	beforeSuspendFn := func(ctx context.Context) error {
+		log.Info().Str("shell-cmd", *shellCmd).
+			Str("before-suspend-cmd", *beforeSuspendCmd).
+			Msg("Running pre-suspend command")
+		if strings.TrimSpace(*beforeSuspendCmd) != "" {
+			cmd := exec.CommandContext(ctx, *shellCmd, "-c", *beforeSuspendCmd)
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+			err := cmd.Run()
 			if err != nil {
 				return err
 			}
-			defer connectedAgentClient.Close()
-
-			log.Println("Connected to host")
-
-			return connectedAgentClient.Wait()
-		}(); err != nil {
-			if !(errors.Is(err, context.Canceled) && errors.Is(context.Cause(goroutineManager.Context()), goroutineManager.GetErrGoroutineStopped())) {
-				log.Println("Disconnected from host with error, reconnecting:", err)
-
-				continue
-			}
-
-			panic(err)
 		}
-
-		break
+		return nil
 	}
 
-	log.Println("Shutting down")
+	afterResumeFn := func(ctx context.Context) error {
+		log.Info().Str("shell-cmd", *shellCmd).
+			Str("after-resume-cmd", *afterResumeCmd).
+			Msg("Running after-resume command")
+		if strings.TrimSpace(*afterResumeCmd) != "" {
+			cmd := exec.CommandContext(ctx, *shellCmd, "-c", *afterResumeCmd)
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+			err := cmd.Run()
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	agentClient := ipc.NewAgentClient[struct{}](struct{}{}, beforeSuspendFn, afterResumeFn)
+
+	err := connectAndHandle(log, ctx, *vsockTimeout, int(*vsockPort), agentClient)
+
+	if err != nil {
+		log.Error().Err(err).Msg("Error from RPC connection")
+	}
+
+}
+
+/**
+ * Connect to the host and handle any RPC calls.
+ * Waits until ctx is cancelled.
+ */
+func connectAndHandle(log loggingtypes.Logger, ctx context.Context, timeout time.Duration, port int, agentClient *ipc.AgentClientLocal[struct{}]) error {
+	log.Info().Msg("Connecting to host")
+
+	connFactory := func(ctx context.Context) (io.ReadWriteCloser, error) {
+		dialCtx, cancelDialCtx := context.WithTimeout(ctx, timeout)
+		defer cancelDialCtx()
+		return vsock.DialContext(dialCtx, ipc.VSockCIDHost, uint32(port))
+	}
+
+	connectedAgentClient, err := ipc.StartAgentClient[*ipc.AgentClientLocal[struct{}], struct{}](
+		log, connFactory, agentClient,
+	)
+
+	if err != nil {
+		return err
+	}
+	defer connectedAgentClient.Close()
+
+	log.Info().Msg("Connected to host, serving RPC calls")
+
+	// Wait until ctx is cancelled
+	<-ctx.Done()
+	return nil
 }

@@ -4,23 +4,40 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
-	"net"
-	"net/http"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
-	v1 "github.com/loopholelabs/drafter/internal/api/http/firecracker/v1"
-	iutils "github.com/loopholelabs/drafter/internal/utils"
 	"github.com/loopholelabs/logging/types"
 
-	"github.com/loopholelabs/drafter/internal/firecracker"
 	"github.com/loopholelabs/drafter/pkg/common"
 	"github.com/loopholelabs/drafter/pkg/ipc"
 	"github.com/loopholelabs/drafter/pkg/utils"
 )
+
+type SnapshotDevice struct {
+	Name   string `json:"name"`
+	Input  string `json:"input"`
+	Output string `json:"output"`
+}
+
+type LivenessConfiguration struct {
+	LivenessVSockPort uint32
+	ResumeTimeout     time.Duration
+}
+
+type AgentConfiguration struct {
+	AgentVSockPort uint32
+	ResumeTimeout  time.Duration
+}
+
+type PackageConfiguration struct {
+	AgentVSockPort uint32 `json:"agentVSockPort"`
+}
 
 const (
 	VSockName = "vsock.sock"
@@ -41,15 +58,38 @@ var (
 	ErrCouldNotWritePackageConfig        = errors.New("could not write package configuration")
 	ErrCouldNotChownPackageConfigFile    = errors.New("could not change ownership of package configuration file")
 	ErrCouldNotCreateChrootBaseDirectory = errors.New("could not create chroot base directory")
-	ErrCouldNotStartFirecrackerServer    = errors.New("could not start firecracker server")
 	ErrCouldNotCreateSnapshot            = errors.New("could not create snapshot")
+	ErrCouldNotOpenSourceFile            = errors.New("could not open source file")
+	ErrCouldNotCreateDestinationFile     = errors.New("could not create destination file")
+	ErrCouldNotCopyFileContent           = errors.New("could not copy file content")
+	ErrCouldNotChangeFileOwner           = errors.New("could not change file owner")
+
+	// TODO Cleanup
+	ErrCouldNotStartAgentServer              = errors.New("could not start agent server")
+	ErrCouldNotCloseAcceptingAgent           = errors.New("could not close accepting agent")
+	ErrCouldNotOpenLivenessServer            = errors.New("could not open liveness server")
+	ErrCouldNotChownLivenessServerVSock      = errors.New("could not change ownership of liveness server VSock")
+	ErrCouldNotChownAgentServerVSock         = errors.New("could not change ownership of agent server VSock")
+	ErrCouldNotReceiveAndCloseLivenessServer = errors.New("could not receive and close liveness server")
+	ErrCouldNotAcceptAgentConnection         = errors.New("could not accept agent connection")
+	ErrCouldNotBeforeSuspend                 = errors.New("error before suspend")
+
+	// TODO Dedup
+	ErrCouldNotChownVSockPath       = errors.New("could not change ownership of vsock path")
+	ErrCouldNotAcceptAgent          = errors.New("could not accept agent")
+	ErrCouldNotCallAfterResumeRPC   = errors.New("could not call AfterResume RPC")
+	ErrCouldNotCallBeforeSuspendRPC = errors.New("could not call BeforeSuspend RPC")
 )
 
+/**
+ * Create a new snapshot
+ *
+ */
 func CreateSnapshot(log types.Logger, ctx context.Context, devices []SnapshotDevice, ioEngineSync bool,
 	vmConfiguration VMConfiguration, livenessConfiguration LivenessConfiguration,
-	hypervisorConfiguration HypervisorConfiguration, networkConfiguration NetworkConfiguration,
-	agentConfiguration AgentConfiguration,
-) (errs error) {
+	hypervisorConfiguration FirecrackerMachineConfig, networkConfiguration NetworkConfiguration,
+	agentConfiguration AgentConfiguration, waitReady func()) error {
+
 	if log != nil {
 		log.Info().Msg("Creating firecracker VM snapshot")
 		for _, s := range devices {
@@ -66,19 +106,7 @@ func CreateSnapshot(log types.Logger, ctx context.Context, devices []SnapshotDev
 		return errors.Join(ErrCouldNotCreateChrootBaseDirectory, err)
 	}
 
-	server, err := firecracker.StartFirecrackerServer(
-		ctx,
-		hypervisorConfiguration.FirecrackerBin,
-		hypervisorConfiguration.JailerBin,
-		hypervisorConfiguration.ChrootBaseDir,
-		hypervisorConfiguration.UID,
-		hypervisorConfiguration.GID,
-		hypervisorConfiguration.NetNS,
-		hypervisorConfiguration.NumaNode,
-		hypervisorConfiguration.CgroupVersion,
-		hypervisorConfiguration.EnableOutput,
-		hypervisorConfiguration.EnableInput,
-	)
+	server, err := StartFirecrackerMachine(ctx, log, &hypervisorConfiguration)
 
 	if err != nil {
 		return errors.Join(ErrCouldNotStartFirecrackerServer, err)
@@ -98,34 +126,49 @@ func CreateSnapshot(log types.Logger, ctx context.Context, devices []SnapshotDev
 		log.Debug().Str("vmpath", server.VMPath).Msg("Firecracker server running")
 	}
 
-	// Setup RPC bits required here.
-	rpc := &FirecrackerRPC{
-		Log:               log,
-		VMPath:            server.VMPath,
-		UID:               hypervisorConfiguration.UID,
-		GID:               hypervisorConfiguration.GID,
-		LivenessVSockPort: uint32(livenessConfiguration.LivenessVSockPort),
-		AgentVSockPort:    uint32(agentConfiguration.AgentVSockPort),
-	}
+	// Setup the liveness bits
+	liveness := ipc.NewLivenessServer(filepath.Join(server.VMPath, VSockName), uint32(livenessConfiguration.LivenessVSockPort))
 
-	err = rpc.Init()
+	livenessVSockPath, err := liveness.Open()
 	if err != nil {
-		return err
+		return errors.Join(ErrCouldNotOpenLivenessServer, err)
 	}
-	defer rpc.Close()
 
-	client := &http.Client{
-		Transport: &http.Transport{
-			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-				return (&net.Dialer{}).DialContext(ctx, "unix", filepath.Join(server.VMPath, firecracker.FirecrackerSocketName))
-			},
-		},
+	if log != nil {
+		log.Debug().Msg("Created liveness server")
 	}
+
+	err = os.Chown(livenessVSockPath, hypervisorConfiguration.UID, hypervisorConfiguration.GID)
+	if err != nil {
+		return errors.Join(ErrCouldNotChownLivenessServerVSock, err)
+	}
+	defer liveness.Close()
+
+	// Setup the agent server
+	agent, err := ipc.StartAgentRPC[struct{}, ipc.AgentServerRemote[struct{}]](
+		log, filepath.Join(server.VMPath, VSockName), uint32(agentConfiguration.AgentVSockPort), struct{}{},
+	)
+
+	if err != nil {
+		return errors.Join(ErrCouldNotStartAgentServer, err)
+	}
+
+	if log != nil {
+		log.Debug().Msg("Created agent server")
+	}
+
+	vsockPath := fmt.Sprintf("%s_%d", filepath.Join(server.VMPath, VSockName), uint32(agentConfiguration.AgentVSockPort))
+
+	err = os.Chown(vsockPath, hypervisorConfiguration.UID, hypervisorConfiguration.GID)
+	if err != nil {
+		return errors.Join(ErrCouldNotChownAgentServerVSock, err)
+	}
+	defer agent.Close()
 
 	disks := []string{}
 	for _, device := range devices {
 		if strings.TrimSpace(device.Input) != "" {
-			_, err := iutils.CopyFile(device.Input, filepath.Join(server.VMPath, device.Name), hypervisorConfiguration.UID, hypervisorConfiguration.GID)
+			_, err := copyFile(device.Input, filepath.Join(server.VMPath, device.Name), hypervisorConfiguration.UID, hypervisorConfiguration.GID)
 			if err != nil {
 				return errors.Join(ErrCouldNotCopyDeviceFile, err)
 			}
@@ -135,26 +178,13 @@ func CreateSnapshot(log types.Logger, ctx context.Context, devices []SnapshotDev
 		}
 	}
 
-	ioEngine := v1.IOEngineAsync
+	ioEngine := SDKIOEngineAsync
 	if ioEngineSync {
-		ioEngine = v1.IOEngineSync
+		ioEngine = SDKIOEngineSync
 	}
 
-	err = firecracker.StartVM(
-		ctx,
-		client,
-		common.DeviceKernelName,
-		disks,
-		ioEngine,
-		vmConfiguration.CPUCount,
-		vmConfiguration.MemorySize,
-		vmConfiguration.CPUTemplate,
-		vmConfiguration.BootArgs,
-		networkConfiguration.Interface,
-		networkConfiguration.MAC,
-		VSockName,
-		ipc.VSockCIDGuest,
-	)
+	err = server.StartVM(ctx, common.DeviceKernelName, disks, ioEngine,
+		&vmConfiguration, &networkConfiguration, VSockName, ipc.VSockCIDGuest)
 
 	if err != nil {
 		return errors.Join(ErrCouldNotStartVM, err)
@@ -165,13 +195,52 @@ func CreateSnapshot(log types.Logger, ctx context.Context, devices []SnapshotDev
 		log.Info().Msg("Started firecracker VM")
 	}
 
-	// Perform the RPC calls here...
-	err = rpc.LivenessAndBeforeSuspendAndClose(ctx, livenessConfiguration.ResumeTimeout, agentConfiguration.ResumeTimeout)
+	// Check for liveness
+	receiveCtx, livenessCancel := context.WithTimeout(ctx, livenessConfiguration.ResumeTimeout)
+	defer livenessCancel()
+
+	err = liveness.ReceiveAndClose(receiveCtx)
 	if err != nil {
-		return err
+		return errors.Join(ErrCouldNotReceiveAndCloseLivenessServer, err)
 	}
 
-	err = createFinalSnapshot(ctx, client, agentConfiguration.AgentVSockPort,
+	if log != nil {
+		log.Debug().Msg("Liveness check OK")
+	}
+	liveness.Close()
+
+	waitReady()
+
+	// BeforeSuspend and close
+	acceptCtx, acceptCancel := context.WithTimeout(ctx, livenessConfiguration.ResumeTimeout)
+	defer acceptCancel()
+
+	if log != nil {
+		log.Debug().Msg("Calling Remote BeforeSuspend (GetRemote)")
+	}
+
+	rem, err := agent.GetRemote(acceptCtx)
+	if err != nil {
+		return errors.Join(ErrCouldNotBeforeSuspend, err)
+	}
+
+	if log != nil {
+		log.Debug().Msg("Calling Remote BeforeSuspend")
+	}
+
+	err = rem.BeforeSuspend(acceptCtx)
+	if err != nil {
+		return errors.Join(ErrCouldNotBeforeSuspend, err)
+	}
+
+	if log != nil {
+		log.Debug().Msg("RPC Closing")
+	}
+
+	// Connections need to be closed before creating the snapshot
+	agent.Close()
+
+	err = createFinalSnapshot(ctx, server, agentConfiguration.AgentVSockPort,
 		server.VMPath, hypervisorConfiguration.UID, hypervisorConfiguration.GID)
 
 	if err != nil {
@@ -190,7 +259,32 @@ func CreateSnapshot(log types.Logger, ctx context.Context, devices []SnapshotDev
 	default:
 	}
 
-	return
+	return nil
+}
+
+func copyFile(src, dst string, uid int, gid int) (int64, error) {
+	srcFile, err := os.Open(src)
+	if err != nil {
+		return 0, errors.Join(ErrCouldNotOpenSourceFile, err)
+	}
+	defer srcFile.Close()
+
+	dstFile, err := os.Create(dst)
+	if err != nil {
+		return 0, errors.Join(ErrCouldNotCreateDestinationFile, err)
+	}
+	defer dstFile.Close()
+
+	n, err := io.Copy(dstFile, srcFile)
+	if err != nil {
+		return 0, errors.Join(ErrCouldNotCopyFileContent, err)
+	}
+
+	if err := os.Chown(dst, uid, gid); err != nil {
+		return 0, errors.Join(ErrCouldNotChangeFileOwner, err)
+	}
+
+	return n, nil
 }
 
 /**
@@ -236,13 +330,12 @@ func copySnapshotFiles(devices []SnapshotDevice, vmPath string) error {
  * Create the final snapshot
  *
  */
-func createFinalSnapshot(ctx context.Context, client *http.Client, vsockPort uint32, vmPath string, uid int, gid int) error {
-	err := firecracker.CreateSnapshot(
+func createFinalSnapshot(ctx context.Context, server *FirecrackerMachine, vsockPort uint32, vmPath string, uid int, gid int) error {
+	err := server.CreateSnapshot(
 		ctx,
-		client,
 		common.DeviceStateName,
 		common.DeviceMemoryName,
-		firecracker.SnapshotTypeFull,
+		SDKSnapshotTypeFull,
 	)
 	if err != nil {
 		return errors.Join(ErrCouldNotCreateSnapshot, err)

@@ -4,13 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"flag"
-	"log"
 	"os"
 	"os/signal"
 	"path/filepath"
 
 	"github.com/loopholelabs/drafter/pkg/common"
-	"github.com/loopholelabs/goroutine-manager/pkg/manager"
+	"github.com/loopholelabs/logging"
 )
 
 func main() {
@@ -28,12 +27,11 @@ func main() {
 	}
 
 	rawDevices := flag.String("devices", string(defaultDevices), "Devices configuration")
-
 	packagePath := flag.String("package-path", filepath.Join("out", "app.tar.zst"), "Path to package file")
-
 	extract := flag.Bool("extract", false, "Whether to extract or archive")
-
 	flag.Parse()
+
+	log := logging.New(logging.Zerolog, "drafter", os.Stderr)
 
 	var devices []common.PackagerDevice
 	if err := json.Unmarshal([]byte(*rawDevices), &devices); err != nil {
@@ -43,52 +41,25 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	var errs error
-	defer func() {
-		if errs != nil {
-			panic(errs)
-		}
-	}()
-
-	goroutineManager := manager.NewGoroutineManager(
-		ctx,
-		&errs,
-		manager.GoroutineManagerHooks{},
-	)
-	defer goroutineManager.Wait()
-	defer goroutineManager.StopAllGoroutines()
-	defer goroutineManager.CreateBackgroundPanicCollector()()
-
+	done := make(chan os.Signal, 1)
+	signal.Notify(done, os.Interrupt)
 	go func() {
-		done := make(chan os.Signal, 1)
-		signal.Notify(done, os.Interrupt)
-
 		<-done
-
-		log.Println("Exiting gracefully")
-
+		log.Info().Msg("Exiting gracefully")
 		cancel()
 	}()
 
 	if *extract {
-		if err := common.ExtractPackage(
-			goroutineManager.Context(),
-
-			*packagePath,
-			devices,
-		); err != nil {
+		err := common.ExtractPackage(ctx, *packagePath, devices)
+		if err != nil {
+			log.Error().Err(err).Msg("extract package failed")
 			panic(err)
 		}
-
-		return
-	}
-
-	if err := common.ArchivePackage(
-		goroutineManager.Context(),
-
-		devices,
-		*packagePath,
-	); err != nil {
-		panic(err)
+	} else {
+		err = common.ArchivePackage(ctx, devices, *packagePath)
+		if err != nil {
+			log.Error().Err(err).Msg("archive package failed")
+			panic(err)
+		}
 	}
 }

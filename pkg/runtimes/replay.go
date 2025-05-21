@@ -11,6 +11,7 @@ import (
 	"github.com/loopholelabs/drafter/pkg/common"
 	"github.com/loopholelabs/logging/types"
 	"github.com/loopholelabs/silo/pkg/storage"
+	"github.com/loopholelabs/silo/pkg/storage/devicegroup"
 	"github.com/loopholelabs/silo/pkg/storage/modules"
 	"github.com/loopholelabs/silo/pkg/storage/sources"
 )
@@ -68,12 +69,16 @@ func (rp *ReplayRuntimeProvider) Start(ctx context.Context, rescueCtx context.Co
 	return nil
 }
 
-func (rp *ReplayRuntimeProvider) Close() error {
-	rp.Suspend(context.TODO(), 10*time.Second)
+func (rp *ReplayRuntimeProvider) Close(dg *devicegroup.DeviceGroup) error {
+	err := rp.Suspend(context.TODO(), 10*time.Second, dg)
+	if err != nil {
+		return err
+	}
 	for n, prov := range rp.providers {
 		err := prov.Close()
 		if err != nil {
 			fmt.Printf("Error closing provider %s %v\n", n, err)
+			return err
 		}
 	}
 	return nil
@@ -87,19 +92,19 @@ func (rp *ReplayRuntimeProvider) GetVMPid() int {
 	return 0
 }
 
-func (rp *ReplayRuntimeProvider) Suspend(ctx context.Context, timeout time.Duration) error {
+func (rp *ReplayRuntimeProvider) Suspend(ctx context.Context, timeout time.Duration, dg *devicegroup.DeviceGroup) error {
 	fmt.Printf("### Suspend\n")
 	if rp.replayCancel != nil {
 		rp.replayCancel()
 		rp.replayWg.Wait()
 		rp.replayCancel = nil
 	}
-	err := rp.FlushData(ctx)
+	err := rp.FlushData(ctx, dg)
 	fmt.Printf("### Suspend done\n")
 	return err
 }
 
-func (rp *ReplayRuntimeProvider) FlushData(ctx context.Context) error {
+func (rp *ReplayRuntimeProvider) FlushData(ctx context.Context, dg *devicegroup.DeviceGroup) error {
 	fmt.Printf("### Flush data\n")
 	for n, prov := range rp.providers {
 		err := prov.Flush()
@@ -110,7 +115,7 @@ func (rp *ReplayRuntimeProvider) FlushData(ctx context.Context) error {
 	return nil
 }
 
-func (rp *ReplayRuntimeProvider) Resume(resumeTimeout time.Duration, rescueTimeout time.Duration, errChan chan error) error {
+func (rp *ReplayRuntimeProvider) Resume(ctx context.Context, rescueTimeout time.Duration, dg *devicegroup.DeviceGroup, errChan chan error) error {
 	fmt.Printf("### Resume\n")
 	if rp.replayers == nil {
 		err := rp.init()

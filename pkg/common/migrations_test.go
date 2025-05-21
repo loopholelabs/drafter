@@ -1,3 +1,6 @@
+//go:build !integration
+// +build !integration
+
 package common
 
 import (
@@ -61,7 +64,8 @@ func setupFromFs(t *testing.T) (string, *devicegroup.DeviceGroup) {
 	data := make([]byte, testFileSize) // 16M
 	_, err = rand.Read(data)
 	assert.NoError(t, err)
-	os.WriteFile(path.Join(tempDirFrom, "file_data"), data, 0777)
+	err = os.WriteFile(path.Join(tempDirFrom, "file_data"), data, 0777)
+	assert.NoError(t, err)
 
 	devices := []MigrateFromDevice{
 		{

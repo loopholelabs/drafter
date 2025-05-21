@@ -75,7 +75,7 @@ func setupSnapshot(log types.Logger, ctx context.Context, snapDir string, blueDi
 			LivenessVSockPort: uint32(25),
 			ResumeTimeout:     time.Minute,
 		},
-		rfirecracker.HypervisorConfiguration{
+		rfirecracker.FirecrackerMachineConfig{
 			FirecrackerBin: firecrackerBin,
 			JailerBin:      jailerBin,
 			ChrootBaseDir:  snapDir,
@@ -84,8 +84,9 @@ func setupSnapshot(log types.Logger, ctx context.Context, snapDir string, blueDi
 			NetNS:          *networkNamespace,
 			NumaNode:       0,
 			CgroupVersion:  2,
-			EnableOutput:   true,
-			EnableInput:    false,
+			Stdout:         os.Stdout,
+			Stderr:         os.Stderr,
+			Stdin:          nil,
 		},
 		rfirecracker.NetworkConfiguration{
 			Interface: "tap0",
@@ -95,7 +96,7 @@ func setupSnapshot(log types.Logger, ctx context.Context, snapDir string, blueDi
 			AgentVSockPort: uint32(26),
 			ResumeTimeout:  time.Minute,
 		},
-	)
+		func() {})
 
 	return err
 }

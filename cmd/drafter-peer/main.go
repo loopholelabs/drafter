@@ -15,6 +15,7 @@ import (
 	"github.com/loopholelabs/drafter/pkg/common"
 	"github.com/loopholelabs/drafter/pkg/ipc"
 	"github.com/loopholelabs/drafter/pkg/peer"
+	"github.com/loopholelabs/drafter/pkg/runtimes"
 	rfirecracker "github.com/loopholelabs/drafter/pkg/runtimes/firecracker"
 	"github.com/loopholelabs/logging"
 	"github.com/loopholelabs/silo/pkg/storage/metrics"
@@ -35,6 +36,8 @@ func main() {
 	laddr := flag.String("laddr", "localhost:1337", "Local address to listen on (leave empty to disable)")
 	concurrency := flag.Int("concurrency", 1024, "Number of concurrent workers to use in migrations")
 
+	mockRuntime := flag.Bool("mock", false, "Mock runtime")
+
 	// Firewcracker flags
 	rawFirecrackerBin := flag.String("firecracker-bin", "firecracker", "Firecracker binary")
 	rawJailerBin := flag.String("jailer-bin", "jailer", "Jailer binary (from Firecracker)")
@@ -49,10 +52,6 @@ func main() {
 
 	resumeTimeout := flag.Duration("resume-timeout", time.Minute, "Maximum amount of time to wait for agent and liveness to resume")
 	rescueTimeout := flag.Duration("rescue-timeout", time.Minute, "Maximum amount of time to wait for rescue operations")
-
-	experimentalMapPrivate := flag.Bool("experimental-map-private", false, "(Experimental) Whether to use MAP_PRIVATE for memory and state devices")
-	experimentalMapPrivateStateOutput := flag.String("experimental-map-private-state-output", "", "(Experimental) Path to write the local changes to the shared state to (leave empty to write back to device directly) (ignored unless --experimental-map-private)")
-	experimentalMapPrivateMemoryOutput := flag.String("experimental-map-private-memory-output", "", "(Experimental) Path to write the local changes to the shared memory to (leave empty to write back to device directly) (ignored unless --experimental-map-private)")
 
 	serveMetrics := flag.String("metrics", "", "Address to serve metrics from")
 
@@ -85,7 +84,12 @@ func main() {
 			},
 		))
 
-		go http.ListenAndServe(*serveMetrics, nil)
+		go func() {
+			err := http.ListenAndServe(*serveMetrics, nil)
+			if err != nil {
+				panic(err)
+			}
+		}()
 	}
 
 	devices, err := decodeDevices(*rawDevices)
@@ -121,29 +125,38 @@ func main() {
 		panic(err)
 	}
 
-	rp := &rfirecracker.FirecrackerRuntimeProvider[struct{}, ipc.AgentServerRemote[struct{}], struct{}]{
-		Log: log,
-		HypervisorConfiguration: rfirecracker.HypervisorConfiguration{
-			FirecrackerBin: firecrackerBin,
-			JailerBin:      jailerBin,
-			ChrootBaseDir:  *chrootBaseDir,
-			UID:            *uid,
-			GID:            *gid,
-			NetNS:          *netns,
-			NumaNode:       *numaNode,
-			CgroupVersion:  *cgroupVersion,
-			EnableOutput:   *enableOutput,
-			EnableInput:    *enableInput,
-		},
-		StateName:        common.DeviceStateName,
-		MemoryName:       common.DeviceMemoryName,
-		AgentServerLocal: struct{}{},
-		AgentServerHooks: ipc.AgentServerAcceptHooks[ipc.AgentServerRemote[struct{}], struct{}]{},
-		SnapshotLoadConfiguration: rfirecracker.SnapshotLoadConfiguration{
-			ExperimentalMapPrivate:             *experimentalMapPrivate,
-			ExperimentalMapPrivateStateOutput:  *experimentalMapPrivateStateOutput,
-			ExperimentalMapPrivateMemoryOutput: *experimentalMapPrivateMemoryOutput,
-		},
+	var rp runtimes.RuntimeProviderIfc
+
+	fcconfig := rfirecracker.FirecrackerMachineConfig{
+		FirecrackerBin: firecrackerBin,
+		JailerBin:      jailerBin,
+		ChrootBaseDir:  *chrootBaseDir,
+		UID:            *uid,
+		GID:            *gid,
+		NetNS:          *netns,
+		NumaNode:       *numaNode,
+		CgroupVersion:  *cgroupVersion,
+	}
+
+	if *enableInput {
+		fcconfig.Stdin = os.Stdin
+	}
+
+	if *enableOutput {
+		fcconfig.Stdout = os.Stdout
+		fcconfig.Stderr = os.Stderr
+	}
+
+	if *mockRuntime {
+		rp = &runtimes.EmptyRuntimeProvider{}
+	} else {
+		rp = &rfirecracker.FirecrackerRuntimeProvider[struct{}, ipc.AgentServerRemote[struct{}], struct{}]{
+			Log:                     log,
+			HypervisorConfiguration: fcconfig,
+			StateName:               common.DeviceStateName,
+			MemoryName:              common.DeviceMemoryName,
+			AgentServerLocal:        struct{}{},
+		}
 	}
 
 	p, err := peer.StartPeer(ctx,
@@ -186,6 +199,7 @@ func main() {
 			S3Secure:      device.S3Secure,
 			S3Bucket:      device.S3Bucket,
 			S3Concurrency: device.S3Concurrency,
+			SkipSilo:      device.SkipSilo,
 		})
 	}
 

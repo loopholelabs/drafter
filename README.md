@@ -38,7 +38,7 @@ It enables you to:
 Drafter is available as static binaries on [GitHub releases](https://github.com/loopholelabs/drafter/releases). On Linux, you can install them like so:
 
 ```shell
-for BINARY in drafter-nat drafter-forwarder drafter-snapshotter drafter-packager drafter-runner drafter-registry drafter-mounter drafter-peer drafter-terminator; do
+for BINARY in drafter-nat drafter-forwarder drafter-snapshotter drafter-peer; do
     curl -L -o "/tmp/${BINARY}" "https://github.com/loopholelabs/drafter/releases/latest/download/${BINARY}.linux-$(uname -m)"
     sudo install "/tmp/${BINARY}" /usr/local/bin
 done

@@ -3,6 +3,8 @@ package runtimes
 import (
 	"context"
 	"time"
+
+	"github.com/loopholelabs/silo/pkg/storage/devicegroup"
 )
 
 type EmptyRuntimeProvider struct {
@@ -13,7 +15,7 @@ func (rp *EmptyRuntimeProvider) Start(ctx context.Context, rescueCtx context.Con
 	return nil
 }
 
-func (rp *EmptyRuntimeProvider) Close() error {
+func (rp *EmptyRuntimeProvider) Close(dg *devicegroup.DeviceGroup) error {
 	return nil
 }
 
@@ -25,14 +27,14 @@ func (rp *EmptyRuntimeProvider) GetVMPid() int {
 	return 0
 }
 
-func (rp *EmptyRuntimeProvider) Suspend(ctx context.Context, timeout time.Duration) error {
+func (rp *EmptyRuntimeProvider) Suspend(ctx context.Context, timeout time.Duration, dg *devicegroup.DeviceGroup) error {
 	return nil
 }
 
-func (rp *EmptyRuntimeProvider) FlushData(ctx context.Context) error {
+func (rp *EmptyRuntimeProvider) FlushData(ctx context.Context, dg *devicegroup.DeviceGroup) error {
 	return nil
 }
 
-func (rp *EmptyRuntimeProvider) Resume(resumeTimeout time.Duration, rescueTimeout time.Duration, errChan chan error) error {
+func (rp *EmptyRuntimeProvider) Resume(ctx context.Context, rescueTimeout time.Duration, dg *devicegroup.DeviceGroup, errChan chan error) error {
 	return nil
 }

@@ -195,7 +195,7 @@ func handleConnection(migration int, conn net.Conn, log types.Logger, firecracke
 	// Create a new RuntimeProvider
 	rp2 := &rfirecracker.FirecrackerRuntimeProvider[struct{}, ipc.AgentServerRemote[struct{}], struct{}]{
 		Log: log,
-		HypervisorConfiguration: rfirecracker.HypervisorConfiguration{
+		HypervisorConfiguration: rfirecracker.FirecrackerMachineConfig{
 			FirecrackerBin: firecrackerBin,
 			JailerBin:      jailerBin,
 			ChrootBaseDir:  *testDirectory,
@@ -204,16 +204,13 @@ func handleConnection(migration int, conn net.Conn, log types.Logger, firecracke
 			NetNS:          *networkNamespace,
 			NumaNode:       0,
 			CgroupVersion:  2,
-			EnableOutput:   true,
-			EnableInput:    false,
+			Stdout:         os.Stdout,
+			Stderr:         os.Stderr,
+			Stdin:          nil,
 		},
 		StateName:        common.DeviceStateName,
 		MemoryName:       common.DeviceMemoryName,
 		AgentServerLocal: struct{}{},
-		AgentServerHooks: ipc.AgentServerAcceptHooks[ipc.AgentServerRemote[struct{}], struct{}]{},
-		SnapshotLoadConfiguration: rfirecracker.SnapshotLoadConfiguration{
-			ExperimentalMapPrivate: false,
-		},
 	}
 
 	nextPeer, err := peer.StartPeer(context.TODO(), context.Background(), log, nil, nil, "cow_test", rp2)
@@ -235,6 +232,9 @@ func handleConnection(migration int, conn net.Conn, log types.Logger, firecracke
 	}
 	devicesFrom := getDevicesFrom(*snapshotsDir, migration+1)
 	err = nextPeer.MigrateFrom(context.TODO(), devicesFrom, []io.Reader{conn}, []io.Writer{conn}, hooks2)
+	if err != nil {
+		return err
+	}
 
 	if *waitForComplete {
 		completedWg.Wait()
@@ -294,7 +294,7 @@ func handleConnection(migration int, conn net.Conn, log types.Logger, firecracke
 func setupFirstPeer(log types.Logger, firecrackerBin string, jailerBin string, snapDir string) (*peer.Peer, error) {
 	rp := &rfirecracker.FirecrackerRuntimeProvider[struct{}, ipc.AgentServerRemote[struct{}], struct{}]{
 		Log: log,
-		HypervisorConfiguration: rfirecracker.HypervisorConfiguration{
+		HypervisorConfiguration: rfirecracker.FirecrackerMachineConfig{
 			FirecrackerBin: firecrackerBin,
 			JailerBin:      jailerBin,
 			ChrootBaseDir:  *testDirectory,
@@ -303,16 +303,13 @@ func setupFirstPeer(log types.Logger, firecrackerBin string, jailerBin string, s
 			NetNS:          *networkNamespace,
 			NumaNode:       0,
 			CgroupVersion:  2,
-			EnableOutput:   true,
-			EnableInput:    false,
+			Stdout:         os.Stdout,
+			Stderr:         os.Stderr,
+			Stdin:          nil,
 		},
 		StateName:        common.DeviceStateName,
 		MemoryName:       common.DeviceMemoryName,
 		AgentServerLocal: struct{}{},
-		AgentServerHooks: ipc.AgentServerAcceptHooks[ipc.AgentServerRemote[struct{}], struct{}]{},
-		SnapshotLoadConfiguration: rfirecracker.SnapshotLoadConfiguration{
-			ExperimentalMapPrivate: false,
-		},
 	}
 
 	myPeer, err := peer.StartPeer(context.TODO(), context.Background(), log, nil, nil, "cow_test", rp)

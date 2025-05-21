@@ -81,7 +81,12 @@ func main() {
 			},
 		))
 
-		go http.ListenAndServe(*serveMetrics, nil)
+		go func() {
+			err := http.ListenAndServe(*serveMetrics, nil)
+			if err != nil {
+				panic(err)
+			}
+		}()
 	}
 
 	err := os.Mkdir(testPeerDirCowS3, 0777)
@@ -107,27 +112,26 @@ func main() {
 		panic(err)
 	}
 
+	fcconfig := rfirecracker.FirecrackerMachineConfig{
+		FirecrackerBin: firecrackerBin,
+		JailerBin:      jailerBin,
+		ChrootBaseDir:  testPeerDirCowS3,
+		UID:            0,
+		GID:            0,
+		NetNS:          "ark0",
+		NumaNode:       0,
+		CgroupVersion:  2,
+		Stdout:         os.Stdout,
+		Stderr:         os.Stderr,
+		Stdin:          nil,
+	}
+
 	rp := &rfirecracker.FirecrackerRuntimeProvider[struct{}, ipc.AgentServerRemote[struct{}], struct{}]{
-		Log: log,
-		HypervisorConfiguration: rfirecracker.HypervisorConfiguration{
-			FirecrackerBin: firecrackerBin,
-			JailerBin:      jailerBin,
-			ChrootBaseDir:  testPeerDirCowS3,
-			UID:            0,
-			GID:            0,
-			NetNS:          "ark0",
-			NumaNode:       0,
-			CgroupVersion:  2,
-			EnableOutput:   true,
-			EnableInput:    false,
-		},
-		StateName:        common.DeviceStateName,
-		MemoryName:       common.DeviceMemoryName,
-		AgentServerLocal: struct{}{},
-		AgentServerHooks: ipc.AgentServerAcceptHooks[ipc.AgentServerRemote[struct{}], struct{}]{},
-		SnapshotLoadConfiguration: rfirecracker.SnapshotLoadConfiguration{
-			ExperimentalMapPrivate: false,
-		},
+		Log:                     log,
+		HypervisorConfiguration: fcconfig,
+		StateName:               common.DeviceStateName,
+		MemoryName:              common.DeviceMemoryName,
+		AgentServerLocal:        struct{}{},
 	}
 
 	myPeer, err := peer.StartPeer(context.TODO(), context.Background(), log, siloMetrics, drafterMetrics, "cow_test", rp)
@@ -167,7 +171,7 @@ func main() {
 		// Create a new RuntimeProvider
 		rp2 := &rfirecracker.FirecrackerRuntimeProvider[struct{}, ipc.AgentServerRemote[struct{}], struct{}]{
 			Log: log,
-			HypervisorConfiguration: rfirecracker.HypervisorConfiguration{
+			HypervisorConfiguration: rfirecracker.FirecrackerMachineConfig{
 				FirecrackerBin: firecrackerBin,
 				JailerBin:      jailerBin,
 				ChrootBaseDir:  testPeerDirCowS3,
@@ -176,16 +180,13 @@ func main() {
 				NetNS:          "ark0",
 				NumaNode:       0,
 				CgroupVersion:  2,
-				EnableOutput:   true,
-				EnableInput:    false,
+				Stdout:         os.Stdout,
+				Stderr:         os.Stderr,
+				Stdin:          nil,
 			},
 			StateName:        common.DeviceStateName,
 			MemoryName:       common.DeviceMemoryName,
 			AgentServerLocal: struct{}{},
-			AgentServerHooks: ipc.AgentServerAcceptHooks[ipc.AgentServerRemote[struct{}], struct{}]{},
-			SnapshotLoadConfiguration: rfirecracker.SnapshotLoadConfiguration{
-				ExperimentalMapPrivate: false,
-			},
 		}
 
 		nextPeer, err := peer.StartPeer(context.TODO(), context.Background(), log, siloMetrics, drafterMetrics, "cow_test", rp2)
@@ -458,7 +459,7 @@ func setupSnapshot(log types.Logger, ctx context.Context) string {
 			LivenessVSockPort: uint32(25),
 			ResumeTimeout:     time.Minute,
 		},
-		rfirecracker.HypervisorConfiguration{
+		rfirecracker.FirecrackerMachineConfig{
 			FirecrackerBin: firecrackerBin,
 			JailerBin:      jailerBin,
 			ChrootBaseDir:  createSnapshotDir,
@@ -467,8 +468,9 @@ func setupSnapshot(log types.Logger, ctx context.Context) string {
 			NetNS:          "ark0",
 			NumaNode:       0,
 			CgroupVersion:  2,
-			EnableOutput:   false,
-			EnableInput:    false,
+			Stdout:         nil,
+			Stderr:         nil,
+			Stdin:          nil,
 		},
 		rfirecracker.NetworkConfiguration{
 			Interface: "tap0",
@@ -478,7 +480,7 @@ func setupSnapshot(log types.Logger, ctx context.Context) string {
 			AgentVSockPort: uint32(26),
 			ResumeTimeout:  time.Minute,
 		},
-	)
+		func() {})
 
 	if err != nil {
 		panic(err)

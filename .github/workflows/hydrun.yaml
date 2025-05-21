@@ -1,14 +1,15 @@
 name: hydrun CI
 
 on:
-  push:
-    paths-ignore:
-      - ".github/signatures/**"
-  pull_request:
-    paths-ignore:
-      - ".github/signatures/**"
-  schedule:
-    - cron: "0 0 * * 0"
+  workflow_dispatch
+#  push:
+#    paths-ignore:
+#      - ".github/signatures/**"
+#  pull_request:
+#    paths-ignore:
+#      - ".github/signatures/**"
+#  schedule:
+#    - cron: "0 0 * * 0"
 
 jobs:
   build-linux:
@@ -63,46 +64,11 @@ jobs:
             cmd: ./Hydrunfile go drafter-snapshotter
             dst: out/*
             runner: depot-ubuntu-22.04-32
-          - id: go.drafter-packager
-            src: .
-            os: golang:bookworm
-            flags: -e '-v /tmp/ccache:/root/.cache/go-build'
-            cmd: ./Hydrunfile go drafter-packager
-            dst: out/*
-            runner: depot-ubuntu-22.04-32
-          - id: go.drafter-runner
-            src: .
-            os: golang:bookworm
-            flags: -e '-v /tmp/ccache:/root/.cache/go-build'
-            cmd: ./Hydrunfile go drafter-runner
-            dst: out/*
-            runner: depot-ubuntu-22.04-32
-          - id: go.drafter-registry
-            src: .
-            os: golang:bookworm
-            flags: -e '-v /tmp/ccache:/root/.cache/go-build'
-            cmd: ./Hydrunfile go drafter-registry
-            dst: out/*
-            runner: depot-ubuntu-22.04-32
-          - id: go.drafter-mounter
-            src: .
-            os: golang:bookworm
-            flags: -e '-v /tmp/ccache:/root/.cache/go-build'
-            cmd: ./Hydrunfile go drafter-mounter
-            dst: out/*
-            runner: depot-ubuntu-22.04-32
           - id: go.drafter-peer
             src: .
             os: golang:bookworm
             flags: -e '-v /tmp/ccache:/root/.cache/go-build'
             cmd: ./Hydrunfile go drafter-peer
-            dst: out/*
-            runner: depot-ubuntu-22.04-32
-          - id: go.drafter-terminator
-            src: .
-            os: golang:bookworm
-            flags: -e '-v /tmp/ccache:/root/.cache/go-build'
-            cmd: ./Hydrunfile go drafter-terminator
             dst: out/*
             runner: depot-ubuntu-22.04-32
 
