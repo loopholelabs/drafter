@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -38,11 +39,12 @@ func main() {
 	// No silo
 	runWithNonSilo := flag.Bool("nosilo", false, "Run a test with Silo disabled")
 
-	// TODO: Shift to using a json config for these...
-	runSiloWC := flag.Bool("silowc", false, "Run a test with Silo WriteCache")
-	wcMin := flag.String("wcmin", "80m", "Min writeCache size")
-	wcMax := flag.String("wcmax", "100m", "Max writeCache size")
-	runSiloAll := flag.Bool("silo", false, "Run all silo tests")
+	defaultConfigs, err := json.Marshal([]RunConfig{
+		{Name: "silo", BlockSize: 1024 * 1024, UseCow: true, UseSparseFile: true, UseVolatility: true, UseWriteCache: false, GrabPeriod: 0},
+		{Name: "silo_5s", BlockSize: 1024 * 1024, UseCow: true, UseSparseFile: true, UseVolatility: true, UseWriteCache: false, GrabPeriod: 5 * time.Second},
+	})
+
+	runConfigs := flag.String("silo", string(defaultConfigs), "Run configs")
 
 	valkeyTest := flag.Bool("valkey", false, "Run valkey benchmark test")
 	valkeyIterations := flag.Int("valkeynum", 1000, "Test iterations")
@@ -54,7 +56,15 @@ func main() {
 
 	flag.Parse()
 
-	err := os.Mkdir(*dTestDir, 0777)
+	var siloConfigs []RunConfig
+	err = json.Unmarshal([]byte(*runConfigs), &siloConfigs)
+	if err != nil {
+		panic(err)
+	}
+
+	log.Info().Str("runConfig", *runConfigs).Msg("using run configs")
+
+	err = os.Mkdir(*dTestDir, 0777)
 	if err != nil {
 		panic(err)
 	}
@@ -163,50 +173,6 @@ func main() {
 
 	dummyMetrics := testutil.NewDummyMetrics()
 
-	siloConfigs := []siloConfig{}
-
-	defaultBS := uint32(1024 * 1024) // Default block size
-
-	if *runSiloAll {
-		// TODO: This will come in from json config
-
-		siloConfigs = []siloConfig{
-			{name: "silo", blockSize: defaultBS, useCow: true, useSparseFile: true, useVolatility: true, useWriteCache: false, grabPeriod: 0},
-
-			//	{name: "silo_100ms", blockSize: defaultBS, useCow: true, useSparseFile: true, useVolatility: true, useWriteCache: false, grabPeriod: 100 * time.Millisecond},
-			// {name: "silo_1s", blockSize: defaultBS, useCow: true, useSparseFile: true, useVolatility: true, useWriteCache: false, grabPeriod: 1 * time.Second},
-			// {name: "silo_2s", blockSize: defaultBS, useCow: true, useSparseFile: true, useVolatility: true, useWriteCache: false, grabPeriod: 2 * time.Second},
-			{name: "silo_5s", blockSize: defaultBS, useCow: true, useSparseFile: true, useVolatility: true, useWriteCache: false, grabPeriod: 5 * time.Second},
-			{name: "silo_10s", blockSize: defaultBS, useCow: true, useSparseFile: true, useVolatility: true, useWriteCache: false, grabPeriod: 10 * time.Second},
-			{name: "silo_30s", blockSize: defaultBS, useCow: true, useSparseFile: true, useVolatility: true, useWriteCache: false, grabPeriod: 30 * time.Second},
-			{name: "silo_60s", blockSize: defaultBS, useCow: true, useSparseFile: true, useVolatility: true, useWriteCache: false, grabPeriod: 60 * time.Second},
-
-			//				{name: "silo_no_vm_no_cow", blockSize: defaultBS, useCow: false, useSparseFile: false, useVolatility: false, useWriteCache: false},
-			//				{name: "silo_no_vmsf", blockSize: defaultBS, useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: false},
-			//			{name: "silo_wc_1g_1.2g", blockSize: defaultBS, useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: true, writeCacheMin: "1000m", writeCacheMax: "1200m"},
-			//			{name: "silo_wc_2g_2.2g", blockSize: defaultBS, useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: true, writeCacheMin: "2000m", writeCacheMax: "2200m"},
-			//			{name: "silo_wc_4g_4.2g", blockSize: defaultBS, useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: true, writeCacheMin: "4000m", writeCacheMax: "4200m"},
-			//				{name: "silo_wc_200m_400m", blockSize: defaultBS, useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: true, writeCacheMin: "200m", writeCacheMax: "400m"},
-			//				{name: "silo_wc_600m_800m", blockSize: defaultBS, useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: true, writeCacheMin: "600m", writeCacheMax: "800m"},
-			//				{name: "silo_wc_800m_1g", blockSize: defaultBS, useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: true, writeCacheMin: "800m", writeCacheMax: "1g"},
-			/*
-				{name: "silo_4k", blockSize: 4 * 1024, useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: false},
-				{name: "silo_8k", blockSize: 8 * 1024, useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: false},
-				{name: "silo_16k", blockSize: 16 * 1024, useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: false},
-				{name: "silo_32k", blockSize: 32 * 1024, useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: false},
-				{name: "silo_64k", blockSize: 64 * 1024, useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: false},
-				{name: "silo_128k", blockSize: 128 * 1024, useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: false},
-				{name: "silo_256k", blockSize: 256 * 1024, useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: false},
-				{name: "silo_512k", blockSize: 512 * 1024, useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: false},
-				{name: "silo_1m", blockSize: 1024 * 1024, useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: false},
-			*/
-		}
-	} else if *runSiloWC {
-		siloConfigs = append(siloConfigs, siloConfig{
-			name: fmt.Sprintf("silo_wc_%s_%s", *wcMin, *wcMax), blockSize: defaultBS, useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: true, writeCacheMin: *wcMin, writeCacheMax: *wcMax,
-		})
-	}
-
 	// Start testing Silo confs
 	for _, sConf := range siloConfigs {
 		var runtimeStart time.Time
@@ -215,15 +181,15 @@ func main() {
 			runtimeStart = time.Now()
 
 			if *valkeyTest {
-				siloSet, siloGet, err := benchValkey(*profileCPU, sConf.name, 3333, *valkeyIterations)
-				siloTimingsSet[sConf.name] = siloSet
-				siloTimingsGet[sConf.name] = siloGet
+				siloSet, siloGet, err := benchValkey(*profileCPU, sConf.Name, 3333, *valkeyIterations)
+				siloTimingsSet[sConf.Name] = siloSet
+				siloTimingsGet[sConf.Name] = siloGet
 				if err != nil {
 					panic(err)
 				}
 				runtimeEnd = time.Now()
 			} else {
-				err = benchCICD(*profileCPU, sConf.name, 1*time.Hour)
+				err = benchCICD(*profileCPU, sConf.Name, 1*time.Hour)
 				if err != nil {
 					panic(err)
 				}
@@ -235,7 +201,7 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
-		siloTimingsRuntime[sConf.name] = runtimeEnd.Sub(runtimeStart)
+		siloTimingsRuntime[sConf.Name] = runtimeEnd.Sub(runtimeStart)
 	}
 
 	var nosiloGet time.Duration
@@ -300,17 +266,17 @@ func main() {
 
 		fmt.Printf("== Results for %s\n", conf.Summary())
 
-		showDeviceStats(dummyMetrics, conf.name)
+		showDeviceStats(dummyMetrics, conf.Name)
 
 		if *valkeyTest {
 
-			siloSet := siloTimingsSet[conf.name]
-			siloGet := siloTimingsGet[conf.name]
+			siloSet := siloTimingsSet[conf.Name]
+			siloGet := siloTimingsGet[conf.Name]
 			overheadSet := 0
 			overheadGet := 0
 			overhead := 0
 			if nosiloRuntime != 0 {
-				overhead = int((siloTimingsRuntime[conf.name] - nosiloRuntime) * 100 / nosiloRuntime)
+				overhead = int((siloTimingsRuntime[conf.Name] - nosiloRuntime) * 100 / nosiloRuntime)
 			}
 			if nosiloSet != 0 {
 				overheadSet = int((siloSet - nosiloSet) * 100 / nosiloSet)
@@ -319,22 +285,22 @@ func main() {
 				overheadGet = int((siloGet - nosiloGet) * 100 / nosiloGet)
 			}
 
-			tab.AppendRow([]interface{}{conf.name,
-				fbool(conf.useWriteCache), fbool(conf.useVolatility), fbool(conf.useCow), fbool(conf.useSparseFile),
+			tab.AppendRow([]interface{}{conf.Name,
+				fbool(conf.UseWriteCache), fbool(conf.UseVolatility), fbool(conf.UseCow), fbool(conf.UseSparseFile),
 				fmt.Sprintf("%.1fs", float64(siloSet.Milliseconds())/1000), fmt.Sprintf("%d%%", overheadSet),
 				fmt.Sprintf("%.1fs", float64(siloGet.Milliseconds())/1000), fmt.Sprintf("%d%%", overheadGet),
-				fmt.Sprintf("%.1fs", float64(siloTimingsRuntime[conf.name].Milliseconds())/1000), fmt.Sprintf("%d%%", overhead),
+				fmt.Sprintf("%.1fs", float64(siloTimingsRuntime[conf.Name].Milliseconds())/1000), fmt.Sprintf("%d%%", overhead),
 			})
 
 		} else {
 			overhead := 0
 			if nosiloRuntime != 0 {
-				overhead = int((siloTimingsRuntime[conf.name] - nosiloRuntime) * 100 / nosiloRuntime)
+				overhead = int((siloTimingsRuntime[conf.Name] - nosiloRuntime) * 100 / nosiloRuntime)
 			}
 
-			tab.AppendRow([]interface{}{conf.name,
-				fbool(conf.useWriteCache), fbool(conf.useVolatility), fbool(conf.useCow), fbool(conf.useSparseFile),
-				fmt.Sprintf("%.1fs", float64(siloTimingsRuntime[conf.name].Milliseconds())/1000), fmt.Sprintf("%d%%", overhead),
+			tab.AppendRow([]interface{}{conf.Name,
+				fbool(conf.UseWriteCache), fbool(conf.UseVolatility), fbool(conf.UseCow), fbool(conf.UseSparseFile),
+				fmt.Sprintf("%.1fs", float64(siloTimingsRuntime[conf.Name].Milliseconds())/1000), fmt.Sprintf("%d%%", overhead),
 			})
 		}
 	}

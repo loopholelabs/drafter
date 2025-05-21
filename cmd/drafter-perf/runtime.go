@@ -20,33 +20,34 @@ import (
 	"github.com/loopholelabs/silo/pkg/storage/metrics"
 )
 
-type siloConfig struct {
-	name                string
-	useCow              bool
-	useSparseFile       bool
-	useVolatility       bool
-	useWriteCache       bool
-	writeCacheMin       string
-	writeCacheMax       string
-	writeCacheBlocksize string
-	blockSize           uint32
-	grabPeriod          time.Duration
+type RunConfig struct {
+	Name                string        `json:"name"`
+	UseCow              bool          `json:"cow"`
+	UseSparseFile       bool          `json:"sparse"`
+	UseVolatility       bool          `json:"volatility"`
+	UseWriteCache       bool          `json:"writecache"`
+	WriteCacheMin       string        `json:"writecachemin"`
+	WriteCacheMax       string        `json:"writecachemax"`
+	WriteCacheBlocksize string        `json:"writecacheblocksize"`
+	BlockSize           uint32        `json:"blocksize"`
+	GrabPeriod          time.Duration `json:"grabperiod"`
 }
 
-func (sc *siloConfig) Summary() string {
-	s := sc.name
-	if sc.useVolatility {
+func (sc *RunConfig) Summary() string {
+	s := sc.Name
+	if sc.UseVolatility {
 		s = s + " VolatilityMonitor"
 	}
-	if sc.useCow {
+	if sc.UseCow {
 		s = s + " COW"
 	}
-	if sc.useSparseFile {
+	if sc.UseSparseFile {
 		s = s + " SparseFile"
 	}
-	if sc.useWriteCache {
+	if sc.UseWriteCache {
 		s = s + " WriteCache"
 	}
+	s = fmt.Sprintf("%s bs=%d grab=%s", s, sc.BlockSize, sc.GrabPeriod)
 	return s
 }
 
@@ -54,7 +55,7 @@ func (sc *siloConfig) Summary() string {
  * runSilo runs a benchmark inside a VM with Silo
  *
  */
-func runSilo(ctx context.Context, log loggingtypes.Logger, met metrics.SiloMetrics, testDir string, snapDir string, netns string, benchCB func(), conf siloConfig, enableInput bool, enableOutput bool, migrateAfter string) error {
+func runSilo(ctx context.Context, log loggingtypes.Logger, met metrics.SiloMetrics, testDir string, snapDir string, netns string, benchCB func(), conf RunConfig, enableInput bool, enableOutput bool, migrateAfter string) error {
 	schemas := make(map[string]*config.DeviceSchema)
 
 	firecrackerBin, err := exec.LookPath("firecracker")
@@ -74,31 +75,31 @@ func runSilo(ctx context.Context, log loggingtypes.Logger, met metrics.SiloMetri
 
 		dev := common.MigrateFromDevice{
 			Name:       n,
-			BlockSize:  conf.blockSize,
+			BlockSize:  conf.BlockSize,
 			Shared:     false,
 			SharedBase: true,
-			AnyOrder:   !conf.useVolatility,
+			AnyOrder:   !conf.UseVolatility,
 		}
 
-		if conf.useWriteCache && n == "memory" {
+		if conf.UseWriteCache && n == "memory" {
 			dev.UseWriteCache = true
-			dev.WriteCacheMin = conf.writeCacheMin
-			dev.WriteCacheMax = conf.writeCacheMax
-			dev.WriteCacheBlocksize = conf.writeCacheBlocksize
+			dev.WriteCacheMin = conf.WriteCacheMin
+			dev.WriteCacheMax = conf.WriteCacheMax
+			dev.WriteCacheBlocksize = conf.WriteCacheBlocksize
 		}
 
-		if conf.useCow {
+		if conf.UseCow {
 			dev.Base = path.Join(snapDir, n)
-			dev.UseSparseFile = conf.useSparseFile
-			dev.Overlay = path.Join(path.Join(testDir, conf.name, fmt.Sprintf("%s.overlay", fn)))
-			dev.State = path.Join(path.Join(testDir, conf.name, fmt.Sprintf("%s.state", fn)))
+			dev.UseSparseFile = conf.UseSparseFile
+			dev.Overlay = path.Join(path.Join(testDir, conf.Name, fmt.Sprintf("%s.overlay", fn)))
+			dev.State = path.Join(path.Join(testDir, conf.Name, fmt.Sprintf("%s.state", fn)))
 		} else {
 			// Copy the file
 			src, err := os.Open(path.Join(snapDir, n))
 			if err != nil {
 				return err
 			}
-			dst, err := os.OpenFile(path.Join(testDir, fmt.Sprintf("silo_%s_%s", conf.name, n)), os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
+			dst, err := os.OpenFile(path.Join(testDir, fmt.Sprintf("silo_%s_%s", conf.Name, n)), os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
 			if err != nil {
 				return err
 			}
@@ -115,7 +116,7 @@ func runSilo(ctx context.Context, log loggingtypes.Logger, met metrics.SiloMetri
 				return err
 			}
 
-			dev.Base = path.Join(testDir, fmt.Sprintf("silo_%s_%s", conf.name, n))
+			dev.Base = path.Join(testDir, fmt.Sprintf("silo_%s_%s", conf.Name, n))
 		}
 		devicesFrom = append(devicesFrom, dev)
 
@@ -142,7 +143,7 @@ func runSilo(ctx context.Context, log loggingtypes.Logger, met metrics.SiloMetri
 	}
 
 	// If we're grabbing memory
-	if conf.grabPeriod > 0 {
+	if conf.GrabPeriod > 0 {
 		hConf.NoMapShared = true
 	}
 
@@ -154,7 +155,7 @@ func runSilo(ctx context.Context, log loggingtypes.Logger, met metrics.SiloMetri
 		hConf.Stdout = os.Stdout
 		hConf.Stderr = os.Stderr
 	} else {
-		fout, err := os.OpenFile(fmt.Sprintf("%s.stdout", conf.name), os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0660)
+		fout, err := os.OpenFile(fmt.Sprintf("%s.stdout", conf.Name), os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0660)
 		if err == nil {
 			defer fout.Close()
 			hConf.Stdout = fout
@@ -169,7 +170,7 @@ func runSilo(ctx context.Context, log loggingtypes.Logger, met metrics.SiloMetri
 		StateName:               common.DeviceStateName,
 		MemoryName:              common.DeviceMemoryName,
 		AgentServerLocal:        struct{}{},
-		GrabInterval:            conf.grabPeriod,
+		GrabInterval:            conf.GrabPeriod,
 	}
 
 	if hConf.NoMapShared {
@@ -188,13 +189,13 @@ func runSilo(ctx context.Context, log loggingtypes.Logger, met metrics.SiloMetri
 		}
 	}
 
-	myPeer, err := peer.StartPeer(context.TODO(), context.Background(), log, met, nil, conf.name, rp)
+	myPeer, err := peer.StartPeer(context.TODO(), context.Background(), log, met, nil, conf.Name, rp)
 	if err != nil {
 		return err
 	}
 
 	// NB: We set it here to get rid of the uuid prefix Peer adds.
-	myPeer.SetInstanceID(conf.name)
+	myPeer.SetInstanceID(conf.Name)
 
 	hooks1 := peer.MigrateFromHooks{
 		OnLocalDeviceRequested:     func(id uint32, path string) {},
@@ -245,7 +246,7 @@ func runSilo(ctx context.Context, log loggingtypes.Logger, met metrics.SiloMetri
 	// NB At the moment, these will never get closed, but since it's just for debug, it's not terrible.
 	for name, sc := range schemas {
 		sc.Expose = false // We don't need to expose it. Just for internal working.
-		_, _, err = device.NewDeviceWithLoggingMetrics(sc, nil, met, fmt.Sprintf("post_%s", conf.name), name)
+		_, _, err = device.NewDeviceWithLoggingMetrics(sc, nil, met, fmt.Sprintf("post_%s", conf.Name), name)
 		if err != nil {
 			return err
 		}
