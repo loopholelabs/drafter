@@ -31,6 +31,14 @@ type RunConfig struct {
 	BlockSize           uint32        `json:"blocksize"`
 	GrabPeriod          time.Duration `json:"grabperiod"`
 	NoMapShared         bool          `json:"nomapshared"`
+
+	S3Sync        bool   `json:"s3sync"`
+	S3Secure      bool   `json:"s3secure"`
+	S3SecretKey   string `json:"s3secretkey"`
+	S3Endpoint    string `json:"s3endpoint"`
+	S3Concurrency int    `json:"s3concurrency"`
+	S3Bucket      string `json:"s3bucket"`
+	S3AccessKey   string `json:"s3accesskey"`
 }
 
 func (sc *RunConfig) Summary() string {
@@ -228,6 +236,15 @@ func getDevicesFrom(id int, testDir string, snapDir string, conf RunConfig) (map
 				return nil, nil, err
 			}
 		}
+
+		dev.S3Sync = conf.S3Sync
+		dev.S3Secure = conf.S3Secure
+		dev.S3SecretKey = conf.S3SecretKey
+		dev.S3Endpoint = conf.S3Endpoint
+		dev.S3Concurrency = conf.S3Concurrency
+		dev.S3Bucket = conf.S3Bucket
+		dev.S3AccessKey = conf.S3AccessKey
+
 		devicesFrom = append(devicesFrom, dev)
 
 		siloSchema, err := common.CreateSiloDevSchema(&dev)
