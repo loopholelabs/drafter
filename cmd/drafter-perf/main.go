@@ -3,10 +3,8 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
-	"net"
 	"os"
 	"time"
 
@@ -40,8 +38,8 @@ func main() {
 	runWithNonSilo := flag.Bool("nosilo", false, "Run a test with Silo disabled")
 
 	defaultConfigs, err := json.Marshal([]RunConfig{
-		{Name: "silo", BlockSize: 1024 * 1024, UseCow: true, UseSparseFile: true, UseVolatility: true, UseWriteCache: false, GrabPeriod: 0},
-		{Name: "silo_5s", BlockSize: 1024 * 1024, UseCow: true, UseSparseFile: true, UseVolatility: true, UseWriteCache: false, GrabPeriod: 5 * time.Second},
+		{Name: "silo", BlockSize: 1024 * 1024, UseCow: true, UseSparseFile: true, UseVolatility: true, UseWriteCache: false, NoMapShared: false, GrabPeriod: 0},
+		{Name: "silo_5s", BlockSize: 1024 * 1024, UseCow: true, UseSparseFile: true, UseVolatility: true, UseWriteCache: false, NoMapShared: true, GrabPeriod: 5 * time.Second},
 	})
 
 	runConfigs := flag.String("silo", string(defaultConfigs), "Run configs")
@@ -128,41 +126,16 @@ func main() {
 		panic(err)
 	}
 
-	valkeyUp := false
+	waitReady := func() error { return nil }
 
-	waitReady := func() {
-		if *valkeyTest {
-			// Try to connect to valkey
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-			defer cancel()
-			ticker := time.NewTicker(1 * time.Second)
-			for {
-				select {
-				case <-ticker.C:
-					// Try to connect to valkey
-					con, err := net.Dial("tcp", "127.0.0.1:3333")
-					if err == nil {
-						con.Close()
-						fmt.Printf(" ### Valkey up!\n")
-						valkeyUp = true
-						return
-					}
-				case <-ctx.Done():
-					fmt.Printf(" ### Unable to connect to valkey!\n")
-					return
-				}
-			}
-		}
+	if *valkeyTest {
+		valkeyWaitReady := &ValkeyWaitReady{Timeout: 30 * time.Second}
+		waitReady = valkeyWaitReady.Ready
 	}
 
 	err = setupSnapshot(log, ctx, netns, vmConfig, *dBlueDir, *dSnapDir, waitReady)
 	if err != nil {
 		panic(err)
-	}
-
-	// Make sure valkey came up
-	if *valkeyTest && !valkeyUp {
-		panic(errors.New("Could not start valkey?"))
 	}
 
 	log.Info().Msg("Starting tests...")

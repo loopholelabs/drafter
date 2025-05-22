@@ -152,7 +152,7 @@ func setupSnapshot(t *testing.T, log types.Logger, ctx context.Context, netns st
 			AgentVSockPort: uint32(26),
 			ResumeTimeout:  time.Minute,
 		},
-		func() {})
+		func() error { return nil })
 
 	assert.NoError(t, err)
 
