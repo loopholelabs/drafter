@@ -24,15 +24,20 @@ func main() {
 	log.SetLevel(types.InfoLevel)
 
 	profileCPU := flag.Bool("prof", false, "Profile CPU")
+
+	// Directory config
 	dTestDir := flag.String("testdir", "testdir", "Test directory")
 	dSnapDir := flag.String("snapdir", "snapdir", "Snap directory")
 	dBlueDir := flag.String("bluedir", "bluedir", "Blue directory")
 	noCleanup := flag.Bool("no-cleanup", false, "If true, then don't remove any files at the end")
 
+	// VM options
 	cpuCount := flag.Int("cpus", 1, "CPU count")
 	memCount := flag.Int("memory", 1024, "Memory MB")
 	cpuTemplate := flag.String("template", "None", "CPU Template")
 	usePVMBootArgs := flag.Bool("pvm", false, "PVM boot args")
+	enableOutput := flag.Bool("enable-output", false, "Enable VM output")
+	enableInput := flag.Bool("enable-input", false, "Enable VM input")
 
 	// No silo
 	runWithNonSilo := flag.Bool("nosilo", false, "Run a test with Silo disabled")
@@ -46,9 +51,6 @@ func main() {
 
 	valkeyTest := flag.Bool("valkey", false, "Run valkey benchmark test")
 	valkeyIterations := flag.Int("valkeynum", 1000, "Test iterations")
-
-	enableOutput := flag.Bool("enable-output", false, "Enable VM output")
-	enableInput := flag.Bool("enable-input", false, "Enable VM input")
 
 	migrateAfter := flag.String("migrate-after", "", "Migrate the VM after a time period")
 
@@ -86,26 +88,30 @@ func main() {
 		panic(err)
 	}
 
-	// Forward the port so we can connect to it...
+	type portForward struct {
+		PortSrc int
+		PortDst int
+	}
+
+	// Default ports for start/stop oci
+	forwards := []portForward{{PortSrc: 4567, PortDst: 4567}, {PortSrc: 4568, PortDst: 4568}}
+
+	waitReady := func() error { return nil }
+
+	// If we're just doing valkey, then we need to forward 6379 instead
 	if *valkeyTest {
-		portCloser, err := ForwardPort(log, netns, "tcp", 6379, 3333)
+		forwards = []portForward{{PortSrc: 6379, PortDst: 3333}}
+		valkeyWaitReady := &ValkeyWaitReady{Timeout: 30 * time.Second}
+		waitReady = valkeyWaitReady.Ready
+	}
+
+	// Forward any ports we need
+	for _, f := range forwards {
+		portCloser, err := ForwardPort(log, netns, "tcp", f.PortSrc, f.PortDst)
 		if err != nil {
 			panic(err)
 		}
 		defer portCloser()
-	} else {
-		portCloser1, err := ForwardPort(log, netns, "tcp", 4567, 4567)
-		if err != nil {
-			panic(err)
-		}
-		defer portCloser1()
-
-		portCloser2, err := ForwardPort(log, netns, "tcp", 4568, 4568)
-		if err != nil {
-			panic(err)
-		}
-		defer portCloser2()
-
 	}
 
 	vmConfig := rfirecracker.VMConfiguration{
@@ -124,13 +130,6 @@ func main() {
 	err = os.Mkdir(*dSnapDir, 0666)
 	if err != nil {
 		panic(err)
-	}
-
-	waitReady := func() error { return nil }
-
-	if *valkeyTest {
-		valkeyWaitReady := &ValkeyWaitReady{Timeout: 30 * time.Second}
-		waitReady = valkeyWaitReady.Ready
 	}
 
 	err = setupSnapshot(log, ctx, netns, vmConfig, *dBlueDir, *dSnapDir, waitReady)
