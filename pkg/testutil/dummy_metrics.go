@@ -1,6 +1,7 @@
 package testutil
 
 import (
+	"fmt"
 	"sync"
 
 	"github.com/loopholelabs/silo/pkg/storage/dirtytracker"
@@ -17,12 +18,14 @@ type DummyMetrics struct {
 	lock        sync.Mutex
 	metricsById map[string]map[string]*modules.Metrics
 	cowById     map[string]map[string]*modules.CopyOnWrite
+	syncerById  map[string]map[string]*migrator.Syncer
 }
 
 func NewDummyMetrics() *DummyMetrics {
 	return &DummyMetrics{
 		metricsById: make(map[string]map[string]*modules.Metrics),
 		cowById:     make(map[string]map[string]*modules.CopyOnWrite),
+		syncerById:  make(map[string]map[string]*migrator.Syncer),
 	}
 }
 
@@ -46,11 +49,31 @@ func (dm *DummyMetrics) GetCow(id string, name string) *modules.CopyOnWrite {
 	return byid[name]
 }
 
+func (dm *DummyMetrics) GetSyncer(id string, name string) *migrator.Syncer {
+	dm.lock.Lock()
+	defer dm.lock.Unlock()
+	byid, ok := dm.syncerById[id]
+	if !ok {
+		return nil
+	}
+	return byid[name]
+}
+
 func (dm *DummyMetrics) Shutdown()             {}
 func (dm *DummyMetrics) RemoveAllID(id string) {}
 
-func (dm *DummyMetrics) AddSyncer(id string, name string, sync *migrator.Syncer) {}
-func (dm *DummyMetrics) RemoveSyncer(id string, name string)                     {}
+func (dm *DummyMetrics) AddSyncer(id string, name string, sync *migrator.Syncer) {
+	dm.lock.Lock()
+	defer dm.lock.Unlock()
+	_, ok := dm.syncerById[id]
+	if !ok {
+		dm.syncerById[id] = make(map[string]*migrator.Syncer)
+	}
+	dm.syncerById[id][name] = sync
+	fmt.Printf("Adding syncer %s %s\n", id, name)
+}
+
+func (dm *DummyMetrics) RemoveSyncer(id string, name string) {}
 
 func (dm *DummyMetrics) AddMigrator(id string, name string, mig *migrator.Migrator) {}
 func (dm *DummyMetrics) RemoveMigrator(id string, name string)                      {}
