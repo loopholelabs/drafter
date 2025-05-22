@@ -84,7 +84,7 @@ func getSiloDeviceStats(dummyMetrics *testutil.DummyMetrics, name string, device
 		dm.DiskWriteOps += devROMetrics.WriteOps
 		dm.DiskWriteBytes += devROMetrics.WriteBytes
 
-		cow := dummyMetrics.GetCow(fmt.Sprintf("post_%s", name), deviceName)
+		cow := dummyMetrics.GetCow(name, deviceName)
 
 		if cow != nil {
 			changedBlocks, changedBytes, err := cow.GetDifference()

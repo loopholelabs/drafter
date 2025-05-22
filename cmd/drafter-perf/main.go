@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -12,6 +14,7 @@ import (
 	"github.com/loopholelabs/drafter/pkg/testutil"
 	"github.com/loopholelabs/logging"
 	"github.com/loopholelabs/logging/types"
+	"github.com/loopholelabs/silo/pkg/storage/devicegroup"
 	"github.com/muesli/gotable"
 )
 
@@ -43,8 +46,26 @@ func main() {
 	runWithNonSilo := flag.Bool("nosilo", false, "Run a test with Silo disabled")
 
 	defaultConfigs, err := json.Marshal([]RunConfig{
-		{Name: "silo", BlockSize: 1024 * 1024, UseCow: true, UseSparseFile: true, UseVolatility: true, UseWriteCache: false, NoMapShared: false, GrabPeriod: 0},
-		{Name: "silo_5s", BlockSize: 1024 * 1024, UseCow: true, UseSparseFile: true, UseVolatility: true, UseWriteCache: false, NoMapShared: true, GrabPeriod: 5 * time.Second},
+		{
+			Name:          "silo",
+			BlockSize:     1024 * 1024,
+			UseCow:        true,
+			UseSparseFile: true,
+			UseVolatility: true,
+			UseWriteCache: false,
+			NoMapShared:   false,
+			GrabPeriod:    0,
+			S3Sync:        true,
+			S3Secure:      false,
+			S3Endpoint:    "localhost:9000",
+			S3AccessKey:   "silosilo",
+			S3SecretKey:   "silosilo",
+			S3Concurrency: 32,
+			S3Bucket:      "silo",
+		},
+
+		//		{Name: "silo", BlockSize: 1024 * 1024, UseCow: true, UseSparseFile: true, UseVolatility: true, UseWriteCache: false, NoMapShared: false, GrabPeriod: 0},
+		//		{Name: "silo_5s", BlockSize: 1024 * 1024, UseCow: true, UseSparseFile: true, UseVolatility: true, UseWriteCache: false, NoMapShared: true, GrabPeriod: 5 * time.Second},
 	})
 
 	runConfigs := flag.String("silo", string(defaultConfigs), "Run configs")
@@ -145,6 +166,8 @@ func main() {
 
 	dummyMetrics := testutil.NewDummyMetrics()
 
+	siloDGs := make(map[string]*devicegroup.DeviceGroup)
+
 	// Start testing Silo confs
 	for _, sConf := range siloConfigs {
 		var runtimeStart time.Time
@@ -169,10 +192,40 @@ func main() {
 			}
 		}
 
-		err = runSilo(ctx, log, dummyMetrics, *dTestDir, *dSnapDir, netns, benchCB, sConf, *enableInput, *enableOutput, *migrateAfter)
+		dg, err := runSilo(ctx, log, dummyMetrics, *dTestDir, *dSnapDir, netns, benchCB, sConf, *enableInput, *enableOutput, *migrateAfter)
 		if err != nil {
 			panic(err)
 		}
+
+		siloDGs[sConf.Name] = dg
+
+		// Check how much is on S3
+		syncer := dummyMetrics.GetSyncer(sConf.Name, "s3sync_memory")
+		di := dg.GetDeviceInformationByName("memory")
+		if syncer != nil {
+			// Get some data
+			bytesOk := 0
+			bytesOld := 0
+			blocks := syncer.GetSafeBlockMap()
+			blockBuffer := make([]byte, sConf.BlockSize)
+			for b, hash := range blocks {
+				n, err := di.Exp.GetProvider().ReadAt(blockBuffer, int64(uint32(b)*sConf.BlockSize))
+				if err != nil {
+					panic(err)
+				}
+				hashProv := sha256.Sum256(blockBuffer[:n])
+				if bytes.Equal(hash[:], hashProv[:]) {
+					bytesOk += n
+				} else {
+					bytesOld += n
+				}
+			}
+			fmt.Printf(" Memory S3 sync has %d bytes. %d bytes useful, %d bytes out of date\n",
+				len(blocks)*int(sConf.BlockSize),
+				bytesOk,
+				bytesOld)
+		}
+
 		siloTimingsRuntime[sConf.Name] = runtimeEnd.Sub(runtimeStart)
 	}
 
@@ -239,6 +292,9 @@ func main() {
 		fmt.Printf("== Results for %s\n", conf.Summary())
 
 		showDeviceStats(dummyMetrics, conf.Name)
+
+		// Close the devicegroup
+		siloDGs[conf.Name].CloseAll()
 
 		if *valkeyTest {
 			siloSet := siloTimingsSet[conf.Name]

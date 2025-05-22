@@ -15,7 +15,7 @@ import (
 	rfirecracker "github.com/loopholelabs/drafter/pkg/runtimes/firecracker"
 	loggingtypes "github.com/loopholelabs/logging/types"
 	"github.com/loopholelabs/silo/pkg/storage/config"
-	"github.com/loopholelabs/silo/pkg/storage/device"
+	"github.com/loopholelabs/silo/pkg/storage/devicegroup"
 	"github.com/loopholelabs/silo/pkg/storage/metrics"
 )
 
@@ -66,20 +66,20 @@ func (sc *RunConfig) Summary() string {
  * runSilo runs a benchmark inside a VM with Silo
  *
  */
-func runSilo(ctx context.Context, log loggingtypes.Logger, met metrics.SiloMetrics, testDir string, snapDir string, netns string, benchCB func(), conf RunConfig, enableInput bool, enableOutput bool, migrateAfter string) error {
+func runSilo(ctx context.Context, log loggingtypes.Logger, met metrics.SiloMetrics, testDir string, snapDir string, netns string, benchCB func(), conf RunConfig, enableInput bool, enableOutput bool, migrateAfter string) (*devicegroup.DeviceGroup, error) {
 	firecrackerBin, err := exec.LookPath("firecracker")
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	jailerBin, err := exec.LookPath("jailer")
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	schemas, devicesFrom, err := getDevicesFrom(0, testDir, snapDir, conf)
+	_, devicesFrom, err := getDevicesFrom(0, testDir, snapDir, conf)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	hConf := rfirecracker.FirecrackerMachineConfig{
@@ -141,7 +141,7 @@ func runSilo(ctx context.Context, log loggingtypes.Logger, met metrics.SiloMetri
 
 	myPeer, err := peer.StartPeer(context.TODO(), context.Background(), log, met, nil, conf.Name, rp)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// NB: We set it here to get rid of the uuid prefix Peer adds.
@@ -156,32 +156,22 @@ func runSilo(ctx context.Context, log loggingtypes.Logger, met metrics.SiloMetri
 
 	err = myPeer.MigrateFrom(context.TODO(), devicesFrom, nil, nil, hooks1)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	err = myPeer.Resume(context.TODO(), 1*time.Minute, 10*time.Second)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	benchCB()
 
-	err = myPeer.Close()
+	err = myPeer.CloseRuntime() // Only close the runtime, not the devices
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	// Now so we can access the data, lets re-create the Silo devices so they register with the metrics etc
-	// NB At the moment, these will never get closed, but since it's just for debug, it's not terrible.
-	for name, sc := range schemas {
-		sc.Expose = false // We don't need to expose it. Just for internal working.
-		_, _, err = device.NewDeviceWithLoggingMetrics(sc, nil, met, fmt.Sprintf("post_%s", conf.Name), name)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
+	return myPeer.GetDG(), nil
 }
 
 // getDevicesFrom configures the silo devices
@@ -237,13 +227,16 @@ func getDevicesFrom(id int, testDir string, snapDir string, conf RunConfig) (map
 			}
 		}
 
-		dev.S3Sync = conf.S3Sync
-		dev.S3Secure = conf.S3Secure
-		dev.S3SecretKey = conf.S3SecretKey
-		dev.S3Endpoint = conf.S3Endpoint
-		dev.S3Concurrency = conf.S3Concurrency
-		dev.S3Bucket = conf.S3Bucket
-		dev.S3AccessKey = conf.S3AccessKey
+		// For now only enable S3 for memory
+		if n == "memory" {
+			dev.S3Sync = conf.S3Sync
+			dev.S3Secure = conf.S3Secure
+			dev.S3SecretKey = conf.S3SecretKey
+			dev.S3Endpoint = conf.S3Endpoint
+			dev.S3Concurrency = conf.S3Concurrency
+			dev.S3Bucket = conf.S3Bucket
+			dev.S3AccessKey = conf.S3AccessKey
+		}
 
 		devicesFrom = append(devicesFrom, dev)
 
