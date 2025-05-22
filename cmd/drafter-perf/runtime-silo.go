@@ -177,7 +177,7 @@ func runSilo(ctx context.Context, log loggingtypes.Logger, met metrics.SiloMetri
 }
 
 // getDevicesFrom configures the silo devices
-func getDevicesFrom(id int, snapDir string, testDir string, conf RunConfig) (map[string]*config.DeviceSchema, []common.MigrateFromDevice, error) {
+func getDevicesFrom(id int, testDir string, snapDir string, conf RunConfig) (map[string]*config.DeviceSchema, []common.MigrateFromDevice, error) {
 	schemas := make(map[string]*config.DeviceSchema)
 	devicesFrom := make([]common.MigrateFromDevice, 0)
 	for _, n := range append(common.KnownNames, "oci") {
