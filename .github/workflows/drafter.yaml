@@ -1,4 +1,4 @@
-name: architect CI
+name: Drafter CI
 
 on:
   push:
