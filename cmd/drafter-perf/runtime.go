@@ -54,7 +54,7 @@ func (sc *siloConfig) Summary() string {
  * runSilo runs a benchmark inside a VM with Silo
  *
  */
-func runSilo(ctx context.Context, log loggingtypes.Logger, met metrics.SiloMetrics, testDir string, snapDir string, netns string, benchCB func(), conf siloConfig, enableInput bool, enableOutput bool, migrateAfter string) error {
+func runSilo(ctx context.Context, log loggingtypes.Logger, met metrics.SiloMetrics, testDir string, snapDir string, netns string, benchCB func(), conf siloConfig, enableInput bool, enableOutput bool, migrateAfter string, inputKeepalive bool) error {
 	schemas := make(map[string]*config.DeviceSchema)
 
 	firecrackerBin, err := exec.LookPath("firecracker")
@@ -139,6 +139,7 @@ func runSilo(ctx context.Context, log loggingtypes.Logger, met metrics.SiloMetri
 		Stdout:         nil,
 		Stderr:         nil,
 		NoMapShared:    false,
+		InputKeepalive: inputKeepalive,
 	}
 
 	// If we're grabbing memory
@@ -258,7 +259,7 @@ func runSilo(ctx context.Context, log loggingtypes.Logger, met metrics.SiloMetri
  * Run a benchmark with Silo disabled.
  *
  */
-func runNonSilo(ctx context.Context, log loggingtypes.Logger, testDir string, snapDir string, netns string, benchCB func(), enableInput bool, enableOutput bool) error {
+func runNonSilo(ctx context.Context, log loggingtypes.Logger, testDir string, snapDir string, netns string, benchCB func(), enableInput bool, enableOutput bool, inputKeepalive bool) error {
 	// NOW TRY WITHOUT SILO
 	agentVsockPort := uint32(26)
 	agentLocal := struct{}{}
@@ -288,6 +289,7 @@ func runNonSilo(ctx context.Context, log loggingtypes.Logger, testDir string, sn
 		CgroupVersion:  2,
 		Stdout:         nil,
 		Stderr:         nil,
+		InputKeepalive: inputKeepalive,
 	}
 
 	if enableInput {

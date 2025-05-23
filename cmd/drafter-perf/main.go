@@ -49,6 +49,7 @@ func main() {
 
 	enableOutput := flag.Bool("enable-output", false, "Enable VM output")
 	enableInput := flag.Bool("enable-input", false, "Enable VM input")
+	inputKeepalive := flag.Bool("input-keepalive", true, "Whether to continously write backspace characters to the VM stdin to force the VM stdout to flush")
 
 	migrateAfter := flag.String("migrate-after", "", "Migrate the VM after a time period")
 
@@ -145,7 +146,7 @@ func main() {
 		}
 	}
 
-	err = setupSnapshot(log, ctx, netns, vmConfig, *dBlueDir, *dSnapDir, waitReady)
+	err = setupSnapshot(log, ctx, netns, vmConfig, *dBlueDir, *dSnapDir, waitReady, *inputKeepalive)
 	if err != nil {
 		panic(err)
 	}
@@ -231,7 +232,7 @@ func main() {
 			}
 		}
 
-		err = runSilo(ctx, log, dummyMetrics, *dTestDir, *dSnapDir, netns, benchCB, sConf, *enableInput, *enableOutput, *migrateAfter)
+		err = runSilo(ctx, log, dummyMetrics, *dTestDir, *dSnapDir, netns, benchCB, sConf, *enableInput, *enableOutput, *migrateAfter, *inputKeepalive)
 		if err != nil {
 			panic(err)
 		}
@@ -255,7 +256,7 @@ func main() {
 			}
 			nosiloRuntime = time.Since(ctime)
 		}
-		err = runNonSilo(ctx, log, *dTestDir, *dSnapDir, netns, benchCB, *enableInput, *enableOutput)
+		err = runNonSilo(ctx, log, *dTestDir, *dSnapDir, netns, benchCB, *enableInput, *enableOutput, *inputKeepalive)
 		if err != nil {
 			panic(err)
 		}

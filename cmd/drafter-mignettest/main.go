@@ -73,6 +73,8 @@ func main() {
 	s3accesskey = flag.String("s3accesskey", "", "S3 access key")
 	s3secretkey = flag.String("s3secretkey", "", "S3 secret key")
 
+	inputKeepalive := flag.Bool("input-keepalive", true, "Whether to continously write backspace characters to the VM stdin to force the VM stdout to flush")
+
 	flag.Parse()
 
 	if *usePVM {
@@ -93,7 +95,7 @@ func main() {
 
 	// create package files
 	if *blueprintsDir != "" {
-		err := setupSnapshot(log, context.Background(), *snapshotsDir, *blueprintsDir)
+		err := setupSnapshot(log, context.Background(), *snapshotsDir, *blueprintsDir, *inputKeepalive)
 		if err != nil {
 			panic(err)
 		}
@@ -115,7 +117,7 @@ func main() {
 	}
 
 	if *start {
-		myPeer, err := setupFirstPeer(log, firecrackerBin, jailerBin, *snapshotsDir)
+		myPeer, err := setupFirstPeer(log, firecrackerBin, jailerBin, *snapshotsDir, *inputKeepalive)
 		if err != nil {
 			panic(err)
 		}
@@ -173,7 +175,7 @@ func main() {
 			panic(err)
 		}
 
-		err = handleConnection(migration, conn, log, firecrackerBin, jailerBin, devicesTo)
+		err = handleConnection(migration, conn, log, firecrackerBin, jailerBin, devicesTo, *inputKeepalive)
 		if err != nil {
 			log.Error().Err(err).Msg("Error handling connection")
 			return
@@ -189,7 +191,7 @@ func main() {
 }
 
 // handleConnection
-func handleConnection(migration int, conn net.Conn, log types.Logger, firecrackerBin string, jailerBin string, devicesTo []common.MigrateToDevice) error {
+func handleConnection(migration int, conn net.Conn, log types.Logger, firecrackerBin string, jailerBin string, devicesTo []common.MigrateToDevice, inputKeepalive bool) error {
 	// Receive an incoming VM, run it for a bit, then send it on...
 
 	// Create a new RuntimeProvider
@@ -207,6 +209,7 @@ func handleConnection(migration int, conn net.Conn, log types.Logger, firecracke
 			Stdout:         os.Stdout,
 			Stderr:         os.Stderr,
 			Stdin:          nil,
+			InputKeepalive: inputKeepalive,
 		},
 		StateName:        common.DeviceStateName,
 		MemoryName:       common.DeviceMemoryName,
@@ -291,7 +294,7 @@ func handleConnection(migration int, conn net.Conn, log types.Logger, firecracke
 }
 
 // setupFirstPeer starts the first peer from a snapshot dir.
-func setupFirstPeer(log types.Logger, firecrackerBin string, jailerBin string, snapDir string) (*peer.Peer, error) {
+func setupFirstPeer(log types.Logger, firecrackerBin string, jailerBin string, snapDir string, inputKeepalive bool) (*peer.Peer, error) {
 	rp := &rfirecracker.FirecrackerRuntimeProvider[struct{}, ipc.AgentServerRemote[struct{}], struct{}]{
 		Log: log,
 		HypervisorConfiguration: rfirecracker.FirecrackerMachineConfig{
@@ -306,6 +309,7 @@ func setupFirstPeer(log types.Logger, firecrackerBin string, jailerBin string, s
 			Stdout:         os.Stdout,
 			Stderr:         os.Stderr,
 			Stdin:          nil,
+			InputKeepalive: inputKeepalive,
 		},
 		StateName:        common.DeviceStateName,
 		MemoryName:       common.DeviceMemoryName,

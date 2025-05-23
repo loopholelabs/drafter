@@ -71,6 +71,7 @@ type FirecrackerMachineConfig struct {
 	Stdout         io.Writer
 	Stderr         io.Writer
 	Stdin          io.Reader
+	InputKeepalive bool
 
 	NoMapShared bool
 }
@@ -152,6 +153,24 @@ func StartFirecrackerMachine(ctx context.Context, log loggingtypes.Logger, conf 
 	}
 	if conf.Stdin != nil {
 		jBuilder = jBuilder.WithStdin(conf.Stdin)
+	} else if conf.InputKeepalive {
+		r, w := io.Pipe()
+		jBuilder = jBuilder.WithStdin(r)
+
+		// Continously write backspace characters to Firecracker's `stdin`
+		// This fixes an issue where Firecracker (or the guest OS) don't seem to
+		// flush the stdout to the host after a while withou user input, which
+		// means that VM logs stop.
+		go func() {
+			for {
+				if _, err = w.Write([]byte("\b")); err != nil {
+					return
+				}
+
+				// Throttle the keepalive writes
+				time.Sleep(100 * time.Millisecond)
+			}
+		}()
 	}
 
 	// Create the command

@@ -53,6 +53,7 @@ func main() {
 	blueprintsDir = flag.String("blueprints", "blueprints", "blueprints dir")
 	snapshotsDir = flag.String("snapshot", "", "snapshot dir")
 	serveMetrics = flag.String("metrics", "", "metrics")
+	inputKeepalive := flag.Bool("input-keepalive", true, "Whether to continously write backspace characters to the VM stdin to force the VM stdout to flush")
 
 	flag.Parse()
 
@@ -100,7 +101,7 @@ func main() {
 	grandTotalBlocksP2P := 0
 	grandTotalBlocksS3 := 0
 
-	devicesTo, snapDir, s3Endpoint := setupDevicesCowS3(log, *snapshotsDir)
+	devicesTo, snapDir, s3Endpoint := setupDevicesCowS3(log, *snapshotsDir, *inputKeepalive)
 
 	firecrackerBin, err := exec.LookPath("firecracker")
 	if err != nil {
@@ -124,6 +125,7 @@ func main() {
 		Stdout:         os.Stdout,
 		Stderr:         os.Stderr,
 		Stdin:          nil,
+		InputKeepalive: *inputKeepalive,
 	}
 
 	rp := &rfirecracker.FirecrackerRuntimeProvider[struct{}, ipc.AgentServerRemote[struct{}], struct{}]{
@@ -183,6 +185,7 @@ func main() {
 				Stdout:         os.Stdout,
 				Stderr:         os.Stderr,
 				Stdin:          nil,
+				InputKeepalive: *inputKeepalive,
 			},
 			StateName:        common.DeviceStateName,
 			MemoryName:       common.DeviceMemoryName,
@@ -325,7 +328,7 @@ func main() {
 	}
 }
 
-func setupDevicesCowS3(log types.Logger, snapDir string) ([]common.MigrateToDevice, string, string) {
+func setupDevicesCowS3(log types.Logger, snapDir string, inputKeepalive bool) ([]common.MigrateToDevice, string, string) {
 	s3Endpoint := ""
 
 	if enableS3 {
@@ -344,7 +347,7 @@ func setupDevicesCowS3(log types.Logger, snapDir string) ([]common.MigrateToDevi
 
 	// create package files
 	if snapDir == "" {
-		snapDir = setupSnapshot(log, context.Background())
+		snapDir = setupSnapshot(log, context.Background(), inputKeepalive)
 	}
 
 	for _, n := range append(common.KnownNames, "oci") {
@@ -402,7 +405,7 @@ func getDevicesFrom(snapDir string, s3Endpoint string, i int) []common.MigrateFr
  *  - firecracker works
  *  - blueprints exist
  */
-func setupSnapshot(log types.Logger, ctx context.Context) string {
+func setupSnapshot(log types.Logger, ctx context.Context, inputKeepalive bool) string {
 	err := os.Mkdir(createSnapshotDir, 0777)
 	if err != nil {
 		panic(err)
@@ -471,6 +474,7 @@ func setupSnapshot(log types.Logger, ctx context.Context) string {
 			Stdout:         nil,
 			Stderr:         nil,
 			Stdin:          nil,
+			InputKeepalive: inputKeepalive,
 		},
 		rfirecracker.NetworkConfiguration{
 			Interface: "tap0",
