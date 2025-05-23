@@ -19,6 +19,7 @@ type DummyMetrics struct {
 	metricsById map[string]map[string]*modules.Metrics
 	cowById     map[string]map[string]*modules.CopyOnWrite
 	syncerById  map[string]map[string]*migrator.Syncer
+	s3ById      map[string]map[string]*sources.S3Storage
 }
 
 func NewDummyMetrics() *DummyMetrics {
@@ -26,6 +27,7 @@ func NewDummyMetrics() *DummyMetrics {
 		metricsById: make(map[string]map[string]*modules.Metrics),
 		cowById:     make(map[string]map[string]*modules.CopyOnWrite),
 		syncerById:  make(map[string]map[string]*migrator.Syncer),
+		s3ById:      make(map[string]map[string]*sources.S3Storage),
 	}
 }
 
@@ -59,6 +61,16 @@ func (dm *DummyMetrics) GetSyncer(id string, name string) *migrator.Syncer {
 	return byid[name]
 }
 
+func (dm *DummyMetrics) GetS3Storage(id string, name string) *sources.S3Storage {
+	dm.lock.Lock()
+	defer dm.lock.Unlock()
+	byid, ok := dm.s3ById[id]
+	if !ok {
+		return nil
+	}
+	return byid[name]
+}
+
 func (dm *DummyMetrics) Shutdown()             {}
 func (dm *DummyMetrics) RemoveAllID(id string) {}
 
@@ -70,7 +82,6 @@ func (dm *DummyMetrics) AddSyncer(id string, name string, sync *migrator.Syncer)
 		dm.syncerById[id] = make(map[string]*migrator.Syncer)
 	}
 	dm.syncerById[id][name] = sync
-	fmt.Printf("Adding syncer %s %s\n", id, name)
 }
 
 func (dm *DummyMetrics) RemoveSyncer(id string, name string) {}
@@ -87,8 +98,17 @@ func (dm *DummyMetrics) RemoveToProtocol(id string, name string)                
 func (dm *DummyMetrics) AddFromProtocol(id string, name string, proto *protocol.FromProtocol) {}
 func (dm *DummyMetrics) RemoveFromProtocol(id string, name string)                            {}
 
-func (dm *DummyMetrics) AddS3Storage(id string, name string, s3 *sources.S3Storage) {}
-func (dm *DummyMetrics) RemoveS3Storage(id string, name string)                     {}
+func (dm *DummyMetrics) AddS3Storage(id string, name string, s3 *sources.S3Storage) {
+	dm.lock.Lock()
+	defer dm.lock.Unlock()
+	_, ok := dm.s3ById[id]
+	if !ok {
+		dm.s3ById[id] = make(map[string]*sources.S3Storage)
+	}
+	dm.s3ById[id][name] = s3
+	fmt.Printf("Adding S3Storage %s %s\n", id, name)
+}
+func (dm *DummyMetrics) RemoveS3Storage(id string, name string) {}
 
 func (dm *DummyMetrics) AddDirtyTracker(id string, name string, dt *dirtytracker.Remote) {}
 func (dm *DummyMetrics) RemoveDirtyTracker(id string, name string)                       {}
