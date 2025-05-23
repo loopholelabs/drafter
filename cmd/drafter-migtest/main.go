@@ -53,6 +53,7 @@ func main() {
 	blueprintsDir = flag.String("blueprints", "blueprints", "blueprints dir")
 	snapshotsDir = flag.String("snapshot", "", "snapshot dir")
 	serveMetrics = flag.String("metrics", "", "metrics")
+	enableInputKeepalive := flag.Bool("enable-input-keepalive", true, "Whether to continuously write backspace characters to the VM stdin to force the VM stdout to flush")
 
 	flag.Parse()
 
@@ -100,7 +101,7 @@ func main() {
 	grandTotalBlocksP2P := 0
 	grandTotalBlocksS3 := 0
 
-	devicesTo, snapDir, s3Endpoint := setupDevicesCowS3(log, *snapshotsDir)
+	devicesTo, snapDir, s3Endpoint := setupDevicesCowS3(log, *snapshotsDir, *enableInputKeepalive)
 
 	firecrackerBin, err := exec.LookPath("firecracker")
 	if err != nil {
@@ -113,17 +114,18 @@ func main() {
 	}
 
 	fcconfig := rfirecracker.FirecrackerMachineConfig{
-		FirecrackerBin: firecrackerBin,
-		JailerBin:      jailerBin,
-		ChrootBaseDir:  testPeerDirCowS3,
-		UID:            0,
-		GID:            0,
-		NetNS:          "ark0",
-		NumaNode:       0,
-		CgroupVersion:  2,
-		Stdout:         os.Stdout,
-		Stderr:         os.Stderr,
-		Stdin:          nil,
+		FirecrackerBin:       firecrackerBin,
+		JailerBin:            jailerBin,
+		ChrootBaseDir:        testPeerDirCowS3,
+		UID:                  0,
+		GID:                  0,
+		NetNS:                "ark0",
+		NumaNode:             0,
+		CgroupVersion:        2,
+		Stdout:               os.Stdout,
+		Stderr:               os.Stderr,
+		Stdin:                nil,
+		EnableInputKeepalive: *enableInputKeepalive,
 	}
 
 	rp := &rfirecracker.FirecrackerRuntimeProvider[struct{}, ipc.AgentServerRemote[struct{}], struct{}]{
@@ -172,17 +174,18 @@ func main() {
 		rp2 := &rfirecracker.FirecrackerRuntimeProvider[struct{}, ipc.AgentServerRemote[struct{}], struct{}]{
 			Log: log,
 			HypervisorConfiguration: rfirecracker.FirecrackerMachineConfig{
-				FirecrackerBin: firecrackerBin,
-				JailerBin:      jailerBin,
-				ChrootBaseDir:  testPeerDirCowS3,
-				UID:            0,
-				GID:            0,
-				NetNS:          "ark0",
-				NumaNode:       0,
-				CgroupVersion:  2,
-				Stdout:         os.Stdout,
-				Stderr:         os.Stderr,
-				Stdin:          nil,
+				FirecrackerBin:       firecrackerBin,
+				JailerBin:            jailerBin,
+				ChrootBaseDir:        testPeerDirCowS3,
+				UID:                  0,
+				GID:                  0,
+				NetNS:                "ark0",
+				NumaNode:             0,
+				CgroupVersion:        2,
+				Stdout:               os.Stdout,
+				Stderr:               os.Stderr,
+				Stdin:                nil,
+				EnableInputKeepalive: *enableInputKeepalive,
 			},
 			StateName:        common.DeviceStateName,
 			MemoryName:       common.DeviceMemoryName,
@@ -325,7 +328,7 @@ func main() {
 	}
 }
 
-func setupDevicesCowS3(log types.Logger, snapDir string) ([]common.MigrateToDevice, string, string) {
+func setupDevicesCowS3(log types.Logger, snapDir string, enableInputKeepalive bool) ([]common.MigrateToDevice, string, string) {
 	s3Endpoint := ""
 
 	if enableS3 {
@@ -344,7 +347,7 @@ func setupDevicesCowS3(log types.Logger, snapDir string) ([]common.MigrateToDevi
 
 	// create package files
 	if snapDir == "" {
-		snapDir = setupSnapshot(log, context.Background())
+		snapDir = setupSnapshot(log, context.Background(), enableInputKeepalive)
 	}
 
 	for _, n := range append(common.KnownNames, "oci") {
@@ -402,7 +405,7 @@ func getDevicesFrom(snapDir string, s3Endpoint string, i int) []common.MigrateFr
  *  - firecracker works
  *  - blueprints exist
  */
-func setupSnapshot(log types.Logger, ctx context.Context) string {
+func setupSnapshot(log types.Logger, ctx context.Context, enableInputKeepalive bool) string {
 	err := os.Mkdir(createSnapshotDir, 0777)
 	if err != nil {
 		panic(err)
@@ -460,17 +463,18 @@ func setupSnapshot(log types.Logger, ctx context.Context) string {
 			ResumeTimeout:     time.Minute,
 		},
 		rfirecracker.FirecrackerMachineConfig{
-			FirecrackerBin: firecrackerBin,
-			JailerBin:      jailerBin,
-			ChrootBaseDir:  createSnapshotDir,
-			UID:            0,
-			GID:            0,
-			NetNS:          "ark0",
-			NumaNode:       0,
-			CgroupVersion:  2,
-			Stdout:         nil,
-			Stderr:         nil,
-			Stdin:          nil,
+			FirecrackerBin:       firecrackerBin,
+			JailerBin:            jailerBin,
+			ChrootBaseDir:        createSnapshotDir,
+			UID:                  0,
+			GID:                  0,
+			NetNS:                "ark0",
+			NumaNode:             0,
+			CgroupVersion:        2,
+			Stdout:               nil,
+			Stderr:               nil,
+			Stdin:                nil,
+			EnableInputKeepalive: enableInputKeepalive,
 		},
 		rfirecracker.NetworkConfiguration{
 			Interface: "tap0",
