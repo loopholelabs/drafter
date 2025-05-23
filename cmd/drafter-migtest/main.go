@@ -53,7 +53,7 @@ func main() {
 	blueprintsDir = flag.String("blueprints", "blueprints", "blueprints dir")
 	snapshotsDir = flag.String("snapshot", "", "snapshot dir")
 	serveMetrics = flag.String("metrics", "", "metrics")
-	enableInputKeepalive := flag.Bool("enable-input-keepalive", true, "Whether to continously write backspace characters to the VM stdin to force the VM stdout to flush")
+	enableInputKeepalive := flag.Bool("enable-input-keepalive", true, "Whether to continuously write backspace characters to the VM stdin to force the VM stdout to flush")
 
 	flag.Parse()
 

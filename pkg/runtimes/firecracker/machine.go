@@ -157,7 +157,7 @@ func StartFirecrackerMachine(ctx context.Context, log loggingtypes.Logger, conf 
 		r, w := io.Pipe()
 		jBuilder = jBuilder.WithStdin(r)
 
-		// Continously write backspace characters to Firecracker's `stdin`
+		// Continuously write backspace characters to Firecracker's `stdin`
 		// This fixes an issue where Firecracker (or the guest OS) don't seem to
 		// flush the stdout to the host after a while without user input, which
 		// means that VM logs stop.

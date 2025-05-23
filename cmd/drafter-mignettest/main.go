@@ -73,7 +73,7 @@ func main() {
 	s3accesskey = flag.String("s3accesskey", "", "S3 access key")
 	s3secretkey = flag.String("s3secretkey", "", "S3 secret key")
 
-	enableInputKeepalive := flag.Bool("enable-input-keepalive", true, "Whether to continously write backspace characters to the VM stdin to force the VM stdout to flush")
+	enableInputKeepalive := flag.Bool("enable-input-keepalive", true, "Whether to continuously write backspace characters to the VM stdin to force the VM stdout to flush")
 
 	flag.Parse()
 
