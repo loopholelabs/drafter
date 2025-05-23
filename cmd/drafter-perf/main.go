@@ -276,8 +276,11 @@ func main() {
 		siloDGs[sConf.Name] = dg
 
 		// Check how much is on S3
-		syncer := dummyMetrics.GetSyncer(sConf.Name, "s3sync_oci")
-		di := dg.GetDeviceInformationByName("oci")
+
+		s3device := "memory"
+
+		syncer := dummyMetrics.GetSyncer(sConf.Name, fmt.Sprintf("s3sync_%s", s3device))
+		di := dg.GetDeviceInformationByName(s3device)
 		if syncer != nil {
 			// Get some data
 			bytesOk := uint64(0)
@@ -297,7 +300,7 @@ func main() {
 				}
 			}
 
-			s3s := dummyMetrics.GetS3Storage(sConf.Name, "s3sync_oci")
+			s3s := dummyMetrics.GetS3Storage(sConf.Name, fmt.Sprintf("s3sync_%s", s3device))
 			smet := s3s.Metrics()
 
 			s3tab.AppendRow([]interface{}{sConf.Name,
