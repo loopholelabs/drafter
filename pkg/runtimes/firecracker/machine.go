@@ -60,18 +60,18 @@ const (
 )
 
 type FirecrackerMachineConfig struct {
-	FirecrackerBin string
-	JailerBin      string
-	ChrootBaseDir  string
-	UID            int
-	GID            int
-	NetNS          string
-	NumaNode       int
-	CgroupVersion  int
-	Stdout         io.Writer
-	Stderr         io.Writer
-	Stdin          io.Reader
-	InputKeepalive bool
+	FirecrackerBin       string
+	JailerBin            string
+	ChrootBaseDir        string
+	UID                  int
+	GID                  int
+	NetNS                string
+	NumaNode             int
+	CgroupVersion        int
+	Stdout               io.Writer
+	Stderr               io.Writer
+	Stdin                io.Reader
+	EnableInputKeepalive bool
 
 	NoMapShared bool
 }
@@ -153,13 +153,13 @@ func StartFirecrackerMachine(ctx context.Context, log loggingtypes.Logger, conf 
 	}
 	if conf.Stdin != nil {
 		jBuilder = jBuilder.WithStdin(conf.Stdin)
-	} else if conf.InputKeepalive {
+	} else if conf.EnableInputKeepalive {
 		r, w := io.Pipe()
 		jBuilder = jBuilder.WithStdin(r)
 
 		// Continously write backspace characters to Firecracker's `stdin`
 		// This fixes an issue where Firecracker (or the guest OS) don't seem to
-		// flush the stdout to the host after a while withou user input, which
+		// flush the stdout to the host after a while without user input, which
 		// means that VM logs stop.
 		go func() {
 			for {

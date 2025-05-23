@@ -46,7 +46,7 @@ func main() {
 	gid := flag.Int("gid", 0, "Group ID for the Firecracker process")
 	enableOutput := flag.Bool("enable-output", true, "Whether to enable VM stdout and stderr")
 	enableInput := flag.Bool("enable-input", false, "Whether to enable VM stdin")
-	inputKeepalive := flag.Bool("input-keepalive", true, "Whether to continously write backspace characters to the VM stdin to force the VM stdout to flush")
+	enableInputKeepalive := flag.Bool("enable-input-keepalive", true, "Whether to continously write backspace characters to the VM stdin to force the VM stdout to flush")
 	netns := flag.String("netns", "ark0", "Network namespace to run Firecracker in")
 	numaNode := flag.Int("numa-node", 0, "NUMA node to run Firecracker in")
 	cgroupVersion := flag.Int("cgroup-version", 2, "Cgroup version to use for Jailer")
@@ -129,15 +129,15 @@ func main() {
 	var rp runtimes.RuntimeProviderIfc
 
 	fcconfig := rfirecracker.FirecrackerMachineConfig{
-		FirecrackerBin: firecrackerBin,
-		JailerBin:      jailerBin,
-		ChrootBaseDir:  *chrootBaseDir,
-		UID:            *uid,
-		GID:            *gid,
-		NetNS:          *netns,
-		NumaNode:       *numaNode,
-		CgroupVersion:  *cgroupVersion,
-		InputKeepalive: *inputKeepalive,
+		FirecrackerBin:       firecrackerBin,
+		JailerBin:            jailerBin,
+		ChrootBaseDir:        *chrootBaseDir,
+		UID:                  *uid,
+		GID:                  *gid,
+		NetNS:                *netns,
+		NumaNode:             *numaNode,
+		CgroupVersion:        *cgroupVersion,
+		EnableInputKeepalive: *enableInputKeepalive,
 	}
 
 	if *enableInput {

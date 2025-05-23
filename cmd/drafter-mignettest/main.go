@@ -73,7 +73,7 @@ func main() {
 	s3accesskey = flag.String("s3accesskey", "", "S3 access key")
 	s3secretkey = flag.String("s3secretkey", "", "S3 secret key")
 
-	inputKeepalive := flag.Bool("input-keepalive", true, "Whether to continously write backspace characters to the VM stdin to force the VM stdout to flush")
+	enableInputKeepalive := flag.Bool("enable-input-keepalive", true, "Whether to continously write backspace characters to the VM stdin to force the VM stdout to flush")
 
 	flag.Parse()
 
@@ -95,7 +95,7 @@ func main() {
 
 	// create package files
 	if *blueprintsDir != "" {
-		err := setupSnapshot(log, context.Background(), *snapshotsDir, *blueprintsDir, *inputKeepalive)
+		err := setupSnapshot(log, context.Background(), *snapshotsDir, *blueprintsDir, *enableInputKeepalive)
 		if err != nil {
 			panic(err)
 		}
@@ -117,7 +117,7 @@ func main() {
 	}
 
 	if *start {
-		myPeer, err := setupFirstPeer(log, firecrackerBin, jailerBin, *snapshotsDir, *inputKeepalive)
+		myPeer, err := setupFirstPeer(log, firecrackerBin, jailerBin, *snapshotsDir, *enableInputKeepalive)
 		if err != nil {
 			panic(err)
 		}
@@ -175,7 +175,7 @@ func main() {
 			panic(err)
 		}
 
-		err = handleConnection(migration, conn, log, firecrackerBin, jailerBin, devicesTo, *inputKeepalive)
+		err = handleConnection(migration, conn, log, firecrackerBin, jailerBin, devicesTo, *enableInputKeepalive)
 		if err != nil {
 			log.Error().Err(err).Msg("Error handling connection")
 			return
@@ -191,25 +191,25 @@ func main() {
 }
 
 // handleConnection
-func handleConnection(migration int, conn net.Conn, log types.Logger, firecrackerBin string, jailerBin string, devicesTo []common.MigrateToDevice, inputKeepalive bool) error {
+func handleConnection(migration int, conn net.Conn, log types.Logger, firecrackerBin string, jailerBin string, devicesTo []common.MigrateToDevice, enableInputKeepalive bool) error {
 	// Receive an incoming VM, run it for a bit, then send it on...
 
 	// Create a new RuntimeProvider
 	rp2 := &rfirecracker.FirecrackerRuntimeProvider[struct{}, ipc.AgentServerRemote[struct{}], struct{}]{
 		Log: log,
 		HypervisorConfiguration: rfirecracker.FirecrackerMachineConfig{
-			FirecrackerBin: firecrackerBin,
-			JailerBin:      jailerBin,
-			ChrootBaseDir:  *testDirectory,
-			UID:            0,
-			GID:            0,
-			NetNS:          *networkNamespace,
-			NumaNode:       0,
-			CgroupVersion:  2,
-			Stdout:         os.Stdout,
-			Stderr:         os.Stderr,
-			Stdin:          nil,
-			InputKeepalive: inputKeepalive,
+			FirecrackerBin:       firecrackerBin,
+			JailerBin:            jailerBin,
+			ChrootBaseDir:        *testDirectory,
+			UID:                  0,
+			GID:                  0,
+			NetNS:                *networkNamespace,
+			NumaNode:             0,
+			CgroupVersion:        2,
+			Stdout:               os.Stdout,
+			Stderr:               os.Stderr,
+			Stdin:                nil,
+			EnableInputKeepalive: enableInputKeepalive,
 		},
 		StateName:        common.DeviceStateName,
 		MemoryName:       common.DeviceMemoryName,
@@ -294,22 +294,22 @@ func handleConnection(migration int, conn net.Conn, log types.Logger, firecracke
 }
 
 // setupFirstPeer starts the first peer from a snapshot dir.
-func setupFirstPeer(log types.Logger, firecrackerBin string, jailerBin string, snapDir string, inputKeepalive bool) (*peer.Peer, error) {
+func setupFirstPeer(log types.Logger, firecrackerBin string, jailerBin string, snapDir string, enableInputKeepalive bool) (*peer.Peer, error) {
 	rp := &rfirecracker.FirecrackerRuntimeProvider[struct{}, ipc.AgentServerRemote[struct{}], struct{}]{
 		Log: log,
 		HypervisorConfiguration: rfirecracker.FirecrackerMachineConfig{
-			FirecrackerBin: firecrackerBin,
-			JailerBin:      jailerBin,
-			ChrootBaseDir:  *testDirectory,
-			UID:            0,
-			GID:            0,
-			NetNS:          *networkNamespace,
-			NumaNode:       0,
-			CgroupVersion:  2,
-			Stdout:         os.Stdout,
-			Stderr:         os.Stderr,
-			Stdin:          nil,
-			InputKeepalive: inputKeepalive,
+			FirecrackerBin:       firecrackerBin,
+			JailerBin:            jailerBin,
+			ChrootBaseDir:        *testDirectory,
+			UID:                  0,
+			GID:                  0,
+			NetNS:                *networkNamespace,
+			NumaNode:             0,
+			CgroupVersion:        2,
+			Stdout:               os.Stdout,
+			Stderr:               os.Stderr,
+			Stdin:                nil,
+			EnableInputKeepalive: enableInputKeepalive,
 		},
 		StateName:        common.DeviceStateName,
 		MemoryName:       common.DeviceMemoryName,

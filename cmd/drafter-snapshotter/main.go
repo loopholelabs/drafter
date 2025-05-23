@@ -30,7 +30,7 @@ func main() {
 
 	enableOutput := flag.Bool("enable-output", true, "Whether to enable VM stdout and stderr")
 	enableInput := flag.Bool("enable-input", false, "Whether to enable VM stdin")
-	inputKeepalive := flag.Bool("input-keepalive", true, "Whether to continously write backspace characters to the VM stdin to force the VM stdout to flush")
+	enableInputKeepalive := flag.Bool("enable-input-keepalive", true, "Whether to continously write backspace characters to the VM stdin to force the VM stdout to flush")
 
 	resumeTimeout := flag.Duration("resume-timeout", time.Minute, "Maximum amount of time to wait for agent and liveness to resume")
 
@@ -100,15 +100,15 @@ func main() {
 	}()
 
 	fcconfig := rfirecracker.FirecrackerMachineConfig{
-		FirecrackerBin: firecrackerBin,
-		JailerBin:      jailerBin,
-		ChrootBaseDir:  *chrootBaseDir,
-		UID:            *uid,
-		GID:            *gid,
-		NetNS:          *netns,
-		NumaNode:       *numaNode,
-		CgroupVersion:  *cgroupVersion,
-		InputKeepalive: *inputKeepalive,
+		FirecrackerBin:       firecrackerBin,
+		JailerBin:            jailerBin,
+		ChrootBaseDir:        *chrootBaseDir,
+		UID:                  *uid,
+		GID:                  *gid,
+		NetNS:                *netns,
+		NumaNode:             *numaNode,
+		CgroupVersion:        *cgroupVersion,
+		EnableInputKeepalive: *enableInputKeepalive,
 	}
 
 	if *enableInput {
