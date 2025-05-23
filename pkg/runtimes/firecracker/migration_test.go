@@ -268,6 +268,13 @@ func getDevicesFrom(t *testing.T, snapDir string, s3Endpoint string, i int, conf
 			dev.S3Secure = false
 			dev.S3Bucket = "silosilo"
 			dev.S3Concurrency = 10
+
+			dev.S3BlockShift = 2
+			dev.S3OnlyDirty = false
+			dev.S3MaxAge = "100ms"
+			dev.S3MinChanged = 4
+			dev.S3Limit = 256
+			dev.S3CheckPeriod = "100ms"
 		}
 		devicesFrom = append(devicesFrom, dev)
 	}

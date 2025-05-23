@@ -46,8 +46,9 @@ func main() {
 	runWithNonSilo := flag.Bool("nosilo", false, "Run a test with Silo disabled")
 
 	defaultConfigs, err := json.Marshal([]RunConfig{
+
 		{
-			Name:          "silo",
+			Name:          "silo_1m_32",
 			BlockSize:     1024 * 1024,
 			UseCow:        true,
 			UseSparseFile: true,
@@ -63,7 +64,79 @@ func main() {
 			S3Concurrency: 32,
 			S3Bucket:      "silo",
 		},
+		/*
+			{
+				Name:          "silo_512k_32",
+				BlockSize:     512 * 1024,
+				UseCow:        true,
+				UseSparseFile: true,
+				UseVolatility: true,
+				UseWriteCache: false,
+				NoMapShared:   false,
+				GrabPeriod:    0,
+				S3Sync:        true,
+				S3Secure:      false,
+				S3Endpoint:    "localhost:9000",
+				S3AccessKey:   "silosilo",
+				S3SecretKey:   "silosilo",
+				S3Concurrency: 32,
+				S3Bucket:      "silo",
+			},
 
+			{
+				Name:          "silo_256k_32",
+				BlockSize:     256 * 1024,
+				UseCow:        true,
+				UseSparseFile: true,
+				UseVolatility: true,
+				UseWriteCache: false,
+				NoMapShared:   false,
+				GrabPeriod:    0,
+				S3Sync:        true,
+				S3Secure:      false,
+				S3Endpoint:    "localhost:9000",
+				S3AccessKey:   "silosilo",
+				S3SecretKey:   "silosilo",
+				S3Concurrency: 32,
+				S3Bucket:      "silo",
+			},
+
+			{
+				Name:          "silo_128k_32",
+				BlockSize:     128 * 1024,
+				UseCow:        true,
+				UseSparseFile: true,
+				UseVolatility: true,
+				UseWriteCache: false,
+				NoMapShared:   false,
+				GrabPeriod:    0,
+				S3Sync:        true,
+				S3Secure:      false,
+				S3Endpoint:    "localhost:9000",
+				S3AccessKey:   "silosilo",
+				S3SecretKey:   "silosilo",
+				S3Concurrency: 32,
+				S3Bucket:      "silo",
+			},
+
+			{
+				Name:          "silo_64k_32",
+				BlockSize:     64 * 1024,
+				UseCow:        true,
+				UseSparseFile: true,
+				UseVolatility: true,
+				UseWriteCache: false,
+				NoMapShared:   false,
+				GrabPeriod:    0,
+				S3Sync:        true,
+				S3Secure:      false,
+				S3Endpoint:    "localhost:9000",
+				S3AccessKey:   "silosilo",
+				S3SecretKey:   "silosilo",
+				S3Concurrency: 32,
+				S3Bucket:      "silo",
+			},
+		*/
 		//		{Name: "silo", BlockSize: 1024 * 1024, UseCow: true, UseSparseFile: true, UseVolatility: true, UseWriteCache: false, NoMapShared: false, GrabPeriod: 0},
 		//		{Name: "silo_5s", BlockSize: 1024 * 1024, UseCow: true, UseSparseFile: true, UseVolatility: true, UseWriteCache: false, NoMapShared: true, GrabPeriod: 5 * time.Second},
 	})
@@ -168,6 +241,9 @@ func main() {
 
 	siloDGs := make(map[string]*devicegroup.DeviceGroup)
 
+	s3tab := gotable.NewTable([]string{"Name", "blocksize", "s3Concurrency", "putOps", "putBytes", "usable", "unusable"},
+		[]int64{-20, 15, 15, 10, 10, 10, 10}, "No data in table.")
+
 	// Start testing Silo confs
 	for _, sConf := range siloConfigs {
 		var runtimeStart time.Time
@@ -200,12 +276,12 @@ func main() {
 		siloDGs[sConf.Name] = dg
 
 		// Check how much is on S3
-		syncer := dummyMetrics.GetSyncer(sConf.Name, "s3sync_memory")
-		di := dg.GetDeviceInformationByName("memory")
+		syncer := dummyMetrics.GetSyncer(sConf.Name, "s3sync_oci")
+		di := dg.GetDeviceInformationByName("oci")
 		if syncer != nil {
 			// Get some data
-			bytesOk := 0
-			bytesOld := 0
+			bytesOk := uint64(0)
+			bytesOld := uint64(0)
 			blocks := syncer.GetSafeBlockMap()
 			blockBuffer := make([]byte, sConf.BlockSize)
 			for b, hash := range blocks {
@@ -215,19 +291,33 @@ func main() {
 				}
 				hashProv := sha256.Sum256(blockBuffer[:n])
 				if bytes.Equal(hash[:], hashProv[:]) {
-					bytesOk += n
+					bytesOk += uint64(n)
 				} else {
-					bytesOld += n
+					bytesOld += uint64(n)
 				}
 			}
-			fmt.Printf(" Memory S3 sync has %d bytes. %d bytes useful, %d bytes out of date\n",
-				len(blocks)*int(sConf.BlockSize),
-				bytesOk,
-				bytesOld)
+
+			s3s := dummyMetrics.GetS3Storage(sConf.Name, "s3sync_oci")
+			smet := s3s.Metrics()
+
+			s3tab.AppendRow([]interface{}{sConf.Name,
+				formatBytes(uint64(sConf.BlockSize)),
+				fmt.Sprintf("%d", sConf.S3Concurrency),
+
+				fmt.Sprintf("%d", smet.BlocksWCount),
+				formatBytes(smet.BlocksWBytes),
+
+				formatBytes(bytesOk),
+				formatBytes(bytesOld),
+			})
+
 		}
 
 		siloTimingsRuntime[sConf.Name] = runtimeEnd.Sub(runtimeStart)
 	}
+
+	// Show the S3 data
+	s3tab.Print()
 
 	var nosiloGet time.Duration
 	var nosiloSet time.Duration

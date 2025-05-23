@@ -97,3 +97,15 @@ func getSiloDeviceStats(dummyMetrics *testutil.DummyMetrics, name string, device
 	}
 	return dm
 }
+
+func formatBytes(b uint64) string {
+	if b < 1024 {
+		return fmt.Sprintf("%db", b)
+	} else if b < 1024*1024 {
+		return fmt.Sprintf("%.1fk", float64(b)/1024)
+	} else if b < 1024*1024*1024 {
+		return fmt.Sprintf("%.1fm", float64(b)/(1024*1024))
+	} else {
+		return fmt.Sprintf("%.1fg", float64(b)/(1024*1024*1024))
+	}
+}

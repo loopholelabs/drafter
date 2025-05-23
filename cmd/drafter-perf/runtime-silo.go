@@ -228,7 +228,7 @@ func getDevicesFrom(id int, testDir string, snapDir string, conf RunConfig) (map
 		}
 
 		// For now only enable S3 for memory
-		if n == "memory" {
+		if n == "oci" {
 			dev.S3Sync = conf.S3Sync
 			dev.S3Secure = conf.S3Secure
 			dev.S3SecretKey = conf.S3SecretKey
