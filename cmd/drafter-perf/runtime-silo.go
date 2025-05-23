@@ -39,6 +39,13 @@ type RunConfig struct {
 	S3Concurrency int    `json:"s3concurrency"`
 	S3Bucket      string `json:"s3bucket"`
 	S3AccessKey   string `json:"s3accesskey"`
+
+	S3BlockShift  int    `json:"s3blockshift"`
+	S3OnlyDirty   bool   `json:"s3onlydirty"`
+	S3MaxAge      string `json:"s3maxage"`
+	S3MinChanged  int    `json:"s3minchanged"`
+	S3Limit       int    `json:"s3limit"`
+	S3CheckPeriod string `json:"s3checkperiod"`
 }
 
 func (sc *RunConfig) Summary() string {
@@ -237,12 +244,21 @@ func getDevicesFrom(id int, testDir string, snapDir string, conf RunConfig) (map
 			dev.S3Bucket = conf.S3Bucket
 			dev.S3AccessKey = conf.S3AccessKey
 
-			dev.S3BlockShift = 2
-			dev.S3OnlyDirty = false
-			dev.S3MaxAge = "100ms"
-			dev.S3MinChanged = 4
-			dev.S3Limit = 256
-			dev.S3CheckPeriod = "100ms"
+			dev.S3BlockShift = conf.S3BlockShift
+			dev.S3OnlyDirty = conf.S3OnlyDirty
+			dev.S3MaxAge = conf.S3MaxAge
+			dev.S3MinChanged = conf.S3MinChanged
+			dev.S3Limit = conf.S3Limit
+			dev.S3CheckPeriod = conf.S3CheckPeriod
+
+			/*
+				dev.S3BlockShift = 2
+				dev.S3OnlyDirty = false
+				dev.S3MaxAge = "100ms"
+				dev.S3MinChanged = 4
+				dev.S3Limit = 256
+				dev.S3CheckPeriod = "100ms"
+			*/
 		}
 
 		devicesFrom = append(devicesFrom, dev)

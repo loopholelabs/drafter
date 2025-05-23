@@ -63,6 +63,13 @@ func main() {
 			S3SecretKey:   "silosilo",
 			S3Concurrency: 32,
 			S3Bucket:      "silo",
+
+			S3BlockShift:  2,
+			S3OnlyDirty:   true,
+			S3MaxAge:      "10s",
+			S3MinChanged:  4,
+			S3Limit:       256,
+			S3CheckPeriod: "1s",
 		},
 		/*
 			{
