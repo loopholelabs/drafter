@@ -24,7 +24,7 @@ import (
  */
 func main() {
 	log := logging.New(logging.Zerolog, "test", os.Stderr)
-	log.SetLevel(types.InfoLevel)
+	log.SetLevel(types.DebugLevel)
 
 	profileCPU := flag.Bool("prof", false, "Profile CPU")
 
@@ -48,102 +48,31 @@ func main() {
 	defaultConfigs, err := json.Marshal([]RunConfig{
 
 		{
-			Name:          "silo_1m_32",
+			Name:          "silo",
 			BlockSize:     1024 * 1024,
 			UseCow:        true,
 			UseSparseFile: true,
 			UseVolatility: true,
 			UseWriteCache: false,
-			NoMapShared:   false,
+			NoMapShared:   true,
 			GrabPeriod:    0,
-			S3Sync:        true,
-			S3Secure:      false,
-			S3Endpoint:    "localhost:9000",
-			S3AccessKey:   "silosilo",
-			S3SecretKey:   "silosilo",
-			S3Concurrency: 32,
-			S3Bucket:      "silo",
+			/*
+				S3Secure:    false,
+				S3Endpoint:  "localhost:9000",
+				S3AccessKey: "silosilo",
+				S3SecretKey: "silosilo",
+				S3Bucket:    "silo",
 
-			S3BlockShift:  2,
-			S3OnlyDirty:   true,
-			S3MaxAge:      "10s",
-			S3MinChanged:  4,
-			S3Limit:       256,
-			S3CheckPeriod: "1s",
+				S3Sync:        true,
+				S3Concurrency: 32,
+				S3BlockShift:  2,
+				S3OnlyDirty:   true,
+				S3MaxAge:      "10s",
+				S3MinChanged:  4,
+				S3Limit:       256,
+				S3CheckPeriod: "1s",
+			*/
 		},
-		/*
-			{
-				Name:          "silo_512k_32",
-				BlockSize:     512 * 1024,
-				UseCow:        true,
-				UseSparseFile: true,
-				UseVolatility: true,
-				UseWriteCache: false,
-				NoMapShared:   false,
-				GrabPeriod:    0,
-				S3Sync:        true,
-				S3Secure:      false,
-				S3Endpoint:    "localhost:9000",
-				S3AccessKey:   "silosilo",
-				S3SecretKey:   "silosilo",
-				S3Concurrency: 32,
-				S3Bucket:      "silo",
-			},
-
-			{
-				Name:          "silo_256k_32",
-				BlockSize:     256 * 1024,
-				UseCow:        true,
-				UseSparseFile: true,
-				UseVolatility: true,
-				UseWriteCache: false,
-				NoMapShared:   false,
-				GrabPeriod:    0,
-				S3Sync:        true,
-				S3Secure:      false,
-				S3Endpoint:    "localhost:9000",
-				S3AccessKey:   "silosilo",
-				S3SecretKey:   "silosilo",
-				S3Concurrency: 32,
-				S3Bucket:      "silo",
-			},
-
-			{
-				Name:          "silo_128k_32",
-				BlockSize:     128 * 1024,
-				UseCow:        true,
-				UseSparseFile: true,
-				UseVolatility: true,
-				UseWriteCache: false,
-				NoMapShared:   false,
-				GrabPeriod:    0,
-				S3Sync:        true,
-				S3Secure:      false,
-				S3Endpoint:    "localhost:9000",
-				S3AccessKey:   "silosilo",
-				S3SecretKey:   "silosilo",
-				S3Concurrency: 32,
-				S3Bucket:      "silo",
-			},
-
-			{
-				Name:          "silo_64k_32",
-				BlockSize:     64 * 1024,
-				UseCow:        true,
-				UseSparseFile: true,
-				UseVolatility: true,
-				UseWriteCache: false,
-				NoMapShared:   false,
-				GrabPeriod:    0,
-				S3Sync:        true,
-				S3Secure:      false,
-				S3Endpoint:    "localhost:9000",
-				S3AccessKey:   "silosilo",
-				S3SecretKey:   "silosilo",
-				S3Concurrency: 32,
-				S3Bucket:      "silo",
-			},
-		*/
 		//		{Name: "silo", BlockSize: 1024 * 1024, UseCow: true, UseSparseFile: true, UseVolatility: true, UseWriteCache: false, NoMapShared: false, GrabPeriod: 0},
 		//		{Name: "silo_5s", BlockSize: 1024 * 1024, UseCow: true, UseSparseFile: true, UseVolatility: true, UseWriteCache: false, NoMapShared: true, GrabPeriod: 5 * time.Second},
 	})
@@ -153,7 +82,7 @@ func main() {
 	valkeyTest := flag.Bool("valkey", false, "Run valkey benchmark test")
 	valkeyIterations := flag.Int("valkeynum", 1000, "Test iterations")
 
-	migrateAfter := flag.String("migrate-after", "", "Migrate the VM after a time period")
+	migrateAfter := flag.String("migrate-after", "30m", "Migrate the VM after a time period")
 
 	flag.Parse()
 
@@ -391,7 +320,16 @@ func main() {
 
 		fmt.Printf("== Results for %s\n", conf.Summary())
 
-		showDeviceStats(dummyMetrics, conf.Name)
+		showDeviceStats(dummyMetrics, fmt.Sprintf("%s-%d", conf.Name, 0))
+		showDeviceStats(dummyMetrics, fmt.Sprintf("%s-%d", conf.Name, 1))
+
+		// See if there was a migration...
+
+		proTo := dummyMetrics.GetProtocol(fmt.Sprintf("%s-%d", conf.Name, 0), "migrateToPipe")
+		if proTo != nil {
+			stats := proTo.GetMetrics()
+			fmt.Printf(" Migration %s bytes sent, %s bytes received\n", formatBytes(stats.DataSent), formatBytes(stats.DataRecv))
+		}
 
 		// Close the devicegroup
 		siloDGs[conf.Name].CloseAll()

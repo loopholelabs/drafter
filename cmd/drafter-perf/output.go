@@ -19,21 +19,23 @@ func showDeviceStats(dummyMetrics *testutil.DummyMetrics, name string) {
 	// Show the important devices
 	for _, r := range []string{"disk", "oci", "memory"} {
 		dm := getSiloDeviceStats(dummyMetrics, name, r)
-		devTab.AppendRow([]interface{}{
-			r,
-			fmt.Sprintf("%d", dm.InReadOps),
-			fmt.Sprintf("%.1f", float64(dm.InReadBytes)/(1024*1024)),
-			fmt.Sprintf("%d", dm.InWriteOps),
-			fmt.Sprintf("%.1f", float64(dm.InWriteBytes)/(1024*1024)),
+		if dm != nil {
+			devTab.AppendRow([]interface{}{
+				r,
+				fmt.Sprintf("%d", dm.InReadOps),
+				fmt.Sprintf("%.1f", float64(dm.InReadBytes)/(1024*1024)),
+				fmt.Sprintf("%d", dm.InWriteOps),
+				fmt.Sprintf("%.1f", float64(dm.InWriteBytes)/(1024*1024)),
 
-			fmt.Sprintf("%d", dm.DiskReadOps),
-			fmt.Sprintf("%.1f", float64(dm.DiskReadBytes)/(1024*1024)),
-			fmt.Sprintf("%d", dm.DiskWriteOps),
-			fmt.Sprintf("%.1f", float64(dm.DiskWriteBytes)/(1024*1024)),
+				fmt.Sprintf("%d", dm.DiskReadOps),
+				fmt.Sprintf("%.1f", float64(dm.DiskReadBytes)/(1024*1024)),
+				fmt.Sprintf("%d", dm.DiskWriteOps),
+				fmt.Sprintf("%.1f", float64(dm.DiskWriteBytes)/(1024*1024)),
 
-			fmt.Sprintf("%d", dm.ChangedBlocks),
-			fmt.Sprintf("%.1f", float64(dm.ChangedBytes)/(1024*1024)),
-		})
+				fmt.Sprintf("%d", dm.ChangedBlocks),
+				fmt.Sprintf("%.1f", float64(dm.ChangedBytes)/(1024*1024)),
+			})
+		}
 	}
 
 	devTab.Print()

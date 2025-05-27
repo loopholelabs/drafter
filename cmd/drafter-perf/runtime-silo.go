@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"sync"
 	"time"
 
 	"github.com/loopholelabs/drafter/pkg/common"
@@ -17,6 +18,7 @@ import (
 	"github.com/loopholelabs/silo/pkg/storage/config"
 	"github.com/loopholelabs/silo/pkg/storage/devicegroup"
 	"github.com/loopholelabs/silo/pkg/storage/metrics"
+	"github.com/loopholelabs/silo/pkg/storage/migrator"
 )
 
 type RunConfig struct {
@@ -73,18 +75,210 @@ func (sc *RunConfig) Summary() string {
  * runSilo runs a benchmark inside a VM with Silo
  *
  */
-func runSilo(ctx context.Context, log loggingtypes.Logger, met metrics.SiloMetrics, testDir string, snapDir string, netns string, benchCB func(), conf RunConfig, enableInput bool, enableOutput bool, migrateAfter string) (*devicegroup.DeviceGroup, error) {
+func runSilo(ctx context.Context, log loggingtypes.Logger, met metrics.SiloMetrics,
+	testDir string, snapDir string, netns string, benchCB func(), conf RunConfig,
+	enableInput bool, enableOutput bool, migrateAfter string) (*devicegroup.DeviceGroup, error) {
+
+	d, err := time.ParseDuration(migrateAfter)
+	if err != nil {
+		return nil, err
+	}
+	afterChan := time.After(d)
+
+	// Setup the first devices here...
+	_, devicesFrom, err := getDevicesFrom(0, testDir, snapDir, conf)
+	if err != nil {
+		return nil, err
+	}
+
+	var myPeerStopped time.Time
+	runningCB := func(r bool) {
+		if !r {
+			myPeerStopped = time.Now()
+		}
+	}
+
+	myPeer, err := setupPeer(log, met, conf, testDir, netns, enableInput, enableOutput, 0, runningCB)
+	if err != nil {
+		return nil, err
+	}
+
+	hooks1 := peer.MigrateFromHooks{
+		OnLocalDeviceRequested:     func(id uint32, path string) {},
+		OnLocalDeviceExposed:       func(id uint32, path string) {},
+		OnLocalAllDevicesRequested: func() {},
+		OnXferCustomData:           func(data []byte) {},
+	}
+
+	err = myPeer.MigrateFrom(context.TODO(), devicesFrom, nil, nil, hooks1)
+	if err != nil {
+		return nil, err
+	}
+
+	err = myPeer.Resume(context.TODO(), 1*time.Minute, 10*time.Second)
+	if err != nil {
+		return nil, err
+	}
+
+	doneBench := make(chan bool)
+
+	go func() {
+		benchCB()
+		close(doneBench)
+	}()
+
+	var newPeerStarted time.Time
+	newRunningCB := func(r bool) {
+		if r {
+			newPeerStarted = time.Now()
+		}
+	}
+
+	// Our main loop here.
+mainloop:
+	for {
+		select {
+		case <-doneBench:
+			break mainloop
+		case <-afterChan:
+			// Do a migration here
+			newPeer, err := setupPeer(log, met, conf, testDir, netns, enableInput, enableOutput, 1, newRunningCB)
+			if err != nil {
+				return nil, err
+			}
+
+			migStartTime := time.Now()
+			err = migrateNow(log, met, conf, myPeer, newPeer, testDir, snapDir)
+			if err != nil {
+				return nil, err
+			}
+
+			// We should know how things went here...
+			if !myPeerStopped.IsZero() && !newPeerStarted.IsZero() {
+				fmt.Printf("# Downtime was %dms\n", newPeerStarted.Sub(myPeerStopped).Milliseconds())
+			}
+			fmt.Printf("# Migration took %dms\n", time.Since(migStartTime).Milliseconds())
+		}
+	}
+
+	err = myPeer.CloseRuntime() // Only close the runtime, not the devices
+	if err != nil {
+		return nil, err
+	}
+
+	return myPeer.GetDG(), nil
+}
+
+// migrateNow migrates a VM locally.
+func migrateNow(log loggingtypes.Logger, met metrics.SiloMetrics, conf RunConfig, peerFrom *peer.Peer, peerTo *peer.Peer, testDir string, snapDir string) error {
+	log.Info().Msg("STARTING A MIGRATION")
+
+	readersFrom := make([]io.Reader, 0)
+	writersFrom := make([]io.Writer, 0)
+	readersTo := make([]io.Reader, 0)
+	writersTo := make([]io.Writer, 0)
+
+	numPipes := 1
+
+	for i := 0; i < numPipes; i++ {
+		r1, w1 := io.Pipe()
+		r2, w2 := io.Pipe()
+
+		readersFrom = append(readersFrom, r1)
+		writersFrom = append(writersFrom, w2)
+		readersTo = append(readersTo, r2)
+		writersTo = append(writersTo, w1)
+	}
+
+	hooks := peer.MigrateToHooks{
+		OnBeforeSuspend:          func() {},
+		OnAfterSuspend:           func() {},
+		OnAllMigrationsCompleted: func() {},
+		OnProgress:               func(p map[string]*migrator.MigrationProgress) {},
+		GetXferCustomData:        func() []byte { return []byte{} },
+	}
+
+	devicesTo := make([]common.MigrateToDevice, 0)
+	for _, n := range append(common.KnownNames, common.DeviceOCIName) {
+		devicesTo = append(devicesTo, common.MigrateToDevice{
+			Name:           n,
+			MaxDirtyBlocks: 0, //200,
+			MinCycles:      0, //5,
+			MaxCycles:      0, //20,
+			CycleThrottle:  500 * time.Millisecond,
+		})
+	}
+
+	startMigration := time.Now()
+
+	var wg sync.WaitGroup
+	var sendingErr error
+	wg.Add(1)
+	go func() {
+		log.Info().Msg("MigrateTo called")
+		err := peerFrom.MigrateTo(context.TODO(), devicesTo, 10*time.Second, 10, readersFrom, writersFrom, hooks)
+		log.Info().Msg("MigrateTo completed")
+		sendingErr = err
+		wg.Done()
+	}()
+
+	completion2Called := make(chan struct{})
+	hooks2 := peer.MigrateFromHooks{
+		OnLocalDeviceRequested:     func(id uint32, path string) {},
+		OnLocalDeviceExposed:       func(id uint32, path string) {},
+		OnLocalAllDevicesRequested: func() {},
+		OnXferCustomData:           func(data []byte) {},
+		OnCompletion: func() {
+			log.Info().Msg("Completed migration")
+			close(completion2Called)
+		},
+	}
+
+	_, devicesFrom, err := getDevicesFrom(1, testDir, snapDir, conf)
+	if err != nil {
+		return err
+	}
+
+	err = peerTo.MigrateFrom(context.TODO(), devicesFrom, readersTo, writersTo, hooks2)
+	if err != nil {
+		return err
+	}
+
+	// Wait for migration to complete
+	wg.Wait()
+
+	migrationTime := time.Since(startMigration)
+	fmt.Printf(" === Migration took %dms\n", migrationTime.Milliseconds())
+
+	if sendingErr != nil {
+		return sendingErr
+	}
+
+	// If we don't do this, we can't use the same network etc
+	err = peerFrom.CloseRuntime() // Only close the runtime, not the devices
+	if err != nil {
+		return err
+	}
+
+	time.Sleep(10 * time.Second) // NOT IDEAL. What happens? FIXME.... networking? Or an issue closing runtime
+
+	err = peerTo.Resume(context.TODO(), 10*time.Second, 10*time.Second)
+
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// setupPeer sets up a new peer
+func setupPeer(log loggingtypes.Logger, met metrics.SiloMetrics, conf RunConfig, testDir string, netns string, enableInput bool, enableOutput bool, instance int, runningCB func(bool)) (*peer.Peer, error) {
+
 	firecrackerBin, err := exec.LookPath("firecracker")
 	if err != nil {
 		return nil, err
 	}
 
 	jailerBin, err := exec.LookPath("jailer")
-	if err != nil {
-		return nil, err
-	}
-
-	_, devicesFrom, err := getDevicesFrom(0, testDir, snapDir, conf)
 	if err != nil {
 		return nil, err
 	}
@@ -111,7 +305,7 @@ func runSilo(ctx context.Context, log loggingtypes.Logger, met metrics.SiloMetri
 		hConf.Stdout = os.Stdout
 		hConf.Stderr = os.Stderr
 	} else {
-		fout, err := os.OpenFile(fmt.Sprintf("%s.stdout", conf.Name), os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0660)
+		fout, err := os.OpenFile(fmt.Sprintf("%s-%d.stdout", conf.Name, instance), os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0660)
 		if err == nil {
 			defer fout.Close()
 			hConf.Stdout = fout
@@ -130,6 +324,8 @@ func runSilo(ctx context.Context, log loggingtypes.Logger, met metrics.SiloMetri
 		GrabInterval:            conf.GrabPeriod,
 	}
 
+	rp.RunningCB = runningCB
+
 	if hConf.NoMapShared {
 		rp.Grabbing = true
 	}
@@ -140,45 +336,22 @@ func runSilo(ctx context.Context, log loggingtypes.Logger, met metrics.SiloMetri
 		r := rfirecracker.NewOutputPusher(pusherCtx, log)
 		rp.HypervisorConfiguration.Stdin = r
 		rp.RunningCB = func(r bool) {
+			runningCB(r)
 			if !r {
 				pusherCancel()
 			}
 		}
 	}
 
-	myPeer, err := peer.StartPeer(context.TODO(), context.Background(), log, met, nil, conf.Name, rp)
+	myPeer, err := peer.StartPeer(context.TODO(), context.Background(), log, met, nil, fmt.Sprintf("%s-%d", conf.Name, instance), rp)
 	if err != nil {
 		return nil, err
 	}
 
 	// NB: We set it here to get rid of the uuid prefix Peer adds.
-	myPeer.SetInstanceID(conf.Name)
+	myPeer.SetInstanceID(fmt.Sprintf("%s-%d", conf.Name, instance))
 
-	hooks1 := peer.MigrateFromHooks{
-		OnLocalDeviceRequested:     func(id uint32, path string) {},
-		OnLocalDeviceExposed:       func(id uint32, path string) {},
-		OnLocalAllDevicesRequested: func() {},
-		OnXferCustomData:           func(data []byte) {},
-	}
-
-	err = myPeer.MigrateFrom(context.TODO(), devicesFrom, nil, nil, hooks1)
-	if err != nil {
-		return nil, err
-	}
-
-	err = myPeer.Resume(context.TODO(), 1*time.Minute, 10*time.Second)
-	if err != nil {
-		return nil, err
-	}
-
-	benchCB()
-
-	err = myPeer.CloseRuntime() // Only close the runtime, not the devices
-	if err != nil {
-		return nil, err
-	}
-
-	return myPeer.GetDG(), nil
+	return myPeer, nil
 }
 
 // getDevicesFrom configures the silo devices
