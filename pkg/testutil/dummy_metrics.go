@@ -15,19 +15,21 @@ import (
 )
 
 type DummyMetrics struct {
-	lock        sync.Mutex
-	metricsById map[string]map[string]*modules.Metrics
-	cowById     map[string]map[string]*modules.CopyOnWrite
-	syncerById  map[string]map[string]*migrator.Syncer
-	s3ById      map[string]map[string]*sources.S3Storage
+	lock         sync.Mutex
+	metricsById  map[string]map[string]*modules.Metrics
+	cowById      map[string]map[string]*modules.CopyOnWrite
+	syncerById   map[string]map[string]*migrator.Syncer
+	s3ById       map[string]map[string]*sources.S3Storage
+	protocolById map[string]map[string]*protocol.RW
 }
 
 func NewDummyMetrics() *DummyMetrics {
 	return &DummyMetrics{
-		metricsById: make(map[string]map[string]*modules.Metrics),
-		cowById:     make(map[string]map[string]*modules.CopyOnWrite),
-		syncerById:  make(map[string]map[string]*migrator.Syncer),
-		s3ById:      make(map[string]map[string]*sources.S3Storage),
+		metricsById:  make(map[string]map[string]*modules.Metrics),
+		cowById:      make(map[string]map[string]*modules.CopyOnWrite),
+		syncerById:   make(map[string]map[string]*migrator.Syncer),
+		s3ById:       make(map[string]map[string]*sources.S3Storage),
+		protocolById: make(map[string]map[string]*protocol.RW),
 	}
 }
 
@@ -71,6 +73,16 @@ func (dm *DummyMetrics) GetS3Storage(id string, name string) *sources.S3Storage 
 	return byid[name]
 }
 
+func (dm *DummyMetrics) GetProtocol(id string, name string) *protocol.RW {
+	dm.lock.Lock()
+	defer dm.lock.Unlock()
+	byid, ok := dm.protocolById[id]
+	if !ok {
+		return nil
+	}
+	return byid[name]
+}
+
 func (dm *DummyMetrics) Shutdown()             {}
 func (dm *DummyMetrics) RemoveAllID(id string) {}
 
@@ -89,8 +101,18 @@ func (dm *DummyMetrics) RemoveSyncer(id string, name string) {}
 func (dm *DummyMetrics) AddMigrator(id string, name string, mig *migrator.Migrator) {}
 func (dm *DummyMetrics) RemoveMigrator(id string, name string)                      {}
 
-func (dm *DummyMetrics) AddProtocol(id string, name string, proto *protocol.RW) {}
-func (dm *DummyMetrics) RemoveProtocol(id string, name string)                  {}
+func (dm *DummyMetrics) AddProtocol(id string, name string, proto *protocol.RW) {
+	fmt.Printf(" = AddProtocol %s %s\n", id, name)
+
+	dm.lock.Lock()
+	defer dm.lock.Unlock()
+	_, ok := dm.protocolById[id]
+	if !ok {
+		dm.protocolById[id] = make(map[string]*protocol.RW)
+	}
+	dm.protocolById[id][name] = proto
+}
+func (dm *DummyMetrics) RemoveProtocol(id string, name string) {}
 
 func (dm *DummyMetrics) AddToProtocol(id string, name string, proto *protocol.ToProtocol) {}
 func (dm *DummyMetrics) RemoveToProtocol(id string, name string)                          {}
