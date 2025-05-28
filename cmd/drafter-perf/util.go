@@ -21,7 +21,7 @@ import (
  *  - firecracker works
  *  - blueprints exist
  */
-func setupSnapshot(log loggingtypes.Logger, ctx context.Context, netns string, vmConfiguration rfirecracker.VMConfiguration, blueDir string, snapDir string, waitReady func(), enableInputKeepalive bool) error {
+func setupSnapshot(log loggingtypes.Logger, ctx context.Context, netns string, vmConfiguration rfirecracker.VMConfiguration, blueDir string, snapDir string, waitReady func()) error {
 	firecrackerBin, err := exec.LookPath("firecracker")
 	if err != nil {
 		return err
@@ -69,18 +69,17 @@ func setupSnapshot(log loggingtypes.Logger, ctx context.Context, netns string, v
 			ResumeTimeout:     time.Minute,
 		},
 		rfirecracker.FirecrackerMachineConfig{
-			FirecrackerBin:       firecrackerBin,
-			JailerBin:            jailerBin,
-			ChrootBaseDir:        snapDir,
-			UID:                  0,
-			GID:                  0,
-			NetNS:                netns,
-			NumaNode:             0,
-			CgroupVersion:        2,
-			Stdout:               nil,
-			Stderr:               nil,
-			Stdin:                nil,
-			EnableInputKeepalive: enableInputKeepalive,
+			FirecrackerBin: firecrackerBin,
+			JailerBin:      jailerBin,
+			ChrootBaseDir:  snapDir,
+			UID:            0,
+			GID:            0,
+			NetNS:          netns,
+			NumaNode:       0,
+			CgroupVersion:  2,
+			Stdout:         nil,
+			Stderr:         nil,
+			Stdin:          nil,
 		},
 		rfirecracker.NetworkConfiguration{
 			Interface: "tap0",

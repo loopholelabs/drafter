@@ -73,8 +73,6 @@ func main() {
 	s3accesskey = flag.String("s3accesskey", "", "S3 access key")
 	s3secretkey = flag.String("s3secretkey", "", "S3 secret key")
 
-	enableInputKeepalive := flag.Bool("enable-input-keepalive", true, "Whether to continuously write backspace characters to the VM stdin to force the VM stdout to flush")
-
 	flag.Parse()
 
 	if *usePVM {
@@ -95,7 +93,7 @@ func main() {
 
 	// create package files
 	if *blueprintsDir != "" {
-		err := setupSnapshot(log, context.Background(), *snapshotsDir, *blueprintsDir, *enableInputKeepalive)
+		err := setupSnapshot(log, context.Background(), *snapshotsDir, *blueprintsDir)
 		if err != nil {
 			panic(err)
 		}
@@ -117,7 +115,7 @@ func main() {
 	}
 
 	if *start {
-		myPeer, err := setupFirstPeer(log, firecrackerBin, jailerBin, *snapshotsDir, *enableInputKeepalive)
+		myPeer, err := setupFirstPeer(log, firecrackerBin, jailerBin, *snapshotsDir)
 		if err != nil {
 			panic(err)
 		}
@@ -175,7 +173,7 @@ func main() {
 			panic(err)
 		}
 
-		err = handleConnection(migration, conn, log, firecrackerBin, jailerBin, devicesTo, *enableInputKeepalive)
+		err = handleConnection(migration, conn, log, firecrackerBin, jailerBin, devicesTo)
 		if err != nil {
 			log.Error().Err(err).Msg("Error handling connection")
 			return
@@ -191,29 +189,38 @@ func main() {
 }
 
 // handleConnection
-func handleConnection(migration int, conn net.Conn, log types.Logger, firecrackerBin string, jailerBin string, devicesTo []common.MigrateToDevice, enableInputKeepalive bool) error {
+func handleConnection(migration int, conn net.Conn, log types.Logger, firecrackerBin string, jailerBin string, devicesTo []common.MigrateToDevice) error {
 	// Receive an incoming VM, run it for a bit, then send it on...
 
 	// Create a new RuntimeProvider
 	rp2 := &rfirecracker.FirecrackerRuntimeProvider[struct{}, ipc.AgentServerRemote[struct{}], struct{}]{
 		Log: log,
 		HypervisorConfiguration: rfirecracker.FirecrackerMachineConfig{
-			FirecrackerBin:       firecrackerBin,
-			JailerBin:            jailerBin,
-			ChrootBaseDir:        *testDirectory,
-			UID:                  0,
-			GID:                  0,
-			NetNS:                *networkNamespace,
-			NumaNode:             0,
-			CgroupVersion:        2,
-			Stdout:               os.Stdout,
-			Stderr:               os.Stderr,
-			Stdin:                nil,
-			EnableInputKeepalive: enableInputKeepalive,
+			FirecrackerBin: firecrackerBin,
+			JailerBin:      jailerBin,
+			ChrootBaseDir:  *testDirectory,
+			UID:            0,
+			GID:            0,
+			NetNS:          *networkNamespace,
+			NumaNode:       0,
+			CgroupVersion:  2,
+			Stdout:         os.Stdout,
+			Stderr:         os.Stderr,
+			Stdin:          nil,
 		},
 		StateName:        common.DeviceStateName,
 		MemoryName:       common.DeviceMemoryName,
 		AgentServerLocal: struct{}{},
+	}
+
+	// Use something to push output (sometimes needed)
+	pusherCtx, pusherCancel := context.WithCancel(context.Background())
+	r := rfirecracker.NewOutputPusher(pusherCtx, log)
+	rp2.HypervisorConfiguration.Stdin = r
+	rp2.RunningCB = func(r bool) {
+		if !r {
+			pusherCancel()
+		}
 	}
 
 	nextPeer, err := peer.StartPeer(context.TODO(), context.Background(), log, nil, nil, "cow_test", rp2)
@@ -294,26 +301,35 @@ func handleConnection(migration int, conn net.Conn, log types.Logger, firecracke
 }
 
 // setupFirstPeer starts the first peer from a snapshot dir.
-func setupFirstPeer(log types.Logger, firecrackerBin string, jailerBin string, snapDir string, enableInputKeepalive bool) (*peer.Peer, error) {
+func setupFirstPeer(log types.Logger, firecrackerBin string, jailerBin string, snapDir string) (*peer.Peer, error) {
 	rp := &rfirecracker.FirecrackerRuntimeProvider[struct{}, ipc.AgentServerRemote[struct{}], struct{}]{
 		Log: log,
 		HypervisorConfiguration: rfirecracker.FirecrackerMachineConfig{
-			FirecrackerBin:       firecrackerBin,
-			JailerBin:            jailerBin,
-			ChrootBaseDir:        *testDirectory,
-			UID:                  0,
-			GID:                  0,
-			NetNS:                *networkNamespace,
-			NumaNode:             0,
-			CgroupVersion:        2,
-			Stdout:               os.Stdout,
-			Stderr:               os.Stderr,
-			Stdin:                nil,
-			EnableInputKeepalive: enableInputKeepalive,
+			FirecrackerBin: firecrackerBin,
+			JailerBin:      jailerBin,
+			ChrootBaseDir:  *testDirectory,
+			UID:            0,
+			GID:            0,
+			NetNS:          *networkNamespace,
+			NumaNode:       0,
+			CgroupVersion:  2,
+			Stdout:         os.Stdout,
+			Stderr:         os.Stderr,
+			Stdin:          nil,
 		},
 		StateName:        common.DeviceStateName,
 		MemoryName:       common.DeviceMemoryName,
 		AgentServerLocal: struct{}{},
+	}
+
+	// Use something to push output (sometimes needed)
+	pusherCtx, pusherCancel := context.WithCancel(context.Background())
+	r := rfirecracker.NewOutputPusher(pusherCtx, log)
+	rp.HypervisorConfiguration.Stdin = r
+	rp.RunningCB = func(r bool) {
+		if !r {
+			pusherCancel()
+		}
 	}
 
 	myPeer, err := peer.StartPeer(context.TODO(), context.Background(), log, nil, nil, "cow_test", rp)
