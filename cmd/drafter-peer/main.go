@@ -150,13 +150,27 @@ func main() {
 	if *mockRuntime {
 		rp = &runtimes.EmptyRuntimeProvider{}
 	} else {
-		rp = &rfirecracker.FirecrackerRuntimeProvider[struct{}, ipc.AgentServerRemote[struct{}], struct{}]{
+		frp := &rfirecracker.FirecrackerRuntimeProvider[struct{}, ipc.AgentServerRemote[struct{}], struct{}]{
 			Log:                     log,
 			HypervisorConfiguration: fcconfig,
 			StateName:               common.DeviceStateName,
 			MemoryName:              common.DeviceMemoryName,
 			AgentServerLocal:        struct{}{},
 		}
+
+		// Use something to push output (sometimes needed)
+		if !*enableInput {
+			pusherCtx, pusherCancel := context.WithCancel(context.Background())
+			r := rfirecracker.NewOutputPusher(pusherCtx, log)
+			frp.HypervisorConfiguration.Stdin = r
+			frp.RunningCB = func(r bool) {
+				if !r {
+					pusherCancel()
+				}
+			}
+		}
+
+		rp = frp
 	}
 
 	p, err := peer.StartPeer(ctx,
