@@ -9,31 +9,54 @@ import (
 
 func showDeviceStats(dummyMetrics *testutil.DummyMetrics, name string) {
 	devTab := gotable.NewTable([]string{"Name",
-		"In R Ops", "In R MB", "In W Ops", "In W MB",
-		"DskR Ops", "DskR MB", "DskW Ops", "DskW MB",
-		"Chg  Blk", "Chg  MB",
+		"In R Ops", "In R", "In W Ops", "In W",
+		"DskR Ops", "DskR", "DskW Ops", "DskW",
+		"Chg Blk", "Chg", "S3PutOps", "S3Put", "S3GetOps", "S3Get",
 	},
-		[]int64{-20, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8},
+		[]int64{-16, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8},
 		"No data in table.")
 
 	// Show the important devices
 	for _, r := range []string{"disk", "oci", "memory"} {
 		dm := getSiloDeviceStats(dummyMetrics, name, r)
 		if dm != nil {
+			s3puts := 0
+			s3putBytes := uint64(0)
+			s3gets := 0
+			s3getBytes := uint64(0)
+			s3s := dummyMetrics.GetS3Storage(name, fmt.Sprintf("s3sync_%s", r))
+			if s3s != nil {
+				smet := s3s.Metrics()
+				s3puts = int(smet.BlocksWCount)
+				s3putBytes = smet.BlocksWBytes
+			}
+			s3g := dummyMetrics.GetS3Storage(name, fmt.Sprintf("s3grab_%s", r))
+			if s3g != nil {
+				smet := s3g.Metrics()
+				s3gets = int(smet.BlocksRCount)
+				s3getBytes = smet.BlocksRBytes
+			}
+
 			devTab.AppendRow([]interface{}{
 				r,
 				fmt.Sprintf("%d", dm.InReadOps),
-				fmt.Sprintf("%.1f", float64(dm.InReadBytes)/(1024*1024)),
+				formatBytes(dm.InReadBytes),
 				fmt.Sprintf("%d", dm.InWriteOps),
-				fmt.Sprintf("%.1f", float64(dm.InWriteBytes)/(1024*1024)),
+				formatBytes(dm.InWriteBytes),
 
 				fmt.Sprintf("%d", dm.DiskReadOps),
-				fmt.Sprintf("%.1f", float64(dm.DiskReadBytes)/(1024*1024)),
+				formatBytes(dm.DiskReadBytes),
 				fmt.Sprintf("%d", dm.DiskWriteOps),
-				fmt.Sprintf("%.1f", float64(dm.DiskWriteBytes)/(1024*1024)),
+				formatBytes(dm.DiskWriteBytes),
 
 				fmt.Sprintf("%d", dm.ChangedBlocks),
-				fmt.Sprintf("%.1f", float64(dm.ChangedBytes)/(1024*1024)),
+				formatBytes(dm.ChangedBytes),
+
+				fmt.Sprintf("%d", s3puts),
+				formatBytes(s3putBytes),
+
+				fmt.Sprintf("%d", s3gets),
+				formatBytes(s3getBytes),
 			})
 		}
 	}
@@ -56,10 +79,7 @@ type DeviceMetrics struct {
 	ChangedBytes   uint64
 }
 
-/**
- * Grab out some silo stats from the metrics system
- *
- */
+// getSiloDeviceStats
 func getSiloDeviceStats(dummyMetrics *testutil.DummyMetrics, name string, deviceName string) *DeviceMetrics {
 	metrics := dummyMetrics.GetMetrics(name, deviceName).GetMetrics()
 	devMetrics := dummyMetrics.GetMetrics(name, fmt.Sprintf("device_%s", deviceName)).GetMetrics()
@@ -100,6 +120,7 @@ func getSiloDeviceStats(dummyMetrics *testutil.DummyMetrics, name string, device
 	return dm
 }
 
+// formatBytes nicely for display
 func formatBytes(b uint64) string {
 	if b < 1024 {
 		return fmt.Sprintf("%db", b)

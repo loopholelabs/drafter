@@ -1,9 +1,7 @@
 package main
 
 import (
-	"bytes"
 	"context"
-	"crypto/sha256"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -18,13 +16,10 @@ import (
 	"github.com/muesli/gotable"
 )
 
-/**
- *
- * main
- */
+// main
 func main() {
 	log := logging.New(logging.Zerolog, "test", os.Stderr)
-	log.SetLevel(types.DebugLevel)
+	log.SetLevel(types.InfoLevel)
 
 	profileCPU := flag.Bool("prof", false, "Profile CPU")
 
@@ -177,9 +172,6 @@ func main() {
 
 	siloDGs := make(map[string]*devicegroup.DeviceGroup)
 
-	s3tab := gotable.NewTable([]string{"Name", "blocksize", "s3Concurrency", "putOps", "putBytes", "usable", "unusable"},
-		[]int64{-20, 15, 15, 10, 10, 10, 10}, "No data in table.")
-
 	// Start testing Silo confs
 	for _, sConf := range siloConfigs {
 		var runtimeStart time.Time
@@ -211,52 +203,8 @@ func main() {
 
 		siloDGs[sConf.Name] = dg
 
-		// Check how much is on S3
-
-		s3device := "memory"
-
-		syncer := dummyMetrics.GetSyncer(sConf.Name, fmt.Sprintf("s3sync_%s", s3device))
-		di := dg.GetDeviceInformationByName(s3device)
-		if syncer != nil {
-			// Get some data
-			bytesOk := uint64(0)
-			bytesOld := uint64(0)
-			blocks := syncer.GetSafeBlockMap()
-			blockBuffer := make([]byte, sConf.BlockSize)
-			for b, hash := range blocks {
-				n, err := di.Exp.GetProvider().ReadAt(blockBuffer, int64(uint32(b)*sConf.BlockSize))
-				if err != nil {
-					panic(err)
-				}
-				hashProv := sha256.Sum256(blockBuffer[:n])
-				if bytes.Equal(hash[:], hashProv[:]) {
-					bytesOk += uint64(n)
-				} else {
-					bytesOld += uint64(n)
-				}
-			}
-
-			s3s := dummyMetrics.GetS3Storage(sConf.Name, fmt.Sprintf("s3sync_%s", s3device))
-			smet := s3s.Metrics()
-
-			s3tab.AppendRow([]interface{}{sConf.Name,
-				formatBytes(uint64(sConf.BlockSize)),
-				fmt.Sprintf("%d", sConf.S3Concurrency),
-
-				fmt.Sprintf("%d", smet.BlocksWCount),
-				formatBytes(smet.BlocksWBytes),
-
-				formatBytes(bytesOk),
-				formatBytes(bytesOld),
-			})
-
-		}
-
 		siloTimingsRuntime[sConf.Name] = runtimeEnd.Sub(runtimeStart)
 	}
-
-	// Show the S3 data
-	s3tab.Print()
 
 	var nosiloGet time.Duration
 	var nosiloSet time.Duration
@@ -322,14 +270,6 @@ func main() {
 
 		showDeviceStats(dummyMetrics, fmt.Sprintf("%s-%d", conf.Name, 0))
 		showDeviceStats(dummyMetrics, fmt.Sprintf("%s-%d", conf.Name, 1))
-
-		// See if there was a migration...
-
-		proTo := dummyMetrics.GetProtocol(fmt.Sprintf("%s-%d", conf.Name, 0), "migrateToPipe")
-		if proTo != nil {
-			stats := proTo.GetMetrics()
-			fmt.Printf(" Migration %s bytes sent, %s bytes received\n", formatBytes(stats.DataSent), formatBytes(stats.DataRecv))
-		}
 
 		// Close the devicegroup
 		siloDGs[conf.Name].CloseAll()

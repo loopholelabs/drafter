@@ -14,11 +14,14 @@ import (
 	"github.com/loopholelabs/drafter/pkg/ipc"
 	"github.com/loopholelabs/drafter/pkg/peer"
 	rfirecracker "github.com/loopholelabs/drafter/pkg/runtimes/firecracker"
+	"github.com/loopholelabs/drafter/pkg/testutil"
 	loggingtypes "github.com/loopholelabs/logging/types"
+	"github.com/loopholelabs/silo/pkg/storage"
 	"github.com/loopholelabs/silo/pkg/storage/config"
 	"github.com/loopholelabs/silo/pkg/storage/devicegroup"
 	"github.com/loopholelabs/silo/pkg/storage/metrics"
 	"github.com/loopholelabs/silo/pkg/storage/migrator"
+	"github.com/muesli/gotable"
 )
 
 type RunConfig struct {
@@ -75,7 +78,7 @@ func (sc *RunConfig) Summary() string {
  * runSilo runs a benchmark inside a VM with Silo
  *
  */
-func runSilo(ctx context.Context, log loggingtypes.Logger, met metrics.SiloMetrics,
+func runSilo(ctx context.Context, log loggingtypes.Logger, met *testutil.DummyMetrics,
 	testDir string, snapDir string, netns string, benchCB func(), conf RunConfig,
 	enableInput bool, enableOutput bool, migrateAfter string) (*devicegroup.DeviceGroup, error) {
 
@@ -170,7 +173,7 @@ mainloop:
 }
 
 // migrateNow migrates a VM locally.
-func migrateNow(log loggingtypes.Logger, met metrics.SiloMetrics, conf RunConfig, peerFrom *peer.Peer, peerTo *peer.Peer, testDir string, snapDir string) error {
+func migrateNow(log loggingtypes.Logger, met *testutil.DummyMetrics, conf RunConfig, peerFrom *peer.Peer, peerTo *peer.Peer, testDir string, snapDir string) error {
 	log.Info().Msg("STARTING A MIGRATION")
 
 	readersFrom := make([]io.Reader, 0)
@@ -222,7 +225,8 @@ func migrateNow(log loggingtypes.Logger, met metrics.SiloMetrics, conf RunConfig
 		wg.Done()
 	}()
 
-	completion2Called := make(chan struct{})
+	var completedWg sync.WaitGroup
+	completedWg.Add(1)
 	hooks2 := peer.MigrateFromHooks{
 		OnLocalDeviceRequested:     func(id uint32, path string) {},
 		OnLocalDeviceExposed:       func(id uint32, path string) {},
@@ -230,7 +234,7 @@ func migrateNow(log loggingtypes.Logger, met metrics.SiloMetrics, conf RunConfig
 		OnXferCustomData:           func(data []byte) {},
 		OnCompletion: func() {
 			log.Info().Msg("Completed migration")
-			close(completion2Called)
+			completedWg.Done()
 		},
 	}
 
@@ -247,8 +251,12 @@ func migrateNow(log loggingtypes.Logger, met metrics.SiloMetrics, conf RunConfig
 	// Wait for migration to complete
 	wg.Wait()
 
-	migrationTime := time.Since(startMigration)
-	fmt.Printf(" === Migration took %dms\n", migrationTime.Milliseconds())
+	evacuationTook := time.Since(startMigration)
+
+	// Make sure we got the completion callback
+	completedWg.Wait()
+
+	migrationTook := time.Since(startMigration)
 
 	if sendingErr != nil {
 		return sendingErr
@@ -260,13 +268,55 @@ func migrateNow(log loggingtypes.Logger, met metrics.SiloMetrics, conf RunConfig
 		return err
 	}
 
-	time.Sleep(10 * time.Second) // NOT IDEAL. What happens? FIXME.... networking? Or an issue closing runtime
+	// time.Sleep(10 * time.Second) // NOT IDEAL. What happens? FIXME.... networking? Or an issue closing runtime
+
+	// Is there still some sort of issue?
+	// Make sure the hashes are equal here...
+	prov1 := peerFrom.GetDG().GetDeviceInformationByName(common.DeviceMemoryName).Exp.GetProvider()
+	prov2 := peerTo.GetDG().GetDeviceInformationByName(common.DeviceMemoryName).Exp.GetProvider()
+	eq, err := storage.Equals(prov1, prov2, 1024*1024)
+	fmt.Printf("+ + + Memory device %v %t\n", err, eq)
 
 	err = peerTo.Resume(context.TODO(), 10*time.Second, 10*time.Second)
 
 	if err != nil {
 		return err
 	}
+
+	// Show some data on the migration...
+	fmt.Printf(" === Evacuation took %dms Migration took %dms\n", evacuationTook.Milliseconds(), migrationTook.Milliseconds())
+
+	proToPipe := met.GetProtocol(fmt.Sprintf("%s-%d", conf.Name, 0), "migrateToPipe")
+	if proToPipe != nil {
+		stats := proToPipe.GetMetrics()
+		fmt.Printf(" === Migration %s bytes sent, %s bytes received\n", formatBytes(stats.DataSent), formatBytes(stats.DataRecv))
+	}
+
+	devTab := gotable.NewTable([]string{"Name",
+		"Write", "Comp", "CompData", "Base",
+		"AvailP2P", "AvailAlt",
+	},
+		[]int64{-16, 10, 10, 10, 10, 10, 10},
+		"No data in table.")
+
+	for _, n := range append(common.KnownNames, common.DeviceOCIName) {
+		protoTo := met.GetToProtocol(fmt.Sprintf("%s-%d", conf.Name, 0), n)
+		stTo := protoTo.GetMetrics()
+		protoFrom := met.GetFromProtocol(fmt.Sprintf("%s-%d", conf.Name, 1), n)
+		stFrom := protoFrom.GetMetrics()
+		devTab.AppendRow([]interface{}{
+			n,
+			formatBytes(stTo.SentWriteAtBytes),
+			formatBytes(stTo.SentWriteAtCompBytes),
+			formatBytes(stTo.SentWriteAtCompDataBytes),
+			formatBytes(stTo.SentYouAlreadyHaveBytes),
+			formatBytes(uint64(len(stFrom.AvailableP2P) * int(conf.BlockSize))),
+			formatBytes(uint64(len(stFrom.AvailableAltSources) * int(conf.BlockSize))),
+		})
+	}
+
+	devTab.Print()
+
 	return nil
 }
 
@@ -407,8 +457,8 @@ func getDevicesFrom(id int, testDir string, snapDir string, conf RunConfig) (map
 			}
 		}
 
-		// For now only enable S3 for memory
-		if n == "memory" {
+		// For now only enable S3 for disks
+		if n == common.DeviceDiskName || n == common.DeviceOCIName {
 			dev.S3Sync = conf.S3Sync
 			dev.S3Secure = conf.S3Secure
 			dev.S3SecretKey = conf.S3SecretKey

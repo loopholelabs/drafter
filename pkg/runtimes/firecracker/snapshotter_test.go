@@ -49,10 +49,15 @@ func TestSnapshotter(t *testing.T) {
 	netns, err := ns.ClaimNamespace()
 	assert.NoError(t, err)
 
+	template, err := GetCPUTemplate()
+	assert.NoError(t, err)
+
+	log.Info().Str("template", template).Msg("using cpu template")
+
 	snapDir := setupSnapshot(t, log, ctx, netns, VMConfiguration{
 		CPUCount:    1,
 		MemorySize:  1024,
-		CPUTemplate: "None",
+		CPUTemplate: template,
 		BootArgs:    DefaultBootArgsNoPVM,
 	},
 	)

@@ -218,11 +218,16 @@ func setupDevicesCowS3(t *testing.T, log types.Logger, netns string, config *mig
 
 	devicesTo := make([]common.MigrateToDevice, 0)
 
+	template, err := GetCPUTemplate()
+	assert.NoError(t, err)
+
+	log.Info().Str("template", template).Msg("using cpu template")
+
 	// create package files
 	snapDir := setupSnapshot(t, log, context.Background(), netns, VMConfiguration{
 		CPUCount:    int64(config.cpuCount),
 		MemorySize:  int64(config.memorySize),
-		CPUTemplate: "None",
+		CPUTemplate: template,
 		BootArgs:    DefaultBootArgsNoPVM,
 	},
 	)

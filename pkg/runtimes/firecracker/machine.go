@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -445,4 +446,31 @@ func NewOutputPusher(ctx context.Context, log loggingtypes.Logger) io.Reader {
 		}
 	}()
 	return r
+}
+
+const vendorIntel = "GenuineIntel"
+const vendorAMD = "AuthenticAMD"
+
+// Decides on a CPUTemplate to use
+func GetCPUTemplate() (string, error) {
+	cpuinfo, err := os.ReadFile("/proc/cpuinfo")
+	if err != nil {
+		return "", err
+	}
+	lines := strings.Split(string(cpuinfo), "\n")
+	for _, l := range lines {
+		if strings.HasPrefix(l, "vendor_id") {
+			bits := strings.Split(l, ":")
+			if len(bits) == 2 {
+				vendorID := strings.Trim(bits[1], " \t\r\n")
+				switch vendorID {
+				case vendorIntel:
+					return "None", nil
+				case vendorAMD:
+					return "T2A", nil
+				}
+			}
+		}
+	}
+	return "", errors.New("unknown cpu")
 }
