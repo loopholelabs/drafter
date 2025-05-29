@@ -4,8 +4,8 @@
 package firecracker
 
 import (
+	"bytes"
 	"context"
-	"crypto/sha256"
 	"fmt"
 	"io"
 	"math/rand"
@@ -512,22 +512,41 @@ func migration(t *testing.T, config *migrationConfig) {
 					eq, err := storage.Equals(prov1, prov2, 1024*1024)
 					assert.NoError(t, err)
 					assert.True(t, eq)
-					fmt.Printf(" # Migration %d End hash %s ok\n", migration+1, n)
 				} else {
+					devSize := lastPeer.GetDG().GetDeviceInformationByName(n).Size
 
-					buff1, err := os.ReadFile(path.Join(lastrp.DevicePath(), n))
+					log.Info().Uint64("size", devSize).Str("lastrp", lastrp.DevicePath()).Str("rp", rp.DevicePath()).Msg("comparing data")
+
+					// Compare the files bit by bit...
+					fp1, err := os.Open(path.Join(lastrp.DevicePath(), n))
 					assert.NoError(t, err)
-					buff2, err := os.ReadFile(path.Join(rp.DevicePath(), n))
+					fp2, err := os.Open(path.Join(rp.DevicePath(), n))
 					assert.NoError(t, err)
 
-					// Compare hashes so we don't get tons of output if they do differ.
-					hash1 := sha256.Sum256(buff1)
-					hash2 := sha256.Sum256(buff2)
+					blockSize := uint64(1 * 1024 * 1024) // Read 1m at a time
+					buff1 := make([]byte, blockSize)
+					buff2 := make([]byte, blockSize)
+					for offset := uint64(0); offset < devSize; offset += blockSize {
+						n1, err := fp1.ReadAt(buff1, int64(offset))
+						if err == io.EOF {
+							err = nil // Fine
+						}
+						assert.NoError(t, err)
+						n2, err := fp2.ReadAt(buff2, int64(offset))
+						if err == io.EOF {
+							err = nil // Fine
+						}
+						assert.NoError(t, err)
+						assert.Equal(t, n1, n2)
 
-					fmt.Printf(" # Migration %d End hash %s ~ %x => %x\n", migration+1, n, hash1, hash2)
+						// Check the data is equal
+						assert.True(t, bytes.Equal(buff1[:n1], buff2[:n2]))
+					}
 
-					// Check the data is identical
-					assert.Equal(t, hash1, hash2)
+					err = fp1.Close()
+					assert.NoError(t, err)
+					err = fp2.Close()
+					assert.NoError(t, err)
 				}
 			}
 		}
