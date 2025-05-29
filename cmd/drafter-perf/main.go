@@ -72,6 +72,10 @@ func main() {
 		//		{Name: "silo_5s", BlockSize: 1024 * 1024, UseCow: true, UseSparseFile: true, UseVolatility: true, UseWriteCache: false, NoMapShared: true, GrabPeriod: 5 * time.Second},
 	})
 
+	if err != nil {
+		panic(err)
+	}
+
 	runConfigs := flag.String("silo", string(defaultConfigs), "Run configs")
 
 	valkeyTest := flag.Bool("valkey", false, "Run valkey benchmark test")
@@ -272,7 +276,10 @@ func main() {
 		showDeviceStats(dummyMetrics, fmt.Sprintf("%s-%d", conf.Name, 1))
 
 		// Close the devicegroup
-		siloDGs[conf.Name].CloseAll()
+		err = siloDGs[conf.Name].CloseAll()
+		if err != nil {
+			fmt.Printf("Error closing DG %v\n", err)
+		}
 
 		if *valkeyTest {
 			siloSet := siloTimingsSet[conf.Name]
