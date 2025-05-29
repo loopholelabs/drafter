@@ -125,6 +125,13 @@ jobs:
             cmd: ./Hydrunfile os drafteros-oci-firecracker-x86_64_pvm_defconfig drafteros-oci-x86_64_pvm.tar.zst
             dst: out/drafteros-oci-x86_64_pvm.tar.zst
             runner: depot-ubuntu-22.04-32
+          - id: os.drafteros-oci-x86_64_pvm_experimental
+            src: .
+            os: fedora:42
+            flags: -e '-v /tmp/ccache/go:/root/.cache/go-build -v /tmp/ccache/buildroot:/root/.buildroot-ccache'
+            cmd: ./Hydrunfile os drafteros-oci-firecracker-x86_64_pvm_experimental_defconfig drafteros-oci-x86_64_pvm_experimental.tar.zst
+            dst: out/drafteros-oci-x86_64_pvm_experimental.tar.zst
+            runner: depot-ubuntu-22.04-32
           - id: os.drafteros-oci-aarch64
             src: .
             os: fedora:42
@@ -148,6 +155,13 @@ jobs:
             cmd: ./Hydrunfile os drafteros-k3s-server-firecracker-x86_64_pvm_defconfig drafteros-k3s-server-x86_64_pvm.tar.zst
             dst: out/drafteros-k3s-server-x86_64_pvm.tar.zst
             runner: depot-ubuntu-22.04-32
+          - id: os.drafteros-k3s-server-x86_64_pvm_experimental
+            src: .
+            os: fedora:42
+            flags: -e '-v /tmp/ccache/go:/root/.cache/go-build -v /tmp/ccache/buildroot:/root/.buildroot-ccache'
+            cmd: ./Hydrunfile os drafteros-k3s-server-firecracker-x86_64_pvm_experimental_defconfig drafteros-k3s-server-x86_64_pvm_experimental.tar.zst
+            dst: out/drafteros-k3s-server-x86_64_pvm_experimental.tar.zst
+            runner: depot-ubuntu-22.04-32
           - id: os.drafteros-k3s-server-aarch64
             src: .
             os: fedora:42
@@ -170,6 +184,13 @@ jobs:
             flags: -e '-v /tmp/ccache/go:/root/.cache/go-build -v /tmp/ccache/buildroot:/root/.buildroot-ccache'
             cmd: ./Hydrunfile os drafteros-k3s-client-firecracker-x86_64_pvm_defconfig drafteros-k3s-client-x86_64_pvm.tar.zst
             dst: out/drafteros-k3s-client-x86_64_pvm.tar.zst
+            runner: depot-ubuntu-22.04-32
+          - id: os.drafteros-k3s-client-x86_64_pvm_experimental
+            src: .
+            os: fedora:42
+            flags: -e '-v /tmp/ccache/go:/root/.cache/go-build -v /tmp/ccache/buildroot:/root/.buildroot-ccache'
+            cmd: ./Hydrunfile os drafteros-k3s-client-firecracker-x86_64_pvm_experimental_defconfig drafteros-k3s-client-x86_64_pvm_experimental.tar.zst
+            dst: out/drafteros-k3s-client-x86_64_pvm_experimental.tar.zst
             runner: depot-ubuntu-22.04-32
           - id: os.drafteros-k3s-client-aarch64
             src: .
