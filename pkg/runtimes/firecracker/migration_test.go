@@ -33,7 +33,7 @@ const testPeerDirCowS3 = "test_peer_cow"
 
 func TestMigrationBasicHashChecks(t *testing.T) {
 	migration(t, &migrationConfig{
-		numMigrations:  2,
+		numMigrations:  5,
 		minCycles:      1,
 		maxCycles:      1,
 		cycleThrottle:  100 * time.Millisecond,
@@ -48,7 +48,7 @@ func TestMigrationBasicHashChecks(t *testing.T) {
 
 func TestMigrationBasicHashChecksSoftDirty(t *testing.T) {
 	migration(t, &migrationConfig{
-		numMigrations:  2,
+		numMigrations:  5,
 		minCycles:      1,
 		maxCycles:      1,
 		cycleThrottle:  100 * time.Millisecond,
@@ -64,7 +64,7 @@ func TestMigrationBasicHashChecksSoftDirty(t *testing.T) {
 
 func TestMigrationBasicWithS3(t *testing.T) {
 	migration(t, &migrationConfig{
-		numMigrations:  2,
+		numMigrations:  5,
 		minCycles:      1,
 		maxCycles:      1,
 		cycleThrottle:  100 * time.Millisecond,
@@ -79,7 +79,7 @@ func TestMigrationBasicWithS3(t *testing.T) {
 
 func TestMigration4Cpus(t *testing.T) {
 	migration(t, &migrationConfig{
-		numMigrations:  2,
+		numMigrations:  5,
 		minCycles:      1,
 		maxCycles:      1,
 		cycleThrottle:  100 * time.Millisecond,
@@ -94,7 +94,7 @@ func TestMigration4Cpus(t *testing.T) {
 
 func TestMigrationNoPause(t *testing.T) {
 	migration(t, &migrationConfig{
-		numMigrations:  2,
+		numMigrations:  5,
 		minCycles:      1,
 		maxCycles:      1,
 		cycleThrottle:  100 * time.Millisecond,
@@ -109,7 +109,7 @@ func TestMigrationNoPause(t *testing.T) {
 
 func TestMigrationMultiCycle(t *testing.T) {
 	migration(t, &migrationConfig{
-		numMigrations:  2,
+		numMigrations:  5,
 		minCycles:      10,
 		maxCycles:      20,
 		cycleThrottle:  100 * time.Millisecond,
@@ -124,7 +124,7 @@ func TestMigrationMultiCycle(t *testing.T) {
 
 func TestMigrationNoCycle(t *testing.T) {
 	migration(t, &migrationConfig{
-		numMigrations:  2,
+		numMigrations:  5,
 		minCycles:      0,
 		maxCycles:      0,
 		cycleThrottle:  100 * time.Millisecond,
@@ -139,7 +139,7 @@ func TestMigrationNoCycle(t *testing.T) {
 
 func TestMigrationMultiCycleSoftDirty(t *testing.T) {
 	migration(t, &migrationConfig{
-		numMigrations:  2,
+		numMigrations:  5,
 		minCycles:      10,
 		maxCycles:      20,
 		cycleThrottle:  100 * time.Millisecond,
@@ -155,7 +155,7 @@ func TestMigrationMultiCycleSoftDirty(t *testing.T) {
 
 func TestMigrationNoCycleSoftDirty(t *testing.T) {
 	migration(t, &migrationConfig{
-		numMigrations:  2,
+		numMigrations:  5,
 		minCycles:      0,
 		maxCycles:      0,
 		cycleThrottle:  100 * time.Millisecond,
@@ -171,7 +171,7 @@ func TestMigrationNoCycleSoftDirty(t *testing.T) {
 
 func TestMigrationNoCycleSoftDirty1s(t *testing.T) {
 	migration(t, &migrationConfig{
-		numMigrations:  3,
+		numMigrations:  5,
 		minCycles:      0,
 		maxCycles:      0,
 		cycleThrottle:  100 * time.Millisecond,
@@ -223,12 +223,19 @@ func setupDevicesCowS3(t *testing.T, log types.Logger, netns string, config *mig
 
 	log.Info().Str("template", template).Msg("using cpu template")
 
+	bootargs := DefaultBootArgsNoPVM
+	ispvm, err := IsPVMHost()
+	assert.NoError(t, err)
+	if ispvm {
+		bootargs = DefaultBootArgs
+	}
+
 	// create package files
 	snapDir := setupSnapshot(t, log, context.Background(), netns, VMConfiguration{
 		CPUCount:    int64(config.cpuCount),
 		MemorySize:  int64(config.memorySize),
 		CPUTemplate: template,
-		BootArgs:    DefaultBootArgsNoPVM,
+		BootArgs:    bootargs,
 	},
 	)
 

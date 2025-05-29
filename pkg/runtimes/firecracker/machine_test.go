@@ -57,11 +57,18 @@ func TestResumeSuspend(t *testing.T) {
 
 	log.Info().Str("template", template).Msg("using cpu template")
 
+	bootargs := DefaultBootArgsNoPVM
+	ispvm, err := IsPVMHost()
+	assert.NoError(t, err)
+	if ispvm {
+		bootargs = DefaultBootArgs
+	}
+
 	snapDir := setupSnapshot(t, log, ctx, netns, VMConfiguration{
 		CPUCount:    1,
 		MemorySize:  1024,
 		CPUTemplate: template,
-		BootArgs:    DefaultBootArgsNoPVM,
+		BootArgs:    bootargs,
 	},
 	)
 

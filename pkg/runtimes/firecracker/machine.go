@@ -474,3 +474,18 @@ func GetCPUTemplate() (string, error) {
 	}
 	return "", errors.New("unknown cpu")
 }
+
+// Check if the host is using PVM
+func IsPVMHost() (bool, error) {
+	modules, err := os.ReadFile("/proc/modules")
+	if err != nil {
+		return false, err
+	}
+	lines := strings.Split(string(modules), "\n")
+	for _, l := range lines {
+		if strings.HasPrefix(l, "kvm_pvm") {
+			return true, nil
+		}
+	}
+	return false, nil
+}
