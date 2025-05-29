@@ -127,7 +127,7 @@ jobs:
             runner: depot-ubuntu-22.04-32
           - id: os.drafteros-oci-x86_64_pvm_experimental
             src: .
-            os: fedora:4
+            os: fedora:42
             flags: -e '-v /tmp/ccache/go:/root/.cache/go-build -v /tmp/ccache/buildroot:/root/.buildroot-ccache'
             cmd: ./Hydrunfile os drafteros-oci-firecracker-x86_64_pvm_experimental_defconfig drafteros-oci-x86_64_pvm_experimental.tar.zst
             dst: out/drafteros-oci-x86_64_pvm_experimental.tar.zst
