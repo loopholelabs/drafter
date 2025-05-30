@@ -295,7 +295,15 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Suspend(ctx context.Context, susp
 		rp.Log.Debug().Msg("firecracker runtime CreateSnapshot")
 	}
 
-	err = rp.Machine.CreateSnapshot(suspendCtx, common.DeviceStateName, "", SDKSnapshotTypeMsyncAndState)
+	snapshotType := SDKSnapshotTypeMsyncAndState
+	if rp.HypervisorConfiguration.NoMapShared {
+		// TODO: We don't need the Msync. We just need the state.
+		if rp.Log != nil {
+			rp.Log.Debug().Msg("firecracker may not need the msync here")
+		}
+	}
+	err = rp.Machine.CreateSnapshot(suspendCtx, common.DeviceStateName, "", snapshotType)
+
 	if err != nil {
 		return errors.Join(ErrCouldNotCreateSnapshot, err)
 	}

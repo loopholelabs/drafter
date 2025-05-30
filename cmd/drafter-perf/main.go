@@ -2,10 +2,9 @@ package main
 
 import (
 	"context"
-	"errors"
+	"encoding/json"
 	"flag"
 	"fmt"
-	"net"
 	"os"
 	"time"
 
@@ -13,48 +12,88 @@ import (
 	"github.com/loopholelabs/drafter/pkg/testutil"
 	"github.com/loopholelabs/logging"
 	"github.com/loopholelabs/logging/types"
+	"github.com/loopholelabs/silo/pkg/storage/devicegroup"
 	"github.com/muesli/gotable"
 )
 
-/**
- *
- * main
- */
+// main
 func main() {
 	log := logging.New(logging.Zerolog, "test", os.Stderr)
 	log.SetLevel(types.InfoLevel)
 
 	profileCPU := flag.Bool("prof", false, "Profile CPU")
+
+	// Directory config
 	dTestDir := flag.String("testdir", "testdir", "Test directory")
 	dSnapDir := flag.String("snapdir", "snapdir", "Snap directory")
 	dBlueDir := flag.String("bluedir", "bluedir", "Blue directory")
 	noCleanup := flag.Bool("no-cleanup", false, "If true, then don't remove any files at the end")
 
+	// VM options
 	cpuCount := flag.Int("cpus", 1, "CPU count")
 	memCount := flag.Int("memory", 1024, "Memory MB")
 	cpuTemplate := flag.String("template", "None", "CPU Template")
 	usePVMBootArgs := flag.Bool("pvm", false, "PVM boot args")
+	enableOutput := flag.Bool("enable-output", false, "Enable VM output")
+	enableInput := flag.Bool("enable-input", false, "Enable VM input")
 
 	// No silo
 	runWithNonSilo := flag.Bool("nosilo", false, "Run a test with Silo disabled")
 
-	// TODO: Shift to using a json config for these...
-	runSiloWC := flag.Bool("silowc", false, "Run a test with Silo WriteCache")
-	wcMin := flag.String("wcmin", "80m", "Min writeCache size")
-	wcMax := flag.String("wcmax", "100m", "Max writeCache size")
-	runSiloAll := flag.Bool("silo", false, "Run all silo tests")
+	defaultConfigs, err := json.Marshal([]RunConfig{
+
+		{
+			Name:          "silo",
+			BlockSize:     1024 * 1024,
+			UseCow:        true,
+			UseSparseFile: true,
+			UseVolatility: true,
+			UseWriteCache: false,
+			NoMapShared:   true,
+			GrabPeriod:    0,
+			/*
+				S3Secure:    false,
+				S3Endpoint:  "localhost:9000",
+				S3AccessKey: "silosilo",
+				S3SecretKey: "silosilo",
+				S3Bucket:    "silo",
+
+				S3Sync:        true,
+				S3Concurrency: 32,
+				S3BlockShift:  2,
+				S3OnlyDirty:   true,
+				S3MaxAge:      "10s",
+				S3MinChanged:  4,
+				S3Limit:       256,
+				S3CheckPeriod: "1s",
+			*/
+		},
+		//		{Name: "silo", BlockSize: 1024 * 1024, UseCow: true, UseSparseFile: true, UseVolatility: true, UseWriteCache: false, NoMapShared: false, GrabPeriod: 0},
+		//		{Name: "silo_5s", BlockSize: 1024 * 1024, UseCow: true, UseSparseFile: true, UseVolatility: true, UseWriteCache: false, NoMapShared: true, GrabPeriod: 5 * time.Second},
+	})
+
+	if err != nil {
+		panic(err)
+	}
+
+	runConfigs := flag.String("silo", string(defaultConfigs), "Run configs")
 
 	valkeyTest := flag.Bool("valkey", false, "Run valkey benchmark test")
 	valkeyIterations := flag.Int("valkeynum", 1000, "Test iterations")
 
-	enableOutput := flag.Bool("enable-output", false, "Enable VM output")
-	enableInput := flag.Bool("enable-input", false, "Enable VM input")
-
-	migrateAfter := flag.String("migrate-after", "", "Migrate the VM after a time period")
+	migrateAfter := flag.String("migrate-after", "30m", "Migrate the VM after a time period")
 
 	flag.Parse()
 
-	err := os.Mkdir(*dTestDir, 0777)
+	var siloConfigs []RunConfig
+	err = json.Unmarshal([]byte(*runConfigs), &siloConfigs)
+	if err != nil {
+		panic(err)
+	}
+
+	log.Info().Str("runConfig", *runConfigs).Msg("using run configs")
+
+	err = os.Mkdir(*dTestDir, 0777)
 	if err != nil {
 		panic(err)
 	}
@@ -78,26 +117,30 @@ func main() {
 		panic(err)
 	}
 
-	// Forward the port so we can connect to it...
+	type portForward struct {
+		PortSrc int
+		PortDst int
+	}
+
+	// Default ports for start/stop oci
+	forwards := []portForward{{PortSrc: 4567, PortDst: 4567}, {PortSrc: 4568, PortDst: 4568}}
+
+	waitReady := func() error { return nil }
+
+	// If we're just doing valkey, then we need to forward 6379 instead
 	if *valkeyTest {
-		portCloser, err := ForwardPort(log, netns, "tcp", 6379, 3333)
+		forwards = []portForward{{PortSrc: 6379, PortDst: 3333}}
+		valkeyWaitReady := &ValkeyWaitReady{Timeout: 30 * time.Second}
+		waitReady = valkeyWaitReady.Ready
+	}
+
+	// Forward any ports we need
+	for _, f := range forwards {
+		portCloser, err := ForwardPort(log, netns, "tcp", f.PortSrc, f.PortDst)
 		if err != nil {
 			panic(err)
 		}
 		defer portCloser()
-	} else {
-		portCloser1, err := ForwardPort(log, netns, "tcp", 4567, 4567)
-		if err != nil {
-			panic(err)
-		}
-		defer portCloser1()
-
-		portCloser2, err := ForwardPort(log, netns, "tcp", 4568, 4568)
-		if err != nil {
-			panic(err)
-		}
-		defer portCloser2()
-
 	}
 
 	vmConfig := rfirecracker.VMConfiguration{
@@ -118,41 +161,9 @@ func main() {
 		panic(err)
 	}
 
-	valkeyUp := false
-
-	waitReady := func() {
-		if *valkeyTest {
-			// Try to connect to valkey
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-			defer cancel()
-			ticker := time.NewTicker(1 * time.Second)
-			for {
-				select {
-				case <-ticker.C:
-					// Try to connect to valkey
-					con, err := net.Dial("tcp", "127.0.0.1:3333")
-					if err == nil {
-						con.Close()
-						fmt.Printf(" ### Valkey up!\n")
-						valkeyUp = true
-						return
-					}
-				case <-ctx.Done():
-					fmt.Printf(" ### Unable to connect to valkey!\n")
-					return
-				}
-			}
-		}
-	}
-
 	err = setupSnapshot(log, ctx, netns, vmConfig, *dBlueDir, *dSnapDir, waitReady)
 	if err != nil {
 		panic(err)
-	}
-
-	// Make sure valkey came up
-	if *valkeyTest && !valkeyUp {
-		panic(errors.New("Could not start valkey?"))
 	}
 
 	log.Info().Msg("Starting tests...")
@@ -163,49 +174,7 @@ func main() {
 
 	dummyMetrics := testutil.NewDummyMetrics()
 
-	siloConfigs := []siloConfig{}
-
-	defaultBS := uint32(1024 * 1024) // Default block size
-
-	if *runSiloAll {
-		// TODO: This will come in from json config
-
-		siloConfigs = []siloConfig{
-			{name: "silo", blockSize: defaultBS, useCow: true, useSparseFile: true, useVolatility: true, useWriteCache: false, grabPeriod: 0},
-
-			//	{name: "silo_100ms", blockSize: defaultBS, useCow: true, useSparseFile: true, useVolatility: true, useWriteCache: false, grabPeriod: 100 * time.Millisecond},
-			// {name: "silo_1s", blockSize: defaultBS, useCow: true, useSparseFile: true, useVolatility: true, useWriteCache: false, grabPeriod: 1 * time.Second},
-			// {name: "silo_2s", blockSize: defaultBS, useCow: true, useSparseFile: true, useVolatility: true, useWriteCache: false, grabPeriod: 2 * time.Second},
-			{name: "silo_5s", blockSize: defaultBS, useCow: true, useSparseFile: true, useVolatility: true, useWriteCache: false, grabPeriod: 5 * time.Second},
-			{name: "silo_10s", blockSize: defaultBS, useCow: true, useSparseFile: true, useVolatility: true, useWriteCache: false, grabPeriod: 10 * time.Second},
-			{name: "silo_30s", blockSize: defaultBS, useCow: true, useSparseFile: true, useVolatility: true, useWriteCache: false, grabPeriod: 30 * time.Second},
-			{name: "silo_60s", blockSize: defaultBS, useCow: true, useSparseFile: true, useVolatility: true, useWriteCache: false, grabPeriod: 60 * time.Second},
-
-			//				{name: "silo_no_vm_no_cow", blockSize: defaultBS, useCow: false, useSparseFile: false, useVolatility: false, useWriteCache: false},
-			//				{name: "silo_no_vmsf", blockSize: defaultBS, useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: false},
-			//			{name: "silo_wc_1g_1.2g", blockSize: defaultBS, useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: true, writeCacheMin: "1000m", writeCacheMax: "1200m"},
-			//			{name: "silo_wc_2g_2.2g", blockSize: defaultBS, useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: true, writeCacheMin: "2000m", writeCacheMax: "2200m"},
-			//			{name: "silo_wc_4g_4.2g", blockSize: defaultBS, useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: true, writeCacheMin: "4000m", writeCacheMax: "4200m"},
-			//				{name: "silo_wc_200m_400m", blockSize: defaultBS, useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: true, writeCacheMin: "200m", writeCacheMax: "400m"},
-			//				{name: "silo_wc_600m_800m", blockSize: defaultBS, useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: true, writeCacheMin: "600m", writeCacheMax: "800m"},
-			//				{name: "silo_wc_800m_1g", blockSize: defaultBS, useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: true, writeCacheMin: "800m", writeCacheMax: "1g"},
-			/*
-				{name: "silo_4k", blockSize: 4 * 1024, useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: false},
-				{name: "silo_8k", blockSize: 8 * 1024, useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: false},
-				{name: "silo_16k", blockSize: 16 * 1024, useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: false},
-				{name: "silo_32k", blockSize: 32 * 1024, useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: false},
-				{name: "silo_64k", blockSize: 64 * 1024, useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: false},
-				{name: "silo_128k", blockSize: 128 * 1024, useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: false},
-				{name: "silo_256k", blockSize: 256 * 1024, useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: false},
-				{name: "silo_512k", blockSize: 512 * 1024, useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: false},
-				{name: "silo_1m", blockSize: 1024 * 1024, useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: false},
-			*/
-		}
-	} else if *runSiloWC {
-		siloConfigs = append(siloConfigs, siloConfig{
-			name: fmt.Sprintf("silo_wc_%s_%s", *wcMin, *wcMax), blockSize: defaultBS, useCow: true, useSparseFile: false, useVolatility: false, useWriteCache: true, writeCacheMin: *wcMin, writeCacheMax: *wcMax,
-		})
-	}
+	siloDGs := make(map[string]*devicegroup.DeviceGroup)
 
 	// Start testing Silo confs
 	for _, sConf := range siloConfigs {
@@ -215,15 +184,15 @@ func main() {
 			runtimeStart = time.Now()
 
 			if *valkeyTest {
-				siloSet, siloGet, err := benchValkey(*profileCPU, sConf.name, 3333, *valkeyIterations)
-				siloTimingsSet[sConf.name] = siloSet
-				siloTimingsGet[sConf.name] = siloGet
+				siloSet, siloGet, err := benchValkey(*profileCPU, sConf.Name, 3333, *valkeyIterations)
+				siloTimingsSet[sConf.Name] = siloSet
+				siloTimingsGet[sConf.Name] = siloGet
 				if err != nil {
 					panic(err)
 				}
 				runtimeEnd = time.Now()
 			} else {
-				err = benchCICD(*profileCPU, sConf.name, 1*time.Hour)
+				err = benchCICD(*profileCPU, sConf.Name, 1*time.Hour)
 				if err != nil {
 					panic(err)
 				}
@@ -231,11 +200,14 @@ func main() {
 			}
 		}
 
-		err = runSilo(ctx, log, dummyMetrics, *dTestDir, *dSnapDir, netns, benchCB, sConf, *enableInput, *enableOutput, *migrateAfter)
+		dg, err := runSilo(ctx, log, dummyMetrics, *dTestDir, *dSnapDir, netns, benchCB, sConf, *enableInput, *enableOutput, *migrateAfter)
 		if err != nil {
 			panic(err)
 		}
-		siloTimingsRuntime[sConf.name] = runtimeEnd.Sub(runtimeStart)
+
+		siloDGs[sConf.Name] = dg
+
+		siloTimingsRuntime[sConf.Name] = runtimeEnd.Sub(runtimeStart)
 	}
 
 	var nosiloGet time.Duration
@@ -300,17 +272,23 @@ func main() {
 
 		fmt.Printf("== Results for %s\n", conf.Summary())
 
-		showDeviceStats(dummyMetrics, conf.name)
+		showDeviceStats(dummyMetrics, fmt.Sprintf("%s-%d", conf.Name, 0))
+		showDeviceStats(dummyMetrics, fmt.Sprintf("%s-%d", conf.Name, 1))
+
+		// Close the devicegroup
+		err = siloDGs[conf.Name].CloseAll()
+		if err != nil {
+			fmt.Printf("Error closing DG %v\n", err)
+		}
 
 		if *valkeyTest {
-
-			siloSet := siloTimingsSet[conf.name]
-			siloGet := siloTimingsGet[conf.name]
+			siloSet := siloTimingsSet[conf.Name]
+			siloGet := siloTimingsGet[conf.Name]
 			overheadSet := 0
 			overheadGet := 0
 			overhead := 0
 			if nosiloRuntime != 0 {
-				overhead = int((siloTimingsRuntime[conf.name] - nosiloRuntime) * 100 / nosiloRuntime)
+				overhead = int((siloTimingsRuntime[conf.Name] - nosiloRuntime) * 100 / nosiloRuntime)
 			}
 			if nosiloSet != 0 {
 				overheadSet = int((siloSet - nosiloSet) * 100 / nosiloSet)
@@ -319,120 +297,25 @@ func main() {
 				overheadGet = int((siloGet - nosiloGet) * 100 / nosiloGet)
 			}
 
-			tab.AppendRow([]interface{}{conf.name,
-				fbool(conf.useWriteCache), fbool(conf.useVolatility), fbool(conf.useCow), fbool(conf.useSparseFile),
+			tab.AppendRow([]interface{}{conf.Name,
+				fbool(conf.UseWriteCache), fbool(conf.UseVolatility), fbool(conf.UseCow), fbool(conf.UseSparseFile),
 				fmt.Sprintf("%.1fs", float64(siloSet.Milliseconds())/1000), fmt.Sprintf("%d%%", overheadSet),
 				fmt.Sprintf("%.1fs", float64(siloGet.Milliseconds())/1000), fmt.Sprintf("%d%%", overheadGet),
-				fmt.Sprintf("%.1fs", float64(siloTimingsRuntime[conf.name].Milliseconds())/1000), fmt.Sprintf("%d%%", overhead),
+				fmt.Sprintf("%.1fs", float64(siloTimingsRuntime[conf.Name].Milliseconds())/1000), fmt.Sprintf("%d%%", overhead),
 			})
 
 		} else {
 			overhead := 0
 			if nosiloRuntime != 0 {
-				overhead = int((siloTimingsRuntime[conf.name] - nosiloRuntime) * 100 / nosiloRuntime)
+				overhead = int((siloTimingsRuntime[conf.Name] - nosiloRuntime) * 100 / nosiloRuntime)
 			}
 
-			tab.AppendRow([]interface{}{conf.name,
-				fbool(conf.useWriteCache), fbool(conf.useVolatility), fbool(conf.useCow), fbool(conf.useSparseFile),
-				fmt.Sprintf("%.1fs", float64(siloTimingsRuntime[conf.name].Milliseconds())/1000), fmt.Sprintf("%d%%", overhead),
+			tab.AppendRow([]interface{}{conf.Name,
+				fbool(conf.UseWriteCache), fbool(conf.UseVolatility), fbool(conf.UseCow), fbool(conf.UseSparseFile),
+				fmt.Sprintf("%.1fs", float64(siloTimingsRuntime[conf.Name].Milliseconds())/1000), fmt.Sprintf("%d%%", overhead),
 			})
 		}
 	}
 
 	tab.Print()
-}
-
-type DeviceMetrics struct {
-	DiskReadOps    uint64
-	DiskReadBytes  uint64
-	DiskWriteOps   uint64
-	DiskWriteBytes uint64
-	InReadOps      uint64
-	InReadBytes    uint64
-	InWriteOps     uint64
-	InWriteBytes   uint64
-	ChangedBlocks  uint64
-	ChangedBytes   uint64
-}
-
-/**
- * Grab out some silo stats from the metrics system
- *
- */
-func getSiloDeviceStats(dummyMetrics *testutil.DummyMetrics, name string, deviceName string) *DeviceMetrics {
-	metrics := dummyMetrics.GetMetrics(name, deviceName).GetMetrics()
-	devMetrics := dummyMetrics.GetMetrics(name, fmt.Sprintf("device_%s", deviceName)).GetMetrics()
-	rodev := dummyMetrics.GetMetrics(name, fmt.Sprintf("device_rodev_%s", deviceName))
-
-	// Now grab out what we need from these...
-	dm := &DeviceMetrics{
-		InReadOps:      metrics.ReadOps,
-		InReadBytes:    metrics.ReadBytes,
-		InWriteOps:     metrics.WriteOps,
-		InWriteBytes:   metrics.WriteBytes,
-		DiskReadOps:    devMetrics.ReadOps,
-		DiskReadBytes:  devMetrics.ReadBytes,
-		DiskWriteOps:   devMetrics.WriteOps,
-		DiskWriteBytes: devMetrics.WriteBytes,
-	}
-
-	// If we are using COW, then add these on to the totals.
-	if rodev != nil {
-		devROMetrics := rodev.GetMetrics()
-
-		dm.DiskReadOps += devROMetrics.ReadOps
-		dm.DiskReadBytes += devROMetrics.ReadBytes
-		dm.DiskWriteOps += devROMetrics.WriteOps
-		dm.DiskWriteBytes += devROMetrics.WriteBytes
-
-		cow := dummyMetrics.GetCow(fmt.Sprintf("post_%s", name), deviceName)
-
-		if cow != nil {
-			changedBlocks, changedBytes, err := cow.GetDifference()
-			if err == nil {
-				dm.ChangedBlocks = uint64(changedBlocks)
-				dm.ChangedBytes = uint64(changedBytes)
-			}
-		}
-
-	}
-	return dm
-}
-
-func showDeviceStats(dummyMetrics *testutil.DummyMetrics, name string) {
-	devTab := gotable.NewTable([]string{"Name",
-		"In R Ops", "In R MB", "In W Ops", "In W MB",
-		"DskR Ops", "DskR MB", "DskW Ops", "DskW MB",
-		"Chg  Blk", "Chg  MB",
-	},
-		[]int64{-20,
-			8, 8, 8, 8,
-			8, 8, 8, 8,
-			8, 8,
-		},
-		"No data in table.")
-
-	for _, r := range []string{"disk", "oci", "memory"} {
-		dm := getSiloDeviceStats(dummyMetrics, name, r)
-		devTab.AppendRow([]interface{}{
-			r,
-			fmt.Sprintf("%d", dm.InReadOps),
-			fmt.Sprintf("%.1f", float64(dm.InReadBytes)/(1024*1024)),
-			fmt.Sprintf("%d", dm.InWriteOps),
-			fmt.Sprintf("%.1f", float64(dm.InWriteBytes)/(1024*1024)),
-
-			fmt.Sprintf("%d", dm.DiskReadOps),
-			fmt.Sprintf("%.1f", float64(dm.DiskReadBytes)/(1024*1024)),
-			fmt.Sprintf("%d", dm.DiskWriteOps),
-			fmt.Sprintf("%.1f", float64(dm.DiskWriteBytes)/(1024*1024)),
-
-			fmt.Sprintf("%d", dm.ChangedBlocks),
-			fmt.Sprintf("%.1f", float64(dm.ChangedBytes)/(1024*1024)),
-		})
-	}
-
-	devTab.Print()
-
-	fmt.Printf("\n")
-
 }

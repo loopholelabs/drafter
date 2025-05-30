@@ -88,7 +88,7 @@ var (
 func CreateSnapshot(log types.Logger, ctx context.Context, devices []SnapshotDevice, ioEngineSync bool,
 	vmConfiguration VMConfiguration, livenessConfiguration LivenessConfiguration,
 	hypervisorConfiguration FirecrackerMachineConfig, networkConfiguration NetworkConfiguration,
-	agentConfiguration AgentConfiguration, waitReady func()) error {
+	agentConfiguration AgentConfiguration, waitReady func() error) error {
 
 	if log != nil {
 		log.Info().Msg("Creating firecracker VM snapshot")
@@ -209,7 +209,10 @@ func CreateSnapshot(log types.Logger, ctx context.Context, devices []SnapshotDev
 	}
 	liveness.Close()
 
-	waitReady()
+	err = waitReady()
+	if err != nil {
+		return err
+	}
 
 	// BeforeSuspend and close
 	acceptCtx, acceptCancel := context.WithTimeout(ctx, livenessConfiguration.ResumeTimeout)

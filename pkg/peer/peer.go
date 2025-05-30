@@ -87,6 +87,19 @@ func (peer *Peer) GetMetrics() *PeerMetrics {
 	}
 }
 
+func (peer *Peer) CloseRuntime() error {
+	if peer.log != nil {
+		peer.log.Info().Str("id", peer.instanceID).Msg("Peer.Close")
+	}
+
+	// Try to close the runtimeProvider first
+	errRuntime := peer.runtimeProvider.Close(peer.GetDG())
+	if errRuntime != nil {
+		peer.log.Error().Err(errRuntime).Msg("Error closing runtime")
+	}
+	return errRuntime
+}
+
 func (peer *Peer) Close() error {
 	if peer.log != nil {
 		peer.log.Info().Str("id", peer.instanceID).Msg("Peer.Close")
