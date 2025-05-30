@@ -33,6 +33,39 @@ const testPeerDirCowS3 = "test_peer_cow"
 
 func TestMigrationBasicHashChecks(t *testing.T) {
 	migration(t, &migrationConfig{
+		blockSize:      1024 * 1024,
+		numMigrations:  5,
+		minCycles:      1,
+		maxCycles:      1,
+		cycleThrottle:  100 * time.Millisecond,
+		maxDirtyBlocks: 10,
+		cpuCount:       1,
+		memorySize:     1024,
+		pauseWaitMax:   3 * time.Second,
+		enableS3:       false,
+		hashChecks:     true,
+	})
+}
+
+func TestMigrationBasicSmallBlocksHashChecks(t *testing.T) {
+	migration(t, &migrationConfig{
+		blockSize:      4 * 1024,
+		numMigrations:  5,
+		minCycles:      1,
+		maxCycles:      1,
+		cycleThrottle:  100 * time.Millisecond,
+		maxDirtyBlocks: 10,
+		cpuCount:       1,
+		memorySize:     1024,
+		pauseWaitMax:   3 * time.Second,
+		enableS3:       false,
+		hashChecks:     true,
+	})
+}
+
+func TestMigrationBasicBigBlocksHashChecks(t *testing.T) {
+	migration(t, &migrationConfig{
+		blockSize:      4 * 1024 * 1024,
 		numMigrations:  5,
 		minCycles:      1,
 		maxCycles:      1,
@@ -48,6 +81,7 @@ func TestMigrationBasicHashChecks(t *testing.T) {
 
 func TestMigrationBasicNoCOWHashChecks(t *testing.T) {
 	migration(t, &migrationConfig{
+		blockSize:      1024 * 1024,
 		numMigrations:  5,
 		minCycles:      1,
 		maxCycles:      1,
@@ -64,6 +98,7 @@ func TestMigrationBasicNoCOWHashChecks(t *testing.T) {
 
 func TestMigrationBasicNoSparseFileHashChecks(t *testing.T) {
 	migration(t, &migrationConfig{
+		blockSize:      1024 * 1024,
 		numMigrations:  5,
 		minCycles:      1,
 		maxCycles:      1,
@@ -81,6 +116,7 @@ func TestMigrationBasicNoSparseFileHashChecks(t *testing.T) {
 
 func TestMigrationBasicHashChecksSoftDirty(t *testing.T) {
 	migration(t, &migrationConfig{
+		blockSize:      1024 * 1024,
 		numMigrations:  5,
 		minCycles:      1,
 		maxCycles:      1,
@@ -97,6 +133,7 @@ func TestMigrationBasicHashChecksSoftDirty(t *testing.T) {
 
 func TestMigrationBasicWithS3(t *testing.T) {
 	migration(t, &migrationConfig{
+		blockSize:      1024 * 1024,
 		numMigrations:  5,
 		minCycles:      1,
 		maxCycles:      1,
@@ -112,6 +149,7 @@ func TestMigrationBasicWithS3(t *testing.T) {
 
 func TestMigration4Cpus(t *testing.T) {
 	migration(t, &migrationConfig{
+		blockSize:      1024 * 1024,
 		numMigrations:  5,
 		minCycles:      1,
 		maxCycles:      1,
@@ -125,8 +163,25 @@ func TestMigration4Cpus(t *testing.T) {
 	})
 }
 
+func TestMigration4Cpus8GB(t *testing.T) {
+	migration(t, &migrationConfig{
+		blockSize:      1024 * 1024,
+		numMigrations:  5,
+		minCycles:      1,
+		maxCycles:      1,
+		cycleThrottle:  100 * time.Millisecond,
+		maxDirtyBlocks: 10,
+		cpuCount:       4,
+		memorySize:     8 * 1024,
+		pauseWaitMax:   3 * time.Second,
+		enableS3:       false,
+		hashChecks:     false,
+	})
+}
+
 func TestMigrationNoPause(t *testing.T) {
 	migration(t, &migrationConfig{
+		blockSize:      1024 * 1024,
 		numMigrations:  5,
 		minCycles:      1,
 		maxCycles:      1,
@@ -142,6 +197,7 @@ func TestMigrationNoPause(t *testing.T) {
 
 func TestMigrationMultiCycle(t *testing.T) {
 	migration(t, &migrationConfig{
+		blockSize:      1024 * 1024,
 		numMigrations:  5,
 		minCycles:      10,
 		maxCycles:      20,
@@ -157,6 +213,7 @@ func TestMigrationMultiCycle(t *testing.T) {
 
 func TestMigrationNoCycle(t *testing.T) {
 	migration(t, &migrationConfig{
+		blockSize:      1024 * 1024,
 		numMigrations:  5,
 		minCycles:      0,
 		maxCycles:      0,
@@ -172,6 +229,7 @@ func TestMigrationNoCycle(t *testing.T) {
 
 func TestMigrationMultiCycleSoftDirty(t *testing.T) {
 	migration(t, &migrationConfig{
+		blockSize:      1024 * 1024,
 		numMigrations:  5,
 		minCycles:      10,
 		maxCycles:      20,
@@ -188,6 +246,7 @@ func TestMigrationMultiCycleSoftDirty(t *testing.T) {
 
 func TestMigrationNoCycleSoftDirty(t *testing.T) {
 	migration(t, &migrationConfig{
+		blockSize:      1024 * 1024,
 		numMigrations:  5,
 		minCycles:      0,
 		maxCycles:      0,
@@ -204,6 +263,7 @@ func TestMigrationNoCycleSoftDirty(t *testing.T) {
 
 func TestMigrationNoCycleSoftDirty1s(t *testing.T) {
 	migration(t, &migrationConfig{
+		blockSize:      1024 * 1024,
 		numMigrations:  5,
 		minCycles:      0,
 		maxCycles:      0,
@@ -234,6 +294,7 @@ type migrationConfig struct {
 	grabInterval   time.Duration
 	noCOW          bool
 	noSparseFile   bool
+	blockSize      int
 }
 
 /**
@@ -299,7 +360,7 @@ func getDevicesFrom(t *testing.T, snapDir string, s3Endpoint string, i int, conf
 
 		dev := common.MigrateFromDevice{
 			Name:       n,
-			BlockSize:  1024 * 1024,
+			BlockSize:  uint32(config.blockSize),
 			Shared:     false,
 			SharedBase: true,
 		}
