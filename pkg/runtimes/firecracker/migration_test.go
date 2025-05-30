@@ -46,6 +46,39 @@ func TestMigrationBasicHashChecks(t *testing.T) {
 	})
 }
 
+func TestMigrationBasicNoCOWHashChecks(t *testing.T) {
+	migration(t, &migrationConfig{
+		numMigrations:  5,
+		minCycles:      1,
+		maxCycles:      1,
+		cycleThrottle:  100 * time.Millisecond,
+		maxDirtyBlocks: 10,
+		cpuCount:       1,
+		memorySize:     1024,
+		pauseWaitMax:   3 * time.Second,
+		enableS3:       false,
+		hashChecks:     true,
+		noCOW:          true,
+	})
+}
+
+func TestMigrationBasicNoSparseFileHashChecks(t *testing.T) {
+	migration(t, &migrationConfig{
+		numMigrations:  5,
+		minCycles:      1,
+		maxCycles:      1,
+		cycleThrottle:  100 * time.Millisecond,
+		maxDirtyBlocks: 10,
+		cpuCount:       1,
+		memorySize:     1024,
+		pauseWaitMax:   3 * time.Second,
+		enableS3:       false,
+		hashChecks:     true,
+		noCOW:          false,
+		noSparseFile:   true,
+	})
+}
+
 func TestMigrationBasicHashChecksSoftDirty(t *testing.T) {
 	migration(t, &migrationConfig{
 		numMigrations:  5,
@@ -199,6 +232,8 @@ type migrationConfig struct {
 	hashChecks     bool
 	noMapShared    bool
 	grabInterval   time.Duration
+	noCOW          bool
+	noSparseFile   bool
 }
 
 /**
@@ -264,12 +299,29 @@ func getDevicesFrom(t *testing.T, snapDir string, s3Endpoint string, i int, conf
 
 		dev := common.MigrateFromDevice{
 			Name:       n,
-			Base:       path.Join(snapDir, n),
-			Overlay:    path.Join(path.Join(testPeerDirCowS3, fmt.Sprintf("migration_%d", i), fmt.Sprintf("%s.overlay", fn))),
-			State:      path.Join(path.Join(testPeerDirCowS3, fmt.Sprintf("migration_%d", i), fmt.Sprintf("%s.state", fn))),
 			BlockSize:  1024 * 1024,
 			Shared:     false,
 			SharedBase: true,
+		}
+
+		if !config.noCOW {
+			dev.Base = path.Join(snapDir, n)
+			dev.Overlay = path.Join(path.Join(testPeerDirCowS3, fmt.Sprintf("migration_%d", i), fmt.Sprintf("%s.overlay", fn)))
+			dev.State = path.Join(path.Join(testPeerDirCowS3, fmt.Sprintf("migration_%d", i), fmt.Sprintf("%s.state", fn)))
+			dev.UseSparseFile = !config.noSparseFile
+		} else {
+			dev.Base = path.Join(path.Join(testPeerDirCowS3, fmt.Sprintf("migration_%d", i), fmt.Sprintf("%s.data", fn)))
+			// Copy the file
+			src, err := os.Open(path.Join(snapDir, n))
+			assert.NoError(t, err)
+			dst, err := os.OpenFile(dev.Base, os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
+			assert.NoError(t, err)
+			_, err = io.Copy(dst, src)
+			assert.NoError(t, err)
+			err = src.Close()
+			assert.NoError(t, err)
+			err = dst.Close()
+			assert.NoError(t, err)
 		}
 
 		if config.enableS3 && (n == common.DeviceMemoryName || n == common.DeviceDiskName) {
