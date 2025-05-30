@@ -303,7 +303,9 @@ func migration(t *testing.T, config *migrationConfig) {
 	})
 
 	log := logging.New(logging.Zerolog, "test", os.Stderr)
-	//	log.SetLevel(types.TraceLevel)
+	log.SetLevel(types.InfoLevel)
+
+	dummyMetrics := testutil.NewDummyMetrics()
 
 	ns := testutil.SetupNAT(t, "", "dra")
 
@@ -345,7 +347,7 @@ func migration(t *testing.T, config *migrationConfig) {
 
 	rp.GrabInterval = config.grabInterval
 
-	myPeer, err := peer.StartPeer(context.TODO(), context.Background(), log, nil, nil, "cow_test", rp)
+	myPeer, err := peer.StartPeer(context.TODO(), context.Background(), log, dummyMetrics, nil, "cow_test", rp)
 	assert.NoError(t, err)
 
 	hooks1 := peer.MigrateFromHooks{
@@ -359,7 +361,7 @@ func migration(t *testing.T, config *migrationConfig) {
 	err = myPeer.MigrateFrom(context.TODO(), devicesFrom, nil, nil, hooks1)
 	assert.NoError(t, err)
 
-	err = myPeer.Resume(context.TODO(), 10*time.Second, 10*time.Second)
+	err = myPeer.Resume(context.TODO(), 60*time.Second, 60*time.Second)
 	assert.NoError(t, err)
 
 	// Now we have a FIRST "resumed peer"
@@ -426,7 +428,7 @@ func migration(t *testing.T, config *migrationConfig) {
 			}
 		}
 
-		nextPeer, err := peer.StartPeer(context.TODO(), context.Background(), log, nil, nil, "cow_test", rp)
+		nextPeer, err := peer.StartPeer(context.TODO(), context.Background(), log, dummyMetrics, nil, "cow_test", rp)
 		assert.NoError(t, err)
 
 		r1, w1 := io.Pipe()
@@ -446,7 +448,7 @@ func migration(t *testing.T, config *migrationConfig) {
 		var sendingErr error
 		wg.Add(1)
 		go func() {
-			err := lastPeer.MigrateTo(context.TODO(), devicesTo, 10*time.Second, 10, []io.Reader{r1}, []io.Writer{w2}, hooks)
+			err := lastPeer.MigrateTo(context.TODO(), devicesTo, 60*time.Second, 10, []io.Reader{r1}, []io.Writer{w2}, hooks)
 			assert.NoError(t, err)
 			sendingErr = err
 
