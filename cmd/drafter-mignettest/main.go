@@ -213,6 +213,16 @@ func handleConnection(migration int, conn net.Conn, log types.Logger, firecracke
 		AgentServerLocal: struct{}{},
 	}
 
+	// Use something to push output (sometimes needed)
+	pusherCtx, pusherCancel := context.WithCancel(context.Background())
+	r := rfirecracker.NewOutputPusher(pusherCtx, log)
+	rp2.HypervisorConfiguration.Stdin = r
+	rp2.RunningCB = func(r bool) {
+		if !r {
+			pusherCancel()
+		}
+	}
+
 	nextPeer, err := peer.StartPeer(context.TODO(), context.Background(), log, nil, nil, "cow_test", rp2)
 	if err != nil {
 		return err
@@ -310,6 +320,16 @@ func setupFirstPeer(log types.Logger, firecrackerBin string, jailerBin string, s
 		StateName:        common.DeviceStateName,
 		MemoryName:       common.DeviceMemoryName,
 		AgentServerLocal: struct{}{},
+	}
+
+	// Use something to push output (sometimes needed)
+	pusherCtx, pusherCancel := context.WithCancel(context.Background())
+	r := rfirecracker.NewOutputPusher(pusherCtx, log)
+	rp.HypervisorConfiguration.Stdin = r
+	rp.RunningCB = func(r bool) {
+		if !r {
+			pusherCancel()
+		}
 	}
 
 	myPeer, err := peer.StartPeer(context.TODO(), context.Background(), log, nil, nil, "cow_test", rp)

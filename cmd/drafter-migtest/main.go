@@ -134,6 +134,16 @@ func main() {
 		AgentServerLocal:        struct{}{},
 	}
 
+	// Use something to push output (sometimes needed)
+	pusherCtx, pusherCancel := context.WithCancel(context.Background())
+	r := rfirecracker.NewOutputPusher(pusherCtx, log)
+	rp.HypervisorConfiguration.Stdin = r
+	rp.RunningCB = func(r bool) {
+		if !r {
+			pusherCancel()
+		}
+	}
+
 	myPeer, err := peer.StartPeer(context.TODO(), context.Background(), log, siloMetrics, drafterMetrics, "cow_test", rp)
 	if err != nil {
 		panic(err)
@@ -187,6 +197,16 @@ func main() {
 			StateName:        common.DeviceStateName,
 			MemoryName:       common.DeviceMemoryName,
 			AgentServerLocal: struct{}{},
+		}
+
+		// Use something to push output (sometimes needed)
+		pusherCtx, pusherCancel := context.WithCancel(context.Background())
+		r := rfirecracker.NewOutputPusher(pusherCtx, log)
+		rp2.HypervisorConfiguration.Stdin = r
+		rp2.RunningCB = func(r bool) {
+			if !r {
+				pusherCancel()
+			}
 		}
 
 		nextPeer, err := peer.StartPeer(context.TODO(), context.Background(), log, siloMetrics, drafterMetrics, "cow_test", rp2)

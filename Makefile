@@ -8,7 +8,7 @@ OCI_IMAGE_URI ?= docker://valkey/valkey:latest
 OCI_IMAGE_ARCHITECTURE ?= amd64
 OCI_IMAGE_HOSTNAME ?= drafterguest
 
-OS_URL ?= https://buildroot.org/downloads/buildroot-2024.11.tar.gz
+OS_URL ?= https://github.com/loopholelabs/buildroot/archive/8958adcacfec580cda9ee5ff049017a9f64a6996.tar.gz
 OS_DEFCONFIG ?= drafteros-oci-firecracker-x86_64_defconfig
 OS_BR2_EXTERNAL ?= ../../os
 
@@ -56,6 +56,10 @@ build/os:
 	mkdir -p $(OUTPUT_DIR)/blueprint
 	cp $(OUTPUT_DIR)/buildroot/output/images/vmlinux $(OUTPUT_DIR)/blueprint/vmlinux
 	cp $(OUTPUT_DIR)/buildroot/output/images/rootfs.ext4 $(OUTPUT_DIR)/blueprint/rootfs.ext4
+
+# Build Kernel
+build/kernel:
+	$(MAKE) -C $(OUTPUT_DIR)/buildroot BR2_EXTERNAL="$(OS_BR2_EXTERNAL)" linux
 
 # Configure OS
 config/os:

@@ -1,0 +1,277 @@
+name: Drafter CI
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "0 0 * * 0"
+
+jobs:
+  test:
+    uses: ./.github/workflows/hydrun.yaml
+    secrets: inherit
+    with:
+      id: "${{matrix.target.id}}"
+      src: "${{matrix.target.src}}"
+      os: "${{matrix.target.os}}"
+      flags: "${{matrix.target.flags}}"
+      cmd: "${{matrix.target.cmd}}"
+      dst: "${{matrix.target.dst}}"
+      runner: "${{matrix.target.runner}}"
+    strategy:
+      matrix:
+        target:
+          - id: test
+            src: .
+            os: golang:bookworm
+            flags: -e '-v /tmp/ccache:/root/.cache/go-build --privileged --cap-add=ALL -v /lib/modules:/lib/modules:ro -v /dev:/dev -v /var/run/docker.sock:/var/run/docker.sock --network host'
+            cmd: ./Hydrunfile test
+            dst: out/nonexistent
+            runner: depot-ubuntu-22.04-32
+
+  build-binaries:
+    needs: test
+    uses: ./.github/workflows/hydrun.yaml
+    secrets: inherit
+    with:
+      id: "${{ matrix.target.id }}"
+      src: "${{ matrix.target.src }}"
+      os: "${{ matrix.target.os }}"
+      flags: "${{ matrix.target.flags }}"
+      cmd: "${{ matrix.target.cmd }}"
+      dst: "${{ matrix.target.dst }}"
+      runner: "${{ matrix.target.runner }}"
+    strategy:
+      matrix:
+        target:
+          - id: go.drafter-nat
+            src: .
+            os: golang:bookworm
+            flags: -e '-v /tmp/ccache:/root/.cache/go-build'
+            cmd: ./Hydrunfile go drafter-nat
+            dst: out/*
+            runner: depot-ubuntu-22.04-32
+          - id: go.drafter-forwarder
+            src: .
+            os: golang:bookworm
+            flags: -e '-v /tmp/ccache:/root/.cache/go-build'
+            cmd: ./Hydrunfile go drafter-forwarder
+            dst: out/*
+            runner: depot-ubuntu-22.04-32
+          - id: go.drafter-agent
+            src: .
+            os: golang:bookworm
+            flags: -e '-v /tmp/ccache:/root/.cache/go-build'
+            cmd: ./Hydrunfile go drafter-agent
+            dst: out/*
+            runner: depot-ubuntu-22.04-32
+          - id: go.drafter-liveness
+            src: .
+            os: golang:bookworm
+            flags: -e '-v /tmp/ccache:/root/.cache/go-build'
+            cmd: ./Hydrunfile go drafter-liveness
+            dst: out/*
+            runner: depot-ubuntu-22.04-32
+          - id: go.drafter-snapshotter
+            src: .
+            os: golang:bookworm
+            flags: -e '-v /tmp/ccache:/root/.cache/go-build'
+            cmd: ./Hydrunfile go drafter-snapshotter
+            dst: out/*
+            runner: depot-ubuntu-22.04-32
+          - id: go.drafter-peer
+            src: .
+            os: golang:bookworm
+            flags: -e '-v /tmp/ccache:/root/.cache/go-build'
+            cmd: ./Hydrunfile go drafter-peer
+            dst: out/*
+            runner: depot-ubuntu-22.04-32
+
+  publish-binaries:
+    needs: build-binaries
+    uses: ./.github/workflows/publish.yaml
+    permissions:
+      id-token: write
+      contents: write
+    secrets: inherit
+
+  build-os:
+    needs: test
+    uses: ./.github/workflows/hydrun.yaml
+    secrets: inherit
+    with:
+      id: "${{ matrix.target.id }}"
+      src: "${{ matrix.target.src }}"
+      os: "${{ matrix.target.os }}"
+      flags: "${{ matrix.target.flags }}"
+      cmd: "${{ matrix.target.cmd }}"
+      dst: "${{ matrix.target.dst }}"
+      runner: "${{ matrix.target.runner }}"
+    strategy:
+      matrix:
+        target:
+          # OCI OS
+          - id: os.drafteros-oci-x86_64
+            src: .
+            os: fedora:42
+            flags: -e '-v /tmp/ccache/go:/root/.cache/go-build -v /tmp/ccache/buildroot:/root/.buildroot-ccache'
+            cmd: ./Hydrunfile os drafteros-oci-firecracker-x86_64_defconfig drafteros-oci-x86_64.tar.zst
+            dst: out/drafteros-oci-x86_64.tar.zst
+            runner: depot-ubuntu-22.04-32
+          - id: os.drafteros-oci-x86_64_pvm
+            src: .
+            os: fedora:42
+            flags: -e '-v /tmp/ccache/go:/root/.cache/go-build -v /tmp/ccache/buildroot:/root/.buildroot-ccache'
+            cmd: ./Hydrunfile os drafteros-oci-firecracker-x86_64_pvm_defconfig drafteros-oci-x86_64_pvm.tar.zst
+            dst: out/drafteros-oci-x86_64_pvm.tar.zst
+            runner: depot-ubuntu-22.04-32
+          - id: os.drafteros-oci-x86_64_pvm_experimental
+            src: .
+            os: fedora:42
+            flags: -e '-v /tmp/ccache/go:/root/.cache/go-build -v /tmp/ccache/buildroot:/root/.buildroot-ccache'
+            cmd: ./Hydrunfile os drafteros-oci-firecracker-x86_64_pvm_experimental_defconfig drafteros-oci-x86_64_pvm_experimental.tar.zst
+            dst: out/drafteros-oci-x86_64_pvm_experimental.tar.zst
+            runner: depot-ubuntu-22.04-32
+          - id: os.drafteros-oci-aarch64
+            src: .
+            os: fedora:42
+            flags: -e '-v /tmp/ccache/go:/root/.cache/go-build -v /tmp/ccache/buildroot:/root/.buildroot-ccache'
+            cmd: ./Hydrunfile os drafteros-oci-firecracker-aarch64_defconfig drafteros-oci-aarch64.tar.zst
+            dst: out/drafteros-oci-aarch64.tar.zst
+            runner: depot-ubuntu-22.04-32
+
+          # k3s Server OS
+          - id: os.drafteros-k3s-server-x86_64
+            src: .
+            os: fedora:42
+            flags: -e '-v /tmp/ccache/go:/root/.cache/go-build -v /tmp/ccache/buildroot:/root/.buildroot-ccache'
+            cmd: ./Hydrunfile os drafteros-k3s-server-firecracker-x86_64_defconfig drafteros-k3s-server-x86_64.tar.zst
+            dst: out/drafteros-k3s-server-x86_64.tar.zst
+            runner: depot-ubuntu-22.04-32
+          - id: os.drafteros-k3s-server-x86_64_pvm
+            src: .
+            os: fedora:42
+            flags: -e '-v /tmp/ccache/go:/root/.cache/go-build -v /tmp/ccache/buildroot:/root/.buildroot-ccache'
+            cmd: ./Hydrunfile os drafteros-k3s-server-firecracker-x86_64_pvm_defconfig drafteros-k3s-server-x86_64_pvm.tar.zst
+            dst: out/drafteros-k3s-server-x86_64_pvm.tar.zst
+            runner: depot-ubuntu-22.04-32
+          - id: os.drafteros-k3s-server-x86_64_pvm_experimental
+            src: .
+            os: fedora:42
+            flags: -e '-v /tmp/ccache/go:/root/.cache/go-build -v /tmp/ccache/buildroot:/root/.buildroot-ccache'
+            cmd: ./Hydrunfile os drafteros-k3s-server-firecracker-x86_64_pvm_experimental_defconfig drafteros-k3s-server-x86_64_pvm_experimental.tar.zst
+            dst: out/drafteros-k3s-server-x86_64_pvm_experimental.tar.zst
+            runner: depot-ubuntu-22.04-32
+          - id: os.drafteros-k3s-server-aarch64
+            src: .
+            os: fedora:42
+            flags: -e '-v /tmp/ccache/go:/root/.cache/go-build -v /tmp/ccache/buildroot:/root/.buildroot-ccache'
+            cmd: ./Hydrunfile os drafteros-k3s-server-firecracker-aarch64_defconfig drafteros-k3s-server-aarch64.tar.zst
+            dst: out/drafteros-k3s-server-aarch64.tar.zst
+            runner: depot-ubuntu-22.04-32
+
+          # k3s Client OS
+          - id: os.drafteros-k3s-client-x86_64
+            src: .
+            os: fedora:42
+            flags: -e '-v /tmp/ccache/go:/root/.cache/go-build -v /tmp/ccache/buildroot:/root/.buildroot-ccache'
+            cmd: ./Hydrunfile os drafteros-k3s-client-firecracker-x86_64_defconfig drafteros-k3s-client-x86_64.tar.zst
+            dst: out/drafteros-k3s-client-x86_64.tar.zst
+            runner: depot-ubuntu-22.04-32
+          - id: os.drafteros-k3s-client-x86_64_pvm
+            src: .
+            os: fedora:42
+            flags: -e '-v /tmp/ccache/go:/root/.cache/go-build -v /tmp/ccache/buildroot:/root/.buildroot-ccache'
+            cmd: ./Hydrunfile os drafteros-k3s-client-firecracker-x86_64_pvm_defconfig drafteros-k3s-client-x86_64_pvm.tar.zst
+            dst: out/drafteros-k3s-client-x86_64_pvm.tar.zst
+            runner: depot-ubuntu-22.04-32
+          - id: os.drafteros-k3s-client-x86_64_pvm_experimental
+            src: .
+            os: fedora:42
+            flags: -e '-v /tmp/ccache/go:/root/.cache/go-build -v /tmp/ccache/buildroot:/root/.buildroot-ccache'
+            cmd: ./Hydrunfile os drafteros-k3s-client-firecracker-x86_64_pvm_experimental_defconfig drafteros-k3s-client-x86_64_pvm_experimental.tar.zst
+            dst: out/drafteros-k3s-client-x86_64_pvm_experimental.tar.zst
+            runner: depot-ubuntu-22.04-32
+          - id: os.drafteros-k3s-client-aarch64
+            src: .
+            os: fedora:42
+            flags: -e '-v /tmp/ccache/go:/root/.cache/go-build -v /tmp/ccache/buildroot:/root/.buildroot-ccache'
+            cmd: ./Hydrunfile os drafteros-k3s-client-firecracker-aarch64_defconfig drafteros-k3s-client-aarch64.tar.zst
+            dst: out/drafteros-k3s-client-aarch64.tar.zst
+            runner: depot-ubuntu-22.04-32
+
+          # OCI runtime bundles
+          - id: oci.valkey-x86_64
+            src: .
+            os: fedora:42
+            flags: -e '-v /tmp/ccache/go:/root/.cache/go-build'
+            cmd: ./Hydrunfile oci docker://valkey/valkey:latest amd64 oci-valkey-x86_64.tar.zst
+            dst: out/oci-valkey-x86_64.tar.zst
+            runner: depot-ubuntu-22.04-32
+          - id: oci.valkey-aarch64
+            src: .
+            os: fedora:42
+            flags: -e '-v /tmp/ccache/go:/root/.cache/go-build'
+            cmd: ./Hydrunfile oci docker://valkey/valkey:latest arm64 oci-valkey-aarch64.tar.zst
+            dst: out/oci-valkey-aarch64.tar.zst
+            runner: depot-ubuntu-22.04-32
+          - id: oci.postgres-x86_64
+            src: .
+            os: fedora:42
+            flags: -e '-v /tmp/ccache/go:/root/.cache/go-build'
+            cmd: ./Hydrunfile oci docker://postgres:latest amd64 oci-postgres-x86_64.tar.zst
+            dst: out/oci-postgres-x86_64.tar.zst
+            runner: depot-ubuntu-22.04-32
+          - id: oci.postgres-aarch64
+            src: .
+            os: fedora:42
+            flags: -e '-v /tmp/ccache/go:/root/.cache/go-build'
+            cmd: ./Hydrunfile oci docker://postgres:latest arm64 oci-postgres-aarch64.tar.zst
+            dst: out/oci-postgres-aarch64.tar.zst
+            runner: depot-ubuntu-22.04-32
+          - id: oci.ollama-x86_64
+            src: .
+            os: fedora:42
+            flags: -e '-v /tmp/ccache/go:/root/.cache/go-build'
+            cmd: ./Hydrunfile oci docker://ollama/ollama:latest amd64 oci-ollama-x86_64.tar.zst
+            dst: out/oci-ollama-x86_64.tar.zst
+            runner: depot-ubuntu-22.04-32
+          - id: oci.ollama-aarch64
+            src: .
+            os: fedora:42
+            flags: -e '-v /tmp/ccache/go:/root/.cache/go-build'
+            cmd: ./Hydrunfile oci docker://ollama/ollama:latest arm64 oci-ollama-aarch64.tar.zst
+            dst: out/oci-ollama-aarch64.tar.zst
+            runner: depot-ubuntu-22.04-32
+
+  integration:
+    uses: ./.github/workflows/hydrun.yaml
+    secrets: inherit
+    concurrency:
+      group: integration # Only one integration test can run in the repository at a time across all refs
+    with:
+      id: "${{matrix.target.id}}"
+      src: "${{matrix.target.src}}"
+      os: "${{matrix.target.os}}"
+      flags: "${{matrix.target.flags}}"
+      cmd: "${{matrix.target.cmd}}"
+      dst: "${{matrix.target.dst}}"
+      runner: "${{matrix.target.runner}}"
+    strategy:
+      matrix:
+        target:
+          - id: "integration"
+            src: "."
+            os: fedora:42
+            flags: "-e '-v /tmp/ssh-key:/tmp/ssh-key -v /tmp/ccache:/root/.cache/go-build -v /tmp/google-credentials:/tmp/google-credentials'"
+            cmd: "./Hydrunfile integration"
+            dst: "out/nonexistent"
+            runner: "depot-ubuntu-22.04-32"
+
+  publish-os:
+    needs: build-os
+    uses: ./.github/workflows/publish.yaml
+    permissions:
+      id-token: write
+      contents: write
+    secrets: inherit
