@@ -200,6 +200,11 @@ func CreateIncomingSiloDevSchema(i *MigrateFromDevice, schema *config.DeviceSche
 		Size:      schema.Size,
 		Sync:      schema.Sync,
 	}
+	if i.AnyOrder {
+		ds.Migration = &config.MigrationConfigSchema{
+			AnyOrder: true,
+		}
+	}
 	if schema.Sync != nil {
 		ds.Sync.AutoStart = false
 	}
