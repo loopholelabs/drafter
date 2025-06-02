@@ -160,13 +160,18 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) setRunning(r bool) {
 						}
 						return
 					case <-ticker.C:
-						err := rp.grabMemoryChanges()
-						if err != nil {
-							if rp.Log != nil {
-								rp.Log.Error().Err(err).Msg("could not grab memory changes")
-							}
+						// FIXME: Disabled for now.
+						if rp.Log != nil {
+							rp.Log.Debug().Msg("soft dirty disabled for now")
 						}
-
+						/*
+							err := rp.grabMemoryChanges()
+							if err != nil {
+								if rp.Log != nil {
+									rp.Log.Error().Err(err).Msg("could not grab memory changes")
+								}
+							}
+						*/
 					}
 				}
 			}()
