@@ -109,7 +109,13 @@ func runSilo(ctx context.Context, log loggingtypes.Logger, met *testutil.DummyMe
 	}
 
 	myNetNs, myNetCloser, err := ns()
+	if err != nil {
+		return nil, err
+	}
 	myForwardsCloser, err := forwards(myNetNs)
+	if err != nil {
+		return nil, err
+	}
 	myPeer, err := setupPeer(log, met, conf, testDir, myNetNs, enableInput, enableOutput, 0, runningCB)
 	if err != nil {
 		return nil, err
@@ -174,6 +180,9 @@ mainloop:
 			}
 			myForwardsCloser()
 			newForwardsCloser, err = forwards(netns)
+			if err != nil {
+				return nil, err
+			}
 
 			newPeer, err = setupPeer(log, met, conf, testDir, netns, enableInput, enableOutput, 1, newRunningCB)
 			if err != nil {

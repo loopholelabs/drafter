@@ -188,7 +188,10 @@ func main() {
 			return "", nil, err
 		}
 		return namespace, func() {
-			ns.ReleaseNamespace(namespace)
+			err := ns.ReleaseNamespace(namespace)
+			if err != nil {
+				fmt.Printf("Could not release namespace %v\n", err)
+			}
 		}, nil
 	}
 
