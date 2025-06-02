@@ -21,6 +21,7 @@ import (
 	"github.com/loopholelabs/silo/pkg/storage/devicegroup"
 	"github.com/loopholelabs/silo/pkg/storage/metrics"
 	"github.com/loopholelabs/silo/pkg/storage/migrator"
+	"github.com/loopholelabs/silo/pkg/storage/modules"
 	"github.com/muesli/gotable"
 )
 
@@ -51,6 +52,12 @@ type RunConfig struct {
 	S3MinChanged  int    `json:"s3minchanged"`
 	S3Limit       int    `json:"s3limit"`
 	S3CheckPeriod string `json:"s3checkperiod"`
+
+	MigrateAfter string `json:"migrateafter"`
+
+	// TODO
+	VMCPUs   int `json:"cpus"`
+	VMMemory int `json:"memory"`
 }
 
 func (sc *RunConfig) Summary() string {
@@ -79,10 +86,10 @@ func (sc *RunConfig) Summary() string {
  *
  */
 func runSilo(ctx context.Context, log loggingtypes.Logger, met *testutil.DummyMetrics,
-	testDir string, snapDir string, netns string, benchCB func(), conf RunConfig,
-	enableInput bool, enableOutput bool, migrateAfter string) (*devicegroup.DeviceGroup, error) {
+	testDir string, snapDir string, ns func() (string, func(), error), forwards func(string) (func(), error), benchCB func(), conf RunConfig,
+	enableInput bool, enableOutput bool) (*devicegroup.DeviceGroup, error) {
 
-	d, err := time.ParseDuration(migrateAfter)
+	d, err := time.ParseDuration(conf.MigrateAfter)
 	if err != nil {
 		return nil, err
 	}
@@ -101,7 +108,9 @@ func runSilo(ctx context.Context, log loggingtypes.Logger, met *testutil.DummyMe
 		}
 	}
 
-	myPeer, err := setupPeer(log, met, conf, testDir, netns, enableInput, enableOutput, 0, runningCB)
+	myNetNs, myNetCloser, err := ns()
+	myForwardsCloser, err := forwards(myNetNs)
+	myPeer, err := setupPeer(log, met, conf, testDir, myNetNs, enableInput, enableOutput, 0, runningCB)
 	if err != nil {
 		return nil, err
 	}
@@ -118,7 +127,16 @@ func runSilo(ctx context.Context, log loggingtypes.Logger, met *testutil.DummyMe
 		return nil, err
 	}
 
-	err = myPeer.Resume(context.TODO(), 1*time.Minute, 10*time.Second)
+	// Monitor the state file. I've an inkling it's the issue
+	sdi := myPeer.GetDG().GetDeviceInformationByName(common.DeviceStateName)
+	hooks := modules.NewHooks(sdi.Exp.GetProvider())
+	hooks.PostWrite = func(buffer []byte, offset int64, n int, err error) (int, error) {
+		fmt.Printf(" == WriteState %d: %d bytes\n", offset, len(buffer))
+		return n, err
+	}
+	sdi.Exp.SetProvider(hooks)
+
+	err = myPeer.Resume(context.TODO(), 2*time.Minute, 2*time.Minute)
 	if err != nil {
 		return nil, err
 	}
@@ -137,6 +155,10 @@ func runSilo(ctx context.Context, log loggingtypes.Logger, met *testutil.DummyMe
 		}
 	}
 
+	var newPeer *peer.Peer
+	var newPeerNetCloser func()
+	var newForwardsCloser func()
+
 	// Our main loop here.
 mainloop:
 	for {
@@ -145,7 +167,15 @@ mainloop:
 			break mainloop
 		case <-afterChan:
 			// Do a migration here
-			newPeer, err := setupPeer(log, met, conf, testDir, netns, enableInput, enableOutput, 1, newRunningCB)
+			var netns string
+			netns, newPeerNetCloser, err = ns()
+			if err != nil {
+				return nil, err
+			}
+			myForwardsCloser()
+			newForwardsCloser, err = forwards(netns)
+
+			newPeer, err = setupPeer(log, met, conf, testDir, netns, enableInput, enableOutput, 1, newRunningCB)
 			if err != nil {
 				return nil, err
 			}
@@ -167,6 +197,17 @@ mainloop:
 	err = myPeer.CloseRuntime() // Only close the runtime, not the devices
 	if err != nil {
 		return nil, err
+	}
+	myForwardsCloser() // Might have already been done
+	myNetCloser()      // Close the net
+
+	if newPeer != nil {
+		err = newPeer.Close() // For now, close all of it
+		if err != nil {
+			return nil, err
+		}
+		newForwardsCloser() // Unforward
+		newPeerNetCloser()  // Close the net
 	}
 
 	return myPeer.GetDG(), nil
@@ -219,7 +260,7 @@ func migrateNow(log loggingtypes.Logger, met *testutil.DummyMetrics, conf RunCon
 	wg.Add(1)
 	go func() {
 		log.Info().Msg("MigrateTo called")
-		err := peerFrom.MigrateTo(context.TODO(), devicesTo, 10*time.Second, 10, readersFrom, writersFrom, hooks)
+		err := peerFrom.MigrateTo(context.TODO(), devicesTo, 2*time.Minute, 10, readersFrom, writersFrom, hooks)
 		log.Info().Msg("MigrateTo completed")
 		sendingErr = err
 		wg.Done()
@@ -262,6 +303,15 @@ func migrateNow(log loggingtypes.Logger, met *testutil.DummyMetrics, conf RunCon
 		return sendingErr
 	}
 
+	// Show some data on the migration...
+	fmt.Printf(" === Evacuation took %dms Migration took %dms\n", evacuationTook.Milliseconds(), migrationTook.Milliseconds())
+
+	proToPipe := met.GetProtocol(fmt.Sprintf("%s-%d", conf.Name, 0), "migrateToPipe")
+	if proToPipe != nil {
+		stats := proToPipe.GetMetrics()
+		fmt.Printf(" === Migration %s bytes sent, %s bytes received\n", formatBytes(stats.DataSent), formatBytes(stats.DataRecv))
+	}
+
 	// If we don't do this, we can't use the same network etc
 	err = peerFrom.CloseRuntime() // Only close the runtime, not the devices
 	if err != nil {
@@ -275,21 +325,15 @@ func migrateNow(log loggingtypes.Logger, met *testutil.DummyMetrics, conf RunCon
 	prov1 := peerFrom.GetDG().GetDeviceInformationByName(common.DeviceMemoryName).Exp.GetProvider()
 	prov2 := peerTo.GetDG().GetDeviceInformationByName(common.DeviceMemoryName).Exp.GetProvider()
 	eq, err := storage.Equals(prov1, prov2, 1024*1024)
-	fmt.Printf("+ + + Memory device %v %t\n", err, eq)
+	sprov1 := peerFrom.GetDG().GetDeviceInformationByName(common.DeviceStateName).Exp.GetProvider()
+	sprov2 := peerTo.GetDG().GetDeviceInformationByName(common.DeviceStateName).Exp.GetProvider()
+	seq, serr := storage.Equals(sprov1, sprov2, 1024*1024)
+	fmt.Printf("+ + + Memory device(%v %d bytes equal=%t) State device (%v %d bytes equal=%t)\n", err, prov1.Size(), eq, serr, sprov1.Size(), seq)
 
-	err = peerTo.Resume(context.TODO(), 10*time.Second, 10*time.Second)
+	err = peerTo.Resume(context.TODO(), 2*time.Minute, 2*time.Minute)
 
 	if err != nil {
 		return err
-	}
-
-	// Show some data on the migration...
-	fmt.Printf(" === Evacuation took %dms Migration took %dms\n", evacuationTook.Milliseconds(), migrationTook.Milliseconds())
-
-	proToPipe := met.GetProtocol(fmt.Sprintf("%s-%d", conf.Name, 0), "migrateToPipe")
-	if proToPipe != nil {
-		stats := proToPipe.GetMetrics()
-		fmt.Printf(" === Migration %s bytes sent, %s bytes received\n", formatBytes(stats.DataSent), formatBytes(stats.DataRecv))
 	}
 
 	devTab := gotable.NewTable([]string{"Name",

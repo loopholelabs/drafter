@@ -131,6 +131,23 @@ func TestMigrationBasicHashChecksSoftDirty(t *testing.T) {
 	})
 }
 
+func TestMigrationBasicHashChecksSoftDirty4Cpus(t *testing.T) {
+	migration(t, &migrationConfig{
+		blockSize:      1024 * 1024,
+		numMigrations:  5,
+		minCycles:      1,
+		maxCycles:      1,
+		cycleThrottle:  100 * time.Millisecond,
+		maxDirtyBlocks: 10,
+		cpuCount:       4,
+		memorySize:     1024,
+		pauseWaitMax:   3 * time.Second,
+		enableS3:       false,
+		hashChecks:     true,
+		noMapShared:    true,
+	})
+}
+
 func TestMigrationBasicWithS3(t *testing.T) {
 	migration(t, &migrationConfig{
 		blockSize:      1024 * 1024,
@@ -420,7 +437,7 @@ func migration(t *testing.T, config *migrationConfig) {
 
 	dummyMetrics := testutil.NewDummyMetrics()
 
-	ns := testutil.SetupNAT(t, "", "dra")
+	ns := testutil.SetupNAT(t, "", "dra", 32)
 
 	netns, err := ns.ClaimNamespace()
 	assert.NoError(t, err)

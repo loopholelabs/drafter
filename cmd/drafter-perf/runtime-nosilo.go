@@ -19,7 +19,7 @@ import (
  * Run a benchmark with Silo disabled.
  *
  */
-func runNonSilo(ctx context.Context, log loggingtypes.Logger, testDir string, snapDir string, netns string, benchCB func(), enableInput bool, enableOutput bool) error {
+func runNonSilo(ctx context.Context, log loggingtypes.Logger, testDir string, snapDir string, ns func() (string, func(), error), forwards func(string) (func(), error), benchCB func(), enableInput bool, enableOutput bool) error {
 	// NOW TRY WITHOUT SILO
 	agentVsockPort := uint32(26)
 	agentLocal := struct{}{}
@@ -37,6 +37,18 @@ func runNonSilo(ctx context.Context, log loggingtypes.Logger, testDir string, sn
 	if err != nil {
 		return err
 	}
+
+	netns, nscloser, err := ns()
+	if err != nil {
+		return err
+	}
+	defer nscloser()
+
+	fclose, err := forwards(netns)
+	if err != nil {
+		return err
+	}
+	defer fclose()
 
 	conf := &rfirecracker.FirecrackerMachineConfig{
 		FirecrackerBin: firecrackerBin,

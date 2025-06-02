@@ -16,7 +16,6 @@ import (
 
 	"github.com/loopholelabs/drafter/pkg/common"
 	"github.com/loopholelabs/drafter/pkg/ipc"
-	"github.com/loopholelabs/drafter/pkg/utils"
 )
 
 type SnapshotDevice struct {
@@ -319,7 +318,16 @@ func copySnapshotFiles(devices []SnapshotDevice, vmPath string) error {
 			return errors.Join(ErrCouldNotCopyFile, err)
 		}
 
-		if paddingLength := utils.GetBlockDevicePadding(deviceSize); paddingLength > 0 {
+		minPadding := int64(1024 * 1024)      // Leave room
+		paddingMultiple := int64(1024 * 1024) // Multiple
+
+		paddingLength := (paddingMultiple - (deviceSize % paddingMultiple))
+		if paddingLength < minPadding {
+			paddingLength = paddingLength + minPadding
+		}
+
+		// paddingLength := utils.GetBlockDevicePadding(deviceSize)
+		if paddingLength > 0 {
 			_, err := outputFile.Write(make([]byte, paddingLength))
 			if err != nil {
 				return errors.Join(ErrCouldNotWritePadding, err)

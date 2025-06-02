@@ -58,7 +58,7 @@ func TestValkeyPerf(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	ns := testutil.SetupNAT(t, "", "dra")
+	ns := testutil.SetupNAT(t, "", "dra", 2)
 
 	netns, err := ns.ClaimNamespace()
 	assert.NoError(t, err)

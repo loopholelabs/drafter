@@ -32,8 +32,17 @@ func main() {
 	// VM options
 	cpuCount := flag.Int("cpus", 1, "CPU count")
 	memCount := flag.Int("memory", 1024, "Memory MB")
-	cpuTemplate := flag.String("template", "None", "CPU Template")
-	usePVMBootArgs := flag.Bool("pvm", false, "PVM boot args")
+
+	template, err := rfirecracker.GetCPUTemplate()
+	if err != nil {
+		panic(err)
+	}
+	cpuTemplate := flag.String("template", template, "CPU Template")
+	isPVM, err := rfirecracker.IsPVMHost()
+	if err != nil {
+		panic(err)
+	}
+	usePVMBootArgs := flag.Bool("pvm", isPVM, "PVM boot args")
 	enableOutput := flag.Bool("enable-output", false, "Enable VM output")
 	enableInput := flag.Bool("enable-input", false, "Enable VM input")
 
@@ -41,33 +50,78 @@ func main() {
 	runWithNonSilo := flag.Bool("nosilo", false, "Run a test with Silo disabled")
 
 	defaultConfigs, err := json.Marshal([]RunConfig{
+		/*
+			{
+				Name:          "silo_10s",
+				BlockSize:     1024 * 1024,
+				UseCow:        true,
+				UseSparseFile: true,
+				UseVolatility: true,
+				NoMapShared:   true,
+				GrabPeriod:    0,
+				MigrateAfter:  "10s",
+			},
 
+			{
+				Name:          "silo_30s",
+				BlockSize:     1024 * 1024,
+				UseCow:        true,
+				UseSparseFile: true,
+				UseVolatility: true,
+				NoMapShared:   true,
+				GrabPeriod:    0,
+				MigrateAfter:  "30s",
+			},
+			{
+				Name:          "silo_60s",
+				BlockSize:     1024 * 1024,
+				UseCow:        true,
+				UseSparseFile: true,
+				UseVolatility: true,
+				NoMapShared:   true,
+				GrabPeriod:    0,
+				MigrateAfter:  "60s",
+			},
+		*/
 		{
-			Name:          "silo",
+			Name:          "silo_90s",
 			BlockSize:     1024 * 1024,
 			UseCow:        true,
 			UseSparseFile: true,
 			UseVolatility: true,
-			UseWriteCache: false,
 			NoMapShared:   true,
 			GrabPeriod:    0,
-			/*
-				S3Secure:    false,
-				S3Endpoint:  "localhost:9000",
-				S3AccessKey: "silosilo",
-				S3SecretKey: "silosilo",
-				S3Bucket:    "silo",
-
-				S3Sync:        true,
-				S3Concurrency: 32,
-				S3BlockShift:  2,
-				S3OnlyDirty:   true,
-				S3MaxAge:      "10s",
-				S3MinChanged:  4,
-				S3Limit:       256,
-				S3CheckPeriod: "1s",
-			*/
+			MigrateAfter:  "90s",
 		},
+
+		/*
+			{
+				Name:          "silo",
+				BlockSize:     1024 * 1024,
+				UseCow:        true,
+				UseSparseFile: true,
+				UseVolatility: true,
+				UseWriteCache: false,
+				NoMapShared:   true,
+				GrabPeriod:    0,
+
+					S3Secure:    false,
+					S3Endpoint:  "localhost:9000",
+					S3AccessKey: "silosilo",
+					S3SecretKey: "silosilo",
+					S3Bucket:    "silo",
+
+					S3Sync:        true,
+					S3Concurrency: 32,
+					S3BlockShift:  2,
+					S3OnlyDirty:   true,
+					S3MaxAge:      "10s",
+					S3MinChanged:  4,
+					S3Limit:       256,
+					S3CheckPeriod: "1s",
+
+			},
+		*/
 		//		{Name: "silo", BlockSize: 1024 * 1024, UseCow: true, UseSparseFile: true, UseVolatility: true, UseWriteCache: false, NoMapShared: false, GrabPeriod: 0},
 		//		{Name: "silo_5s", BlockSize: 1024 * 1024, UseCow: true, UseSparseFile: true, UseVolatility: true, UseWriteCache: false, NoMapShared: true, GrabPeriod: 5 * time.Second},
 	})
@@ -80,8 +134,6 @@ func main() {
 
 	valkeyTest := flag.Bool("valkey", false, "Run valkey benchmark test")
 	valkeyIterations := flag.Int("valkeynum", 1000, "Test iterations")
-
-	migrateAfter := flag.String("migrate-after", "30m", "Migrate the VM after a time period")
 
 	flag.Parse()
 
@@ -112,11 +164,6 @@ func main() {
 	}
 	defer natCloser()
 
-	netns, err := ns.ClaimNamespace()
-	if err != nil {
-		panic(err)
-	}
-
 	type portForward struct {
 		PortSrc int
 		PortDst int
@@ -134,13 +181,33 @@ func main() {
 		waitReady = valkeyWaitReady.Ready
 	}
 
-	// Forward any ports we need
-	for _, f := range forwards {
-		portCloser, err := ForwardPort(log, netns, "tcp", f.PortSrc, f.PortDst)
+	// Setup something to provision namespace and forward ports.
+	getNetNs := func() (string, func(), error) {
+		namespace, err := ns.ClaimNamespace()
 		if err != nil {
-			panic(err)
+			return "", nil, err
 		}
-		defer portCloser()
+		return namespace, func() {
+			ns.ReleaseNamespace(namespace)
+		}, nil
+	}
+
+	doForwards := func(namespace string) (func(), error) {
+		// Forward any ports we need
+		closers := make([]func(), 0)
+		for _, f := range forwards {
+			portCloser, err := ForwardPort(log, namespace, "tcp", f.PortSrc, f.PortDst)
+			if err != nil {
+				return nil, err
+			}
+			closers = append(closers, portCloser)
+		}
+
+		return func() {
+			for _, c := range closers {
+				c()
+			}
+		}, nil
 	}
 
 	vmConfig := rfirecracker.VMConfiguration{
@@ -161,10 +228,23 @@ func main() {
 		panic(err)
 	}
 
-	err = setupSnapshot(log, ctx, netns, vmConfig, *dBlueDir, *dSnapDir, waitReady)
+	snapNs, snapNsCloser, err := getNetNs()
 	if err != nil {
 		panic(err)
 	}
+
+	fcloser, err := doForwards(snapNs)
+	if err != nil {
+		panic(err)
+	}
+
+	err = setupSnapshot(log, ctx, snapNs, vmConfig, *dBlueDir, *dSnapDir, waitReady)
+	if err != nil {
+		panic(err)
+	}
+
+	fcloser()
+	snapNsCloser()
 
 	log.Info().Msg("Starting tests...")
 
@@ -200,7 +280,7 @@ func main() {
 			}
 		}
 
-		dg, err := runSilo(ctx, log, dummyMetrics, *dTestDir, *dSnapDir, netns, benchCB, sConf, *enableInput, *enableOutput, *migrateAfter)
+		dg, err := runSilo(ctx, log, dummyMetrics, *dTestDir, *dSnapDir, getNetNs, doForwards, benchCB, sConf, *enableInput, *enableOutput)
 		if err != nil {
 			panic(err)
 		}
@@ -227,7 +307,7 @@ func main() {
 			}
 			nosiloRuntime = time.Since(ctime)
 		}
-		err = runNonSilo(ctx, log, *dTestDir, *dSnapDir, netns, benchCB, *enableInput, *enableOutput)
+		err = runNonSilo(ctx, log, *dTestDir, *dSnapDir, getNetNs, doForwards, benchCB, *enableInput, *enableOutput)
 		if err != nil {
 			panic(err)
 		}
