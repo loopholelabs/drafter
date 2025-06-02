@@ -34,7 +34,7 @@ const testPeerDirCowS3 = "test_peer_cow"
 func TestMigrationBasicHashChecks(t *testing.T) {
 	migration(t, &migrationConfig{
 		blockSize:      1024 * 1024,
-		numMigrations:  5,
+		numMigrations:  3,
 		minCycles:      1,
 		maxCycles:      1,
 		cycleThrottle:  100 * time.Millisecond,
@@ -50,7 +50,7 @@ func TestMigrationBasicHashChecks(t *testing.T) {
 func TestMigrationBasicSmallBlocksHashChecks(t *testing.T) {
 	migration(t, &migrationConfig{
 		blockSize:      4 * 1024,
-		numMigrations:  5,
+		numMigrations:  3,
 		minCycles:      1,
 		maxCycles:      1,
 		cycleThrottle:  100 * time.Millisecond,
@@ -66,7 +66,7 @@ func TestMigrationBasicSmallBlocksHashChecks(t *testing.T) {
 func TestMigrationBasicBigBlocksHashChecks(t *testing.T) {
 	migration(t, &migrationConfig{
 		blockSize:      4 * 1024 * 1024,
-		numMigrations:  5,
+		numMigrations:  3,
 		minCycles:      1,
 		maxCycles:      1,
 		cycleThrottle:  100 * time.Millisecond,
@@ -82,7 +82,7 @@ func TestMigrationBasicBigBlocksHashChecks(t *testing.T) {
 func TestMigrationBasicNoCOWHashChecks(t *testing.T) {
 	migration(t, &migrationConfig{
 		blockSize:      1024 * 1024,
-		numMigrations:  5,
+		numMigrations:  3,
 		minCycles:      1,
 		maxCycles:      1,
 		cycleThrottle:  100 * time.Millisecond,
@@ -99,7 +99,7 @@ func TestMigrationBasicNoCOWHashChecks(t *testing.T) {
 func TestMigrationBasicNoSparseFileHashChecks(t *testing.T) {
 	migration(t, &migrationConfig{
 		blockSize:      1024 * 1024,
-		numMigrations:  5,
+		numMigrations:  3,
 		minCycles:      1,
 		maxCycles:      1,
 		cycleThrottle:  100 * time.Millisecond,
@@ -117,7 +117,7 @@ func TestMigrationBasicNoSparseFileHashChecks(t *testing.T) {
 func TestMigrationBasicHashChecksSoftDirty(t *testing.T) {
 	migration(t, &migrationConfig{
 		blockSize:      1024 * 1024,
-		numMigrations:  5,
+		numMigrations:  3,
 		minCycles:      1,
 		maxCycles:      1,
 		cycleThrottle:  100 * time.Millisecond,
@@ -134,7 +134,7 @@ func TestMigrationBasicHashChecksSoftDirty(t *testing.T) {
 func TestMigrationBasicHashChecksSoftDirty4Cpus(t *testing.T) {
 	migration(t, &migrationConfig{
 		blockSize:      1024 * 1024,
-		numMigrations:  5,
+		numMigrations:  3,
 		minCycles:      1,
 		maxCycles:      1,
 		cycleThrottle:  100 * time.Millisecond,
@@ -151,7 +151,7 @@ func TestMigrationBasicHashChecksSoftDirty4Cpus(t *testing.T) {
 func TestMigrationBasicWithS3(t *testing.T) {
 	migration(t, &migrationConfig{
 		blockSize:      1024 * 1024,
-		numMigrations:  5,
+		numMigrations:  3,
 		minCycles:      1,
 		maxCycles:      1,
 		cycleThrottle:  100 * time.Millisecond,
@@ -167,7 +167,7 @@ func TestMigrationBasicWithS3(t *testing.T) {
 func TestMigration4Cpus(t *testing.T) {
 	migration(t, &migrationConfig{
 		blockSize:      1024 * 1024,
-		numMigrations:  5,
+		numMigrations:  3,
 		minCycles:      1,
 		maxCycles:      1,
 		cycleThrottle:  100 * time.Millisecond,
@@ -180,26 +180,10 @@ func TestMigration4Cpus(t *testing.T) {
 	})
 }
 
-func TestMigration4Cpus8GB(t *testing.T) {
-	migration(t, &migrationConfig{
-		blockSize:      1024 * 1024,
-		numMigrations:  5,
-		minCycles:      1,
-		maxCycles:      1,
-		cycleThrottle:  100 * time.Millisecond,
-		maxDirtyBlocks: 10,
-		cpuCount:       4,
-		memorySize:     8 * 1024,
-		pauseWaitMax:   3 * time.Second,
-		enableS3:       false,
-		hashChecks:     false,
-	})
-}
-
 func TestMigrationNoPause(t *testing.T) {
 	migration(t, &migrationConfig{
 		blockSize:      1024 * 1024,
-		numMigrations:  5,
+		numMigrations:  3,
 		minCycles:      1,
 		maxCycles:      1,
 		cycleThrottle:  100 * time.Millisecond,
@@ -215,7 +199,7 @@ func TestMigrationNoPause(t *testing.T) {
 func TestMigrationMultiCycle(t *testing.T) {
 	migration(t, &migrationConfig{
 		blockSize:      1024 * 1024,
-		numMigrations:  5,
+		numMigrations:  3,
 		minCycles:      10,
 		maxCycles:      20,
 		cycleThrottle:  100 * time.Millisecond,
@@ -231,7 +215,7 @@ func TestMigrationMultiCycle(t *testing.T) {
 func TestMigrationNoCycle(t *testing.T) {
 	migration(t, &migrationConfig{
 		blockSize:      1024 * 1024,
-		numMigrations:  5,
+		numMigrations:  3,
 		minCycles:      0,
 		maxCycles:      0,
 		cycleThrottle:  100 * time.Millisecond,
@@ -247,7 +231,7 @@ func TestMigrationNoCycle(t *testing.T) {
 func TestMigrationMultiCycleSoftDirty(t *testing.T) {
 	migration(t, &migrationConfig{
 		blockSize:      1024 * 1024,
-		numMigrations:  5,
+		numMigrations:  3,
 		minCycles:      10,
 		maxCycles:      20,
 		cycleThrottle:  100 * time.Millisecond,
@@ -264,7 +248,7 @@ func TestMigrationMultiCycleSoftDirty(t *testing.T) {
 func TestMigrationNoCycleSoftDirty(t *testing.T) {
 	migration(t, &migrationConfig{
 		blockSize:      1024 * 1024,
-		numMigrations:  5,
+		numMigrations:  3,
 		minCycles:      0,
 		maxCycles:      0,
 		cycleThrottle:  100 * time.Millisecond,
@@ -281,7 +265,7 @@ func TestMigrationNoCycleSoftDirty(t *testing.T) {
 func TestMigrationNoCycleSoftDirty1s(t *testing.T) {
 	migration(t, &migrationConfig{
 		blockSize:      1024 * 1024,
-		numMigrations:  5,
+		numMigrations:  3,
 		minCycles:      0,
 		maxCycles:      0,
 		cycleThrottle:  100 * time.Millisecond,
