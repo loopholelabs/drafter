@@ -49,28 +49,29 @@ func main() {
 	// No silo
 	runWithNonSilo := flag.Bool("nosilo", false, "Run a test with Silo disabled")
 
+	iterations := flag.Int("count", 1, "Number of times to run each config")
+
 	defaultConfigs, err := json.Marshal([]RunConfig{
 		/*
 			{
-				Name:          "silo_10s",
+				Name:          "silo_20s",
 				BlockSize:     1024 * 1024,
 				UseCow:        true,
 				UseSparseFile: true,
 				UseVolatility: true,
 				NoMapShared:   true,
 				GrabPeriod:    0,
-				MigrateAfter:  "10s",
+				MigrateAfter:  "20s",
 			},
-
 			{
-				Name:          "silo_30s",
+				Name:          "silo_40s",
 				BlockSize:     1024 * 1024,
 				UseCow:        true,
 				UseSparseFile: true,
 				UseVolatility: true,
 				NoMapShared:   true,
 				GrabPeriod:    0,
-				MigrateAfter:  "30s",
+				MigrateAfter:  "40s",
 			},
 			{
 				Name:          "silo_60s",
@@ -82,6 +83,16 @@ func main() {
 				GrabPeriod:    0,
 				MigrateAfter:  "60s",
 			},
+			{
+				Name:          "silo_80s",
+				BlockSize:     1024 * 1024,
+				UseCow:        true,
+				UseSparseFile: true,
+				UseVolatility: true,
+				NoMapShared:   true,
+				GrabPeriod:    0,
+				MigrateAfter:  "80s",
+			},
 		*/
 		{
 			Name:          "silo_90s",
@@ -89,7 +100,7 @@ func main() {
 			UseCow:        true,
 			UseSparseFile: true,
 			UseVolatility: true,
-			NoMapShared:   true,
+			NoMapShared:   false,
 			GrabPeriod:    0,
 			MigrateAfter:  "90s",
 		},
@@ -104,23 +115,9 @@ func main() {
 				UseWriteCache: false,
 				NoMapShared:   true,
 				GrabPeriod:    0,
-
-					S3Secure:    false,
-					S3Endpoint:  "localhost:9000",
-					S3AccessKey: "silosilo",
-					S3SecretKey: "silosilo",
-					S3Bucket:    "silo",
-
-					S3Sync:        true,
-					S3Concurrency: 32,
-					S3BlockShift:  2,
-					S3OnlyDirty:   true,
-					S3MaxAge:      "10s",
-					S3MinChanged:  4,
-					S3Limit:       256,
-					S3CheckPeriod: "1s",
-
+				MigrateAfter:  "90s",
 			},
+
 		*/
 		//		{Name: "silo", BlockSize: 1024 * 1024, UseCow: true, UseSparseFile: true, UseVolatility: true, UseWriteCache: false, NoMapShared: false, GrabPeriod: 0},
 		//		{Name: "silo_5s", BlockSize: 1024 * 1024, UseCow: true, UseSparseFile: true, UseVolatility: true, UseWriteCache: false, NoMapShared: true, GrabPeriod: 5 * time.Second},
@@ -137,13 +134,51 @@ func main() {
 
 	flag.Parse()
 
-	var siloConfigs []RunConfig
-	err = json.Unmarshal([]byte(*runConfigs), &siloConfigs)
+	var siloBaseConfigs []RunConfig
+	err = json.Unmarshal([]byte(*runConfigs), &siloBaseConfigs)
 	if err != nil {
 		panic(err)
 	}
 
 	log.Info().Str("runConfig", *runConfigs).Msg("using run configs")
+
+	var siloConfigs []RunConfig
+
+	if *iterations == 1 {
+		siloConfigs = siloBaseConfigs
+	} else {
+		for _, c := range siloBaseConfigs {
+			for n := 0; n < *iterations; n++ {
+				siloConfigs = append(siloConfigs, RunConfig{
+					Name:                fmt.Sprintf("%s.%d", c.Name, n),
+					UseCow:              c.UseCow,
+					UseSparseFile:       c.UseSparseFile,
+					UseVolatility:       c.UseVolatility,
+					UseWriteCache:       c.UseWriteCache,
+					WriteCacheMin:       c.WriteCacheMin,
+					WriteCacheMax:       c.WriteCacheMax,
+					WriteCacheBlocksize: c.WriteCacheBlocksize,
+					BlockSize:           c.BlockSize,
+					GrabPeriod:          c.GrabPeriod,
+					NoMapShared:         c.NoMapShared,
+					MigrateAfter:        c.MigrateAfter,
+					S3Sync:              c.S3Sync,
+					S3Secure:            c.S3Secure,
+					S3SecretKey:         c.S3SecretKey,
+					S3Endpoint:          c.S3Endpoint,
+					S3Concurrency:       c.S3Concurrency,
+					S3Bucket:            c.S3Bucket,
+					S3AccessKey:         c.S3AccessKey,
+					S3BlockShift:        c.S3BlockShift,
+					S3OnlyDirty:         c.S3OnlyDirty,
+					S3MaxAge:            c.S3MaxAge,
+					S3MinChanged:        c.S3MinChanged,
+					S3Limit:             c.S3Limit,
+					S3CheckPeriod:       c.S3CheckPeriod,
+				})
+			}
+		}
+	}
 
 	err = os.Mkdir(*dTestDir, 0777)
 	if err != nil {
@@ -271,13 +306,13 @@ func main() {
 				siloTimingsSet[sConf.Name] = siloSet
 				siloTimingsGet[sConf.Name] = siloGet
 				if err != nil {
-					panic(err)
+					fmt.Printf("ERROR in benchValkey %v\n", err)
 				}
 				runtimeEnd = time.Now()
 			} else {
 				err = benchCICD(*profileCPU, sConf.Name, 1*time.Hour)
 				if err != nil {
-					panic(err)
+					fmt.Printf("ERROR in benchCICD %v\n", err)
 				}
 				runtimeEnd = time.Now()
 			}
@@ -285,7 +320,7 @@ func main() {
 
 		dg, err := runSilo(ctx, log, dummyMetrics, *dTestDir, *dSnapDir, getNetNs, doForwards, benchCB, sConf, *enableInput, *enableOutput)
 		if err != nil {
-			panic(err)
+			fmt.Printf("ERROR in runSilo %v\n", err)
 		}
 
 		siloDGs[sConf.Name] = dg

@@ -81,8 +81,16 @@ type DeviceMetrics struct {
 
 // getSiloDeviceStats
 func getSiloDeviceStats(dummyMetrics *testutil.DummyMetrics, name string, deviceName string) *DeviceMetrics {
-	metrics := dummyMetrics.GetMetrics(name, deviceName).GetMetrics()
-	devMetrics := dummyMetrics.GetMetrics(name, fmt.Sprintf("device_%s", deviceName)).GetMetrics()
+	met := dummyMetrics.GetMetrics(name, deviceName)
+	if met == nil {
+		return nil
+	}
+	metrics := met.GetMetrics()
+	devmet := dummyMetrics.GetMetrics(name, fmt.Sprintf("device_%s", deviceName))
+	if devmet == nil {
+		return nil
+	}
+	devMetrics := devmet.GetMetrics()
 	rodev := dummyMetrics.GetMetrics(name, fmt.Sprintf("device_rodev_%s", deviceName))
 
 	// Now grab out what we need from these...

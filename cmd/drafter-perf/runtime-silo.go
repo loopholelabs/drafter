@@ -16,7 +16,6 @@ import (
 	rfirecracker "github.com/loopholelabs/drafter/pkg/runtimes/firecracker"
 	"github.com/loopholelabs/drafter/pkg/testutil"
 	loggingtypes "github.com/loopholelabs/logging/types"
-	"github.com/loopholelabs/silo/pkg/storage"
 	"github.com/loopholelabs/silo/pkg/storage/config"
 	"github.com/loopholelabs/silo/pkg/storage/devicegroup"
 	"github.com/loopholelabs/silo/pkg/storage/metrics"
@@ -142,7 +141,7 @@ func runSilo(ctx context.Context, log loggingtypes.Logger, met *testutil.DummyMe
 	}
 	sdi.Exp.SetProvider(hooks)
 
-	err = myPeer.Resume(context.TODO(), 2*time.Minute, 2*time.Minute)
+	err = myPeer.Resume(context.TODO(), 5*time.Minute, 5*time.Minute)
 	if err != nil {
 		return nil, err
 	}
@@ -269,7 +268,7 @@ func migrateNow(log loggingtypes.Logger, met *testutil.DummyMetrics, conf RunCon
 	wg.Add(1)
 	go func() {
 		log.Info().Msg("MigrateTo called")
-		err := peerFrom.MigrateTo(context.TODO(), devicesTo, 2*time.Minute, 10, readersFrom, writersFrom, hooks)
+		err := peerFrom.MigrateTo(context.TODO(), devicesTo, 5*time.Minute, 10, readersFrom, writersFrom, hooks)
 		log.Info().Msg("MigrateTo completed")
 		sendingErr = err
 		wg.Done()
@@ -331,15 +330,30 @@ func migrateNow(log loggingtypes.Logger, met *testutil.DummyMetrics, conf RunCon
 
 	// Is there still some sort of issue?
 	// Make sure the hashes are equal here...
-	prov1 := peerFrom.GetDG().GetDeviceInformationByName(common.DeviceMemoryName).Exp.GetProvider()
-	prov2 := peerTo.GetDG().GetDeviceInformationByName(common.DeviceMemoryName).Exp.GetProvider()
-	eq, err := storage.Equals(prov1, prov2, 1024*1024)
-	sprov1 := peerFrom.GetDG().GetDeviceInformationByName(common.DeviceStateName).Exp.GetProvider()
-	sprov2 := peerTo.GetDG().GetDeviceInformationByName(common.DeviceStateName).Exp.GetProvider()
-	seq, serr := storage.Equals(sprov1, sprov2, 1024*1024)
-	fmt.Printf("+ + + Memory device(%v %d bytes equal=%t) State device (%v %d bytes equal=%t)\n", err, prov1.Size(), eq, serr, sprov1.Size(), seq)
+	/*
+		for _, dname := range []string{common.DeviceMemoryName, common.DeviceStateName} {
+			dev1 := peerFrom.GetDG().GetDeviceInformationByName(dname)
+			devProv1, err := sources.NewFileStorage(path.Join("/dev", dev1.Exp.Device()), int64(dev1.Size))
+			if err != nil {
+				fmt.Printf("ERROR reading %s dev %v\n", dname, err)
+			}
+			prov1 := dev1.Exp.GetProvider()
 
-	err = peerTo.Resume(context.TODO(), 2*time.Minute, 2*time.Minute)
+			dev2 := peerTo.GetDG().GetDeviceInformationByName(dname)
+			devProv2, err := sources.NewFileStorage(path.Join("/dev", dev2.Exp.Device()), int64(dev2.Size))
+			if err != nil {
+				fmt.Printf("ERROR reading %s dev %v\n", dname, err)
+			}
+			prov2 := dev2.Exp.GetProvider()
+
+			eq1, err1 := storage.Equals(prov1, prov2, 1024*1024)
+			eq2, err2 := storage.Equals(devProv1, prov2, 1024*1024)
+			eq3, err3 := storage.Equals(devProv2, prov1, 1024*1024)
+			eq4, err4 := storage.Equals(devProv1, devProv2, 1024*1024)
+			fmt.Printf("+ + + CHECK %s device(%v %v %v %v) %d bytes equals %t %t %t %t\n", dname, err1, err2, err3, err4, prov1.Size(), eq1, eq2, eq3, eq4)
+		}
+	*/
+	err = peerTo.Resume(context.TODO(), 5*time.Minute, 5*time.Minute)
 
 	if err != nil {
 		return err

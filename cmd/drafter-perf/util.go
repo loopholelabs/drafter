@@ -205,7 +205,7 @@ func SetupNAT(hostInterface string, namespacePrefix string) (*nat.Namespaces, fu
 				//				log.Println("Removing namespace", id)
 			},
 		},
-		2, // We only need a couple of namespaces
+		32, // We need a few namespaces here...
 	)
 	if err != nil {
 		cancel()
