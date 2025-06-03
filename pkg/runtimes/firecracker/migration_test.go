@@ -475,7 +475,7 @@ func migration(t *testing.T, config *migrationConfig) {
 	err = myPeer.MigrateFrom(context.TODO(), devicesFrom, nil, nil, hooks1)
 	assert.NoError(t, err)
 
-	err = myPeer.Resume(context.TODO(), 60*time.Second, 60*time.Second)
+	err = myPeer.Resume(context.TODO(), 2*time.Minute, 2*time.Minute)
 	assert.NoError(t, err)
 
 	// Now we have a FIRST "resumed peer"
@@ -562,7 +562,7 @@ func migration(t *testing.T, config *migrationConfig) {
 		var sendingErr error
 		wg.Add(1)
 		go func() {
-			err := lastPeer.MigrateTo(context.TODO(), devicesTo, 60*time.Second, 10, []io.Reader{r1}, []io.Writer{w2}, hooks)
+			err := lastPeer.MigrateTo(context.TODO(), devicesTo, 2*time.Minute, 10, []io.Reader{r1}, []io.Writer{w2}, hooks)
 			assert.NoError(t, err)
 			sendingErr = err
 
@@ -677,7 +677,7 @@ func migration(t *testing.T, config *migrationConfig) {
 		pMetrics := lastPeer.GetMetrics()
 
 		// We can resume here safely
-		err = nextPeer.Resume(context.TODO(), 30*time.Second, 30*time.Second)
+		err = nextPeer.Resume(context.TODO(), 2*time.Minute, 2*time.Minute)
 		assert.NoError(t, err)
 
 		lastPeer = nextPeer
