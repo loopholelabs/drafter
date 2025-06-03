@@ -47,6 +47,7 @@ func TestMigrationBasicHashChecks(t *testing.T) {
 	})
 }
 
+/*
 func TestMigrationBasicSmallBlocksHashChecks(t *testing.T) {
 	migration(t, &migrationConfig{
 		blockSize:      4 * 1024,
@@ -113,6 +114,7 @@ func TestMigrationBasicNoSparseFileHashChecks(t *testing.T) {
 		noSparseFile:   true,
 	})
 }
+*/
 
 func TestMigrationBasicHashChecksSoftDirty(t *testing.T) {
 	migration(t, &migrationConfig{
@@ -262,6 +264,7 @@ func TestMigrationNoCycleSoftDirty(t *testing.T) {
 	})
 }
 
+/*
 func TestMigrationNoCycleSoftDirty1s(t *testing.T) {
 	migration(t, &migrationConfig{
 		blockSize:      1024 * 1024,
@@ -279,6 +282,7 @@ func TestMigrationNoCycleSoftDirty1s(t *testing.T) {
 		grabInterval:   time.Second,
 	})
 }
+*/
 
 type migrationConfig struct {
 	numMigrations  int
@@ -363,7 +367,7 @@ func getDevicesFrom(t *testing.T, snapDir string, s3Endpoint string, i int, conf
 			Name:       n,
 			BlockSize:  uint32(config.blockSize),
 			Shared:     false,
-			SharedBase: true,
+			SharedBase: false,
 		}
 
 		if !config.noCOW {

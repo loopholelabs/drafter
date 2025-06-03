@@ -18,6 +18,7 @@ import (
 	"github.com/loopholelabs/silo/pkg/storage"
 	"github.com/loopholelabs/silo/pkg/storage/devicegroup"
 	"github.com/loopholelabs/silo/pkg/storage/expose"
+	"github.com/loopholelabs/silo/pkg/storage/modules"
 )
 
 var ErrConfigFileNotFound = errors.New("config file not found")
@@ -51,6 +52,8 @@ type FirecrackerRuntimeProvider[L ipc.AgentServerLocal, R ipc.AgentServerRemote[
 	grabberCancel context.CancelFunc
 	grabberWg     sync.WaitGroup
 	grabberProv   storage.Provider
+
+	dg *devicegroup.DeviceGroup
 
 	// RPC Bits
 	agent            *ipc.AgentRPC[L, R, G]
@@ -93,6 +96,9 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Resume(ctx context.Context, rescu
 	// Setup the grabber provider
 	di := dg.GetDeviceInformationByName(common.DeviceMemoryName)
 	rp.grabberProv = di.Exp.GetProvider()
+
+	// Store the dg
+	rp.dg = dg
 
 	rp.setRunning(true)
 
@@ -331,6 +337,25 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Suspend(ctx context.Context, susp
 	if err != nil {
 		return errors.Join(ErrCouldNotCreateSnapshot, err)
 	}
+
+	// Setup something just incase we get late writes...
+	if rp.dg != nil {
+		names := rp.dg.GetAllNames()
+		for _, devn := range names {
+			di := rp.dg.GetDeviceInformationByName(devn)
+			hooks := modules.NewHooks(di.Exp.GetProvider())
+			hooks.PostWrite = func(buffer []byte, offset int64, n int, err error) (int, error) {
+				if rp.Log != nil {
+					rp.Log.Error().Str("device", devn).Msg("Write to device after suspend!")
+				}
+				return n, err
+			}
+			di.Exp.SetProvider(hooks)
+		}
+	}
+
+	// Maybe we need to wait here?
+	time.Sleep(5 * time.Second)
 
 	rp.setRunning(false)
 
