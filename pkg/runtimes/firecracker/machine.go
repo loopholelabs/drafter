@@ -489,3 +489,22 @@ func IsPVMHost() (bool, error) {
 	}
 	return false, nil
 }
+
+// Check if the host is using swap
+func HostMightSwap() (bool, error) {
+	swaps, err := os.ReadFile("/proc/swaps")
+	if err != nil {
+		return false, err
+	}
+	lines := strings.Split(string(swaps), "\n")
+	// First line should be headers...
+	doneHeader := false
+	for _, l := range lines {
+		// There's a line that isn't empty, and isn't the header.
+		if doneHeader && strings.Trim(l, " \t\r\n") != "" {
+			return true, nil
+		}
+		doneHeader = true
+	}
+	return false, nil
+}
