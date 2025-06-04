@@ -88,11 +88,14 @@ func runSilo(ctx context.Context, log loggingtypes.Logger, met *testutil.DummyMe
 	testDir string, snapDir string, ns func() (string, func(), error), forwards func(string) (func(), error), benchCB func(), conf RunConfig,
 	enableInput bool, enableOutput bool) (*devicegroup.DeviceGroup, error) {
 
-	d, err := time.ParseDuration(conf.MigrateAfter)
-	if err != nil {
-		return nil, err
+	var err error
+	var afterDuration time.Duration
+	if conf.MigrateAfter != "" {
+		afterDuration, err = time.ParseDuration(conf.MigrateAfter)
+		if err != nil {
+			return nil, err
+		}
 	}
-	afterChan := time.After(d)
 
 	// Setup the first devices here...
 	_, devicesFrom, err := getDevicesFrom(0, testDir, snapDir, conf)
@@ -165,6 +168,12 @@ func runSilo(ctx context.Context, log loggingtypes.Logger, met *testutil.DummyMe
 	var newForwardsCloser func()
 
 	// Our main loop here.
+
+	afterChan := make(<-chan time.Time, 0)
+	if afterDuration != 0 {
+		afterChan = time.After(afterDuration)
+	}
+
 mainloop:
 	for {
 		select {

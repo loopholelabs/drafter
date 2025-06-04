@@ -52,48 +52,37 @@ func main() {
 	iterations := flag.Int("count", 1, "Number of times to run each config")
 
 	defaultConfigs, err := json.Marshal([]RunConfig{
-		/*
-			{
-				Name:          "silo_20s",
-				BlockSize:     1024 * 1024,
-				UseCow:        true,
-				UseSparseFile: true,
-				UseVolatility: true,
-				NoMapShared:   true,
-				GrabPeriod:    0,
-				MigrateAfter:  "20s",
-			},
-			{
-				Name:          "silo_40s",
-				BlockSize:     1024 * 1024,
-				UseCow:        true,
-				UseSparseFile: true,
-				UseVolatility: true,
-				NoMapShared:   true,
-				GrabPeriod:    0,
-				MigrateAfter:  "40s",
-			},
-			{
-				Name:          "silo_60s",
-				BlockSize:     1024 * 1024,
-				UseCow:        true,
-				UseSparseFile: true,
-				UseVolatility: true,
-				NoMapShared:   true,
-				GrabPeriod:    0,
-				MigrateAfter:  "60s",
-			},
-			{
-				Name:          "silo_80s",
-				BlockSize:     1024 * 1024,
-				UseCow:        true,
-				UseSparseFile: true,
-				UseVolatility: true,
-				NoMapShared:   true,
-				GrabPeriod:    0,
-				MigrateAfter:  "80s",
-			},
-		*/
+
+		{
+			Name:          "silo_10s",
+			BlockSize:     1024 * 1024,
+			UseCow:        true,
+			UseSparseFile: true,
+			UseVolatility: true,
+			NoMapShared:   false,
+			GrabPeriod:    0,
+			MigrateAfter:  "10s",
+		},
+		{
+			Name:          "silo_30s",
+			BlockSize:     1024 * 1024,
+			UseCow:        true,
+			UseSparseFile: true,
+			UseVolatility: true,
+			NoMapShared:   false,
+			GrabPeriod:    0,
+			MigrateAfter:  "30s",
+		},
+		{
+			Name:          "silo_60s",
+			BlockSize:     1024 * 1024,
+			UseCow:        true,
+			UseSparseFile: true,
+			UseVolatility: true,
+			NoMapShared:   false,
+			GrabPeriod:    0,
+			MigrateAfter:  "60s",
+		},
 		{
 			Name:          "silo_90s",
 			BlockSize:     1024 * 1024,
@@ -104,7 +93,18 @@ func main() {
 			GrabPeriod:    0,
 			MigrateAfter:  "90s",
 		},
-
+		/*
+			{
+				Name:          "silo-60s",
+				BlockSize:     1024 * 1024,
+				UseCow:        true,
+				UseSparseFile: true,
+				UseVolatility: true,
+				NoMapShared:   false,
+				GrabPeriod:    0,
+				MigrateAfter:  "60s",
+			},
+		*/
 		/*
 			{
 				Name:          "silo",
