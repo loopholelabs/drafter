@@ -426,10 +426,16 @@ func migration(t *testing.T, config *migrationConfig) {
 
 	dummyMetrics := testutil.NewDummyMetrics()
 
-	ns := testutil.SetupNAT(t, "", "dra", 32)
+	ns := testutil.SetupNAT(t, "", "dra", 2)
 
 	netns, err := ns.ClaimNamespace()
 	assert.NoError(t, err)
+	defer func() {
+		err := ns.ReleaseNamespace(netns)
+		fmt.Printf("ReleaseNamespace %v\n", err)
+		err = ns.Close()
+		fmt.Printf("Close nat %v\n", err)
+	}()
 
 	grandTotalBlocksP2P := 0
 	grandTotalBlocksS3 := 0
