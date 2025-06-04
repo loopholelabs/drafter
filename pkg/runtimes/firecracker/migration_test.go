@@ -47,6 +47,39 @@ func TestMigrationBasicHashChecks(t *testing.T) {
 	})
 }
 
+func TestMigrationBasicHashChecksSoftDirty(t *testing.T) {
+	migration(t, &migrationConfig{
+		blockSize:      1024 * 1024,
+		numMigrations:  3,
+		minCycles:      1,
+		maxCycles:      1,
+		cycleThrottle:  100 * time.Millisecond,
+		maxDirtyBlocks: 10,
+		cpuCount:       1,
+		memorySize:     1024,
+		pauseWaitMax:   3 * time.Second,
+		enableS3:       false,
+		hashChecks:     true,
+		noMapShared:    true,
+	})
+}
+
+func TestMigrationBasicWithS3(t *testing.T) {
+	migration(t, &migrationConfig{
+		blockSize:      1024 * 1024,
+		numMigrations:  3,
+		minCycles:      1,
+		maxCycles:      1,
+		cycleThrottle:  100 * time.Millisecond,
+		maxDirtyBlocks: 10,
+		cpuCount:       1,
+		memorySize:     1024,
+		pauseWaitMax:   3 * time.Second,
+		enableS3:       true,
+		hashChecks:     false,
+	})
+}
+
 /*
 func TestMigrationBasicSmallBlocksHashChecks(t *testing.T) {
 	migration(t, &migrationConfig{
@@ -114,24 +147,7 @@ func TestMigrationBasicNoSparseFileHashChecks(t *testing.T) {
 		noSparseFile:   true,
 	})
 }
-*/
 
-func TestMigrationBasicHashChecksSoftDirty(t *testing.T) {
-	migration(t, &migrationConfig{
-		blockSize:      1024 * 1024,
-		numMigrations:  3,
-		minCycles:      1,
-		maxCycles:      1,
-		cycleThrottle:  100 * time.Millisecond,
-		maxDirtyBlocks: 10,
-		cpuCount:       1,
-		memorySize:     1024,
-		pauseWaitMax:   3 * time.Second,
-		enableS3:       false,
-		hashChecks:     true,
-		noMapShared:    true,
-	})
-}
 
 func TestMigrationBasicHashChecksSoftDirty4Cpus(t *testing.T) {
 	migration(t, &migrationConfig{
@@ -149,22 +165,7 @@ func TestMigrationBasicHashChecksSoftDirty4Cpus(t *testing.T) {
 		noMapShared:    true,
 	})
 }
-
-func TestMigrationBasicWithS3(t *testing.T) {
-	migration(t, &migrationConfig{
-		blockSize:      1024 * 1024,
-		numMigrations:  3,
-		minCycles:      1,
-		maxCycles:      1,
-		cycleThrottle:  100 * time.Millisecond,
-		maxDirtyBlocks: 10,
-		cpuCount:       1,
-		memorySize:     1024,
-		pauseWaitMax:   3 * time.Second,
-		enableS3:       true,
-		hashChecks:     false,
-	})
-}
+*/
 
 func TestMigration4Cpus(t *testing.T) {
 	migration(t, &migrationConfig{
