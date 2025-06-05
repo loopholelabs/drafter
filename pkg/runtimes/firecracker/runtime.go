@@ -1,7 +1,6 @@
 package firecracker
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -255,6 +254,7 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Close(dg *devicegroup.DeviceGroup
 		}
 
 		// We only need to do this if it hasn't been suspended, but it'll refuse inside Suspend
+		rp.Grabbing = false                                   // We don't care.
 		err := rp.Suspend(context.TODO(), 10*time.Minute, dg) // TODO. Timeout
 		if err != nil {
 			return err
@@ -354,9 +354,6 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Suspend(ctx context.Context, susp
 		}
 	}
 
-	// Maybe we need to wait here?
-	time.Sleep(5 * time.Second)
-
 	rp.setRunning(false)
 
 	if rp.Grabbing {
@@ -370,9 +367,121 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Suspend(ctx context.Context, susp
 }
 
 func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChanges() error {
-	rp.memoryLock.Lock()
-	defer rp.memoryLock.Unlock()
+	return rp.grabMemoryChangesSoftDirty()
+	/*
+	   rp.memoryLock.Lock()
+	   defer rp.memoryLock.Unlock()
 
+	   	if rp.Log != nil {
+	   		rp.Log.Debug().Msg("Grabbing softDirty memory changes")
+	   	}
+
+	   // Do a softDirty memory read here, and write it to the silo memory device.
+	   pm := expose.NewProcessMemory(rp.Machine.VMPid)
+	   memRanges, err := pm.GetMemoryRange("/memory")
+
+	   	if err != nil {
+	   		return err
+	   	}
+
+	   var pauseTime time.Time
+	   var resumeTime time.Time
+
+	   	lockcb := func() error {
+	   		err := pm.PauseProcess()
+	   		pauseTime = time.Now()
+	   		if err != nil {
+	   			if rp.Log != nil {
+	   				rp.Log.Error().Err(err).Msg("Could not pause process")
+	   			}
+	   		}
+	   		return err
+	   	}
+
+	   	unlockcb := func() error {
+	   		err := pm.ClearSoftDirty()
+	   		if err != nil {
+	   			return err
+	   		}
+
+	   		err = pm.ResumeProcess()
+	   		resumeTime = time.Now()
+	   		if err != nil {
+	   			if rp.Log != nil {
+	   				rp.Log.Error().Err(err).Msg("Could not resume process")
+	   			}
+	   			return err
+	   		}
+	   		return nil
+	   	}
+
+	   totalBytes := int64(0)
+
+	   err = lockcb()
+
+	   	if err != nil {
+	   		return err
+	   	}
+
+	   memf, err := os.OpenFile(fmt.Sprintf("/proc/%d/mem", rp.Machine.VMPid), os.O_RDONLY, 0)
+
+	   	if err != nil {
+	   		return err
+	   	}
+
+	   defer memf.Close()
+
+	   changedBytes := 0
+	   // FIXME: Find changes... (SLOW)
+	   blockSize := uint64(1024 * 1024 * 4)
+
+	   	for _, r := range memRanges {
+	   		buffer := make([]byte, blockSize)
+	   		provBuffer := make([]byte, blockSize)
+	   		for o := r.Start; o < r.End; o += blockSize {
+	   			n1, err := memf.ReadAt(buffer, int64(o))
+	   			if err != nil {
+	   				return err
+	   			}
+
+	   			n2, err := rp.grabberProv.ReadAt(provBuffer, int64(r.Offset+o-r.Start))
+	   			if err != nil {
+	   				return err
+	   			}
+	   			if n1 != n2 {
+	   				return errors.New("Couldn't check memory...\n")
+	   			}
+	   			if !bytes.Equal(buffer[:n1], provBuffer[:n2]) {
+	   				// Memory has changed, lets write it
+	   				n, err := rp.grabberProv.WriteAt(buffer, int64(r.Offset+o-r.Start))
+	   				if err != nil {
+	   					return err
+	   				}
+	   				changedBytes += n
+	   			}
+	   		}
+	   	}
+
+	   	if rp.Log != nil {
+	   		rp.Log.Info().Int("bytes", changedBytes).
+	   			Msg("Copied memory device")
+	   	}
+
+	   err = unlockcb()
+
+	   	if err != nil {
+	   		return err
+	   	}
+
+	   	if rp.Log != nil {
+	   		rp.Log.Info().Int64("bytes", totalBytes).Int64("ms", resumeTime.Sub(pauseTime).Milliseconds()).Msg("SoftDirty copied memory to the silo provider")
+	   	}
+
+	   return nil
+	*/
+}
+
+func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChangesSoftDirty() error {
 	if rp.Log != nil {
 		rp.Log.Debug().Msg("Grabbing softDirty memory changes")
 	}
@@ -441,6 +550,13 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChanges() error {
 			return err
 		}
 
+		needBytes := uint64(0)
+		for _, r := range ranges {
+			needBytes += r.End - r.Start
+		}
+
+		fmt.Printf("#GRAB# memRanges %x: %x-%x ranges=%d bytes=%d\n", r.Offset, r.Start, r.End, len(ranges), needBytes)
+
 		copyData = append(copyData, CopyData{
 			ranges:    ranges,
 			addrStart: r.Start,
@@ -448,84 +564,20 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChanges() error {
 		})
 	}
 
-	memf, err := os.OpenFile(fmt.Sprintf("/proc/%d/mem", rp.Machine.VMPid), os.O_RDONLY, 0)
-	if err != nil {
-		return err
-	}
-	defer memf.Close()
-
-	changedBytes := 0
-	// FIXME: Find changes... (SLOW)
-	blockSize := uint64(1024 * 1024)
-	for _, r := range memRanges {
-		buffer := make([]byte, blockSize)
-		provBuffer := make([]byte, blockSize)
-		for o := r.Start; o < r.End; o += blockSize {
-			n1, err := memf.ReadAt(buffer, int64(o))
-			if err != nil {
-				return err
-			}
-
-			n2, err := rp.grabberProv.ReadAt(provBuffer, int64(r.Offset+o-r.Start))
-			if err != nil {
-				return err
-			}
-			if n1 != n2 {
-				return errors.New("Couldn't check memory...\n")
-			}
-			if !bytes.Equal(buffer[:n1], provBuffer[:n2]) {
-				// Memory has changed, lets write it
-				n, err := rp.grabberProv.WriteAt(buffer, int64(r.Offset+o-r.Start))
-				if err != nil {
-					return err
-				}
-				changedBytes += n
-			}
-		}
-	}
-
-	softDirtyBytes := uint64(0)
-	for _, cd := range copyData {
-		for _, r := range cd.ranges {
-			softDirtyBytes += (r.End - r.Start)
-		}
-	}
-
-	if rp.Log != nil {
-		rp.Log.Info().Int("bytes", changedBytes).Uint64("softDirtyBytes", softDirtyBytes).Msg("Copied memory device")
-	}
-
-	/*
-		for _, r := range memRanges {
+	// Outside the stop/cont, we now copy the regions we need.
+	for _, tt := range copyData {
+		// Copy to the Silo provider
+		b, err := pm.CopyMemoryRanges(int64(tt.addrStart)-int64(tt.offset), tt.ranges, rp.grabberProv)
+		if err != nil {
 			if rp.Log != nil {
-				rp.Log.Debug().Uint64("offset", r.Offset).Uint64("addrEnd", r.End).Uint64("addrStart", r.Start).Msg("SoftDirty memory changes")
+				rp.Log.Error().Err(err).Msg("Could not copy memory ranges")
 			}
 
-			ranges, err := pm.ReadSoftDirtyMemoryRangeList(r.Start, r.End, func() error { return nil }, func() error { return nil }) // lockcb, unlockcb)
-			if err != nil {
-				_ = unlockcb() // Try our best to unlock...
-				return err
-			}
-
-			fmt.Printf("#GRAB# memRanges %x: %x-%x ranges=%d\n", r.Offset, r.Start, r.End, len(ranges))
-
-			copyData = append(copyData, CopyData{
-				ranges:    ranges,
-				addrStart: r.Start,
-				offset:    r.Offset,
-			})
+			return err
 		}
+		totalBytes += int64(b)
+	}
 
-		// Outside the stop/cont, we now copy the regions we need.
-		for _, tt := range copyData {
-			// Copy to the Silo provider
-			b, err := pm.CopyMemoryRanges(int64(tt.addrStart)-int64(tt.offset), tt.ranges, rp.grabberProv)
-			if err != nil {
-				return err
-			}
-			totalBytes += int64(b)
-		}
-	*/
 	err = unlockcb()
 	if err != nil {
 		return err
