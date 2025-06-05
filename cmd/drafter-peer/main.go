@@ -316,11 +316,16 @@ func main() {
 			}
 
 			before = time.Now()
+			opts := &common.MigrateToOptions{
+				Concurrency: *concurrency,
+				Compression: true,
+			}
+
 			err = p.MigrateTo(
 				ctx,
 				migrateToDevices,
 				*resumeTimeout,
-				*concurrency,
+				opts,
 				readers,
 				writers,
 				peer.MigrateToHooks{

@@ -17,10 +17,8 @@ import (
 	"github.com/loopholelabs/drafter/pkg/testutil"
 	loggingtypes "github.com/loopholelabs/logging/types"
 	"github.com/loopholelabs/silo/pkg/storage/config"
-	"github.com/loopholelabs/silo/pkg/storage/devicegroup"
 	"github.com/loopholelabs/silo/pkg/storage/metrics"
 	"github.com/loopholelabs/silo/pkg/storage/migrator"
-	"github.com/loopholelabs/silo/pkg/storage/modules"
 	"github.com/muesli/gotable"
 )
 
@@ -52,7 +50,11 @@ type RunConfig struct {
 	S3Limit       int    `json:"s3limit"`
 	S3CheckPeriod string `json:"s3checkperiod"`
 
-	MigrateAfter string `json:"migrateafter"`
+	MigrateAfter    string `json:"migrateafter"`
+	MigrateInterval string `json:"migrateinterval"`
+
+	MigrationCompression bool `json:"migrationcompression"`
+	MigrationConcurrency int  `json:"migrationconcurrency"`
 
 	// TODO
 	VMCPUs   int `json:"cpus"`
@@ -86,41 +88,26 @@ func (sc *RunConfig) Summary() string {
  */
 func runSilo(ctx context.Context, log loggingtypes.Logger, met *testutil.DummyMetrics,
 	testDir string, snapDir string, ns func() (string, func(), error), forwards func(string) (func(), error), benchCB func(), conf RunConfig,
-	enableInput bool, enableOutput bool) (*devicegroup.DeviceGroup, error) {
-
-	var err error
-	var afterDuration time.Duration
-	if conf.MigrateAfter != "" {
-		afterDuration, err = time.ParseDuration(conf.MigrateAfter)
-		if err != nil {
-			return nil, err
-		}
-	}
+	enableInput bool, enableOutput bool) error {
 
 	// Setup the first devices here...
 	_, devicesFrom, err := getDevicesFrom(0, testDir, snapDir, conf)
 	if err != nil {
-		return nil, err
-	}
-
-	var myPeerStopped time.Time
-	runningCB := func(r bool) {
-		if !r {
-			myPeerStopped = time.Now()
-		}
+		return err
 	}
 
 	myNetNs, myNetCloser, err := ns()
 	if err != nil {
-		return nil, err
+		return err
 	}
 	myForwardsCloser, err := forwards(myNetNs)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	myPeer, err := setupPeer(log, met, conf, testDir, myNetNs, enableInput, enableOutput, 0, runningCB)
+
+	myPeer, err := setupPeer(log, met, conf, testDir, myNetNs, enableInput, enableOutput, 0, func(_ bool) {})
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	hooks1 := peer.MigrateFromHooks{
@@ -132,21 +119,12 @@ func runSilo(ctx context.Context, log loggingtypes.Logger, met *testutil.DummyMe
 
 	err = myPeer.MigrateFrom(context.TODO(), devicesFrom, nil, nil, hooks1)
 	if err != nil {
-		return nil, err
+		return err
 	}
-
-	// Monitor the state file. I've an inkling it's the issue
-	sdi := myPeer.GetDG().GetDeviceInformationByName(common.DeviceStateName)
-	hooks := modules.NewHooks(sdi.Exp.GetProvider())
-	hooks.PostWrite = func(buffer []byte, offset int64, n int, err error) (int, error) {
-		fmt.Printf(" == WriteState %d: %d bytes\n", offset, len(buffer))
-		return n, err
-	}
-	sdi.Exp.SetProvider(hooks)
 
 	err = myPeer.Resume(context.TODO(), 5*time.Minute, 5*time.Minute)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	doneBench := make(chan bool)
@@ -156,23 +134,28 @@ func runSilo(ctx context.Context, log loggingtypes.Logger, met *testutil.DummyMe
 		close(doneBench)
 	}()
 
-	var newPeerStarted time.Time
-	newRunningCB := func(r bool) {
-		if r {
-			newPeerStarted = time.Now()
-		}
-	}
-
-	var newPeer *peer.Peer
-	var newPeerNetCloser func()
-	var newForwardsCloser func()
-
 	// Our main loop here.
 
 	afterChan := make(<-chan time.Time, 0)
-	if afterDuration != 0 {
+	if conf.MigrateAfter != "" {
+		afterDuration, err := time.ParseDuration(conf.MigrateAfter)
+		if err != nil {
+			return err
+		}
 		afterChan = time.After(afterDuration)
 	}
+	if conf.MigrateInterval != "" {
+		intervalDuration, err := time.ParseDuration(conf.MigrateInterval)
+		if err != nil {
+			return err
+		}
+		afterChan = time.NewTicker(intervalDuration).C
+	}
+
+	migrationID := 1
+
+	peers := make([]*peer.Peer, 0)
+	peers = append(peers, myPeer)
 
 mainloop:
 	for {
@@ -181,58 +164,42 @@ mainloop:
 			break mainloop
 		case <-afterChan:
 			// Do a migration here
-			var netns string
-			netns, newPeerNetCloser, err = ns()
-			if err != nil {
-				return nil, err
-			}
-			myForwardsCloser()
-			newForwardsCloser, err = forwards(netns)
-			if err != nil {
-				return nil, err
-			}
 
-			newPeer, err = setupPeer(log, met, conf, testDir, netns, enableInput, enableOutput, 1, newRunningCB)
+			newPeer, err := setupPeer(log, met, conf, testDir, myNetNs, enableInput, enableOutput, migrationID, func(_ bool) {})
 			if err != nil {
-				return nil, err
+				return err
 			}
 
 			migStartTime := time.Now()
-			err = migrateNow(log, met, conf, myPeer, newPeer, testDir, snapDir)
+			err = migrateNow(migrationID, log, met, conf, myPeer, newPeer, testDir, snapDir)
 			if err != nil {
-				return nil, err
+				return err
 			}
 
-			// We should know how things went here...
-			if !myPeerStopped.IsZero() && !newPeerStarted.IsZero() {
-				fmt.Printf("# Downtime was %dms\n", newPeerStarted.Sub(myPeerStopped).Milliseconds())
-			}
-			fmt.Printf("# Migration took %dms\n", time.Since(migStartTime).Milliseconds())
+			fmt.Printf("# Migration.%d took %dms\n", migrationID, time.Since(migStartTime).Milliseconds())
+			myPeer.Close()
+			myPeer = newPeer
+			peers = append(peers, myPeer)
+
+			migrationID++
 		}
 	}
 
-	err = myPeer.CloseRuntime() // Only close the runtime, not the devices
+	// We're all done.
+
+	err = myPeer.Close()
 	if err != nil {
-		return nil, err
+		return err
 	}
 	myForwardsCloser() // Might have already been done
 	myNetCloser()      // Close the net
 
-	if newPeer != nil {
-		err = newPeer.Close() // For now, close all of it
-		if err != nil {
-			return nil, err
-		}
-		newForwardsCloser() // Unforward
-		newPeerNetCloser()  // Close the net
-	}
-
-	return myPeer.GetDG(), nil
+	return nil
 }
 
 // migrateNow migrates a VM locally.
-func migrateNow(log loggingtypes.Logger, met *testutil.DummyMetrics, conf RunConfig, peerFrom *peer.Peer, peerTo *peer.Peer, testDir string, snapDir string) error {
-	log.Info().Msg("STARTING A MIGRATION")
+func migrateNow(id int, log loggingtypes.Logger, met *testutil.DummyMetrics, conf RunConfig, peerFrom *peer.Peer, peerTo *peer.Peer, testDir string, snapDir string) error {
+	log.Info().Int("id", id).Msg("STARTING A MIGRATION")
 
 	readersFrom := make([]io.Reader, 0)
 	writersFrom := make([]io.Writer, 0)
@@ -277,7 +244,15 @@ func migrateNow(log loggingtypes.Logger, met *testutil.DummyMetrics, conf RunCon
 	wg.Add(1)
 	go func() {
 		log.Info().Msg("MigrateTo called")
-		err := peerFrom.MigrateTo(context.TODO(), devicesTo, 5*time.Minute, 10, readersFrom, writersFrom, hooks)
+		opts := &common.MigrateToOptions{
+			Concurrency: conf.MigrationConcurrency,
+			Compression: conf.MigrationCompression,
+		}
+		if opts.Concurrency == 0 {
+			opts.Concurrency = 10
+		}
+
+		err := peerFrom.MigrateTo(context.TODO(), devicesTo, 5*time.Minute, opts, readersFrom, writersFrom, hooks)
 		log.Info().Msg("MigrateTo completed")
 		sendingErr = err
 		wg.Done()
@@ -296,7 +271,7 @@ func migrateNow(log loggingtypes.Logger, met *testutil.DummyMetrics, conf RunCon
 		},
 	}
 
-	_, devicesFrom, err := getDevicesFrom(1, testDir, snapDir, conf)
+	_, devicesFrom, err := getDevicesFrom(id, testDir, snapDir, conf)
 	if err != nil {
 		return err
 	}
@@ -431,7 +406,7 @@ func setupPeer(log loggingtypes.Logger, met metrics.SiloMetrics, conf RunConfig,
 		hConf.Stdout = os.Stdout
 		hConf.Stderr = os.Stderr
 	} else {
-		fout, err := os.OpenFile(fmt.Sprintf("%s-%d.stdout", conf.Name, instance), os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0660)
+		fout, err := os.OpenFile(fmt.Sprintf("%s-%04d.stdout", conf.Name, instance), os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0660)
 		if err == nil {
 			defer fout.Close()
 			hConf.Stdout = fout

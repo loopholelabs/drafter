@@ -423,12 +423,17 @@ func MigrateFromPipe(log types.Logger, met metrics.SiloMetrics, instanceID strin
 	return dg, nil
 }
 
+type MigrateToOptions struct {
+	Concurrency int
+	Compression bool
+}
+
 /**
  * Migrate TO a pipe
  *
  */
 func MigrateToPipe(ctx context.Context, readers []io.Reader, writers []io.Writer,
-	dg *devicegroup.DeviceGroup, concurrency int, onProgress func(p map[string]*migrator.MigrationProgress),
+	dg *devicegroup.DeviceGroup, options *MigrateToOptions, onProgress func(p map[string]*migrator.MigrationProgress),
 	vmState *VMStateMgr, devices []MigrateToDevice, getCustomPayload func() []byte, met metrics.SiloMetrics, instanceID string) error {
 
 	protocolCtx, protocolCancel := context.WithCancel(ctx)
@@ -450,13 +455,13 @@ func MigrateToPipe(ctx context.Context, readers []io.Reader, writers []io.Writer
 	}
 
 	// Start a migration to the protocol. This will send all schema info etc
-	err := dg.StartMigrationTo(pro, true)
+	err := dg.StartMigrationTo(pro, options.Compression)
 	if err != nil {
 		return err
 	}
 
 	// Do the main migration of the data...
-	err = dg.MigrateAll(concurrency, onProgress)
+	err = dg.MigrateAll(options.Concurrency, onProgress)
 	if err != nil {
 		return err
 	}

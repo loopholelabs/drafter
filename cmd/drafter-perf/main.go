@@ -12,7 +12,6 @@ import (
 	"github.com/loopholelabs/drafter/pkg/testutil"
 	"github.com/loopholelabs/logging"
 	"github.com/loopholelabs/logging/types"
-	"github.com/loopholelabs/silo/pkg/storage/devicegroup"
 	"github.com/muesli/gotable"
 )
 
@@ -52,24 +51,27 @@ func main() {
 	iterations := flag.Int("count", 1, "Number of times to run each config")
 
 	defaultConfigs, err := json.Marshal([]RunConfig{
+		/*
+			{
+				Name:            "silo_10s",
+				BlockSize:       1024 * 1024,
+				UseCow:          true,
+				UseSparseFile:   true,
+				UseVolatility:   true,
+				NoMapShared:     true,
+				GrabPeriod:      0,
+				MigrateInterval: "10s",
+				// MigrateAfter:  "10s",
+			},
+		*/
 
-		{
-			Name:          "silo_10s",
-			BlockSize:     1024 * 1024,
-			UseCow:        true,
-			UseSparseFile: true,
-			UseVolatility: true,
-			NoMapShared:   false,
-			GrabPeriod:    0,
-			MigrateAfter:  "10s",
-		},
 		{
 			Name:          "silo_30s",
 			BlockSize:     1024 * 1024,
 			UseCow:        true,
 			UseSparseFile: true,
 			UseVolatility: true,
-			NoMapShared:   false,
+			NoMapShared:   true,
 			GrabPeriod:    0,
 			MigrateAfter:  "30s",
 		},
@@ -79,7 +81,7 @@ func main() {
 			UseCow:        true,
 			UseSparseFile: true,
 			UseVolatility: true,
-			NoMapShared:   false,
+			NoMapShared:   true,
 			GrabPeriod:    0,
 			MigrateAfter:  "60s",
 		},
@@ -89,10 +91,11 @@ func main() {
 			UseCow:        true,
 			UseSparseFile: true,
 			UseVolatility: true,
-			NoMapShared:   false,
+			NoMapShared:   true,
 			GrabPeriod:    0,
 			MigrateAfter:  "90s",
 		},
+
 		/*
 			{
 				Name:          "silo-60s",
@@ -292,7 +295,7 @@ func main() {
 
 	dummyMetrics := testutil.NewDummyMetrics()
 
-	siloDGs := make(map[string]*devicegroup.DeviceGroup)
+	//	siloDGs := make(map[string]*devicegroup.DeviceGroup)
 
 	// Start testing Silo confs
 	for _, sConf := range siloConfigs {
@@ -318,12 +321,12 @@ func main() {
 			}
 		}
 
-		dg, err := runSilo(ctx, log, dummyMetrics, *dTestDir, *dSnapDir, getNetNs, doForwards, benchCB, sConf, *enableInput, *enableOutput)
+		err := runSilo(ctx, log, dummyMetrics, *dTestDir, *dSnapDir, getNetNs, doForwards, benchCB, sConf, *enableInput, *enableOutput)
 		if err != nil {
 			fmt.Printf("ERROR in runSilo %v\n", err)
 		}
 
-		siloDGs[sConf.Name] = dg
+		//		siloDGs[sConf.Name] = dg
 
 		siloTimingsRuntime[sConf.Name] = runtimeEnd.Sub(runtimeStart)
 	}
@@ -376,64 +379,65 @@ func main() {
 			fmt.Sprintf("%.1fs", float64(nosiloRuntime.Milliseconds())/1000), "",
 		})
 	}
-
-	fbool := func(b bool) string {
-		if b {
-			return "YES"
-		} else {
-			return ""
-		}
-	}
-
-	for _, conf := range siloConfigs {
-		// Show some device stats
-
-		fmt.Printf("== Results for %s\n", conf.Summary())
-
-		showDeviceStats(dummyMetrics, fmt.Sprintf("%s-%d", conf.Name, 0))
-		showDeviceStats(dummyMetrics, fmt.Sprintf("%s-%d", conf.Name, 1))
-
-		// Close the devicegroup
-		err = siloDGs[conf.Name].CloseAll()
-		if err != nil {
-			fmt.Printf("Error closing DG %v\n", err)
+	/*
+		fbool := func(b bool) string {
+			if b {
+				return "YES"
+			} else {
+				return ""
+			}
 		}
 
-		if *valkeyTest {
-			siloSet := siloTimingsSet[conf.Name]
-			siloGet := siloTimingsGet[conf.Name]
-			overheadSet := 0
-			overheadGet := 0
-			overhead := 0
-			if nosiloRuntime != 0 {
-				overhead = int((siloTimingsRuntime[conf.Name] - nosiloRuntime) * 100 / nosiloRuntime)
-			}
-			if nosiloSet != 0 {
-				overheadSet = int((siloSet - nosiloSet) * 100 / nosiloSet)
-			}
-			if nosiloGet != 0 {
-				overheadGet = int((siloGet - nosiloGet) * 100 / nosiloGet)
+			for _, conf := range siloConfigs {
+				// Show some device stats
+
+				fmt.Printf("== Results for %s\n", conf.Summary())
+
+				showDeviceStats(dummyMetrics, fmt.Sprintf("%s-%d", conf.Name, 0))
+				showDeviceStats(dummyMetrics, fmt.Sprintf("%s-%d", conf.Name, 1))
+
+				// Close the devicegroup
+				err = siloDGs[conf.Name].CloseAll()
+				if err != nil {
+					fmt.Printf("Error closing DG %v\n", err)
+				}
+
+				if *valkeyTest {
+					siloSet := siloTimingsSet[conf.Name]
+					siloGet := siloTimingsGet[conf.Name]
+					overheadSet := 0
+					overheadGet := 0
+					overhead := 0
+					if nosiloRuntime != 0 {
+						overhead = int((siloTimingsRuntime[conf.Name] - nosiloRuntime) * 100 / nosiloRuntime)
+					}
+					if nosiloSet != 0 {
+						overheadSet = int((siloSet - nosiloSet) * 100 / nosiloSet)
+					}
+					if nosiloGet != 0 {
+						overheadGet = int((siloGet - nosiloGet) * 100 / nosiloGet)
+					}
+
+					tab.AppendRow([]interface{}{conf.Name,
+						fbool(conf.UseWriteCache), fbool(conf.UseVolatility), fbool(conf.UseCow), fbool(conf.UseSparseFile),
+						fmt.Sprintf("%.1fs", float64(siloSet.Milliseconds())/1000), fmt.Sprintf("%d%%", overheadSet),
+						fmt.Sprintf("%.1fs", float64(siloGet.Milliseconds())/1000), fmt.Sprintf("%d%%", overheadGet),
+						fmt.Sprintf("%.1fs", float64(siloTimingsRuntime[conf.Name].Milliseconds())/1000), fmt.Sprintf("%d%%", overhead),
+					})
+
+				} else {
+					overhead := 0
+					if nosiloRuntime != 0 {
+						overhead = int((siloTimingsRuntime[conf.Name] - nosiloRuntime) * 100 / nosiloRuntime)
+					}
+
+					tab.AppendRow([]interface{}{conf.Name,
+						fbool(conf.UseWriteCache), fbool(conf.UseVolatility), fbool(conf.UseCow), fbool(conf.UseSparseFile),
+						fmt.Sprintf("%.1fs", float64(siloTimingsRuntime[conf.Name].Milliseconds())/1000), fmt.Sprintf("%d%%", overhead),
+					})
+				}
 			}
 
-			tab.AppendRow([]interface{}{conf.Name,
-				fbool(conf.UseWriteCache), fbool(conf.UseVolatility), fbool(conf.UseCow), fbool(conf.UseSparseFile),
-				fmt.Sprintf("%.1fs", float64(siloSet.Milliseconds())/1000), fmt.Sprintf("%d%%", overheadSet),
-				fmt.Sprintf("%.1fs", float64(siloGet.Milliseconds())/1000), fmt.Sprintf("%d%%", overheadGet),
-				fmt.Sprintf("%.1fs", float64(siloTimingsRuntime[conf.Name].Milliseconds())/1000), fmt.Sprintf("%d%%", overhead),
-			})
-
-		} else {
-			overhead := 0
-			if nosiloRuntime != 0 {
-				overhead = int((siloTimingsRuntime[conf.Name] - nosiloRuntime) * 100 / nosiloRuntime)
-			}
-
-			tab.AppendRow([]interface{}{conf.Name,
-				fbool(conf.UseWriteCache), fbool(conf.UseVolatility), fbool(conf.UseCow), fbool(conf.UseSparseFile),
-				fmt.Sprintf("%.1fs", float64(siloTimingsRuntime[conf.Name].Milliseconds())/1000), fmt.Sprintf("%d%%", overhead),
-			})
-		}
-	}
-
-	tab.Print()
+		tab.Print()
+	*/
 }
