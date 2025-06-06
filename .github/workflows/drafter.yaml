@@ -79,6 +79,13 @@ jobs:
             cmd: ./Hydrunfile go drafter-snapshotter
             dst: out/*
             runner: depot-ubuntu-22.04-32
+          - id: go.drafter-packager
+            src: .
+            os: golang:bookworm
+            flags: -e '-v /tmp/ccache:/root/.cache/go-build'
+            cmd: ./Hydrunfile go drafter-packager
+            dst: out/*
+            runner: depot-ubuntu-22.04-32
           - id: go.drafter-peer
             src: .
             os: golang:bookworm
