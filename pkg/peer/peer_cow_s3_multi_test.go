@@ -83,6 +83,13 @@ func setupDevicesCowS3(t *testing.T, num int) ([]common.MigrateToDevice, [][]com
 				S3Secure:      false,
 				S3Bucket:      "silosilo",
 				S3Concurrency: 10,
+
+				S3BlockShift:  2,
+				S3OnlyDirty:   false,
+				S3MaxAge:      "100ms",
+				S3MinChanged:  4,
+				S3Limit:       256,
+				S3CheckPeriod: "100ms",
 			})
 		}
 

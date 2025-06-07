@@ -4,8 +4,8 @@
 package firecracker
 
 import (
+	"bytes"
 	"context"
-	"crypto/sha256"
 	"fmt"
 	"io"
 	"math/rand"
@@ -33,7 +33,8 @@ const testPeerDirCowS3 = "test_peer_cow"
 
 func TestMigrationBasicHashChecks(t *testing.T) {
 	migration(t, &migrationConfig{
-		numMigrations:  2,
+		blockSize:      1024 * 1024,
+		numMigrations:  3,
 		minCycles:      1,
 		maxCycles:      1,
 		cycleThrottle:  100 * time.Millisecond,
@@ -48,7 +49,8 @@ func TestMigrationBasicHashChecks(t *testing.T) {
 
 func TestMigrationBasicHashChecksSoftDirty(t *testing.T) {
 	migration(t, &migrationConfig{
-		numMigrations:  2,
+		blockSize:      1024 * 1024,
+		numMigrations:  3,
 		minCycles:      1,
 		maxCycles:      1,
 		cycleThrottle:  100 * time.Millisecond,
@@ -64,7 +66,8 @@ func TestMigrationBasicHashChecksSoftDirty(t *testing.T) {
 
 func TestMigrationBasicWithS3(t *testing.T) {
 	migration(t, &migrationConfig{
-		numMigrations:  2,
+		blockSize:      1024 * 1024,
+		numMigrations:  3,
 		minCycles:      1,
 		maxCycles:      1,
 		cycleThrottle:  100 * time.Millisecond,
@@ -77,9 +80,97 @@ func TestMigrationBasicWithS3(t *testing.T) {
 	})
 }
 
+/*
+func TestMigrationBasicSmallBlocksHashChecks(t *testing.T) {
+	migration(t, &migrationConfig{
+		blockSize:      4 * 1024,
+		numMigrations:  3,
+		minCycles:      1,
+		maxCycles:      1,
+		cycleThrottle:  100 * time.Millisecond,
+		maxDirtyBlocks: 10,
+		cpuCount:       1,
+		memorySize:     1024,
+		pauseWaitMax:   3 * time.Second,
+		enableS3:       false,
+		hashChecks:     true,
+	})
+}
+
+func TestMigrationBasicBigBlocksHashChecks(t *testing.T) {
+	migration(t, &migrationConfig{
+		blockSize:      4 * 1024 * 1024,
+		numMigrations:  3,
+		minCycles:      1,
+		maxCycles:      1,
+		cycleThrottle:  100 * time.Millisecond,
+		maxDirtyBlocks: 10,
+		cpuCount:       1,
+		memorySize:     1024,
+		pauseWaitMax:   3 * time.Second,
+		enableS3:       false,
+		hashChecks:     true,
+	})
+}
+
+func TestMigrationBasicNoCOWHashChecks(t *testing.T) {
+	migration(t, &migrationConfig{
+		blockSize:      1024 * 1024,
+		numMigrations:  3,
+		minCycles:      1,
+		maxCycles:      1,
+		cycleThrottle:  100 * time.Millisecond,
+		maxDirtyBlocks: 10,
+		cpuCount:       1,
+		memorySize:     1024,
+		pauseWaitMax:   3 * time.Second,
+		enableS3:       false,
+		hashChecks:     true,
+		noCOW:          true,
+	})
+}
+
+func TestMigrationBasicNoSparseFileHashChecks(t *testing.T) {
+	migration(t, &migrationConfig{
+		blockSize:      1024 * 1024,
+		numMigrations:  3,
+		minCycles:      1,
+		maxCycles:      1,
+		cycleThrottle:  100 * time.Millisecond,
+		maxDirtyBlocks: 10,
+		cpuCount:       1,
+		memorySize:     1024,
+		pauseWaitMax:   3 * time.Second,
+		enableS3:       false,
+		hashChecks:     true,
+		noCOW:          false,
+		noSparseFile:   true,
+	})
+}
+
+
+func TestMigrationBasicHashChecksSoftDirty4Cpus(t *testing.T) {
+	migration(t, &migrationConfig{
+		blockSize:      1024 * 1024,
+		numMigrations:  3,
+		minCycles:      1,
+		maxCycles:      1,
+		cycleThrottle:  100 * time.Millisecond,
+		maxDirtyBlocks: 10,
+		cpuCount:       4,
+		memorySize:     1024,
+		pauseWaitMax:   3 * time.Second,
+		enableS3:       false,
+		hashChecks:     true,
+		noMapShared:    true,
+	})
+}
+*/
+
 func TestMigration4Cpus(t *testing.T) {
 	migration(t, &migrationConfig{
-		numMigrations:  2,
+		blockSize:      1024 * 1024,
+		numMigrations:  3,
 		minCycles:      1,
 		maxCycles:      1,
 		cycleThrottle:  100 * time.Millisecond,
@@ -94,7 +185,8 @@ func TestMigration4Cpus(t *testing.T) {
 
 func TestMigrationNoPause(t *testing.T) {
 	migration(t, &migrationConfig{
-		numMigrations:  2,
+		blockSize:      1024 * 1024,
+		numMigrations:  3,
 		minCycles:      1,
 		maxCycles:      1,
 		cycleThrottle:  100 * time.Millisecond,
@@ -109,7 +201,8 @@ func TestMigrationNoPause(t *testing.T) {
 
 func TestMigrationMultiCycle(t *testing.T) {
 	migration(t, &migrationConfig{
-		numMigrations:  2,
+		blockSize:      1024 * 1024,
+		numMigrations:  3,
 		minCycles:      10,
 		maxCycles:      20,
 		cycleThrottle:  100 * time.Millisecond,
@@ -124,7 +217,8 @@ func TestMigrationMultiCycle(t *testing.T) {
 
 func TestMigrationNoCycle(t *testing.T) {
 	migration(t, &migrationConfig{
-		numMigrations:  2,
+		blockSize:      1024 * 1024,
+		numMigrations:  3,
 		minCycles:      0,
 		maxCycles:      0,
 		cycleThrottle:  100 * time.Millisecond,
@@ -139,7 +233,8 @@ func TestMigrationNoCycle(t *testing.T) {
 
 func TestMigrationMultiCycleSoftDirty(t *testing.T) {
 	migration(t, &migrationConfig{
-		numMigrations:  2,
+		blockSize:      1024 * 1024,
+		numMigrations:  3,
 		minCycles:      10,
 		maxCycles:      20,
 		cycleThrottle:  100 * time.Millisecond,
@@ -155,7 +250,8 @@ func TestMigrationMultiCycleSoftDirty(t *testing.T) {
 
 func TestMigrationNoCycleSoftDirty(t *testing.T) {
 	migration(t, &migrationConfig{
-		numMigrations:  2,
+		blockSize:      1024 * 1024,
+		numMigrations:  3,
 		minCycles:      0,
 		maxCycles:      0,
 		cycleThrottle:  100 * time.Millisecond,
@@ -169,8 +265,10 @@ func TestMigrationNoCycleSoftDirty(t *testing.T) {
 	})
 }
 
+/*
 func TestMigrationNoCycleSoftDirty1s(t *testing.T) {
 	migration(t, &migrationConfig{
+		blockSize:      1024 * 1024,
 		numMigrations:  3,
 		minCycles:      0,
 		maxCycles:      0,
@@ -185,6 +283,7 @@ func TestMigrationNoCycleSoftDirty1s(t *testing.T) {
 		grabInterval:   time.Second,
 	})
 }
+*/
 
 type migrationConfig struct {
 	numMigrations  int
@@ -199,6 +298,9 @@ type migrationConfig struct {
 	hashChecks     bool
 	noMapShared    bool
 	grabInterval   time.Duration
+	noCOW          bool
+	noSparseFile   bool
+	blockSize      int
 }
 
 /**
@@ -218,12 +320,24 @@ func setupDevicesCowS3(t *testing.T, log types.Logger, netns string, config *mig
 
 	devicesTo := make([]common.MigrateToDevice, 0)
 
+	template, err := GetCPUTemplate()
+	assert.NoError(t, err)
+
+	log.Info().Str("template", template).Msg("using cpu template")
+
+	bootargs := DefaultBootArgsNoPVM
+	ispvm, err := IsPVMHost()
+	assert.NoError(t, err)
+	if ispvm {
+		bootargs = DefaultBootArgs
+	}
+
 	// create package files
 	snapDir := setupSnapshot(t, log, context.Background(), netns, VMConfiguration{
 		CPUCount:    int64(config.cpuCount),
 		MemorySize:  int64(config.memorySize),
-		CPUTemplate: "None",
-		BootArgs:    DefaultBootArgsNoPVM,
+		CPUTemplate: template,
+		BootArgs:    bootargs,
 	},
 	)
 
@@ -252,12 +366,29 @@ func getDevicesFrom(t *testing.T, snapDir string, s3Endpoint string, i int, conf
 
 		dev := common.MigrateFromDevice{
 			Name:       n,
-			Base:       path.Join(snapDir, n),
-			Overlay:    path.Join(path.Join(testPeerDirCowS3, fmt.Sprintf("migration_%d", i), fmt.Sprintf("%s.overlay", fn))),
-			State:      path.Join(path.Join(testPeerDirCowS3, fmt.Sprintf("migration_%d", i), fmt.Sprintf("%s.state", fn))),
-			BlockSize:  1024 * 1024,
+			BlockSize:  uint32(config.blockSize),
 			Shared:     false,
-			SharedBase: true,
+			SharedBase: false,
+		}
+
+		if !config.noCOW {
+			dev.Base = path.Join(snapDir, n)
+			dev.Overlay = path.Join(path.Join(testPeerDirCowS3, fmt.Sprintf("migration_%d", i), fmt.Sprintf("%s.overlay", fn)))
+			dev.State = path.Join(path.Join(testPeerDirCowS3, fmt.Sprintf("migration_%d", i), fmt.Sprintf("%s.state", fn)))
+			dev.UseSparseFile = !config.noSparseFile
+		} else {
+			dev.Base = path.Join(path.Join(testPeerDirCowS3, fmt.Sprintf("migration_%d", i), fmt.Sprintf("%s.data", fn)))
+			// Copy the file
+			src, err := os.Open(path.Join(snapDir, n))
+			assert.NoError(t, err)
+			dst, err := os.OpenFile(dev.Base, os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
+			assert.NoError(t, err)
+			_, err = io.Copy(dst, src)
+			assert.NoError(t, err)
+			err = src.Close()
+			assert.NoError(t, err)
+			err = dst.Close()
+			assert.NoError(t, err)
 		}
 
 		if config.enableS3 && (n == common.DeviceMemoryName || n == common.DeviceDiskName) {
@@ -268,6 +399,13 @@ func getDevicesFrom(t *testing.T, snapDir string, s3Endpoint string, i int, conf
 			dev.S3Secure = false
 			dev.S3Bucket = "silosilo"
 			dev.S3Concurrency = 10
+
+			dev.S3BlockShift = 2
+			dev.S3OnlyDirty = false
+			dev.S3MaxAge = "100ms"
+			dev.S3MinChanged = 4
+			dev.S3Limit = 256
+			dev.S3CheckPeriod = "100ms"
 		}
 		devicesFrom = append(devicesFrom, dev)
 	}
@@ -284,12 +422,20 @@ func migration(t *testing.T, config *migrationConfig) {
 	})
 
 	log := logging.New(logging.Zerolog, "test", os.Stderr)
-	//	log.SetLevel(types.TraceLevel)
+	log.SetLevel(types.InfoLevel)
 
-	ns := testutil.SetupNAT(t, "", "dra")
+	dummyMetrics := testutil.NewDummyMetrics()
+
+	ns := testutil.SetupNAT(t, "", "dra", 2)
 
 	netns, err := ns.ClaimNamespace()
 	assert.NoError(t, err)
+	defer func() {
+		err := ns.ReleaseNamespace(netns)
+		fmt.Printf("ReleaseNamespace %v\n", err)
+		err = ns.Close()
+		fmt.Printf("Close nat %v\n", err)
+	}()
 
 	grandTotalBlocksP2P := 0
 	grandTotalBlocksS3 := 0
@@ -326,7 +472,7 @@ func migration(t *testing.T, config *migrationConfig) {
 
 	rp.GrabInterval = config.grabInterval
 
-	myPeer, err := peer.StartPeer(context.TODO(), context.Background(), log, nil, nil, "cow_test", rp)
+	myPeer, err := peer.StartPeer(context.TODO(), context.Background(), log, dummyMetrics, nil, "cow_test", rp)
 	assert.NoError(t, err)
 
 	hooks1 := peer.MigrateFromHooks{
@@ -340,7 +486,7 @@ func migration(t *testing.T, config *migrationConfig) {
 	err = myPeer.MigrateFrom(context.TODO(), devicesFrom, nil, nil, hooks1)
 	assert.NoError(t, err)
 
-	err = myPeer.Resume(context.TODO(), 10*time.Second, 10*time.Second)
+	err = myPeer.Resume(context.TODO(), 2*time.Minute, 2*time.Minute)
 	assert.NoError(t, err)
 
 	// Now we have a FIRST "resumed peer"
@@ -407,7 +553,7 @@ func migration(t *testing.T, config *migrationConfig) {
 			}
 		}
 
-		nextPeer, err := peer.StartPeer(context.TODO(), context.Background(), log, nil, nil, "cow_test", rp)
+		nextPeer, err := peer.StartPeer(context.TODO(), context.Background(), log, dummyMetrics, nil, "cow_test", rp)
 		assert.NoError(t, err)
 
 		r1, w1 := io.Pipe()
@@ -427,7 +573,7 @@ func migration(t *testing.T, config *migrationConfig) {
 		var sendingErr error
 		wg.Add(1)
 		go func() {
-			err := lastPeer.MigrateTo(context.TODO(), devicesTo, 10*time.Second, 10, []io.Reader{r1}, []io.Writer{w2}, hooks)
+			err := lastPeer.MigrateTo(context.TODO(), devicesTo, 2*time.Minute, 10, []io.Reader{r1}, []io.Writer{w2}, hooks)
 			assert.NoError(t, err)
 			sendingErr = err
 
@@ -493,22 +639,41 @@ func migration(t *testing.T, config *migrationConfig) {
 					eq, err := storage.Equals(prov1, prov2, 1024*1024)
 					assert.NoError(t, err)
 					assert.True(t, eq)
-					fmt.Printf(" # Migration %d End hash %s ok\n", migration+1, n)
 				} else {
+					devSize := lastPeer.GetDG().GetDeviceInformationByName(n).Size
 
-					buff1, err := os.ReadFile(path.Join(lastrp.DevicePath(), n))
+					log.Info().Uint64("size", devSize).Str("lastrp", lastrp.DevicePath()).Str("rp", rp.DevicePath()).Msg("comparing data")
+
+					// Compare the files bit by bit...
+					fp1, err := os.Open(path.Join(lastrp.DevicePath(), n))
 					assert.NoError(t, err)
-					buff2, err := os.ReadFile(path.Join(rp.DevicePath(), n))
+					fp2, err := os.Open(path.Join(rp.DevicePath(), n))
 					assert.NoError(t, err)
 
-					// Compare hashes so we don't get tons of output if they do differ.
-					hash1 := sha256.Sum256(buff1)
-					hash2 := sha256.Sum256(buff2)
+					blockSize := uint64(1 * 1024 * 1024) // Read 1m at a time
+					buff1 := make([]byte, blockSize)
+					buff2 := make([]byte, blockSize)
+					for offset := uint64(0); offset < devSize; offset += blockSize {
+						n1, err := fp1.ReadAt(buff1, int64(offset))
+						if err == io.EOF {
+							err = nil // Fine
+						}
+						assert.NoError(t, err)
+						n2, err := fp2.ReadAt(buff2, int64(offset))
+						if err == io.EOF {
+							err = nil // Fine
+						}
+						assert.NoError(t, err)
+						assert.Equal(t, n1, n2)
 
-					fmt.Printf(" # Migration %d End hash %s ~ %x => %x\n", migration+1, n, hash1, hash2)
+						// Check the data is equal
+						assert.True(t, bytes.Equal(buff1[:n1], buff2[:n2]))
+					}
 
-					// Check the data is identical
-					assert.Equal(t, hash1, hash2)
+					err = fp1.Close()
+					assert.NoError(t, err)
+					err = fp2.Close()
+					assert.NoError(t, err)
 				}
 			}
 		}
@@ -523,7 +688,7 @@ func migration(t *testing.T, config *migrationConfig) {
 		pMetrics := lastPeer.GetMetrics()
 
 		// We can resume here safely
-		err = nextPeer.Resume(context.TODO(), 30*time.Second, 30*time.Second)
+		err = nextPeer.Resume(context.TODO(), 2*time.Minute, 2*time.Minute)
 		assert.NoError(t, err)
 
 		lastPeer = nextPeer

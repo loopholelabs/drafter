@@ -39,7 +39,7 @@ func TestSnapshotter(t *testing.T) {
 		return
 	}
 
-	ns := testutil.SetupNAT(t, "", "dra")
+	ns := testutil.SetupNAT(t, "", "dra", 2)
 
 	log := logging.New(logging.Zerolog, "test", os.Stderr)
 	log.SetLevel(loggingtypes.DebugLevel)
@@ -49,11 +49,23 @@ func TestSnapshotter(t *testing.T) {
 	netns, err := ns.ClaimNamespace()
 	assert.NoError(t, err)
 
+	template, err := GetCPUTemplate()
+	assert.NoError(t, err)
+
+	log.Info().Str("template", template).Msg("using cpu template")
+
+	bootargs := DefaultBootArgsNoPVM
+	ispvm, err := IsPVMHost()
+	assert.NoError(t, err)
+	if ispvm {
+		bootargs = DefaultBootArgs
+	}
+
 	snapDir := setupSnapshot(t, log, ctx, netns, VMConfiguration{
 		CPUCount:    1,
 		MemorySize:  1024,
-		CPUTemplate: "None",
-		BootArgs:    DefaultBootArgsNoPVM,
+		CPUTemplate: template,
+		BootArgs:    bootargs,
 	},
 	)
 
@@ -152,7 +164,7 @@ func setupSnapshot(t *testing.T, log types.Logger, ctx context.Context, netns st
 			AgentVSockPort: uint32(26),
 			ResumeTimeout:  time.Minute,
 		},
-		func() {})
+		func() error { return nil })
 
 	assert.NoError(t, err)
 
