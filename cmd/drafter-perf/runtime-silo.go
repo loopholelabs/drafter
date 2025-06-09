@@ -25,6 +25,7 @@ import (
 type RunConfig struct {
 	Name                string        `json:"name"`
 	UseCow              bool          `json:"cow"`
+	UseSharedBase       bool          `json:"sharedbase"`
 	UseSparseFile       bool          `json:"sparse"`
 	UseVolatility       bool          `json:"volatility"`
 	UseWriteCache       bool          `json:"writecache"`
@@ -55,6 +56,8 @@ type RunConfig struct {
 
 	MigrationCompression bool `json:"migrationcompression"`
 	MigrationConcurrency int  `json:"migrationconcurrency"`
+
+	NumPipes int `json:"numpipes"`
 
 	// TODO
 	VMCPUs   int `json:"cpus"`
@@ -90,6 +93,8 @@ func runSilo(ctx context.Context, log loggingtypes.Logger, met *testutil.DummyMe
 	testDir string, snapDir string, ns func() (string, func(), error), forwards func(string) (func(), error), benchCB func(), conf RunConfig,
 	enableInput bool, enableOutput bool) error {
 
+	peers := make([]*peer.Peer, 0)
+
 	// Setup the first devices here...
 	_, devicesFrom, err := getDevicesFrom(0, testDir, snapDir, conf)
 	if err != nil {
@@ -105,10 +110,25 @@ func runSilo(ctx context.Context, log loggingtypes.Logger, met *testutil.DummyMe
 		return err
 	}
 
+	defer func() {
+		myForwardsCloser() // Might have already been done
+		myNetCloser()      // Close the net
+	}()
+
 	myPeer, err := setupPeer(log, met, conf, testDir, myNetNs, enableInput, enableOutput, 0, func(_ bool) {})
 	if err != nil {
 		return err
 	}
+
+	defer func() {
+		fmt.Printf("VMClosing %s\n", myPeer.VMPath)
+		err = myPeer.Close()
+		if err != nil {
+			fmt.Printf("Error closing VM %v\n", err)
+		}
+	}()
+
+	peers = append(peers, myPeer)
 
 	hooks1 := peer.MigrateFromHooks{
 		OnLocalDeviceRequested:     func(id uint32, path string) {},
@@ -154,9 +174,6 @@ func runSilo(ctx context.Context, log loggingtypes.Logger, met *testutil.DummyMe
 
 	migrationID := 1
 
-	peers := make([]*peer.Peer, 0)
-	peers = append(peers, myPeer)
-
 mainloop:
 	for {
 		select {
@@ -170,6 +187,8 @@ mainloop:
 				return err
 			}
 
+			peers = append(peers, newPeer)
+
 			migStartTime := time.Now()
 			err = migrateNow(migrationID, log, met, conf, myPeer, newPeer, testDir, snapDir)
 			if err != nil {
@@ -177,22 +196,12 @@ mainloop:
 			}
 
 			fmt.Printf("# Migration.%d took %dms\n", migrationID, time.Since(migStartTime).Milliseconds())
-			myPeer.Close()
+			myPeer.Close() // Close the previous peer.
 			myPeer = newPeer
-			peers = append(peers, myPeer)
 
 			migrationID++
 		}
 	}
-
-	// We're all done.
-
-	err = myPeer.Close()
-	if err != nil {
-		return err
-	}
-	myForwardsCloser() // Might have already been done
-	myNetCloser()      // Close the net
 
 	return nil
 }
@@ -206,7 +215,10 @@ func migrateNow(id int, log loggingtypes.Logger, met *testutil.DummyMetrics, con
 	readersTo := make([]io.Reader, 0)
 	writersTo := make([]io.Writer, 0)
 
-	numPipes := 1
+	numPipes := conf.NumPipes
+	if numPipes < 1 {
+		numPipes = 1
+	}
 
 	for i := 0; i < numPipes; i++ {
 		r1, w1 := io.Pipe()
@@ -464,11 +476,10 @@ func getDevicesFrom(id int, testDir string, snapDir string, conf RunConfig) (map
 		fn := common.DeviceFilenames[n]
 
 		dev := common.MigrateFromDevice{
-			Name:       n,
-			BlockSize:  conf.BlockSize,
-			Shared:     false,
-			SharedBase: true,
-			AnyOrder:   !conf.UseVolatility,
+			Name:      n,
+			BlockSize: conf.BlockSize,
+			Shared:    false,
+			AnyOrder:  !conf.UseVolatility,
 		}
 
 		if conf.UseWriteCache && n == "memory" {
@@ -483,6 +494,7 @@ func getDevicesFrom(id int, testDir string, snapDir string, conf RunConfig) (map
 			dev.UseSparseFile = conf.UseSparseFile
 			dev.Overlay = path.Join(path.Join(testDir, conf.Name, fmt.Sprintf("%s-%d.overlay", fn, id)))
 			dev.State = path.Join(path.Join(testDir, conf.Name, fmt.Sprintf("%s-%d.state", fn, id)))
+			dev.SharedBase = conf.UseSharedBase
 		} else {
 			dev.Base = path.Join(testDir, fmt.Sprintf("silo_%s_%d_%s", conf.Name, id, n))
 			// Copy the file

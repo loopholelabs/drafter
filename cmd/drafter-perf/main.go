@@ -64,38 +64,101 @@ func main() {
 				// MigrateAfter:  "10s",
 			},
 		*/
-
 		{
-			Name:          "silo_30s",
+			Name:          "silo_30s_sd_10s",
 			BlockSize:     1024 * 1024,
 			UseCow:        true,
+			UseSharedBase: true,
 			UseSparseFile: true,
 			UseVolatility: true,
 			NoMapShared:   true,
-			GrabPeriod:    0,
+			GrabPeriod:    10 * time.Second,
 			MigrateAfter:  "30s",
 		},
 		{
-			Name:          "silo_60s",
+			Name:          "silo_30s_sd_5s",
 			BlockSize:     1024 * 1024,
 			UseCow:        true,
+			UseSharedBase: true,
 			UseSparseFile: true,
 			UseVolatility: true,
 			NoMapShared:   true,
-			GrabPeriod:    0,
-			MigrateAfter:  "60s",
+			GrabPeriod:    5 * time.Second,
+			MigrateAfter:  "30s",
 		},
 		{
-			Name:          "silo_90s",
+			Name:          "silo_30s_sd_2s",
 			BlockSize:     1024 * 1024,
 			UseCow:        true,
+			UseSharedBase: true,
 			UseSparseFile: true,
 			UseVolatility: true,
 			NoMapShared:   true,
-			GrabPeriod:    0,
-			MigrateAfter:  "90s",
+			GrabPeriod:    2 * time.Second,
+			MigrateAfter:  "30s",
 		},
+		/*
+			{
+				Name:                 "silo_30s_compression",
+				BlockSize:            1024 * 1024,
+				UseCow:               true,
+				UseSharedBase:        true,
+				UseSparseFile:        true,
+				UseVolatility:        true,
+				NoMapShared:          false,
+				GrabPeriod:           0,
+				MigrateAfter:         "30s",
+				MigrationCompression: true,
+			},
 
+			{
+				Name:                 "silo_30s_concurrency",
+				BlockSize:            1024 * 1024,
+				UseCow:               true,
+				UseSharedBase:        true,
+				UseSparseFile:        true,
+				UseVolatility:        true,
+				NoMapShared:          false,
+				GrabPeriod:           0,
+				MigrateAfter:         "30s",
+				MigrationConcurrency: 48,
+			},
+
+			{
+				Name:          "silo_30s_no_sharedbase",
+				BlockSize:     1024 * 1024,
+				UseCow:        true,
+				UseSharedBase: false,
+				UseSparseFile: true,
+				UseVolatility: true,
+				NoMapShared:   false,
+				GrabPeriod:    0,
+				MigrateAfter:  "30s",
+			},
+
+			{
+				Name:          "silo_30s_nocow",
+				BlockSize:     1024 * 1024,
+				UseCow:        false,
+				UseSparseFile: true,
+				UseVolatility: true,
+				NoMapShared:   false,
+				GrabPeriod:    0,
+				MigrateAfter:  "30s",
+			},
+
+			{
+				Name:          "silo_30s_sd",
+				BlockSize:     1024 * 1024,
+				UseCow:        true,
+				UseSharedBase: true,
+				UseSparseFile: true,
+				UseVolatility: true,
+				NoMapShared:   true,
+				GrabPeriod:    0,
+				MigrateAfter:  "30s",
+			},
+		*/
 		/*
 			{
 				Name:          "silo-60s",
@@ -153,31 +216,34 @@ func main() {
 		for _, c := range siloBaseConfigs {
 			for n := 0; n < *iterations; n++ {
 				siloConfigs = append(siloConfigs, RunConfig{
-					Name:                fmt.Sprintf("%s.%d", c.Name, n),
-					UseCow:              c.UseCow,
-					UseSparseFile:       c.UseSparseFile,
-					UseVolatility:       c.UseVolatility,
-					UseWriteCache:       c.UseWriteCache,
-					WriteCacheMin:       c.WriteCacheMin,
-					WriteCacheMax:       c.WriteCacheMax,
-					WriteCacheBlocksize: c.WriteCacheBlocksize,
-					BlockSize:           c.BlockSize,
-					GrabPeriod:          c.GrabPeriod,
-					NoMapShared:         c.NoMapShared,
-					MigrateAfter:        c.MigrateAfter,
-					S3Sync:              c.S3Sync,
-					S3Secure:            c.S3Secure,
-					S3SecretKey:         c.S3SecretKey,
-					S3Endpoint:          c.S3Endpoint,
-					S3Concurrency:       c.S3Concurrency,
-					S3Bucket:            c.S3Bucket,
-					S3AccessKey:         c.S3AccessKey,
-					S3BlockShift:        c.S3BlockShift,
-					S3OnlyDirty:         c.S3OnlyDirty,
-					S3MaxAge:            c.S3MaxAge,
-					S3MinChanged:        c.S3MinChanged,
-					S3Limit:             c.S3Limit,
-					S3CheckPeriod:       c.S3CheckPeriod,
+					Name:                 fmt.Sprintf("%s.%d", c.Name, n),
+					UseCow:               c.UseCow,
+					UseSharedBase:        c.UseSharedBase,
+					UseSparseFile:        c.UseSparseFile,
+					UseVolatility:        c.UseVolatility,
+					UseWriteCache:        c.UseWriteCache,
+					WriteCacheMin:        c.WriteCacheMin,
+					WriteCacheMax:        c.WriteCacheMax,
+					WriteCacheBlocksize:  c.WriteCacheBlocksize,
+					BlockSize:            c.BlockSize,
+					GrabPeriod:           c.GrabPeriod,
+					NoMapShared:          c.NoMapShared,
+					MigrateAfter:         c.MigrateAfter,
+					MigrationCompression: c.MigrationCompression,
+					MigrationConcurrency: c.MigrationConcurrency,
+					S3Sync:               c.S3Sync,
+					S3Secure:             c.S3Secure,
+					S3SecretKey:          c.S3SecretKey,
+					S3Endpoint:           c.S3Endpoint,
+					S3Concurrency:        c.S3Concurrency,
+					S3Bucket:             c.S3Bucket,
+					S3AccessKey:          c.S3AccessKey,
+					S3BlockShift:         c.S3BlockShift,
+					S3OnlyDirty:          c.S3OnlyDirty,
+					S3MaxAge:             c.S3MaxAge,
+					S3MinChanged:         c.S3MinChanged,
+					S3Limit:              c.S3Limit,
+					S3CheckPeriod:        c.S3CheckPeriod,
 				})
 			}
 		}
@@ -299,6 +365,7 @@ func main() {
 
 	// Start testing Silo confs
 	for _, sConf := range siloConfigs {
+		fmt.Printf("\nSTARTING SILO RUN - %s\n", sConf.Summary())
 		var runtimeStart time.Time
 		var runtimeEnd time.Time
 		benchCB := func() {
@@ -329,6 +396,8 @@ func main() {
 		//		siloDGs[sConf.Name] = dg
 
 		siloTimingsRuntime[sConf.Name] = runtimeEnd.Sub(runtimeStart)
+
+		time.Sleep(10 * time.Second) // Let dust settle.
 	}
 
 	var nosiloGet time.Duration
