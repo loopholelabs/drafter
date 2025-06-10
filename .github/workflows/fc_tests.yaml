@@ -20,11 +20,9 @@ jobs:
 
       - name: Setup firecracker
         run: |
-          gunzip fc/firecracker.gz
-          sudo mv fc/firecracker_mar14 /usr/bin/firecracker
+          sudo mv fc/firecracker_jun10 /usr/bin/firecracker
           chmod 777 /usr/bin/firecracker
-          gunzip fc/jailer.gz
-          sudo mv fc/jailer_mar14 /usr/bin/jailer
+          sudo mv fc/jailer_jun10 /usr/bin/jailer
           chmod 777 /usr/bin/jailer
 
       - name: Grab some blueprints
