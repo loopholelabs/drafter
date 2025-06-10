@@ -48,6 +48,7 @@ type FirecrackerRuntimeProvider[L ipc.AgentServerLocal, R ipc.AgentServerRemote[
 
 	// Grabber
 	Grabbing      bool
+	GrabFailsafe  bool
 	grabberCtx    context.Context
 	grabberCancel context.CancelFunc
 	grabberWg     sync.WaitGroup
@@ -366,8 +367,12 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Suspend(ctx context.Context, susp
 }
 
 func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChanges() error {
-	// err := rp.grabMemoryChangesFailsafe()
-	err := rp.grabMemoryChangesSoftDirty()
+	var err error
+	if rp.GrabFailsafe {
+		err = rp.grabMemoryChangesFailsafe()
+	} else {
+		err = rp.grabMemoryChangesSoftDirty()
+	}
 	if err != nil {
 		if rp.Log != nil {
 			rp.Log.Error().Err(err).Msg("Grabbing memory changes")

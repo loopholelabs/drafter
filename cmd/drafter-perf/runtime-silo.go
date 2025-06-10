@@ -156,7 +156,7 @@ func runSilo(ctx context.Context, log loggingtypes.Logger, met *testutil.DummyMe
 
 	// Our main loop here.
 
-	afterChan := make(<-chan time.Time, 0)
+	afterChan := make(<-chan time.Time)
 	if conf.MigrateAfter != "" {
 		afterDuration, err := time.ParseDuration(conf.MigrateAfter)
 		if err != nil {
@@ -202,6 +202,8 @@ mainloop:
 			migrationID++
 		}
 	}
+
+	fmt.Printf("After silo run we have %d peers\n", len(peers))
 
 	return nil
 }
