@@ -1,5 +1,5 @@
-//go:build integrationall
-// +build integrationall
+//go:build migration
+// +build migration
 
 package firecracker
 
