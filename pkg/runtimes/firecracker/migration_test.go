@@ -64,6 +64,24 @@ func TestMigrationBasicHashChecksSoftDirty(t *testing.T) {
 	})
 }
 
+func TestMigrationBasicHashChecksFailsafe(t *testing.T) {
+	migration(t, &migrationConfig{
+		blockSize:      1024 * 1024,
+		numMigrations:  3,
+		minCycles:      1,
+		maxCycles:      1,
+		cycleThrottle:  100 * time.Millisecond,
+		maxDirtyBlocks: 10,
+		cpuCount:       1,
+		memorySize:     1024,
+		pauseWaitMax:   3 * time.Second,
+		enableS3:       false,
+		hashChecks:     true,
+		noMapShared:    true,
+		failsafe:       true,
+	})
+}
+
 func TestMigrationBasicWithS3(t *testing.T) {
 	migration(t, &migrationConfig{
 		blockSize:      1024 * 1024,
@@ -80,7 +98,6 @@ func TestMigrationBasicWithS3(t *testing.T) {
 	})
 }
 
-/*
 func TestMigrationBasicSmallBlocksHashChecks(t *testing.T) {
 	migration(t, &migrationConfig{
 		blockSize:      4 * 1024,
@@ -148,7 +165,6 @@ func TestMigrationBasicNoSparseFileHashChecks(t *testing.T) {
 	})
 }
 
-
 func TestMigrationBasicHashChecksSoftDirty4Cpus(t *testing.T) {
 	migration(t, &migrationConfig{
 		blockSize:      1024 * 1024,
@@ -165,7 +181,6 @@ func TestMigrationBasicHashChecksSoftDirty4Cpus(t *testing.T) {
 		noMapShared:    true,
 	})
 }
-*/
 
 func TestMigration4Cpus(t *testing.T) {
 	migration(t, &migrationConfig{
@@ -265,7 +280,6 @@ func TestMigrationNoCycleSoftDirty(t *testing.T) {
 	})
 }
 
-/*
 func TestMigrationNoCycleSoftDirty1s(t *testing.T) {
 	migration(t, &migrationConfig{
 		blockSize:      1024 * 1024,
@@ -283,7 +297,6 @@ func TestMigrationNoCycleSoftDirty1s(t *testing.T) {
 		grabInterval:   time.Second,
 	})
 }
-*/
 
 type migrationConfig struct {
 	numMigrations  int
@@ -301,6 +314,7 @@ type migrationConfig struct {
 	noCOW          bool
 	noSparseFile   bool
 	blockSize      int
+	failsafe       bool
 }
 
 /**
@@ -470,6 +484,7 @@ func migration(t *testing.T, config *migrationConfig) {
 		MemoryName:       common.DeviceMemoryName,
 		AgentServerLocal: struct{}{},
 		Grabbing:         config.noMapShared,
+		GrabFailsafe:     config.failsafe,
 	}
 
 	rp.GrabInterval = config.grabInterval
