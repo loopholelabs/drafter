@@ -56,4 +56,4 @@ jobs:
           cat /proc/swaps
 
       - name: Test
-        run: go test -exec sudo -v ./pkg/runtimes/firecracker/. --tags migration --timeout 120m
+        run: go test -exec sudo -v ./pkg/runtimes/firecracker/. --tags "integration migration" --timeout 120m
