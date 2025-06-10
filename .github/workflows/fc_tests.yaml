@@ -51,4 +51,4 @@ jobs:
           rmdir tmproot
 
       - name: Test
-        run: go test -exec sudo -v ./pkg/runtimes/firecracker/. --tags integration --timeout 120m --run ^TestMigrationBasic
+        run: go test -exec sudo -v ./pkg/runtimes/firecracker/. --tags integration --timeout 120m
