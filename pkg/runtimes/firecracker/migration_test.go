@@ -354,10 +354,12 @@ func setupDevicesCowS3(t *testing.T, log types.Logger, netns string, config *mig
 	return devicesTo, snapDir, s3Endpoint
 }
 
-func getDevicesFrom(t *testing.T, snapDir string, s3Endpoint string, i int, config *migrationConfig) []common.MigrateFromDevice {
+func getDevicesFrom(t *testing.T, snapDir string, s3Endpoint string, i int, config *migrationConfig) ([]common.MigrateFromDevice, string) {
 	devicesFrom := make([]common.MigrateFromDevice, 0)
 
-	err := os.Mkdir(path.Join(testPeerDirCowS3, fmt.Sprintf("migration_%d", i)), 0777)
+	migDir := path.Join(testPeerDirCowS3, fmt.Sprintf("migration_%d", i))
+
+	err := os.Mkdir(migDir, 0777)
 	assert.NoError(t, err)
 
 	for _, n := range append(common.KnownNames, "oci") {
@@ -373,11 +375,11 @@ func getDevicesFrom(t *testing.T, snapDir string, s3Endpoint string, i int, conf
 
 		if !config.noCOW {
 			dev.Base = path.Join(snapDir, n)
-			dev.Overlay = path.Join(path.Join(testPeerDirCowS3, fmt.Sprintf("migration_%d", i), fmt.Sprintf("%s.overlay", fn)))
-			dev.State = path.Join(path.Join(testPeerDirCowS3, fmt.Sprintf("migration_%d", i), fmt.Sprintf("%s.state", fn)))
+			dev.Overlay = path.Join(path.Join(migDir, fmt.Sprintf("%s.overlay", fn)))
+			dev.State = path.Join(path.Join(migDir, fmt.Sprintf("%s.state", fn)))
 			dev.UseSparseFile = !config.noSparseFile
 		} else {
-			dev.Base = path.Join(path.Join(testPeerDirCowS3, fmt.Sprintf("migration_%d", i), fmt.Sprintf("%s.data", fn)))
+			dev.Base = path.Join(path.Join(migDir, fmt.Sprintf("%s.data", fn)))
 			// Copy the file
 			src, err := os.Open(path.Join(snapDir, n))
 			assert.NoError(t, err)
@@ -409,7 +411,7 @@ func getDevicesFrom(t *testing.T, snapDir string, s3Endpoint string, i int, conf
 		}
 		devicesFrom = append(devicesFrom, dev)
 	}
-	return devicesFrom
+	return devicesFrom, migDir
 }
 
 func migration(t *testing.T, config *migrationConfig) {
@@ -482,7 +484,7 @@ func migration(t *testing.T, config *migrationConfig) {
 		OnXferCustomData:           func(data []byte) {},
 	}
 
-	devicesFrom := getDevicesFrom(t, snapDir, s3Endpoint, 0, config)
+	devicesFrom, migDir := getDevicesFrom(t, snapDir, s3Endpoint, 0, config)
 	err = myPeer.MigrateFrom(context.TODO(), devicesFrom, nil, nil, hooks1)
 	assert.NoError(t, err)
 
@@ -600,7 +602,8 @@ func migration(t *testing.T, config *migrationConfig) {
 				completedWg.Done()
 			},
 		}
-		devicesFrom = getDevicesFrom(t, snapDir, s3Endpoint, migration+1, config)
+		var newMigDir string
+		devicesFrom, newMigDir = getDevicesFrom(t, snapDir, s3Endpoint, migration+1, config)
 		err = nextPeer.MigrateFrom(context.TODO(), devicesFrom, []io.Reader{r2}, []io.Writer{w1}, hooks2)
 		assert.NoError(t, err)
 
@@ -689,6 +692,10 @@ func migration(t *testing.T, config *migrationConfig) {
 		err = lastPeer.Close()
 		assert.NoError(t, err)
 
+		err = os.RemoveAll(migDir)
+		assert.NoError(t, err)
+		migDir = newMigDir
+
 		pMetrics := lastPeer.GetMetrics()
 
 		// We can resume here safely
@@ -708,6 +715,9 @@ func migration(t *testing.T, config *migrationConfig) {
 
 	// Close the final peer
 	err = lastPeer.Close()
+	assert.NoError(t, err)
+
+	err = os.RemoveAll(migDir)
 	assert.NoError(t, err)
 
 	// We would expect to have migrated data both via P2P, and also via S3.

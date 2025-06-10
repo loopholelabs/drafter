@@ -38,6 +38,8 @@ jobs:
           mv oci out/blueprint/oci.ext4
           mv kernel out/blueprint/vmlinux
           mv disk out/blueprint/rootfs.ext4
+          rm *.zst
+          df -h
 
       - name: Build agent
         run: |

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"path/filepath"
 	"sync"
 	"time"
 	"unsafe"
@@ -276,13 +277,11 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Close(dg *devicegroup.DeviceGroup
 		if err != nil {
 			return errors.Join(ErrCouldNotCloseServer, err)
 		}
-		/*
-		   FOR NOW, DON'T REMOVE DATA
-		   		err = os.RemoveAll(filepath.Dir(rp.Machine.VMPath))
-		   		if err != nil {
-		   			return errors.Join(ErrCouldNotRemoveVMDir, err)
-		   		}
-		*/
+
+		err = os.RemoveAll(filepath.Dir(rp.Machine.VMPath))
+		if err != nil {
+			return errors.Join(ErrCouldNotRemoveVMDir, err)
+		}
 	}
 	return nil
 }
