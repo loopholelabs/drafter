@@ -48,7 +48,7 @@ type FirecrackerRuntimeProvider[L ipc.AgentServerLocal, R ipc.AgentServerRemote[
 	RunningCB func(r bool)
 
 	// Grabber
-	Grabbing      bool
+	GrabMemory    bool
 	GrabFailsafe  bool
 	grabberCtx    context.Context
 	grabberCancel context.CancelFunc
@@ -168,10 +168,6 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) setRunning(r bool) {
 						}
 						return
 					case <-ticker.C:
-						if rp.Log != nil {
-							rp.Log.Debug().Msg("soft dirty disabled for now")
-						}
-
 						err := rp.grabMemoryChanges()
 						if err != nil {
 							if rp.Log != nil {
@@ -223,7 +219,7 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) FlushData(ctx context.Context, dg
 		rp.Log.Info().Msg("Firecracker FlushData")
 	}
 
-	if rp.Grabbing {
+	if rp.GrabMemory {
 		err := rp.grabMemoryChanges()
 		if err != nil {
 			return err
@@ -255,7 +251,7 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Close(dg *devicegroup.DeviceGroup
 		}
 
 		// We only need to do this if it hasn't been suspended, but it'll refuse inside Suspend
-		rp.Grabbing = false                                   // We don't care.
+		rp.GrabMemory = false                                 // We don't care.
 		err := rp.Suspend(context.TODO(), 10*time.Minute, dg) // TODO. Timeout
 		if err != nil {
 			return err
@@ -355,7 +351,7 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Suspend(ctx context.Context, susp
 
 	rp.setRunning(false)
 
-	if rp.Grabbing {
+	if rp.GrabMemory {
 		err = rp.grabMemoryChanges()
 		if err != nil {
 			return err

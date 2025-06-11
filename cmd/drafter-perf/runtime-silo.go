@@ -35,6 +35,7 @@ type RunConfig struct {
 	BlockSize           uint32        `json:"blocksize"`
 	GrabPeriod          time.Duration `json:"grabperiod"`
 	NoMapShared         bool          `json:"nomapshared"`
+	GrabFailsafe        bool          `json:"grabfailsafe"`
 
 	S3Sync        bool   `json:"s3sync"`
 	S3Secure      bool   `json:"s3secure"`
@@ -437,12 +438,9 @@ func setupPeer(log loggingtypes.Logger, met metrics.SiloMetrics, conf RunConfig,
 		MemoryName:              common.DeviceMemoryName,
 		AgentServerLocal:        struct{}{},
 		GrabInterval:            conf.GrabPeriod,
-	}
-
-	rp.RunningCB = runningCB
-
-	if hConf.NoMapShared {
-		rp.Grabbing = true
+		GrabMemory:              hConf.NoMapShared,
+		GrabFailsafe:            conf.GrabFailsafe,
+		RunningCB:               runningCB,
 	}
 
 	// Use something to push output (sometimes needed)

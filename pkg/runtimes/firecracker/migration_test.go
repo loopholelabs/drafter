@@ -483,7 +483,7 @@ func migration(t *testing.T, config *migrationConfig) {
 		StateName:        common.DeviceStateName,
 		MemoryName:       common.DeviceMemoryName,
 		AgentServerLocal: struct{}{},
-		Grabbing:         config.noMapShared,
+		GrabMemory:       config.noMapShared,
 		GrabFailsafe:     config.failsafe,
 	}
 
@@ -552,7 +552,7 @@ func migration(t *testing.T, config *migrationConfig) {
 			StateName:        common.DeviceStateName,
 			MemoryName:       common.DeviceMemoryName,
 			AgentServerLocal: struct{}{},
-			Grabbing:         config.noMapShared,
+			GrabMemory:       config.noMapShared,
 		}
 
 		rp.GrabInterval = config.grabInterval
