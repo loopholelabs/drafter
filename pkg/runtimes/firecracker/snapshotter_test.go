@@ -141,7 +141,7 @@ func setupSnapshot(t *testing.T, log types.Logger, ctx context.Context, netns st
 		vmConfiguration,
 		LivenessConfiguration{
 			LivenessVSockPort: uint32(25),
-			ResumeTimeout:     time.Minute,
+			ResumeTimeout:     time.Minute * 5,
 		},
 		FirecrackerMachineConfig{
 			FirecrackerBin: firecrackerBin,
@@ -162,7 +162,7 @@ func setupSnapshot(t *testing.T, log types.Logger, ctx context.Context, netns st
 		},
 		AgentConfiguration{
 			AgentVSockPort: uint32(26),
-			ResumeTimeout:  time.Minute,
+			ResumeTimeout:  time.Minute * 5,
 		},
 		func() error { return nil })
 
