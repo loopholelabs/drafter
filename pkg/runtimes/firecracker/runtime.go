@@ -18,7 +18,7 @@ import (
 	"github.com/loopholelabs/logging/types"
 	"github.com/loopholelabs/silo/pkg/storage"
 	"github.com/loopholelabs/silo/pkg/storage/devicegroup"
-	"github.com/loopholelabs/silo/pkg/storage/expose"
+	"github.com/loopholelabs/silo/pkg/storage/memory"
 	"github.com/loopholelabs/silo/pkg/storage/modules"
 )
 
@@ -385,7 +385,7 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChangesFailsafe() error
 		rp.Log.Debug().Msg("Grabbing failsafe memory changes")
 	}
 
-	pm := expose.NewProcessMemory(rp.Machine.VMPid)
+	pm := memory.NewProcessMemory(rp.Machine.VMPid)
 	memRanges, err := pm.GetMemoryRange("/memory")
 
 	if err != nil {
@@ -486,7 +486,7 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChangesSoftDirty() erro
 	}
 
 	// Do a softDirty memory read here, and write it to the silo memory device.
-	pm := expose.NewProcessMemory(rp.Machine.VMPid)
+	pm := memory.NewProcessMemory(rp.Machine.VMPid)
 	memRanges, err := pm.GetMemoryRange("/memory")
 	if err != nil {
 		return err
@@ -526,7 +526,7 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChangesSoftDirty() erro
 	totalBytes := int64(0)
 
 	type CopyData struct {
-		ranges    []expose.MemoryRange
+		ranges    []memory.MemoryRange
 		addrStart uint64
 		offset    uint64
 	}
