@@ -107,9 +107,11 @@ func setupSnapshot(t *testing.T, log types.Logger, ctx context.Context, netns st
 
 	err = os.Mkdir(snapshotDir, 0777)
 	assert.NoError(t, err)
-	t.Cleanup(func() {
-		os.RemoveAll(snapshotDir)
-	})
+	/*
+		t.Cleanup(func() {
+			os.RemoveAll(snapshotDir)
+		})
+	*/
 
 	firecrackerBin, err := exec.LookPath("firecracker")
 	assert.NoError(t, err)
