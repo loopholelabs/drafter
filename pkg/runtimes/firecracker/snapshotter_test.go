@@ -5,7 +5,9 @@ package firecracker
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"os/user"
@@ -93,6 +95,14 @@ func setupSnapshot(t *testing.T, log types.Logger, ctx context.Context, netns st
 	if currentUser.Username != "root" {
 		fmt.Printf("Cannot run test unless we are root.\n")
 		return ""
+	}
+
+	_, err = os.Stat(snapshotDir)
+	if err == nil {
+		return snapshotDir // Don't create snapshot if there's one already
+	}
+	if !errors.Is(err, fs.ErrNotExist) {
+		panic(err) // Some other problem
 	}
 
 	err = os.Mkdir(snapshotDir, 0777)
