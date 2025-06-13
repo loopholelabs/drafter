@@ -437,7 +437,6 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChangesFailsafe() error
 
 	defer memf.Close()
 
-	// FIXME: Find changes... (SLOW)
 	blockSize := uint64(1024 * 1024 * 4)
 
 	for _, r := range memRanges {
@@ -458,7 +457,7 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChangesFailsafe() error
 			}
 			if !bytes.Equal(buffer[:n1], provBuffer[:n2]) {
 				// Memory has changed, lets write it
-				n, err := rp.grabberProv.WriteAt(buffer, int64(r.Offset+o-r.Start))
+				n, err := rp.grabberProv.WriteAt(buffer[:n1], int64(r.Offset+o-r.Start))
 				if err != nil {
 					return err
 				}
@@ -553,8 +552,6 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChangesSoftDirty() erro
 		for _, r := range ranges {
 			needBytes += r.End - r.Start
 		}
-
-		fmt.Printf("#GRAB# memRanges %x: %x-%x ranges=%d bytes=%d\n", r.Offset, r.Start, r.End, len(ranges), needBytes)
 
 		copyData = append(copyData, CopyData{
 			ranges:    ranges,

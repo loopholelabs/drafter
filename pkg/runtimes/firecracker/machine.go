@@ -471,6 +471,7 @@ func GetCPUTemplate() (string, error) {
 				}
 			}
 		}
+		break
 	}
 	return "", errors.New("unknown cpu")
 }

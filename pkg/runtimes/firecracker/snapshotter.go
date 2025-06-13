@@ -326,7 +326,6 @@ func copySnapshotFiles(devices []SnapshotDevice, vmPath string) error {
 			paddingLength = paddingLength + minPadding
 		}
 
-		// paddingLength := utils.GetBlockDevicePadding(deviceSize)
 		if paddingLength > 0 {
 			_, err := outputFile.Write(make([]byte, paddingLength))
 			if err != nil {
