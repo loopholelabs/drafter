@@ -48,8 +48,12 @@ type FirecrackerRuntimeProvider[L ipc.AgentServerLocal, R ipc.AgentServerRemote[
 	RunningCB func(r bool)
 
 	// Grabber
-	GrabMemory    bool
-	GrabFailsafe  bool
+	GrabMemory   bool
+	GrabFailsafe bool
+
+	GrabUpdateDirty  bool
+	GrabUpdateMemory bool
+
 	grabberCtx    context.Context
 	grabberCancel context.CancelFunc
 	grabberWg     sync.WaitGroup
@@ -377,7 +381,6 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChanges() error {
 }
 
 func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChangesFailsafe() error {
-
 	rp.memoryLock.Lock()
 	defer rp.memoryLock.Unlock()
 
@@ -437,8 +440,10 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChangesFailsafe() error
 
 	defer memf.Close()
 
-	// FIXME: Find changes... (SLOW)
+	// Find changes... (SLOW)
 	blockSize := uint64(1024 * 1024 * 4)
+
+	memDirty := rp.dg.GetDeviceInformationByName(common.DeviceMemoryName).DirtyRemote
 
 	for _, r := range memRanges {
 		buffer := make([]byte, blockSize)
@@ -457,12 +462,17 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChangesFailsafe() error
 				return errors.New("Couldn't check memory...\n")
 			}
 			if !bytes.Equal(buffer[:n1], provBuffer[:n2]) {
-				// Memory has changed, lets write it
-				n, err := rp.grabberProv.WriteAt(buffer, int64(r.Offset+o-r.Start))
-				if err != nil {
-					return err
+				if rp.GrabUpdateDirty {
+					memDirty.MarkDirty(int64(r.Offset+o-r.Start), int64(len(buffer)))
 				}
-				totalBytes += int64(n)
+				if rp.GrabUpdateMemory {
+					// Memory has changed, lets write it
+					n, err := rp.grabberProv.WriteAt(buffer, int64(r.Offset+o-r.Start))
+					if err != nil {
+						return err
+					}
+					totalBytes += int64(n)
+				}
 			}
 		}
 	}
@@ -568,22 +578,33 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChangesSoftDirty() erro
 		return err
 	}
 
-	// Outside the stop/cont, we now copy the regions we need.
-	for _, tt := range copyData {
-		// Copy to the Silo provider
-		b, err := pm.CopyMemoryRanges(int64(tt.addrStart)-int64(tt.offset), tt.ranges, rp.grabberProv)
-		if err != nil {
-			if rp.Log != nil {
-				rp.Log.Error().Err(err).Msg("Could not copy memory ranges")
+	if rp.GrabUpdateDirty {
+		memDirty := rp.dg.GetDeviceInformationByName(common.DeviceMemoryName).DirtyRemote
+		for _, tt := range copyData {
+			for _, r := range tt.ranges {
+				memDirty.MarkDirty(int64(r.Start-tt.addrStart+tt.offset), int64(r.End-r.Start))
 			}
-
-			return err
 		}
-		totalBytes += int64(b)
 	}
 
-	if rp.Log != nil {
-		rp.Log.Info().Int64("bytes", totalBytes).Int64("ms", resumeTime.Sub(pauseTime).Milliseconds()).Msg("SoftDirty copied memory to the silo provider")
+	if rp.GrabUpdateMemory {
+		// Outside the stop/cont, we now copy the regions we need.
+		for _, tt := range copyData {
+			// Copy to the Silo provider
+			b, err := pm.CopyMemoryRanges(int64(tt.addrStart)-int64(tt.offset), tt.ranges, rp.grabberProv)
+			if err != nil {
+				if rp.Log != nil {
+					rp.Log.Error().Err(err).Msg("Could not copy memory ranges")
+				}
+
+				return err
+			}
+			totalBytes += int64(b)
+		}
+
+		if rp.Log != nil {
+			rp.Log.Info().Int64("bytes", totalBytes).Int64("ms", resumeTime.Sub(pauseTime).Milliseconds()).Msg("SoftDirty copied memory to the silo provider")
+		}
 	}
 
 	return nil
