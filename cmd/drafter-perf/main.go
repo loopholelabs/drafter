@@ -51,142 +51,27 @@ func main() {
 	iterations := flag.Int("count", 1, "Number of times to run each config")
 
 	defaultConfigs, err := json.Marshal([]RunConfig{
-		/*
-			{
-				Name:            "silo_10s",
-				BlockSize:       1024 * 1024,
-				UseCow:          true,
-				UseSparseFile:   true,
-				UseVolatility:   true,
-				NoMapShared:     true,
-				GrabPeriod:      0,
-				MigrateInterval: "10s",
-				// MigrateAfter:  "10s",
-			},
-		*/
 		{
-			Name:          "silo_30s_sd_10s",
+			Name:          "silo_30s_softdirty",
 			BlockSize:     1024 * 1024,
 			UseCow:        true,
 			UseSharedBase: true,
 			UseSparseFile: true,
 			UseVolatility: true,
 			NoMapShared:   true,
-			GrabPeriod:    10 * time.Second,
-			MigrateAfter:  "30s",
+			MigrateAfter:  "90s",
 		},
 		{
-			Name:          "silo_30s_sd_5s",
+			Name:          "silo",
 			BlockSize:     1024 * 1024,
 			UseCow:        true,
-			UseSharedBase: true,
 			UseSparseFile: true,
 			UseVolatility: true,
-			NoMapShared:   true,
-			GrabPeriod:    5 * time.Second,
-			MigrateAfter:  "30s",
+			UseWriteCache: false,
+			NoMapShared:   false,
+			GrabPeriod:    0,
+			MigrateAfter:  "90s",
 		},
-		{
-			Name:          "silo_30s_sd_2s",
-			BlockSize:     1024 * 1024,
-			UseCow:        true,
-			UseSharedBase: true,
-			UseSparseFile: true,
-			UseVolatility: true,
-			NoMapShared:   true,
-			GrabPeriod:    2 * time.Second,
-			MigrateAfter:  "30s",
-		},
-		/*
-			{
-				Name:                 "silo_30s_compression",
-				BlockSize:            1024 * 1024,
-				UseCow:               true,
-				UseSharedBase:        true,
-				UseSparseFile:        true,
-				UseVolatility:        true,
-				NoMapShared:          false,
-				GrabPeriod:           0,
-				MigrateAfter:         "30s",
-				MigrationCompression: true,
-			},
-
-			{
-				Name:                 "silo_30s_concurrency",
-				BlockSize:            1024 * 1024,
-				UseCow:               true,
-				UseSharedBase:        true,
-				UseSparseFile:        true,
-				UseVolatility:        true,
-				NoMapShared:          false,
-				GrabPeriod:           0,
-				MigrateAfter:         "30s",
-				MigrationConcurrency: 48,
-			},
-
-			{
-				Name:          "silo_30s_no_sharedbase",
-				BlockSize:     1024 * 1024,
-				UseCow:        true,
-				UseSharedBase: false,
-				UseSparseFile: true,
-				UseVolatility: true,
-				NoMapShared:   false,
-				GrabPeriod:    0,
-				MigrateAfter:  "30s",
-			},
-
-			{
-				Name:          "silo_30s_nocow",
-				BlockSize:     1024 * 1024,
-				UseCow:        false,
-				UseSparseFile: true,
-				UseVolatility: true,
-				NoMapShared:   false,
-				GrabPeriod:    0,
-				MigrateAfter:  "30s",
-			},
-
-			{
-				Name:          "silo_30s_sd",
-				BlockSize:     1024 * 1024,
-				UseCow:        true,
-				UseSharedBase: true,
-				UseSparseFile: true,
-				UseVolatility: true,
-				NoMapShared:   true,
-				GrabPeriod:    0,
-				MigrateAfter:  "30s",
-			},
-		*/
-		/*
-			{
-				Name:          "silo-60s",
-				BlockSize:     1024 * 1024,
-				UseCow:        true,
-				UseSparseFile: true,
-				UseVolatility: true,
-				NoMapShared:   false,
-				GrabPeriod:    0,
-				MigrateAfter:  "60s",
-			},
-		*/
-		/*
-			{
-				Name:          "silo",
-				BlockSize:     1024 * 1024,
-				UseCow:        true,
-				UseSparseFile: true,
-				UseVolatility: true,
-				UseWriteCache: false,
-				NoMapShared:   true,
-				GrabPeriod:    0,
-				MigrateAfter:  "90s",
-			},
-
-		*/
-		//		{Name: "silo", BlockSize: 1024 * 1024, UseCow: true, UseSparseFile: true, UseVolatility: true, UseWriteCache: false, NoMapShared: false, GrabPeriod: 0},
-		//		{Name: "silo_5s", BlockSize: 1024 * 1024, UseCow: true, UseSparseFile: true, UseVolatility: true, UseWriteCache: false, NoMapShared: true, GrabPeriod: 5 * time.Second},
 	})
 
 	if err != nil {
