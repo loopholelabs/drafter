@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"net"
 	"os"
 	"runtime/pprof"
 	"time"
@@ -75,4 +76,32 @@ func benchValkey(profileCPU bool, name string, port int, iterations int) (time.D
 	client.Close()
 
 	return timeSet, timeGet, nil
+}
+
+type ValkeyWaitReady struct {
+	Up      bool
+	Timeout time.Duration
+}
+
+func (vwr *ValkeyWaitReady) Ready() error {
+	// Try to connect to valkey
+	ctx, cancel := context.WithTimeout(context.Background(), vwr.Timeout)
+	defer cancel()
+	ticker := time.NewTicker(1 * time.Second)
+	for {
+		select {
+		case <-ticker.C:
+			// Try to connect to valkey
+			con, err := net.Dial("tcp", "127.0.0.1:3333")
+			if err == nil {
+				con.Close()
+				fmt.Printf(" ### Valkey up!\n")
+				vwr.Up = true
+				return nil
+			}
+		case <-ctx.Done():
+			fmt.Printf(" ### Unable to connect to valkey!\n")
+			return ctx.Err()
+		}
+	}
 }

@@ -5,7 +5,9 @@ package firecracker
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"os/user"
@@ -39,7 +41,7 @@ func TestSnapshotter(t *testing.T) {
 		return
 	}
 
-	ns := testutil.SetupNAT(t, "", "dra")
+	ns := testutil.SetupNAT(t, "", "dra", 2)
 
 	log := logging.New(logging.Zerolog, "test", os.Stderr)
 	log.SetLevel(loggingtypes.DebugLevel)
@@ -49,11 +51,23 @@ func TestSnapshotter(t *testing.T) {
 	netns, err := ns.ClaimNamespace()
 	assert.NoError(t, err)
 
+	template, err := GetCPUTemplate()
+	assert.NoError(t, err)
+
+	log.Info().Str("template", template).Msg("using cpu template")
+
+	bootargs := DefaultBootArgsNoPVM
+	ispvm, err := IsPVMHost()
+	assert.NoError(t, err)
+	if ispvm {
+		bootargs = DefaultBootArgs
+	}
+
 	snapDir := setupSnapshot(t, log, ctx, netns, VMConfiguration{
 		CPUCount:    1,
 		MemorySize:  1024,
-		CPUTemplate: "None",
-		BootArgs:    DefaultBootArgsNoPVM,
+		CPUTemplate: template,
+		BootArgs:    bootargs,
 	},
 	)
 
@@ -83,11 +97,21 @@ func setupSnapshot(t *testing.T, log types.Logger, ctx context.Context, netns st
 		return ""
 	}
 
+	_, err = os.Stat(snapshotDir)
+	if err == nil {
+		return snapshotDir // Don't create snapshot if there's one already
+	}
+	if !errors.Is(err, fs.ErrNotExist) {
+		panic(err) // Some other problem
+	}
+
 	err = os.Mkdir(snapshotDir, 0777)
 	assert.NoError(t, err)
-	t.Cleanup(func() {
-		os.RemoveAll(snapshotDir)
-	})
+	/*
+		t.Cleanup(func() {
+			os.RemoveAll(snapshotDir)
+		})
+	*/
 
 	firecrackerBin, err := exec.LookPath("firecracker")
 	assert.NoError(t, err)
@@ -129,7 +153,7 @@ func setupSnapshot(t *testing.T, log types.Logger, ctx context.Context, netns st
 		vmConfiguration,
 		LivenessConfiguration{
 			LivenessVSockPort: uint32(25),
-			ResumeTimeout:     time.Minute,
+			ResumeTimeout:     time.Minute * 5,
 		},
 		FirecrackerMachineConfig{
 			FirecrackerBin: firecrackerBin,
@@ -150,9 +174,9 @@ func setupSnapshot(t *testing.T, log types.Logger, ctx context.Context, netns st
 		},
 		AgentConfiguration{
 			AgentVSockPort: uint32(26),
-			ResumeTimeout:  time.Minute,
+			ResumeTimeout:  time.Minute * 5,
 		},
-		func() {})
+		func() error { return nil })
 
 	assert.NoError(t, err)
 

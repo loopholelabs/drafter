@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -445,4 +446,66 @@ func NewOutputPusher(ctx context.Context, log loggingtypes.Logger) io.Reader {
 		}
 	}()
 	return r
+}
+
+const vendorIntel = "GenuineIntel"
+const vendorAMD = "AuthenticAMD"
+
+// Decides on a CPUTemplate to use
+func GetCPUTemplate() (string, error) {
+	cpuinfo, err := os.ReadFile("/proc/cpuinfo")
+	if err != nil {
+		return "", err
+	}
+	lines := strings.Split(string(cpuinfo), "\n")
+	for _, l := range lines {
+		if strings.HasPrefix(l, "vendor_id") {
+			bits := strings.Split(l, ":")
+			if len(bits) == 2 {
+				vendorID := strings.TrimSpace(bits[1])
+				switch vendorID {
+				case vendorIntel:
+					return "None", nil
+				case vendorAMD:
+					return "T2A", nil
+				}
+			}
+			break
+		}
+	}
+	return "", errors.New("unknown cpu")
+}
+
+// Check if the host is using PVM
+func IsPVMHost() (bool, error) {
+	modules, err := os.ReadFile("/proc/modules")
+	if err != nil {
+		return false, err
+	}
+	lines := strings.Split(string(modules), "\n")
+	for _, l := range lines {
+		if strings.HasPrefix(l, "kvm_pvm") {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// Check if the host is using swap
+func HostMightSwap() (bool, error) {
+	swaps, err := os.ReadFile("/proc/swaps")
+	if err != nil {
+		return false, err
+	}
+	lines := strings.Split(string(swaps), "\n")
+	// First line should be headers...
+	doneHeader := false
+	for _, l := range lines {
+		// There's a line that isn't empty, and isn't the header.
+		if doneHeader && strings.TrimSpace(l) != "" {
+			return true, nil
+		}
+		doneHeader = true
+	}
+	return false, nil
 }

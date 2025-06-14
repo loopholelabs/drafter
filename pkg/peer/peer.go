@@ -87,6 +87,19 @@ func (peer *Peer) GetMetrics() *PeerMetrics {
 	}
 }
 
+func (peer *Peer) CloseRuntime() error {
+	if peer.log != nil {
+		peer.log.Info().Str("id", peer.instanceID).Msg("Peer.Close")
+	}
+
+	// Try to close the runtimeProvider first
+	errRuntime := peer.runtimeProvider.Close(peer.GetDG())
+	if errRuntime != nil {
+		peer.log.Error().Err(errRuntime).Msg("Error closing runtime")
+	}
+	return errRuntime
+}
+
 func (peer *Peer) Close() error {
 	if peer.log != nil {
 		peer.log.Info().Str("id", peer.instanceID).Msg("Peer.Close")
@@ -386,7 +399,7 @@ func (peer *Peer) Resume(ctx context.Context, resumeTimeout time.Duration, rescu
  *
  */
 func (peer *Peer) MigrateTo(ctx context.Context, devices []common.MigrateToDevice,
-	suspendTimeout time.Duration, concurrency int, readers []io.Reader, writers []io.Writer,
+	suspendTimeout time.Duration, options *common.MigrateToOptions, readers []io.Reader, writers []io.Writer,
 	hooks MigrateToHooks) error {
 
 	atomic.StoreInt64(&peer.metricMigratingTo, 1)
@@ -442,7 +455,7 @@ func (peer *Peer) MigrateTo(ctx context.Context, devices []common.MigrateToDevic
 		hooks.OnAfterSuspend,
 	)
 
-	err := common.MigrateToPipe(ctx, readers, writers, peer.dg, concurrency, hooks.OnProgress, vmState, devices, hooks.GetXferCustomData, peer.met, peer.instanceID)
+	err := common.MigrateToPipe(ctx, readers, writers, peer.dg, options, hooks.OnProgress, vmState, devices, hooks.GetXferCustomData, peer.met, peer.instanceID)
 	if err != nil {
 		if peer.log != nil {
 			peer.log.Info().Err(err).Msg("error in peer.MigrateTo")

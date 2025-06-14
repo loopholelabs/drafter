@@ -16,7 +16,6 @@ import (
 
 	"github.com/loopholelabs/drafter/pkg/common"
 	"github.com/loopholelabs/drafter/pkg/ipc"
-	"github.com/loopholelabs/drafter/pkg/utils"
 )
 
 type SnapshotDevice struct {
@@ -88,7 +87,7 @@ var (
 func CreateSnapshot(log types.Logger, ctx context.Context, devices []SnapshotDevice, ioEngineSync bool,
 	vmConfiguration VMConfiguration, livenessConfiguration LivenessConfiguration,
 	hypervisorConfiguration FirecrackerMachineConfig, networkConfiguration NetworkConfiguration,
-	agentConfiguration AgentConfiguration, waitReady func()) error {
+	agentConfiguration AgentConfiguration, waitReady func() error) error {
 
 	if log != nil {
 		log.Info().Msg("Creating firecracker VM snapshot")
@@ -209,7 +208,10 @@ func CreateSnapshot(log types.Logger, ctx context.Context, devices []SnapshotDev
 	}
 	liveness.Close()
 
-	waitReady()
+	err = waitReady()
+	if err != nil {
+		return err
+	}
 
 	// BeforeSuspend and close
 	acceptCtx, acceptCancel := context.WithTimeout(ctx, livenessConfiguration.ResumeTimeout)
@@ -316,7 +318,15 @@ func copySnapshotFiles(devices []SnapshotDevice, vmPath string) error {
 			return errors.Join(ErrCouldNotCopyFile, err)
 		}
 
-		if paddingLength := utils.GetBlockDevicePadding(deviceSize); paddingLength > 0 {
+		minPadding := int64(1024 * 1024)      // Leave room
+		paddingMultiple := int64(1024 * 1024) // Multiple
+
+		paddingLength := (paddingMultiple - (deviceSize % paddingMultiple))
+		if paddingLength < minPadding {
+			paddingLength = paddingLength + minPadding
+		}
+
+		if paddingLength > 0 {
 			_, err := outputFile.Write(make([]byte, paddingLength))
 			if err != nil {
 				return errors.Join(ErrCouldNotWritePadding, err)

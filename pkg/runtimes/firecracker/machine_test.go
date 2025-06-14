@@ -47,16 +47,28 @@ func TestResumeSuspend(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	ns := testutil.SetupNAT(t, "", "dra")
+	ns := testutil.SetupNAT(t, "", "dra", 2)
 
 	netns, err := ns.ClaimNamespace()
 	assert.NoError(t, err)
 
+	template, err := GetCPUTemplate()
+	assert.NoError(t, err)
+
+	log.Info().Str("template", template).Msg("using cpu template")
+
+	bootargs := DefaultBootArgsNoPVM
+	ispvm, err := IsPVMHost()
+	assert.NoError(t, err)
+	if ispvm {
+		bootargs = DefaultBootArgs
+	}
+
 	snapDir := setupSnapshot(t, log, ctx, netns, VMConfiguration{
 		CPUCount:    1,
 		MemorySize:  1024,
-		CPUTemplate: "None",
-		BootArgs:    DefaultBootArgsNoPVM,
+		CPUTemplate: template,
+		BootArgs:    bootargs,
 	},
 	)
 

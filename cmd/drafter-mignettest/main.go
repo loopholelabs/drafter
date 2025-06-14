@@ -142,7 +142,11 @@ func main() {
 		}
 
 		ctime := time.Now()
-		err = myPeer.MigrateTo(context.TODO(), devicesTo, 10*time.Second, 10, []io.Reader{conn}, []io.Writer{conn}, hooks)
+		opts := &common.MigrateToOptions{
+			Concurrency: 10,
+			Compression: true,
+		}
+		err = myPeer.MigrateTo(context.TODO(), devicesTo, 10*time.Second, opts, []io.Reader{conn}, []io.Writer{conn}, hooks)
 		if err != nil {
 			panic(err)
 		}
@@ -283,7 +287,11 @@ func handleConnection(migration int, conn net.Conn, log types.Logger, firecracke
 	}
 
 	ctime := time.Now()
-	err = nextPeer.MigrateTo(context.TODO(), devicesTo, 10*time.Second, 10, []io.Reader{toConn}, []io.Writer{toConn}, hooks)
+	opts := &common.MigrateToOptions{
+		Concurrency: 10,
+		Compression: true,
+	}
+	err = nextPeer.MigrateTo(context.TODO(), devicesTo, 10*time.Second, opts, []io.Reader{toConn}, []io.Writer{toConn}, hooks)
 	if err != nil {
 		return err
 	}
@@ -389,6 +397,13 @@ func getDevicesFrom(snapDir string, i int) []common.MigrateFromDevice {
 			dev.S3Secure = true
 			dev.S3Bucket = *s3bucket
 			dev.S3Concurrency = 10
+
+			dev.S3BlockShift = 2
+			dev.S3OnlyDirty = false
+			dev.S3MaxAge = "100ms"
+			dev.S3MinChanged = 4
+			dev.S3Limit = 256
+			dev.S3CheckPeriod = "100ms"
 		}
 		devicesFrom = append(devicesFrom, dev)
 	}

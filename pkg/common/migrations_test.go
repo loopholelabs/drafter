@@ -224,7 +224,7 @@ func TestMigrateFromFsThenBetween(t *testing.T) {
 		}
 
 		err = MigrateToPipe(context.TODO(), []io.Reader{r1}, []io.Writer{w2},
-			dg, 100, progress, vmState, devices, getCustomPayload, nil, "")
+			dg, &MigrateToOptions{Concurrency: 100}, progress, vmState, devices, getCustomPayload, nil, "")
 		assert.NoError(t, err)
 
 		// Make sure it all completed
