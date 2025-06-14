@@ -470,8 +470,8 @@ func GetCPUTemplate() (string, error) {
 					return "T2A", nil
 				}
 			}
+			break
 		}
-		break
 	}
 	return "", errors.New("unknown cpu")
 }
