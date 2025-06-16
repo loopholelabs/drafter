@@ -140,6 +140,7 @@ func StartFirecrackerMachine(ctx context.Context, log loggingtypes.Logger, conf 
 		WithGID(conf.GID).
 		WithNetNS(filepath.Join("/var", "run", "netns", conf.NetNS)).
 		WithCgroupVersion(fmt.Sprintf("%v", conf.CgroupVersion)).
+		WithCgroupArgs("memory.swap.max=0", "memory.zswap.max=0").
 		WithNumaNode(conf.NumaNode).
 		WithID(id).
 		WithExecFile(conf.FirecrackerBin).
