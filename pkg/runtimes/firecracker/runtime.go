@@ -442,12 +442,17 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChangesFailsafe() error
 		buffer := make([]byte, blockSize)
 		provBuffer := make([]byte, blockSize)
 		for o := r.Start; o < r.End; o += blockSize {
-			n1, err := memf.ReadAt(buffer, int64(o))
+			readSize := blockSize
+			if o+readSize > r.End {
+				readSize = r.End - o
+			}
+
+			n1, err := memf.ReadAt(buffer[:readSize], int64(o))
 			if err != nil {
 				return err
 			}
 
-			n2, err := rp.grabberProv.ReadAt(provBuffer, int64(r.Offset+o-r.Start))
+			n2, err := rp.grabberProv.ReadAt(provBuffer[:readSize], int64(r.Offset+o-r.Start))
 			if err != nil {
 				return err
 			}
