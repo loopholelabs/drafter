@@ -120,7 +120,7 @@ func TestMigrationBasicWithS3(t *testing.T) {
 
 func TestMigrationBasicSmallBlocksHashChecks(t *testing.T) {
 	migration(t, &migrationConfig{
-		blockSize:      4 * 1024,
+		blockSize:      256 * 1024,
 		numMigrations:  3,
 		minCycles:      1,
 		maxCycles:      1,
@@ -747,7 +747,6 @@ func migration(t *testing.T, config *migrationConfig) {
 						assert.True(t, eq)
 					}
 				} else {
-
 					devSize := lastPeer.GetDG().GetDeviceInformationByName(n).Size
 
 					log.Info().Uint64("size", devSize).Str("lastrp", lastrp.DevicePath()).Str("rp", rp.DevicePath()).Msg("comparing data")

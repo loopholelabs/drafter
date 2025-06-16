@@ -462,7 +462,7 @@ func GetCPUTemplate() (string, error) {
 		if strings.HasPrefix(l, "vendor_id") {
 			bits := strings.Split(l, ":")
 			if len(bits) == 2 {
-				vendorID := strings.Trim(bits[1], " \t\r\n")
+				vendorID := strings.TrimSpace(bits[1])
 				switch vendorID {
 				case vendorIntel:
 					return "None", nil
@@ -470,6 +470,7 @@ func GetCPUTemplate() (string, error) {
 					return "T2A", nil
 				}
 			}
+			break
 		}
 	}
 	return "", errors.New("unknown cpu")
@@ -501,7 +502,7 @@ func HostMightSwap() (bool, error) {
 	doneHeader := false
 	for _, l := range lines {
 		// There's a line that isn't empty, and isn't the header.
-		if doneHeader && strings.Trim(l, " \t\r\n") != "" {
+		if doneHeader && strings.TrimSpace(l) != "" {
 			return true, nil
 		}
 		doneHeader = true

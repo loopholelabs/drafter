@@ -6,6 +6,7 @@ package firecracker
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"io/fs"
 	"os"
@@ -25,6 +26,8 @@ import (
 
 const snapshotDir = "snap_test"
 const blueprintDir = "../../../out/blueprint"
+
+var deleteSnapshot = flag.Bool("delete-snapshot", false, "Delete snapshot at the end of each test")
 
 /**
  * Pre-requisites
@@ -107,11 +110,12 @@ func setupSnapshot(t *testing.T, log types.Logger, ctx context.Context, netns st
 
 	err = os.Mkdir(snapshotDir, 0777)
 	assert.NoError(t, err)
-	/*
+
+	if *deleteSnapshot {
 		t.Cleanup(func() {
 			os.RemoveAll(snapshotDir)
 		})
-	*/
+	}
 
 	firecrackerBin, err := exec.LookPath("firecracker")
 	assert.NoError(t, err)

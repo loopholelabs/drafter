@@ -320,17 +320,16 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Suspend(ctx context.Context, susp
 		return err
 	}
 
-	if rp.Log != nil {
-		rp.Log.Debug().Msg("firecracker runtime CreateSnapshot")
-	}
-
 	snapshotType := SDKSnapshotTypeMsyncAndState
-	if rp.HypervisorConfiguration.NoMapShared {
-		// TODO: We don't need the Msync. We just need the state.
-		if rp.Log != nil {
-			rp.Log.Debug().Msg("firecracker may not need the msync here")
+	if rp.Log != nil {
+		if rp.HypervisorConfiguration.NoMapShared {
+			// TODO: We don't need the Msync. We just need the state. Change snapshotType when supported in fc
+			rp.Log.Debug().Msg("firecracker runtime CreateSnapshot (NoMapShared, so may not need the msync here)")
+		} else {
+			rp.Log.Debug().Msg("firecracker runtime CreateSnapshot")
 		}
 	}
+
 	err = rp.Machine.CreateSnapshot(suspendCtx, common.DeviceStateName, "", snapshotType)
 
 	if err != nil {
@@ -449,12 +448,17 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChangesFailsafe() error
 		buffer := make([]byte, blockSize)
 		provBuffer := make([]byte, blockSize)
 		for o := r.Start; o < r.End; o += blockSize {
-			n1, err := memf.ReadAt(buffer, int64(o))
+			readSize := blockSize
+			if o+readSize > r.End {
+				readSize = r.End - o
+			}
+
+			n1, err := memf.ReadAt(buffer[:readSize], int64(o))
 			if err != nil {
 				return err
 			}
 
-			n2, err := rp.grabberProv.ReadAt(provBuffer, int64(r.Offset+o-r.Start))
+			n2, err := rp.grabberProv.ReadAt(provBuffer[:readSize], int64(r.Offset+o-r.Start))
 			if err != nil {
 				return err
 			}
@@ -467,7 +471,7 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChangesFailsafe() error
 				}
 				if rp.GrabUpdateMemory {
 					// Memory has changed, lets write it
-					n, err := rp.grabberProv.WriteAt(buffer, int64(r.Offset+o-r.Start))
+					n, err := rp.grabberProv.WriteAt(buffer[:n1], int64(r.Offset+o-r.Start))
 					if err != nil {
 						return err
 					}
@@ -563,8 +567,6 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChangesSoftDirty() erro
 		for _, r := range ranges {
 			needBytes += r.End - r.Start
 		}
-
-		fmt.Printf("#GRAB# memRanges %x: %x-%x ranges=%d bytes=%d\n", r.Offset, r.Start, r.End, len(ranges), needBytes)
 
 		copyData = append(copyData, CopyData{
 			ranges:    ranges,

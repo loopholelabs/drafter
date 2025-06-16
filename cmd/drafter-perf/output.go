@@ -2,68 +2,71 @@ package main
 
 import (
 	"fmt"
+
+	"github.com/loopholelabs/drafter/pkg/testutil"
+	"github.com/muesli/gotable"
 )
 
-/*
-	func showDeviceStats(dummyMetrics *testutil.DummyMetrics, name string) {
-		devTab := gotable.NewTable([]string{"Name",
-			"In R Ops", "In R", "In W Ops", "In W",
-			"DskR Ops", "DskR", "DskW Ops", "DskW",
-			"Chg Blk", "Chg", "S3PutOps", "S3Put", "S3GetOps", "S3Get",
-		},
-			[]int64{-16, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8},
-			"No data in table.")
+// ShowDeviceStats shows some useful device stats for the given name
+func ShowDeviceStats(dummyMetrics *testutil.DummyMetrics, name string) {
+	devTab := gotable.NewTable([]string{"Name",
+		"In R Ops", "In R", "In W Ops", "In W",
+		"DskR Ops", "DskR", "DskW Ops", "DskW",
+		"Chg Blk", "Chg", "S3PutOps", "S3Put", "S3GetOps", "S3Get",
+	},
+		[]int64{-16, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8},
+		"No data in table.")
 
-		// Show the important devices
-		for _, r := range []string{"disk", "oci", "memory"} {
-			dm := getSiloDeviceStats(dummyMetrics, name, r)
-			if dm != nil {
-				s3puts := 0
-				s3putBytes := uint64(0)
-				s3gets := 0
-				s3getBytes := uint64(0)
-				s3s := dummyMetrics.GetS3Storage(name, fmt.Sprintf("s3sync_%s", r))
-				if s3s != nil {
-					smet := s3s.Metrics()
-					s3puts = int(smet.BlocksWCount)
-					s3putBytes = smet.BlocksWBytes
-				}
-				s3g := dummyMetrics.GetS3Storage(name, fmt.Sprintf("s3grab_%s", r))
-				if s3g != nil {
-					smet := s3g.Metrics()
-					s3gets = int(smet.BlocksRCount)
-					s3getBytes = smet.BlocksRBytes
-				}
-
-				devTab.AppendRow([]interface{}{
-					r,
-					fmt.Sprintf("%d", dm.InReadOps),
-					formatBytes(dm.InReadBytes),
-					fmt.Sprintf("%d", dm.InWriteOps),
-					formatBytes(dm.InWriteBytes),
-
-					fmt.Sprintf("%d", dm.DiskReadOps),
-					formatBytes(dm.DiskReadBytes),
-					fmt.Sprintf("%d", dm.DiskWriteOps),
-					formatBytes(dm.DiskWriteBytes),
-
-					fmt.Sprintf("%d", dm.ChangedBlocks),
-					formatBytes(dm.ChangedBytes),
-
-					fmt.Sprintf("%d", s3puts),
-					formatBytes(s3putBytes),
-
-					fmt.Sprintf("%d", s3gets),
-					formatBytes(s3getBytes),
-				})
+	// Show the important devices
+	for _, r := range []string{"disk", "oci", "memory"} {
+		dm := getSiloDeviceStats(dummyMetrics, name, r)
+		if dm != nil {
+			s3puts := 0
+			s3putBytes := uint64(0)
+			s3gets := 0
+			s3getBytes := uint64(0)
+			s3s := dummyMetrics.GetS3Storage(name, fmt.Sprintf("s3sync_%s", r))
+			if s3s != nil {
+				smet := s3s.Metrics()
+				s3puts = int(smet.BlocksWCount)
+				s3putBytes = smet.BlocksWBytes
 			}
+			s3g := dummyMetrics.GetS3Storage(name, fmt.Sprintf("s3grab_%s", r))
+			if s3g != nil {
+				smet := s3g.Metrics()
+				s3gets = int(smet.BlocksRCount)
+				s3getBytes = smet.BlocksRBytes
+			}
+
+			devTab.AppendRow([]interface{}{
+				r,
+				fmt.Sprintf("%d", dm.InReadOps),
+				formatBytes(dm.InReadBytes),
+				fmt.Sprintf("%d", dm.InWriteOps),
+				formatBytes(dm.InWriteBytes),
+
+				fmt.Sprintf("%d", dm.DiskReadOps),
+				formatBytes(dm.DiskReadBytes),
+				fmt.Sprintf("%d", dm.DiskWriteOps),
+				formatBytes(dm.DiskWriteBytes),
+
+				fmt.Sprintf("%d", dm.ChangedBlocks),
+				formatBytes(dm.ChangedBytes),
+
+				fmt.Sprintf("%d", s3puts),
+				formatBytes(s3putBytes),
+
+				fmt.Sprintf("%d", s3gets),
+				formatBytes(s3getBytes),
+			})
 		}
-
-		devTab.Print()
-
-		fmt.Printf("\n")
 	}
-*/
+
+	devTab.Print()
+
+	fmt.Printf("\n")
+}
+
 type DeviceMetrics struct {
 	DiskReadOps    uint64
 	DiskReadBytes  uint64
@@ -77,7 +80,6 @@ type DeviceMetrics struct {
 	ChangedBytes   uint64
 }
 
-/*
 // getSiloDeviceStats
 func getSiloDeviceStats(dummyMetrics *testutil.DummyMetrics, name string, deviceName string) *DeviceMetrics {
 	met := dummyMetrics.GetMetrics(name, deviceName)
@@ -126,7 +128,6 @@ func getSiloDeviceStats(dummyMetrics *testutil.DummyMetrics, name string, device
 	}
 	return dm
 }
-*/
 
 // formatBytes nicely for display
 func formatBytes(b uint64) string {
