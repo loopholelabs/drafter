@@ -2,7 +2,7 @@ module github.com/loopholelabs/drafter
 
 go 1.23.2
 
-replace github.com/loopholelabs/silo => ../silo
+// replace github.com/loopholelabs/silo => ../silo
 
 require (
 	github.com/coreos/go-iptables v0.8.0
@@ -13,7 +13,7 @@ require (
 	github.com/loopholelabs/firecracker-go-sdk v1.0.0
 	github.com/loopholelabs/goroutine-manager v0.1.1
 	github.com/loopholelabs/logging v0.3.2
-	github.com/loopholelabs/silo v0.2.19
+	github.com/loopholelabs/silo v0.2.20-0.20250613163355-d4dedc869fad
 	github.com/metal-stack/go-ipam v1.14.8
 	github.com/muesli/gotable v0.0.0-20210307142814-960606545b8b
 	github.com/nixigaj/go-default-route v0.0.0-20231019115740-0722aff7ebf3

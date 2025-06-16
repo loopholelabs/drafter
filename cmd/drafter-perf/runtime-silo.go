@@ -36,6 +36,7 @@ type RunConfig struct {
 	GrabPeriod          time.Duration `json:"grabperiod"`
 	NoMapShared         bool          `json:"nomapshared"`
 	GrabFailsafe        bool          `json:"grabfailsafe"`
+	DirectMemory        bool          `json:"directmemory"`
 
 	S3Sync        bool   `json:"s3sync"`
 	S3Secure      bool   `json:"s3secure"`
@@ -440,7 +441,15 @@ func setupPeer(log loggingtypes.Logger, met metrics.SiloMetrics, conf RunConfig,
 		GrabInterval:            conf.GrabPeriod,
 		GrabMemory:              hConf.NoMapShared,
 		GrabFailsafe:            conf.GrabFailsafe,
+		GrabUpdateMemory:        hConf.NoMapShared,
 		RunningCB:               runningCB,
+	}
+
+	if conf.DirectMemory {
+		rp.GrabUpdateDirty = true
+		rp.GrabUpdateMemory = false
+
+		// TODO: Tweak memory storage
 	}
 
 	// Use something to push output (sometimes needed)
