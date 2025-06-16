@@ -1,11 +1,14 @@
 package firecracker
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path"
+	"path/filepath"
 	"sync"
 	"time"
 	"unsafe"
@@ -16,6 +19,7 @@ import (
 	"github.com/loopholelabs/silo/pkg/storage"
 	"github.com/loopholelabs/silo/pkg/storage/devicegroup"
 	"github.com/loopholelabs/silo/pkg/storage/expose"
+	"github.com/loopholelabs/silo/pkg/storage/modules"
 )
 
 var ErrConfigFileNotFound = errors.New("config file not found")
@@ -44,11 +48,14 @@ type FirecrackerRuntimeProvider[L ipc.AgentServerLocal, R ipc.AgentServerRemote[
 	RunningCB func(r bool)
 
 	// Grabber
-	Grabbing      bool
+	GrabMemory    bool
+	GrabFailsafe  bool
 	grabberCtx    context.Context
 	grabberCancel context.CancelFunc
 	grabberWg     sync.WaitGroup
 	grabberProv   storage.Provider
+
+	dg *devicegroup.DeviceGroup
 
 	// RPC Bits
 	agent            *ipc.AgentRPC[L, R, G]
@@ -56,6 +63,7 @@ type FirecrackerRuntimeProvider[L ipc.AgentServerLocal, R ipc.AgentServerRemote[
 }
 
 func (rp *FirecrackerRuntimeProvider[L, R, G]) Resume(ctx context.Context, rescueTimeout time.Duration, dg *devicegroup.DeviceGroup, errChan chan error) error {
+	resumeCtime := time.Now()
 	rp.runningLock.Lock()
 	defer rp.runningLock.Unlock()
 
@@ -85,12 +93,18 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Resume(ctx context.Context, rescu
 		return err
 	}
 
+	resumeMachineTook := time.Since(resumeCtime)
+
 	// Setup the grabber provider
 	di := dg.GetDeviceInformationByName(common.DeviceMemoryName)
 	rp.grabberProv = di.Exp.GetProvider()
 
+	// Store the dg
+	rp.dg = dg
+
 	rp.setRunning(true)
 
+	rpcCtime := time.Now()
 	// Start the RPC stuff...
 	rp.agent, err = ipc.StartAgentRPC[L, R](
 		rp.Log, path.Join(rp.Machine.VMPath, VSockName),
@@ -109,6 +123,18 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Resume(ctx context.Context, rescu
 	err = remote.AfterResume(ctx)
 	if err != nil {
 		return err
+	}
+
+	rpcCallTook := time.Since(rpcCtime)
+
+	if rp.Log != nil {
+		// Show some stats on resume timings...
+		rp.Log.Info().
+			Int64("resumeMachineMs", resumeMachineTook.Milliseconds()).
+			Int64("rpcCallMs", rpcCallTook.Milliseconds()).
+			Int64("timeMs", time.Since(resumeCtime).Milliseconds()).
+			Str("vmpath", rp.Machine.VMPath).
+			Msg("Resumed fc vm")
 	}
 
 	return nil
@@ -193,7 +219,7 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) FlushData(ctx context.Context, dg
 		rp.Log.Info().Msg("Firecracker FlushData")
 	}
 
-	if rp.Grabbing {
+	if rp.GrabMemory {
 		err := rp.grabMemoryChanges()
 		if err != nil {
 			return err
@@ -225,6 +251,7 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Close(dg *devicegroup.DeviceGroup
 		}
 
 		// We only need to do this if it hasn't been suspended, but it'll refuse inside Suspend
+		rp.GrabMemory = false                                 // We don't care.
 		err := rp.Suspend(context.TODO(), 10*time.Minute, dg) // TODO. Timeout
 		if err != nil {
 			return err
@@ -246,13 +273,11 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Close(dg *devicegroup.DeviceGroup
 		if err != nil {
 			return errors.Join(ErrCouldNotCloseServer, err)
 		}
-		/*
-		   FOR NOW, DON'T REMOVE DATA
-		   		err = os.RemoveAll(filepath.Dir(rp.Machine.VMPath))
-		   		if err != nil {
-		   			return errors.Join(ErrCouldNotRemoveVMDir, err)
-		   		}
-		*/
+
+		err = os.RemoveAll(filepath.Dir(rp.Machine.VMPath))
+		if err != nil {
+			return errors.Join(ErrCouldNotRemoveVMDir, err)
+		}
 	}
 	return nil
 }
@@ -291,18 +316,41 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Suspend(ctx context.Context, susp
 		return err
 	}
 
+	snapshotType := SDKSnapshotTypeMsyncAndState
 	if rp.Log != nil {
-		rp.Log.Debug().Msg("firecracker runtime CreateSnapshot")
+		if rp.HypervisorConfiguration.NoMapShared {
+			// TODO: We don't need the Msync. We just need the state. Change snapshotType when supported in fc
+			rp.Log.Debug().Msg("firecracker runtime CreateSnapshot (NoMapShared, so may not need the msync here)")
+		} else {
+			rp.Log.Debug().Msg("firecracker runtime CreateSnapshot")
+		}
 	}
 
-	err = rp.Machine.CreateSnapshot(suspendCtx, common.DeviceStateName, "", SDKSnapshotTypeMsyncAndState)
+	err = rp.Machine.CreateSnapshot(suspendCtx, common.DeviceStateName, "", snapshotType)
+
 	if err != nil {
 		return errors.Join(ErrCouldNotCreateSnapshot, err)
 	}
 
+	// Setup something just incase we get late writes...
+	if rp.dg != nil {
+		names := rp.dg.GetAllNames()
+		for _, devn := range names {
+			di := rp.dg.GetDeviceInformationByName(devn)
+			hooks := modules.NewHooks(di.Exp.GetProvider())
+			hooks.PostWrite = func(buffer []byte, offset int64, n int, err error) (int, error) {
+				if rp.Log != nil {
+					rp.Log.Error().Str("device", devn).Msg("Write to device after suspend!")
+				}
+				return n, err
+			}
+			di.Exp.SetProvider(hooks)
+		}
+	}
+
 	rp.setRunning(false)
 
-	if rp.Grabbing {
+	if rp.GrabMemory {
 		err = rp.grabMemoryChanges()
 		if err != nil {
 			return err
@@ -313,9 +361,129 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Suspend(ctx context.Context, susp
 }
 
 func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChanges() error {
+	var err error
+	if rp.GrabFailsafe {
+		err = rp.grabMemoryChangesFailsafe()
+	} else {
+		err = rp.grabMemoryChangesSoftDirty()
+	}
+	if err != nil {
+		if rp.Log != nil {
+			rp.Log.Error().Err(err).Msg("Grabbing memory changes")
+		}
+	}
+	return err
+}
+
+func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChangesFailsafe() error {
+
 	rp.memoryLock.Lock()
 	defer rp.memoryLock.Unlock()
 
+	if rp.Log != nil {
+		rp.Log.Debug().Msg("Grabbing failsafe memory changes")
+	}
+
+	pm := expose.NewProcessMemory(rp.Machine.VMPid)
+	memRanges, err := pm.GetMemoryRange("/memory")
+
+	if err != nil {
+		return err
+	}
+
+	var pauseTime time.Time
+	var resumeTime time.Time
+
+	lockcb := func() error {
+		err := pm.PauseProcess()
+		pauseTime = time.Now()
+		if err != nil {
+			if rp.Log != nil {
+				rp.Log.Error().Err(err).Msg("Could not pause process")
+			}
+		}
+		return err
+	}
+
+	unlockcb := func() error {
+		err := pm.ClearSoftDirty()
+		if err != nil {
+			return err
+		}
+
+		err = pm.ResumeProcess()
+		resumeTime = time.Now()
+		if err != nil {
+			if rp.Log != nil {
+				rp.Log.Error().Err(err).Msg("Could not resume process")
+			}
+			return err
+		}
+		return nil
+	}
+
+	totalBytes := int64(0)
+
+	err = lockcb()
+	if err != nil {
+		return err
+	}
+
+	memf, err := os.OpenFile(fmt.Sprintf("/proc/%d/mem", rp.Machine.VMPid), os.O_RDONLY, 0)
+	if err != nil {
+		return err
+	}
+
+	defer memf.Close()
+
+	blockSize := uint64(1024 * 1024 * 4)
+
+	for _, r := range memRanges {
+		buffer := make([]byte, blockSize)
+		provBuffer := make([]byte, blockSize)
+		for o := r.Start; o < r.End; o += blockSize {
+			readSize := blockSize
+			if o+readSize > r.End {
+				readSize = r.End - o
+			}
+
+			n1, err := memf.ReadAt(buffer[:readSize], int64(o))
+			if err != nil {
+				return err
+			}
+
+			n2, err := rp.grabberProv.ReadAt(provBuffer[:readSize], int64(r.Offset+o-r.Start))
+			if err != nil {
+				return err
+			}
+			if n1 != n2 {
+				return errors.New("Couldn't check memory...\n")
+			}
+			if !bytes.Equal(buffer[:n1], provBuffer[:n2]) {
+				// Memory has changed, lets write it
+				n, err := rp.grabberProv.WriteAt(buffer[:n1], int64(r.Offset+o-r.Start))
+				if err != nil {
+					return err
+				}
+				totalBytes += int64(n)
+			}
+		}
+	}
+
+	err = unlockcb()
+	if err != nil {
+		return err
+	}
+
+	if rp.Log != nil {
+		rp.Log.Info().Int64("bytes", totalBytes).
+			Int64("ms", resumeTime.Sub(pauseTime).Milliseconds()).Msg("failsafe copied memory to the silo provider")
+	}
+
+	return nil
+}
+
+func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChangesSoftDirty() error {
 	if rp.Log != nil {
 		rp.Log.Debug().Msg("Grabbing softDirty memory changes")
 	}
@@ -384,12 +552,18 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChanges() error {
 			return err
 		}
 
+		needBytes := uint64(0)
+		for _, r := range ranges {
+			needBytes += r.End - r.Start
+		}
+
 		copyData = append(copyData, CopyData{
 			ranges:    ranges,
 			addrStart: r.Start,
 			offset:    r.Offset,
 		})
 	}
+
 	err = unlockcb()
 	if err != nil {
 		return err
@@ -400,6 +574,10 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChanges() error {
 		// Copy to the Silo provider
 		b, err := pm.CopyMemoryRanges(int64(tt.addrStart)-int64(tt.offset), tt.ranges, rp.grabberProv)
 		if err != nil {
+			if rp.Log != nil {
+				rp.Log.Error().Err(err).Msg("Could not copy memory ranges")
+			}
+
 			return err
 		}
 		totalBytes += int64(b)

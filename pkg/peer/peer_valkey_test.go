@@ -177,7 +177,7 @@ func TestPeerReplayValkey(t *testing.T) {
 	var sendingErr error
 	wg.Add(1)
 	go func() {
-		err := peer.MigrateTo(context.TODO(), devicesTo, 10*time.Second, 10, []io.Reader{r1}, []io.Writer{w2}, hooks)
+		err := peer.MigrateTo(context.TODO(), devicesTo, 10*time.Second, &common.MigrateToOptions{Concurrency: 10}, []io.Reader{r1}, []io.Writer{w2}, hooks)
 		assert.NoError(t, err)
 		sendingErr = err
 		wg.Done()

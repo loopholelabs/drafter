@@ -231,7 +231,12 @@ func main() {
 		var sendingErr error
 		wg.Add(1)
 		go func() {
-			err := lastPeer.MigrateTo(context.TODO(), devicesTo, 10*time.Second, 10, []io.Reader{r1}, []io.Writer{w2}, hooks)
+			opts := &common.MigrateToOptions{
+				Concurrency: 10,
+				Compression: true,
+			}
+
+			err := lastPeer.MigrateTo(context.TODO(), devicesTo, 10*time.Second, opts, []io.Reader{r1}, []io.Writer{w2}, hooks)
 			if err != nil {
 				panic(err)
 			}
@@ -410,6 +415,13 @@ func getDevicesFrom(snapDir string, s3Endpoint string, i int) []common.MigrateFr
 			dev.S3Secure = false
 			dev.S3Bucket = "silosilo"
 			dev.S3Concurrency = 10
+
+			dev.S3BlockShift = 2
+			dev.S3OnlyDirty = false
+			dev.S3MaxAge = "100ms"
+			dev.S3MinChanged = 4
+			dev.S3Limit = 256
+			dev.S3CheckPeriod = "100ms"
 		}
 		devicesFrom = append(devicesFrom, dev)
 	}
@@ -500,7 +512,7 @@ func setupSnapshot(log types.Logger, ctx context.Context) string {
 			AgentVSockPort: uint32(26),
 			ResumeTimeout:  time.Minute,
 		},
-		func() {})
+		func() error { return nil })
 
 	if err != nil {
 		panic(err)

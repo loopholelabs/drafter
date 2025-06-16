@@ -214,6 +214,14 @@ func main() {
 			S3Bucket:      device.S3Bucket,
 			S3Concurrency: device.S3Concurrency,
 			SkipSilo:      device.SkipSilo,
+
+			// TODO: Expose
+			S3BlockShift:  2,
+			S3OnlyDirty:   false,
+			S3MaxAge:      "100ms",
+			S3MinChanged:  4,
+			S3Limit:       256,
+			S3CheckPeriod: "100ms",
 		})
 	}
 
@@ -308,11 +316,16 @@ func main() {
 			}
 
 			before = time.Now()
+			opts := &common.MigrateToOptions{
+				Concurrency: *concurrency,
+				Compression: true,
+			}
+
 			err = p.MigrateTo(
 				ctx,
 				migrateToDevices,
 				*resumeTimeout,
-				*concurrency,
+				opts,
 				readers,
 				writers,
 				peer.MigrateToHooks{

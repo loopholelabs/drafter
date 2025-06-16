@@ -62,7 +62,7 @@ func ForwardPort(t *testing.T, log loggingtypes.Logger, ns string, protocol stri
 	})
 }
 
-func SetupNAT(t *testing.T, hostInterface string, namespacePrefix string) *nat.Namespaces {
+func SetupNAT(t *testing.T, hostInterface string, namespacePrefix string, num int) *nat.Namespaces {
 
 	if hostInterface == "" {
 		ifc, err := route.DefaultRouteInterface()
@@ -108,7 +108,7 @@ func SetupNAT(t *testing.T, hostInterface string, namespacePrefix string) *nat.N
 				//				log.Println("Removing namespace", id)
 			},
 		},
-		2, // We only need a couple of namespaces
+		num, // We only need a couple of namespaces
 	)
 	assert.NoError(t, err)
 

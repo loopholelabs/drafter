@@ -58,6 +58,7 @@ type MigrateFromDevice struct {
 
 	SkipSilo bool `json:"skipsilo"`
 
+	// General S3 setup
 	S3Sync        bool   `json:"s3sync"`
 	S3AccessKey   string `json:"s3accesskey"`
 	S3SecretKey   string `json:"s3secretkey"`
@@ -65,6 +66,14 @@ type MigrateFromDevice struct {
 	S3Secure      bool   `json:"s3secure"`
 	S3Bucket      string `json:"s3bucket"`
 	S3Concurrency int    `json:"s3concurrency"`
+
+	// S3 sync config
+	S3OnlyDirty   bool   `json:"s3onlydirty"`
+	S3BlockShift  int    `json:"s3blockshift"`
+	S3MaxAge      string `json:"s3maxage"`
+	S3MinChanged  int    `json:"s3minchanged"`
+	S3Limit       int    `json:"s3limit"`
+	S3CheckPeriod string `json:"s3checkperiod"`
 }
 
 var (
@@ -165,12 +174,12 @@ func CreateSiloDevSchema(i *MigrateFromDevice) (*config.DeviceSchema, error) {
 			AutoStart:       true,
 			GrabConcurrency: i.S3Concurrency,
 			Config: &config.SyncConfigSchema{
-				OnlyDirty:   false,
-				BlockShift:  2,
-				MaxAge:      "100ms",
-				MinChanged:  4,
-				Limit:       256,
-				CheckPeriod: "100ms",
+				OnlyDirty:   i.S3OnlyDirty,
+				BlockShift:  i.S3BlockShift,
+				MaxAge:      i.S3MaxAge,
+				MinChanged:  i.S3MinChanged,
+				Limit:       i.S3Limit,
+				CheckPeriod: i.S3CheckPeriod,
 				Concurrency: i.S3Concurrency,
 			},
 		}
@@ -419,12 +428,17 @@ func MigrateFromPipe(log types.Logger, met metrics.SiloMetrics, instanceID strin
 	return dg, nil
 }
 
+type MigrateToOptions struct {
+	Concurrency int
+	Compression bool
+}
+
 /**
  * Migrate TO a pipe
  *
  */
 func MigrateToPipe(ctx context.Context, readers []io.Reader, writers []io.Writer,
-	dg *devicegroup.DeviceGroup, concurrency int, onProgress func(p map[string]*migrator.MigrationProgress),
+	dg *devicegroup.DeviceGroup, options *MigrateToOptions, onProgress func(p map[string]*migrator.MigrationProgress),
 	vmState *VMStateMgr, devices []MigrateToDevice, getCustomPayload func() []byte, met metrics.SiloMetrics, instanceID string) error {
 
 	protocolCtx, protocolCancel := context.WithCancel(ctx)
@@ -446,13 +460,13 @@ func MigrateToPipe(ctx context.Context, readers []io.Reader, writers []io.Writer
 	}
 
 	// Start a migration to the protocol. This will send all schema info etc
-	err := dg.StartMigrationTo(pro, true)
+	err := dg.StartMigrationTo(pro, options.Compression)
 	if err != nil {
 		return err
 	}
 
 	// Do the main migration of the data...
-	err = dg.MigrateAll(concurrency, onProgress)
+	err = dg.MigrateAll(options.Concurrency, onProgress)
 	if err != nil {
 		return err
 	}
