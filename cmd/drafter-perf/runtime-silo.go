@@ -17,6 +17,7 @@ import (
 	"github.com/loopholelabs/drafter/pkg/testutil"
 	loggingtypes "github.com/loopholelabs/logging/types"
 	"github.com/loopholelabs/silo/pkg/storage/config"
+	"github.com/loopholelabs/silo/pkg/storage/memory"
 	"github.com/loopholelabs/silo/pkg/storage/metrics"
 	"github.com/loopholelabs/silo/pkg/storage/migrator"
 	"github.com/muesli/gotable"
@@ -251,6 +252,24 @@ func migrateNow(id int, log loggingtypes.Logger, met *testutil.DummyMetrics, con
 			MaxCycles:      0, //20,
 			CycleThrottle:  500 * time.Millisecond,
 		})
+	}
+
+	// If we are using DirectMemory, we tweak the device group directly, to read directly.
+	if conf.DirectMemory {
+		di := peerFrom.GetDG().GetDeviceInformationByName(common.DeviceMemoryName)
+
+		numBlocks := (di.Size + uint64(conf.BlockSize) - 1) / uint64(conf.BlockSize)
+		unrequiredBlocks := make([]uint, numBlocks)
+		for i := 0; i < int(numBlocks); i++ {
+			unrequiredBlocks[i] = uint(i)
+		}
+
+		memProv, err := memory.NewProcessMemoryStorage(peerFrom.VMPid, "/memory", func() []uint { return unrequiredBlocks })
+		if err != nil {
+			return err
+		}
+
+		di.DirtyRemote.SetRemoteReadProv(memProv) // Read from the memory directly.
 	}
 
 	startMigration := time.Now()
