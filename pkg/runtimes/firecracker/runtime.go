@@ -467,7 +467,7 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChangesFailsafe() error
 			}
 			if !bytes.Equal(buffer[:n1], provBuffer[:n2]) {
 				if rp.GrabUpdateDirty {
-					memDirty.MarkDirty(int64(r.Offset+o-r.Start), int64(len(buffer)))
+					memDirty.MarkDirty(int64(r.Offset+o-r.Start), int64(n1))
 				}
 				if rp.GrabUpdateMemory {
 					// Memory has changed, lets write it
