@@ -140,7 +140,6 @@ func StartFirecrackerMachine(ctx context.Context, log loggingtypes.Logger, conf 
 		WithGID(conf.GID).
 		WithNetNS(filepath.Join("/var", "run", "netns", conf.NetNS)).
 		WithCgroupVersion(fmt.Sprintf("%v", conf.CgroupVersion)).
-		WithCgroupArgs("memory.swap.max=0", "memory.zswap.max=0").
 		WithNumaNode(conf.NumaNode).
 		WithID(id).
 		WithExecFile(conf.FirecrackerBin).
@@ -256,9 +255,16 @@ func (fs *FirecrackerMachine) Close() error {
 	if fs.cmd.Process != nil {
 		fs.closeLock.Lock()
 
+		if fs.log != nil {
+			fs.log.Info().Str("VMPath", fs.VMPath).Int("VMPid", fs.VMPid).Bool("closed", fs.closed).Msg("Firecracker close")
+		}
+
 		if !fs.closed {
 			fs.closed = true
 			err := fs.cmd.Process.Kill()
+			if fs.log != nil {
+				fs.log.Info().Str("VMPath", fs.VMPath).Int("VMPid", fs.VMPid).Err(err).Msg("Sent kill")
+			}
 			if err != nil {
 				fs.closeLock.Unlock()
 				return err

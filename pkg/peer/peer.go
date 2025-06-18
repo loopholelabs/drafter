@@ -87,6 +87,10 @@ func (peer *Peer) GetMetrics() *PeerMetrics {
 	}
 }
 
+func (peer *Peer) GetInstanceID() string {
+	return peer.instanceID
+}
+
 func (peer *Peer) CloseRuntime() error {
 	if peer.log != nil {
 		peer.log.Info().Str("id", peer.instanceID).Msg("Peer.Close")

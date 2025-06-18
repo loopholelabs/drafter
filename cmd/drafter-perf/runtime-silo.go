@@ -123,14 +123,6 @@ func runSilo(ctx context.Context, log loggingtypes.Logger, met *testutil.DummyMe
 		return err
 	}
 
-	defer func() {
-		fmt.Printf("VMClosing %s\n", myPeer.VMPath)
-		err = myPeer.Close()
-		if err != nil {
-			fmt.Printf("Error closing VM %v\n", err)
-		}
-	}()
-
 	peers = append(peers, myPeer)
 
 	hooks1 := peer.MigrateFromHooks{
@@ -145,7 +137,7 @@ func runSilo(ctx context.Context, log loggingtypes.Logger, met *testutil.DummyMe
 		return err
 	}
 
-	err = myPeer.Resume(context.TODO(), 5*time.Minute, 5*time.Minute)
+	err = myPeer.Resume(context.TODO(), 15*time.Minute, 15*time.Minute)
 	if err != nil {
 		return err
 	}
@@ -199,7 +191,11 @@ mainloop:
 			}
 
 			fmt.Printf("# Migration.%d took %dms\n", migrationID, time.Since(migStartTime).Milliseconds())
-			myPeer.Close() // Close the previous peer.
+			fmt.Printf("Closing mid peer %s %s\n", myPeer.VMPath, myPeer.GetInstanceID())
+			err = myPeer.Close() // Close the previous peer.
+			if err != nil {
+				fmt.Printf("Error closing peer %v\n", err)
+			}
 			myPeer = newPeer
 
 			migrationID++
@@ -207,6 +203,12 @@ mainloop:
 	}
 
 	fmt.Printf("After silo run we have %d peers\n", len(peers))
+
+	fmt.Printf("Closing last peer %s %s\n", myPeer.VMPath, myPeer.GetInstanceID())
+	err = myPeer.Close()
+	if err != nil {
+		fmt.Printf("Error closing VM %v\n", err)
+	}
 
 	return nil
 }
@@ -340,41 +342,18 @@ func migrateNow(id int, log loggingtypes.Logger, met *testutil.DummyMetrics, con
 	}
 
 	// If we don't do this, we can't use the same network etc
-	err = peerFrom.CloseRuntime() // Only close the runtime, not the devices
+	err = peerFrom.Close() //Runtime() // Only close the runtime, not the devices
 	if err != nil {
 		return err
 	}
 
-	// time.Sleep(10 * time.Second) // NOT IDEAL. What happens? FIXME.... networking? Or an issue closing runtime
+	// Show device stats here...
+	ShowDeviceStats(met, fmt.Sprintf("%s-%d", conf.Name, id-1))
 
-	// Is there still some sort of issue?
-	// Make sure the hashes are equal here...
-	/*
-		for _, dname := range []string{common.DeviceMemoryName, common.DeviceStateName} {
-			dev1 := peerFrom.GetDG().GetDeviceInformationByName(dname)
-			devProv1, err := sources.NewFileStorage(path.Join("/dev", dev1.Exp.Device()), int64(dev1.Size))
-			if err != nil {
-				fmt.Printf("ERROR reading %s dev %v\n", dname, err)
-			}
-			prov1 := dev1.Exp.GetProvider()
-
-			dev2 := peerTo.GetDG().GetDeviceInformationByName(dname)
-			devProv2, err := sources.NewFileStorage(path.Join("/dev", dev2.Exp.Device()), int64(dev2.Size))
-			if err != nil {
-				fmt.Printf("ERROR reading %s dev %v\n", dname, err)
-			}
-			prov2 := dev2.Exp.GetProvider()
-
-			eq1, err1 := storage.Equals(prov1, prov2, 1024*1024)
-			eq2, err2 := storage.Equals(devProv1, prov2, 1024*1024)
-			eq3, err3 := storage.Equals(devProv2, prov1, 1024*1024)
-			eq4, err4 := storage.Equals(devProv1, devProv2, 1024*1024)
-			fmt.Printf("+ + + CHECK %s device(%v %v %v %v) %d bytes equals %t %t %t %t\n", dname, err1, err2, err3, err4, prov1.Size(), eq1, eq2, eq3, eq4)
-		}
-	*/
-	err = peerTo.Resume(context.TODO(), 5*time.Minute, 5*time.Minute)
+	err = peerTo.Resume(context.TODO(), 15*time.Minute, 15*time.Minute)
 
 	if err != nil {
+		peerTo.Close() // Close the VM here...
 		return err
 	}
 
@@ -468,7 +447,6 @@ func setupPeer(log loggingtypes.Logger, met metrics.SiloMetrics, conf RunConfig,
 		rp.GrabUpdateDirty = true
 		rp.GrabUpdateMemory = false
 
-		// TODO: Tweak memory storage
 	}
 
 	// Use something to push output (sometimes needed)

@@ -51,8 +51,9 @@ func main() {
 	iterations := flag.Int("count", 1, "Number of times to run each config")
 
 	defaultConfigs, err := json.Marshal([]RunConfig{
+
 		{
-			Name:          "silo_30s_softdirty",
+			Name:          "silo_direct",
 			BlockSize:     1024 * 1024,
 			UseCow:        true,
 			UseSharedBase: true,
@@ -60,16 +61,30 @@ func main() {
 			UseVolatility: true,
 			NoMapShared:   true,
 			MigrateAfter:  "90s",
+			DirectMemory:  true,
 		},
+
+		/*
+			{
+				Name:          "silo_failsafe",
+				BlockSize:     1024 * 1024,
+				UseCow:        true,
+				UseSharedBase: true,
+				UseSparseFile: true,
+				UseVolatility: true,
+				NoMapShared:   true,
+				MigrateAfter:  "60s",
+				GrabFailsafe:  true,
+			},
+		*/
 		{
-			Name:          "silo",
+			Name:          "silo_softdirty",
 			BlockSize:     1024 * 1024,
 			UseCow:        true,
+			UseSharedBase: true,
 			UseSparseFile: true,
 			UseVolatility: true,
-			UseWriteCache: false,
-			NoMapShared:   false,
-			GrabPeriod:    0,
+			NoMapShared:   true,
 			MigrateAfter:  "90s",
 		},
 	})
@@ -282,7 +297,7 @@ func main() {
 
 		siloTimingsRuntime[sConf.Name] = runtimeEnd.Sub(runtimeStart)
 
-		time.Sleep(10 * time.Second) // Let dust settle.
+		time.Sleep(5 * time.Minute) // Let dust settle between runs.
 	}
 
 	var nosiloGet time.Duration

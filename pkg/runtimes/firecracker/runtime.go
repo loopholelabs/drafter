@@ -66,6 +66,10 @@ type FirecrackerRuntimeProvider[L ipc.AgentServerLocal, R ipc.AgentServerRemote[
 	AgentServerLocal L
 }
 
+const resumeMaxRetries = 10
+const resumeRetrySleep = 1 * time.Second
+const resumeRetryTimeout = 30 * time.Second
+
 func (rp *FirecrackerRuntimeProvider[L, R, G]) Resume(ctx context.Context, rescueTimeout time.Duration, dg *devicegroup.DeviceGroup, errChan chan error) error {
 	resumeCtime := time.Now()
 	rp.runningLock.Lock()
@@ -117,16 +121,37 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Resume(ctx context.Context, rescu
 		return err
 	}
 
-	// Call after resume RPC
-	r, err := rp.agent.GetRemote(ctx)
-	if err != nil {
-		return err
+	resumeSuccess := false
+	resumeRetries := 0
+	for i := 0; i < resumeMaxRetries; i++ {
+		afterResumeCtx, afterResumeCancel := context.WithTimeout(ctx, resumeRetryTimeout)
+		r, err := rp.agent.GetRemote(afterResumeCtx)
+		if err == nil {
+			remote := *(*ipc.AgentServerRemote[G])(unsafe.Pointer(&r))
+			err = remote.AfterResume(afterResumeCtx)
+			resumeRetries++
+			afterResumeCancel()
+			if err == nil {
+				resumeSuccess = true
+				break
+			}
+		}
+		if rp.Log != nil {
+			rp.Log.Info().
+				Err(err).
+				Str("vmpath", rp.Machine.VMPath).
+				Msg("Resume RPC call failed.")
+		}
+		time.Sleep(resumeRetrySleep)
 	}
 
-	remote := *(*ipc.AgentServerRemote[G])(unsafe.Pointer(&r))
-	err = remote.AfterResume(ctx)
-	if err != nil {
-		return err
+	if !resumeSuccess {
+		if rp.Log != nil {
+			// Show some stats on resume timings...
+			rp.Log.Error().
+				Str("vmpath", rp.Machine.VMPath).
+				Msg("Resume fc vm failed")
+		}
 	}
 
 	rpcCallTook := time.Since(rpcCtime)
@@ -137,6 +162,7 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Resume(ctx context.Context, rescu
 			Int64("resumeMachineMs", resumeMachineTook.Milliseconds()).
 			Int64("rpcCallMs", rpcCallTook.Milliseconds()).
 			Int64("timeMs", time.Since(resumeCtime).Milliseconds()).
+			Int("retries", resumeRetries).
 			Str("vmpath", rp.Machine.VMPath).
 			Msg("Resumed fc vm")
 	}
@@ -219,6 +245,13 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Start(ctx context.Context, rescue
 }
 
 func (rp *FirecrackerRuntimeProvider[L, R, G]) FlushData(ctx context.Context, dg *devicegroup.DeviceGroup) error {
+	ctime := time.Now()
+	defer func() {
+		if rp.Log != nil {
+			rp.Log.Info().Int64("ms", time.Since(ctime).Milliseconds()).Msg("Timing FlushData")
+		}
+	}()
+
 	if rp.Log != nil {
 		rp.Log.Info().Msg("Firecracker FlushData")
 	}
@@ -287,6 +320,13 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Close(dg *devicegroup.DeviceGroup
 }
 
 func (rp *FirecrackerRuntimeProvider[L, R, G]) Suspend(ctx context.Context, suspendTimeout time.Duration, dg *devicegroup.DeviceGroup) error {
+	ctime := time.Now()
+	defer func() {
+		if rp.Log != nil {
+			rp.Log.Info().Int64("ms", time.Since(ctime).Milliseconds()).Msg("Timing Suspend")
+		}
+	}()
+
 	rp.runningLock.Lock()
 	defer rp.runningLock.Unlock()
 
@@ -365,6 +405,12 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Suspend(ctx context.Context, susp
 }
 
 func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChanges() error {
+	ctime := time.Now()
+	defer func() {
+		if rp.Log != nil {
+			rp.Log.Info().Int64("ms", time.Since(ctime).Milliseconds()).Msg("Timing grabMemoryChanges")
+		}
+	}()
 	var err error
 	if rp.GrabFailsafe {
 		err = rp.grabMemoryChangesFailsafe()
@@ -564,8 +610,14 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChangesSoftDirty() erro
 		}
 
 		needBytes := uint64(0)
+		needSwapBytes := uint64(0)
 		for _, r := range ranges {
 			needBytes += r.End - r.Start
+			needSwapBytes += r.Swapped
+		}
+
+		if rp.Log != nil {
+			rp.Log.Info().Uint64("bytes", needBytes).Uint64("swapped", needSwapBytes).Msg("Soft dirty memory")
 		}
 
 		copyData = append(copyData, CopyData{
