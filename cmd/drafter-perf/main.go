@@ -29,6 +29,8 @@ func main() {
 	noCleanup := flag.Bool("no-cleanup", false, "If true, then don't remove any files at the end")
 
 	// VM options
+	ioEngineSync := flag.Bool("sync", true, "Firecracker io engine sync")
+
 	cpuCount := flag.Int("cpus", 1, "CPU count")
 	memCount := flag.Int("memory", 1024, "Memory MB")
 
@@ -51,41 +53,16 @@ func main() {
 	iterations := flag.Int("count", 1, "Number of times to run each config")
 
 	defaultConfigs, err := json.Marshal([]RunConfig{
-
 		{
 			Name:          "silo_direct",
 			BlockSize:     1024 * 1024,
 			UseCow:        true,
 			UseSharedBase: true,
-			UseSparseFile: true,
-			UseVolatility: true,
+			UseSparseFile: false,
+			UseVolatility: false,
 			NoMapShared:   true,
 			MigrateAfter:  "90s",
 			DirectMemory:  true,
-		},
-
-		/*
-			{
-				Name:          "silo_failsafe",
-				BlockSize:     1024 * 1024,
-				UseCow:        true,
-				UseSharedBase: true,
-				UseSparseFile: true,
-				UseVolatility: true,
-				NoMapShared:   true,
-				MigrateAfter:  "60s",
-				GrabFailsafe:  true,
-			},
-		*/
-		{
-			Name:          "silo_softdirty",
-			BlockSize:     1024 * 1024,
-			UseCow:        true,
-			UseSharedBase: true,
-			UseSparseFile: true,
-			UseVolatility: true,
-			NoMapShared:   true,
-			MigrateAfter:  "90s",
 		},
 	})
 
@@ -245,7 +222,7 @@ func main() {
 		panic(err)
 	}
 
-	err = setupSnapshot(log, ctx, snapNs, vmConfig, *dBlueDir, *dSnapDir, waitReady)
+	err = setupSnapshot(log, ctx, snapNs, vmConfig, *ioEngineSync, *dBlueDir, *dSnapDir, waitReady)
 	if err != nil {
 		panic(err)
 	}
@@ -297,7 +274,7 @@ func main() {
 
 		siloTimingsRuntime[sConf.Name] = runtimeEnd.Sub(runtimeStart)
 
-		time.Sleep(5 * time.Minute) // Let dust settle between runs.
+		time.Sleep(10 * time.Second) // Let dust settle between runs.
 	}
 
 	var nosiloGet time.Duration

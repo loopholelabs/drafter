@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"runtime/pprof"
 	"sync"
 	"time"
 
@@ -216,6 +217,20 @@ mainloop:
 // migrateNow migrates a VM locally.
 func migrateNow(id int, log loggingtypes.Logger, met *testutil.DummyMetrics, conf RunConfig, peerFrom *peer.Peer, peerTo *peer.Peer, testDir string, snapDir string) error {
 	log.Info().Int("id", id).Msg("STARTING A MIGRATION")
+
+	// Do some CPU profiling here...
+	f, err := os.Create(fmt.Sprintf("%s-%d.prof", conf.Name, id))
+	if err != nil {
+		panic(err)
+	}
+	err = pprof.StartCPUProfile(f)
+	if err != nil {
+		panic(err)
+	}
+	defer func() {
+		pprof.StopCPUProfile()
+		f.Close()
+	}()
 
 	readersFrom := make([]io.Reader, 0)
 	writersFrom := make([]io.Writer, 0)

@@ -135,6 +135,8 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Resume(ctx context.Context, rescu
 				resumeSuccess = true
 				break
 			}
+		} else {
+			afterResumeCancel()
 		}
 		if rp.Log != nil {
 			rp.Log.Info().
@@ -586,7 +588,7 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChangesSoftDirty() erro
 	totalBytes := int64(0)
 
 	type CopyData struct {
-		ranges    []memory.MemoryRange
+		ranges    []memory.Range
 		addrStart uint64
 		offset    uint64
 	}
