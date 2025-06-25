@@ -138,6 +138,12 @@ func runSilo(ctx context.Context, log loggingtypes.Logger, met *testutil.DummyMe
 		return err
 	}
 
+	// If we're doing direct memory, AND periodically grabbing, we need to tell the dirtytracker to track everything.
+	if conf.DirectMemory && conf.GrabPeriod != 0 {
+		di := myPeer.GetDG().GetDeviceInformationByName(common.DeviceMemoryName)
+		di.DirtyRemote.TrackAt(int64(di.Size), 0)
+	}
+
 	err = myPeer.Resume(context.TODO(), 15*time.Minute, 15*time.Minute)
 	if err != nil {
 		return err
@@ -365,6 +371,12 @@ func migrateNow(id int, log loggingtypes.Logger, met *testutil.DummyMetrics, con
 	// Show device stats here...
 	ShowDeviceStats(met, fmt.Sprintf("%s-%d", conf.Name, id-1))
 
+	// If we're doing direct memory, AND periodically grabbing, we need to tell the dirtytracker to track everything.
+	if conf.DirectMemory && conf.GrabPeriod != 0 {
+		di := peerTo.GetDG().GetDeviceInformationByName(common.DeviceMemoryName)
+		di.DirtyRemote.TrackAt(int64(di.Size), 0)
+	}
+
 	err = peerTo.Resume(context.TODO(), 15*time.Minute, 15*time.Minute)
 
 	if err != nil {
@@ -461,7 +473,6 @@ func setupPeer(log loggingtypes.Logger, met metrics.SiloMetrics, conf RunConfig,
 	if conf.DirectMemory {
 		rp.GrabUpdateDirty = true
 		rp.GrabUpdateMemory = false
-
 	}
 
 	// Use something to push output (sometimes needed)
@@ -542,7 +553,7 @@ func getDevicesFrom(id int, testDir string, snapDir string, conf RunConfig) (map
 		}
 
 		// For now only enable S3 for disks
-		if n == common.DeviceDiskName || n == common.DeviceOCIName {
+		if n == common.DeviceDiskName || n == common.DeviceOCIName || n == common.DeviceMemoryName {
 			dev.S3Sync = conf.S3Sync
 			dev.S3Secure = conf.S3Secure
 			dev.S3SecretKey = conf.S3SecretKey
@@ -566,6 +577,11 @@ func getDevicesFrom(id int, testDir string, snapDir string, conf RunConfig) (map
 				dev.S3Limit = 256
 				dev.S3CheckPeriod = "100ms"
 			*/
+		}
+
+		if n == common.DeviceMemoryName {
+			dev.S3MaxAge = "10m"
+			dev.S3MinChanged = 12
 		}
 
 		devicesFrom = append(devicesFrom, dev)

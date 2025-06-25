@@ -406,6 +406,7 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Suspend(ctx context.Context, susp
 	return nil
 }
 
+// grabMemoryChanges
 func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChanges() error {
 	ctime := time.Now()
 	defer func() {
@@ -427,6 +428,7 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChanges() error {
 	return err
 }
 
+// grabMemoryChangesFailsafe does a memory comparison (bit slow) to get dirty changes.
 func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChangesFailsafe() error {
 	rp.memoryLock.Lock()
 	defer rp.memoryLock.Unlock()
@@ -542,6 +544,7 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChangesFailsafe() error
 	return nil
 }
 
+// grabMemoryChangesSoftDirty grabs memory changes via soft dirty flag etc
 func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChangesSoftDirty() error {
 	if rp.Log != nil {
 		rp.Log.Debug().Msg("Grabbing softDirty memory changes")
@@ -634,13 +637,16 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChangesSoftDirty() erro
 		return err
 	}
 
+	// We can update the dirty ranges here.
 	if rp.GrabUpdateDirty {
+		// This is the main migration DirtyRemote
 		memDirty := rp.dg.GetDeviceInformationByName(common.DeviceMemoryName).DirtyRemote
 		for _, tt := range copyData {
 			for _, r := range tt.ranges {
 				memDirty.MarkDirty(int64(r.Start-tt.addrStart+tt.offset), int64(r.End-r.Start))
 			}
 		}
+		// TODO: Find the sync DirtyRemote if there is one, and update it also.
 	}
 
 	if rp.GrabUpdateMemory {
