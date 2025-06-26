@@ -45,7 +45,7 @@ func NewDirtyManager(vmState *VMStateMgr, devices map[string]*DeviceStatus, auth
 	}
 }
 
-func (dm *DirtyManager) PreGetDirty(name string) error {
+func (dm *DirtyManager) PreGetDirty(name string) (bool, error) {
 	isSuspended := dm.VMState.CheckSuspendedVM()
 
 	dm.Devices[name].SuspendedAtPreGetDirty = isSuspended
@@ -55,11 +55,11 @@ func (dm *DirtyManager) PreGetDirty(name string) error {
 		if dm.Devices[name].MaxCycles > 0 {
 			err := dm.VMState.Msync()
 			if err != nil {
-				return errors.Join(ErrCouldNotMsyncRunner, err)
+				return true, errors.Join(ErrCouldNotMsyncRunner, err)
 			}
 		}
 	}
-	return nil
+	return true, nil
 }
 
 func (dm *DirtyManager) PostGetDirty(name string, blocks []uint) (bool, error) {
