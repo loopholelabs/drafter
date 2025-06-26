@@ -57,6 +57,11 @@ func (dm *DirtyManager) PreGetDirty(name string) (bool, error) {
 			if err != nil {
 				return true, errors.Join(ErrCouldNotMsyncRunner, err)
 			}
+		} else {
+			// Mark ourselves as ready to suspend.
+			di := dm.Devices[name]
+			dm.markDeviceReady(name, di)
+			return false, nil // Don't do anything until the VM is suspended.
 		}
 	}
 	return true, nil
