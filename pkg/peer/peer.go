@@ -459,7 +459,7 @@ func (peer *Peer) MigrateTo(ctx context.Context, devices []common.MigrateToDevic
 		hooks.OnAfterSuspend,
 	)
 
-	err := common.MigrateToPipe(ctx, readers, writers, peer.dg, options, hooks.OnProgress, vmState, devices, hooks.GetXferCustomData, peer.met, peer.instanceID)
+	err := common.MigrateToPipe(peer.log, ctx, readers, writers, peer.dg, options, hooks.OnProgress, vmState, devices, hooks.GetXferCustomData, peer.met, peer.instanceID)
 	if err != nil {
 		if peer.log != nil {
 			peer.log.Info().Err(err).Msg("error in peer.MigrateTo")
