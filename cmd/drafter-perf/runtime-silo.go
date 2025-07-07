@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -17,10 +19,13 @@ import (
 	rfirecracker "github.com/loopholelabs/drafter/pkg/runtimes/firecracker"
 	"github.com/loopholelabs/drafter/pkg/testutil"
 	loggingtypes "github.com/loopholelabs/logging/types"
+	"github.com/loopholelabs/silo/pkg/storage"
 	"github.com/loopholelabs/silo/pkg/storage/config"
+	"github.com/loopholelabs/silo/pkg/storage/device"
 	"github.com/loopholelabs/silo/pkg/storage/memory"
 	"github.com/loopholelabs/silo/pkg/storage/metrics"
 	"github.com/loopholelabs/silo/pkg/storage/migrator"
+	"github.com/loopholelabs/silo/pkg/storage/sources"
 	"github.com/muesli/gotable"
 )
 
@@ -47,6 +52,7 @@ type RunConfig struct {
 	S3Concurrency int    `json:"s3concurrency"`
 	S3Bucket      string `json:"s3bucket"`
 	S3AccessKey   string `json:"s3accesskey"`
+	S3Prefix      string `json:"s3prefix"`
 
 	S3BlockShift  int    `json:"s3blockshift"`
 	S3OnlyDirty   bool   `json:"s3onlydirty"`
@@ -94,7 +100,7 @@ func (sc *RunConfig) Summary() string {
  *
  */
 func runSilo(ctx context.Context, log loggingtypes.Logger, met *testutil.DummyMetrics,
-	testDir string, snapDir string, ns func() (string, func(), error), forwards func(string) (func(), error), benchCB func(), conf RunConfig,
+	testDir string, snapDir string, ns func() (string, func(), error), forwards func(string) (func(), error), benchCB func(), conf *RunConfig,
 	enableInput bool, enableOutput bool) error {
 
 	peers := make([]*peer.Peer, 0)
@@ -119,7 +125,37 @@ func runSilo(ctx context.Context, log loggingtypes.Logger, met *testutil.DummyMe
 		myNetCloser()      // Close the net
 	}()
 
-	myPeer, err := setupPeer(log, met, conf, testDir, myNetNs, enableInput, enableOutput, 0, func(_ bool) {})
+	var myPeer *peer.Peer
+	myPeer, err = setupPeer(log, met, conf, testDir, myNetNs, enableInput, enableOutput, 0, func(r bool) {
+
+		// TODO: This should move into firecracker/runtime
+		if r {
+			di := myPeer.GetDG().GetDeviceInformationByName(common.DeviceMemoryName)
+			di.DirtyRemote.TrackAt(int64(di.Size), 0)
+			// If we're doing S3Sync, update the sync to go directly
+			if conf.S3Sync {
+				numBlocks := (di.Size + uint64(conf.BlockSize) - 1) / uint64(conf.BlockSize)
+				unrequiredBlocks := make([]uint, numBlocks)
+				for i := 0; i < int(numBlocks); i++ {
+					unrequiredBlocks[i] = uint(i)
+				}
+
+				memProv, err := memory.NewProcessMemoryStorage(myPeer.VMPid, "/memory", func() []uint {
+					return unrequiredBlocks
+				})
+				if err != nil {
+					fmt.Printf("Error setting up processMemoryStorage %v\n", err)
+				}
+
+				syncInfoRet := storage.SendSiloEvent(di.Prov, storage.EventSyncInfo, nil)
+				if len(syncInfoRet) == 1 {
+					fmt.Printf("Got sync info, setting up sync destination\n")
+					syncInfo := syncInfoRet[0].([]*device.SyncInfo)
+					syncInfo[0].DirtyRemote.SetRemoteReadProv(memProv)
+				}
+			}
+		}
+	})
 	if err != nil {
 		return err
 	}
@@ -139,8 +175,10 @@ func runSilo(ctx context.Context, log loggingtypes.Logger, met *testutil.DummyMe
 	}
 
 	// If we're doing direct memory, AND periodically grabbing, we need to tell the dirtytracker to track everything.
+	// TODO: Move into firecracker/runtime
 	if conf.DirectMemory && conf.GrabPeriod != 0 {
 		di := myPeer.GetDG().GetDeviceInformationByName(common.DeviceMemoryName)
+		di.UseAltSourcesInDirty = true // Do not clear alt sources. We are *ONLY* doing dirty transfer here.
 		di.DirtyRemote.TrackAt(int64(di.Size), 0)
 	}
 
@@ -221,7 +259,7 @@ mainloop:
 }
 
 // migrateNow migrates a VM locally.
-func migrateNow(id int, log loggingtypes.Logger, met *testutil.DummyMetrics, conf RunConfig, peerFrom *peer.Peer, peerTo *peer.Peer, testDir string, snapDir string) error {
+func migrateNow(id int, log loggingtypes.Logger, met *testutil.DummyMetrics, conf *RunConfig, peerFrom *peer.Peer, peerTo *peer.Peer, testDir string, snapDir string) error {
 	log.Info().Int("id", id).Msg("STARTING A MIGRATION")
 
 	// Do some CPU profiling here...
@@ -278,6 +316,7 @@ func migrateNow(id int, log loggingtypes.Logger, met *testutil.DummyMetrics, con
 	}
 
 	// If we are using DirectMemory, we tweak the device group directly, to read directly.
+	// TODO: Move into firecracker/runtime
 	if conf.DirectMemory {
 		di := peerFrom.GetDG().GetDeviceInformationByName(common.DeviceMemoryName)
 
@@ -287,7 +326,9 @@ func migrateNow(id int, log loggingtypes.Logger, met *testutil.DummyMetrics, con
 			unrequiredBlocks[i] = uint(i)
 		}
 
-		memProv, err := memory.NewProcessMemoryStorage(peerFrom.VMPid, "/memory", func() []uint { return unrequiredBlocks })
+		memProv, err := memory.NewProcessMemoryStorage(peerFrom.VMPid, "/memory", func() []uint {
+			return unrequiredBlocks
+		})
 		if err != nil {
 			return err
 		}
@@ -362,6 +403,77 @@ func migrateNow(id int, log loggingtypes.Logger, met *testutil.DummyMetrics, con
 		fmt.Printf(" === Migration %s bytes sent, %s bytes received\n", formatBytes(stats.DataSent), formatBytes(stats.DataRecv))
 	}
 
+	// On the sending side, lets look directly at the memory
+	memFromProv, err := memory.NewProcessMemoryStorage(peerFrom.VMPid, "/memory", func() []uint { return []uint{} })
+	/*
+					memFromDI := peerFrom.GetDG().GetDeviceInformationByName(common.DeviceMemoryName)
+		memFromProv, err := sources.NewFileStorage(path.Join("/dev", memFromDI.Exp.Device()), int64(memFromDI.Size))
+	*/
+	if err != nil {
+		return err
+	}
+
+	// On the receiving end, we want to access the data through nbd.
+	memToDI := peerTo.GetDG().GetDeviceInformationByName(common.DeviceMemoryName)
+	memToProv, err := sources.NewFileStorage(path.Join("/dev", memToDI.Exp.Device()), int64(memToDI.Size))
+	if err != nil {
+		return err
+	}
+
+	// Check blocks
+
+	bufferFrom := make([]byte, 1024*1024)
+	bufferTo := make([]byte, 1024*1024)
+
+	memSize := uint64(8 * 1024 * 1024 * 1024) // useable
+	fmt.Printf("Memory size is from (%d bytes) to(%d bytes)\n", memFromProv.Size(), memToDI.Size)
+
+	for offset := uint64(0); offset < memSize; offset += 1024 * 1024 {
+		nFrom, err := memFromProv.ReadAt(bufferFrom, int64(offset))
+		if err != nil {
+			return err
+		}
+		nTo, err := memToProv.ReadAt(bufferTo, int64(offset))
+		if err != nil {
+			return err
+		}
+		if nFrom != nTo {
+			fmt.Printf("MEMORY N %d %d\n", nFrom, nTo)
+		}
+		if !bytes.Equal(bufferFrom, bufferTo) {
+			diff := 0
+			for i := 0; i < len(bufferFrom); i++ {
+				if bufferFrom[i] != bufferTo[i] {
+					diff++
+				}
+			}
+			fmt.Printf("MEMORY BYTES block at offset %d differ (%d)\n", offset, diff)
+			return errors.New("CORRUPTION!")
+		}
+	}
+
+	// Check that the destination devices are all complete (no waiting for blocks)
+	for _, n := range append(common.KnownNames, common.DeviceOCIName) {
+		di := peerTo.GetDG().GetDeviceInformationByName(n)
+		n1, n2 := di.WaitingCacheLocal.Availability()
+		met := di.From.GetMetrics()
+
+		if n1 != n2 {
+			fmt.Printf("AVAILABILITY %s %d %d | writeAt %d comp %d hash %d\n", n, n1, n2, met.RecvWriteAt, met.RecvWriteAtComp, met.RecvWriteAtHash)
+			// Check up on why...
+			fmt.Printf("From WriteAt %d WriteAtComp %d WriteAtHash %d WriteAtYouAlreadyHave %d\n",
+				met.RecvWriteAt,
+				met.RecvWriteAtComp,
+				met.RecvWriteAtHash,
+				met.RecvWriteAtYouAlreadyHave)
+
+			fmt.Printf("Available P2P %v\n", met.AvailableP2P)
+			fmt.Printf("Available Alt %v\n", met.AvailableAltSources)
+
+			return errors.New("MISSING DATA!")
+		}
+	}
+
 	// If we don't do this, we can't use the same network etc
 	err = peerFrom.Close() //Runtime() // Only close the runtime, not the devices
 	if err != nil {
@@ -372,8 +484,10 @@ func migrateNow(id int, log loggingtypes.Logger, met *testutil.DummyMetrics, con
 	ShowDeviceStats(met, fmt.Sprintf("%s-%d", conf.Name, id-1))
 
 	// If we're doing direct memory, AND periodically grabbing, we need to tell the dirtytracker to track everything.
+	// TODO: Move into firecracker/runtime
 	if conf.DirectMemory && conf.GrabPeriod != 0 {
 		di := peerTo.GetDG().GetDeviceInformationByName(common.DeviceMemoryName)
+		di.UseAltSourcesInDirty = true
 		di.DirtyRemote.TrackAt(int64(di.Size), 0)
 	}
 
@@ -385,27 +499,93 @@ func migrateNow(id int, log loggingtypes.Logger, met *testutil.DummyMetrics, con
 	}
 
 	devTab := gotable.NewTable([]string{"Name",
-		"Write", "Comp", "CompData", "Base",
-		"AvailP2P", "AvailAlt",
+		"Write", "Comp", "CompData", "Hash", "Base",
+		"AvailP2P", "AvailAlt", "DupeP2P",
+		"F.P2P", "F.Alt", "F.Both",
 	},
-		[]int64{-16, 10, 10, 10, 10, 10, 10},
+		[]int64{-16, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10},
 		"No data in table.")
+
+	totalWrite := uint64(0)
+	totalComp := uint64(0)
+	totalCompData := uint64(0)
+	totalHash := uint64(0)
+	totalBase := uint64(0)
+	totalAvailP2P := uint64(0)
+	totalAvailAlt := uint64(0)
+	totalDupeP2P := uint64(0)
+	totalFP2P := uint64(0)
+	totalFAlt := uint64(0)
+	totalFBoth := uint64(0)
 
 	for _, n := range append(common.KnownNames, common.DeviceOCIName) {
 		protoTo := met.GetToProtocol(fmt.Sprintf("%s-%d", conf.Name, 0), n)
 		stTo := protoTo.GetMetrics()
 		protoFrom := met.GetFromProtocol(fmt.Sprintf("%s-%d", conf.Name, 1), n)
 		stFrom := protoFrom.GetMetrics()
+
+		sources := make([]int, stFrom.NumBlocks)
+		for _, v := range stFrom.AvailableP2P {
+			sources[v] = 2 // P2P
+		}
+		for _, v := range stFrom.AvailableAltSources {
+			sources[v] |= 1 // AltSources
+		}
+
+		onlyAltSources := 0
+		onlyP2P := 0
+		inBoth := 0
+		// Now count up where the data came from
+		for _, v := range sources {
+			if v == 2 {
+				onlyP2P++
+			} else if v == 1 {
+				onlyAltSources++
+			} else if v == 3 {
+				inBoth++
+			}
+		}
+
+		totalWrite += stTo.SentWriteAtBytes
+		totalComp += stTo.SentWriteAtCompBytes
+		totalCompData += stTo.SentWriteAtCompDataBytes
+		totalHash += stTo.SentWriteAtHashBytes
+		totalBase += stTo.SentYouAlreadyHaveBytes
+
+		totalAvailP2P += uint64(len(stFrom.AvailableP2P) * int(conf.BlockSize))
+		totalAvailAlt += uint64(len(stFrom.AvailableAltSources) * int(conf.BlockSize))
+		totalDupeP2P += uint64(len(stFrom.DuplicateP2P) * int(conf.BlockSize))
+		totalFP2P += uint64(onlyP2P * int(conf.BlockSize))
+		totalFAlt += uint64(onlyAltSources * int(conf.BlockSize))
+		totalFBoth += uint64(inBoth * int(conf.BlockSize))
+
 		devTab.AppendRow([]interface{}{
 			n,
 			formatBytes(stTo.SentWriteAtBytes),
 			formatBytes(stTo.SentWriteAtCompBytes),
 			formatBytes(stTo.SentWriteAtCompDataBytes),
+			formatBytes(stTo.SentWriteAtHashBytes),
 			formatBytes(stTo.SentYouAlreadyHaveBytes),
 			formatBytes(uint64(len(stFrom.AvailableP2P) * int(conf.BlockSize))),
 			formatBytes(uint64(len(stFrom.AvailableAltSources) * int(conf.BlockSize))),
+			formatBytes(uint64(len(stFrom.DuplicateP2P) * int(conf.BlockSize))),
+
+			formatBytes(uint64(onlyP2P * int(conf.BlockSize))),
+			formatBytes(uint64(onlyAltSources * int(conf.BlockSize))),
+			formatBytes(uint64(inBoth * int(conf.BlockSize))),
 		})
 	}
+
+	devTab.AppendRow([]interface{}{
+		"total",
+		formatBytes(totalWrite),
+		formatBytes(totalComp),
+		formatBytes(totalCompData),
+		formatBytes(totalHash),
+		formatBytes(totalBase),
+		formatBytes(totalAvailP2P), formatBytes(totalAvailAlt), formatBytes(totalDupeP2P),
+		formatBytes(totalFP2P), formatBytes(totalFAlt), formatBytes(totalFBoth),
+	})
 
 	devTab.Print()
 
@@ -413,7 +593,7 @@ func migrateNow(id int, log loggingtypes.Logger, met *testutil.DummyMetrics, con
 }
 
 // setupPeer sets up a new peer
-func setupPeer(log loggingtypes.Logger, met metrics.SiloMetrics, conf RunConfig, testDir string, netns string, enableInput bool, enableOutput bool, instance int, runningCB func(bool)) (*peer.Peer, error) {
+func setupPeer(log loggingtypes.Logger, met metrics.SiloMetrics, conf *RunConfig, testDir string, netns string, enableInput bool, enableOutput bool, instance int, runningCB func(bool)) (*peer.Peer, error) {
 
 	firecrackerBin, err := exec.LookPath("firecracker")
 	if err != nil {
@@ -500,7 +680,7 @@ func setupPeer(log loggingtypes.Logger, met metrics.SiloMetrics, conf RunConfig,
 }
 
 // getDevicesFrom configures the silo devices
-func getDevicesFrom(id int, testDir string, snapDir string, conf RunConfig) (map[string]*config.DeviceSchema, []common.MigrateFromDevice, error) {
+func getDevicesFrom(id int, testDir string, snapDir string, conf *RunConfig) (map[string]*config.DeviceSchema, []common.MigrateFromDevice, error) {
 	schemas := make(map[string]*config.DeviceSchema)
 	devicesFrom := make([]common.MigrateFromDevice, 0)
 	for _, n := range append(common.KnownNames, "oci") {
@@ -552,7 +732,6 @@ func getDevicesFrom(id int, testDir string, snapDir string, conf RunConfig) (map
 			}
 		}
 
-		// For now only enable S3 for disks
 		if n == common.DeviceDiskName || n == common.DeviceOCIName || n == common.DeviceMemoryName {
 			dev.S3Sync = conf.S3Sync
 			dev.S3Secure = conf.S3Secure
@@ -561,6 +740,7 @@ func getDevicesFrom(id int, testDir string, snapDir string, conf RunConfig) (map
 			dev.S3Concurrency = conf.S3Concurrency
 			dev.S3Bucket = conf.S3Bucket
 			dev.S3AccessKey = conf.S3AccessKey
+			dev.S3Prefix = conf.S3Prefix
 
 			dev.S3BlockShift = conf.S3BlockShift
 			dev.S3OnlyDirty = conf.S3OnlyDirty
@@ -577,11 +757,6 @@ func getDevicesFrom(id int, testDir string, snapDir string, conf RunConfig) (map
 				dev.S3Limit = 256
 				dev.S3CheckPeriod = "100ms"
 			*/
-		}
-
-		if n == common.DeviceMemoryName {
-			dev.S3MaxAge = "10m"
-			dev.S3MinChanged = 12
 		}
 
 		devicesFrom = append(devicesFrom, dev)
