@@ -17,7 +17,9 @@ import (
 	"github.com/loopholelabs/drafter/pkg/ipc"
 	"github.com/loopholelabs/logging/types"
 	"github.com/loopholelabs/silo/pkg/storage"
+	"github.com/loopholelabs/silo/pkg/storage/device"
 	"github.com/loopholelabs/silo/pkg/storage/devicegroup"
+	"github.com/loopholelabs/silo/pkg/storage/dirtytracker"
 	"github.com/loopholelabs/silo/pkg/storage/memory"
 	"github.com/loopholelabs/silo/pkg/storage/modules"
 )
@@ -196,14 +198,15 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) setRunning(r bool) {
 					case <-rp.grabberCtx.Done():
 						rp.grabberWg.Done()
 						if rp.Log != nil {
-							rp.Log.Error().Msg("memory grabber finished")
+							rp.Log.Info().Msg("memory grabber finished")
 						}
 						return
 					case <-ticker.C:
 						err := rp.grabMemoryChanges()
 						if err != nil {
 							if rp.Log != nil {
-								rp.Log.Error().Err(err).Msg("could not grab memory changes")
+								// NB: This isn't critical, but it may still signal up an issue.
+								rp.Log.Error().Err(err).Msg("could not grab periodic memory changes")
 							}
 						}
 
@@ -408,6 +411,9 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Suspend(ctx context.Context, susp
 
 // grabMemoryChanges
 func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChanges() error {
+	rp.memoryLock.Lock()
+	defer rp.memoryLock.Unlock()
+
 	ctime := time.Now()
 	defer func() {
 		if rp.Log != nil {
@@ -430,9 +436,6 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChanges() error {
 
 // grabMemoryChangesFailsafe does a memory comparison (bit slow) to get dirty changes.
 func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChangesFailsafe() error {
-	rp.memoryLock.Lock()
-	defer rp.memoryLock.Unlock()
-
 	if rp.Log != nil {
 		rp.Log.Debug().Msg("Grabbing failsafe memory changes")
 	}
@@ -448,7 +451,7 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChangesFailsafe() error
 	var resumeTime time.Time
 
 	lockcb := func() error {
-		err := pm.PauseProcess()
+		err := pm.PauseProcess(10 * time.Second)
 		pauseTime = time.Now()
 		if err != nil {
 			if rp.Log != nil {
@@ -464,7 +467,7 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChangesFailsafe() error
 			return err
 		}
 
-		err = pm.ResumeProcess()
+		err = pm.ResumeProcess(10 * time.Second)
 		resumeTime = time.Now()
 		if err != nil {
 			if rp.Log != nil {
@@ -561,7 +564,7 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChangesSoftDirty() erro
 	var resumeTime time.Time
 
 	lockcb := func() error {
-		err := pm.PauseProcess()
+		err := pm.PauseProcess(10 * time.Second)
 		pauseTime = time.Now()
 		if err != nil {
 			if rp.Log != nil {
@@ -577,7 +580,7 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChangesSoftDirty() erro
 			return err
 		}
 
-		err = pm.ResumeProcess()
+		err = pm.ResumeProcess(10 * time.Second)
 		resumeTime = time.Now()
 		if err != nil {
 			if rp.Log != nil {
@@ -637,16 +640,34 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChangesSoftDirty() erro
 		return err
 	}
 
+	updatedDirtyBytes := uint64(0)
+	updatedSyncDirtyBytes := uint64(0)
+
 	// We can update the dirty ranges here.
 	if rp.GrabUpdateDirty {
 		// This is the main migration DirtyRemote
-		memDirty := rp.dg.GetDeviceInformationByName(common.DeviceMemoryName).DirtyRemote
+		di := rp.dg.GetDeviceInformationByName(common.DeviceMemoryName)
+		memDirty := di.DirtyRemote
+		var syncDirty *dirtytracker.Remote
+
+		syncInfoRet := storage.SendSiloEvent(di.Prov, storage.EventSyncInfo, nil)
+		if len(syncInfoRet) == 1 {
+			syncInfo := syncInfoRet[0].([]*device.SyncInfo)
+			if len(syncInfo) == 1 {
+				syncDirty = syncInfo[0].DirtyRemote
+			}
+		}
+
 		for _, tt := range copyData {
 			for _, r := range tt.ranges {
 				memDirty.MarkDirty(int64(r.Start-tt.addrStart+tt.offset), int64(r.End-r.Start))
+				updatedDirtyBytes += (r.End - r.Start)
+				if syncDirty != nil {
+					syncDirty.MarkDirty(int64(r.Start-tt.addrStart+tt.offset), int64(r.End-r.Start))
+					updatedSyncDirtyBytes += (r.End - r.Start)
+				}
 			}
 		}
-		// TODO: Find the sync DirtyRemote if there is one, and update it also.
 	}
 
 	if rp.GrabUpdateMemory {
@@ -665,7 +686,10 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChangesSoftDirty() erro
 		}
 
 		if rp.Log != nil {
-			rp.Log.Info().Int64("bytes", totalBytes).Int64("ms", resumeTime.Sub(pauseTime).Milliseconds()).Msg("SoftDirty copied memory to the silo provider")
+			rp.Log.Info().Int64("bytes", totalBytes).
+				Int64("dirtybytes", int64(updatedDirtyBytes)).
+				Int64("syncdirtybytes", int64(updatedSyncDirtyBytes)).
+				Int64("ms", resumeTime.Sub(pauseTime).Milliseconds()).Msg("SoftDirty copied memory to the silo provider")
 		}
 	}
 
