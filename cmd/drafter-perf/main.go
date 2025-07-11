@@ -52,7 +52,6 @@ func main() {
 
 	iterations := flag.Int("count", 1, "Number of times to run each config")
 
-	s3sync := true
 	comp := true
 
 	defaultConfigs, err := json.Marshal([]*RunConfig{
