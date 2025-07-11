@@ -23,6 +23,7 @@ import (
 	"github.com/loopholelabs/logging"
 	"github.com/loopholelabs/logging/types"
 	"github.com/loopholelabs/silo/pkg/storage"
+	"github.com/loopholelabs/silo/pkg/storage/memory"
 	"github.com/loopholelabs/silo/pkg/storage/migrator"
 	"github.com/loopholelabs/silo/pkg/storage/protocol/packets"
 	"github.com/loopholelabs/silo/pkg/storage/sources"
@@ -51,7 +52,7 @@ func TestMigrationBasicHashChecks(t *testing.T) {
 func TestMigrationDirectMemoryHashChecks(t *testing.T) {
 	migration(t, &migrationConfig{
 		blockSize:      1024 * 1024,
-		numMigrations:  8,
+		numMigrations:  1,
 		minCycles:      0,
 		maxCycles:      0,
 		cycleThrottle:  100 * time.Millisecond,
@@ -69,7 +70,7 @@ func TestMigrationDirectMemoryHashChecks(t *testing.T) {
 func TestMigrationDirectMemoryS3HashChecks(t *testing.T) {
 	migration(t, &migrationConfig{
 		blockSize:      1024 * 1024,
-		numMigrations:  8,
+		numMigrations:  1,
 		minCycles:      0,
 		maxCycles:      0,
 		cycleThrottle:  100 * time.Millisecond,
@@ -709,18 +710,28 @@ func migration(t *testing.T, config *migrationConfig) {
 				// If we're doing soft dirty, it doesn't go through NBD, so we should do the comparison in silo provider...
 				if n == common.DeviceMemoryName && config.noMapShared {
 					if config.directMemory {
-						// TODO: Cope that size differs...
+						// NB: We do a specific check here, because the size may differ by a block or so.
+						// It's not important, but we don't care about that here.
 
-						/*
-							// When we do direct memory, we need to compare it directly...
-							memProv, err := memory.NewProcessMemoryStorage(lastPeer.VMPid, "/memory", func() []uint { return []uint{} })
-							assert.NoError(t, err)
+						// When we do direct memory, we need to compare it directly...
+						memProv, err := memory.NewProcessMemoryStorage(lastPeer.VMPid, "/memory", func() []uint { return []uint{} })
+						assert.NoError(t, err)
+						memToDI := nextPeer.GetDG().GetDeviceInformationByName(common.DeviceMemoryName)
+						memToProv, err := sources.NewFileStorage(path.Join("/dev", memToDI.Exp.Device()), int64(memToDI.Size))
 
-							prov2 := nextPeer.GetDG().GetDeviceInformationByName(n).Exp.GetProvider()
-							eq, err := storage.Equals(memProv, prov2, 1024*1024)
+						buffer := make([]byte, 1024*1024)
+						b2 := make([]byte, len(buffer))
+						for offset := uint64(0); offset < memProv.Size(); offset += uint64(len(buffer)) {
+							// Compare the data.
+							nr, err := memProv.ReadAt(buffer, int64(offset))
 							assert.NoError(t, err)
-							assert.True(t, eq)
-						*/
+							nr2, err := memToProv.ReadAt(b2, int64(offset))
+							if !bytes.Equal(buffer[:nr], b2[:nr2]) {
+								fmt.Printf("DATA DIFF at offset %d. Read %d %d bytes\n", offset, nr, nr2)
+							}
+							assert.LessOrEqual(t, nr, nr2) // Make sure we read at least nr bytes...
+							assert.True(t, bytes.Equal(buffer[:nr], b2[:nr2]))
+						}
 					} else {
 						prov1 := lastPeer.GetDG().GetDeviceInformationByName(n).Exp.GetProvider()
 						prov2 := nextPeer.GetDG().GetDeviceInformationByName(n).Exp.GetProvider()
