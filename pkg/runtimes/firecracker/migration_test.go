@@ -52,7 +52,7 @@ func TestMigrationBasicHashChecks(t *testing.T) {
 func TestMigrationDirectMemoryHashChecks(t *testing.T) {
 	migration(t, &migrationConfig{
 		blockSize:      1024 * 1024,
-		numMigrations:  1,
+		numMigrations:  3,
 		minCycles:      0,
 		maxCycles:      0,
 		cycleThrottle:  100 * time.Millisecond,
@@ -70,7 +70,7 @@ func TestMigrationDirectMemoryHashChecks(t *testing.T) {
 func TestMigrationDirectMemoryS3HashChecks(t *testing.T) {
 	migration(t, &migrationConfig{
 		blockSize:      1024 * 1024,
-		numMigrations:  1,
+		numMigrations:  3,
 		minCycles:      0,
 		maxCycles:      0,
 		cycleThrottle:  100 * time.Millisecond,

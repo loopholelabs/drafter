@@ -104,8 +104,24 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Resume(ctx context.Context, rescu
 
 	if rp.DirectMemory {
 		di := dg.GetDeviceInformationByName(common.DeviceMemoryName)
+		// Find out which blocks we should mark as dirty if they came in from a migration.
+		unreq := di.DirtyRemote.GetUnrequiredBlocks()
+		blocks := make([]bool, di.NumBlocks)
+		for _, b := range unreq {
+			blocks[b] = true
+		}
 		di.DirtyRemote.TrackAt(int64(di.Size), 0) // Track entire memory, since we will be only doing dirty
-		di.UseAltSourcesInDirty = true            // Do not clear alt sources (S3). We are *ONLY* doing dirty transfer here.
+		for b, un := range blocks {
+			if !un {
+				offset := b * int(di.BlockSize)
+				// Mark the block as dirty...
+				di.DirtyRemote.MarkDirty(int64(offset), int64(di.BlockSize))
+			}
+		}
+		if rp.Log != nil {
+			rp.Log.Info().Int("blocks", len(unreq)).Msg("Marked blocks dirty from incoming memory")
+		}
+		di.UseAltSourcesInDirty = true // Do not clear alt sources (S3). We are *ONLY* doing dirty transfer here.
 		rp.DirectMemoryDirty = di.DirtyRemote
 	}
 
