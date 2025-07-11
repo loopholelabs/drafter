@@ -68,7 +68,7 @@ func TestDirtyManager(t *testing.T) {
 			blocks = []uint{} // No dirty blocks...
 		}
 
-		err := dm.PreGetDirty(devName)
+		_, err := dm.PreGetDirty(devName)
 		assert.NoError(t, err)
 		more, err := dm.PostGetDirty(devName, blocks)
 		assert.NoError(t, err)

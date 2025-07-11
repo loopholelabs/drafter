@@ -223,7 +223,7 @@ func TestMigrateFromFsThenBetween(t *testing.T) {
 			return customData
 		}
 
-		err = MigrateToPipe(context.TODO(), []io.Reader{r1}, []io.Writer{w2},
+		err = MigrateToPipe(nil, context.TODO(), []io.Reader{r1}, []io.Writer{w2},
 			dg, &MigrateToOptions{Concurrency: 100}, progress, vmState, devices, getCustomPayload, nil, "")
 		assert.NoError(t, err)
 
