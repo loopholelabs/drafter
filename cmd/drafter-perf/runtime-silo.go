@@ -19,9 +19,7 @@ import (
 	rfirecracker "github.com/loopholelabs/drafter/pkg/runtimes/firecracker"
 	"github.com/loopholelabs/drafter/pkg/testutil"
 	loggingtypes "github.com/loopholelabs/logging/types"
-	"github.com/loopholelabs/silo/pkg/storage"
 	"github.com/loopholelabs/silo/pkg/storage/config"
-	"github.com/loopholelabs/silo/pkg/storage/device"
 	"github.com/loopholelabs/silo/pkg/storage/memory"
 	"github.com/loopholelabs/silo/pkg/storage/metrics"
 	"github.com/loopholelabs/silo/pkg/storage/migrator"
@@ -126,36 +124,7 @@ func runSilo(ctx context.Context, log loggingtypes.Logger, met *testutil.DummyMe
 	}()
 
 	var myPeer *peer.Peer
-	myPeer, err = setupPeer(log, met, conf, testDir, myNetNs, enableInput, enableOutput, 0, func(r bool) {
-
-		// TODO: This should move into firecracker/runtime
-		if r {
-			di := myPeer.GetDG().GetDeviceInformationByName(common.DeviceMemoryName)
-			di.DirtyRemote.TrackAt(int64(di.Size), 0)
-			// If we're doing S3Sync, update the sync to go directly
-			if conf.S3Sync {
-				numBlocks := (di.Size + uint64(conf.BlockSize) - 1) / uint64(conf.BlockSize)
-				unrequiredBlocks := make([]uint, numBlocks)
-				for i := 0; i < int(numBlocks); i++ {
-					unrequiredBlocks[i] = uint(i)
-				}
-
-				memProv, err := memory.NewProcessMemoryStorage(myPeer.VMPid, "/memory", func() []uint {
-					return unrequiredBlocks
-				})
-				if err != nil {
-					fmt.Printf("Error setting up processMemoryStorage %v\n", err)
-				}
-
-				syncInfoRet := storage.SendSiloEvent(di.Prov, storage.EventSyncInfo, nil)
-				if len(syncInfoRet) == 1 {
-					fmt.Printf("Got sync info, setting up sync destination\n")
-					syncInfo := syncInfoRet[0].([]*device.SyncInfo)
-					syncInfo[0].DirtyRemote.SetRemoteReadProv(memProv)
-				}
-			}
-		}
-	})
+	myPeer, err = setupPeer(log, met, conf, testDir, myNetNs, enableInput, enableOutput, 0, func(r bool) {})
 	if err != nil {
 		return err
 	}
@@ -172,14 +141,6 @@ func runSilo(ctx context.Context, log loggingtypes.Logger, met *testutil.DummyMe
 	err = myPeer.MigrateFrom(context.TODO(), devicesFrom, nil, nil, hooks1)
 	if err != nil {
 		return err
-	}
-
-	// If we're doing direct memory, AND periodically grabbing, we need to tell the dirtytracker to track everything.
-	// TODO: Move into firecracker/runtime
-	if conf.DirectMemory && conf.GrabPeriod != 0 {
-		di := myPeer.GetDG().GetDeviceInformationByName(common.DeviceMemoryName)
-		di.UseAltSourcesInDirty = true // Do not clear alt sources. We are *ONLY* doing dirty transfer here.
-		di.DirtyRemote.TrackAt(int64(di.Size), 0)
 	}
 
 	err = myPeer.Resume(context.TODO(), 15*time.Minute, 15*time.Minute)
@@ -313,27 +274,6 @@ func migrateNow(id int, log loggingtypes.Logger, met *testutil.DummyMetrics, con
 			MaxCycles:      0, //20,
 			CycleThrottle:  500 * time.Millisecond,
 		})
-	}
-
-	// If we are using DirectMemory, we tweak the device group directly, to read directly.
-	// TODO: Move into firecracker/runtime
-	if conf.DirectMemory {
-		di := peerFrom.GetDG().GetDeviceInformationByName(common.DeviceMemoryName)
-
-		numBlocks := (di.Size + uint64(conf.BlockSize) - 1) / uint64(conf.BlockSize)
-		unrequiredBlocks := make([]uint, numBlocks)
-		for i := 0; i < int(numBlocks); i++ {
-			unrequiredBlocks[i] = uint(i)
-		}
-
-		memProv, err := memory.NewProcessMemoryStorage(peerFrom.VMPid, "/memory", func() []uint {
-			return unrequiredBlocks
-		})
-		if err != nil {
-			return err
-		}
-
-		di.DirtyRemote.SetRemoteReadProv(memProv) // Read from the memory directly.
 	}
 
 	startMigration := time.Now()
@@ -482,14 +422,6 @@ func migrateNow(id int, log loggingtypes.Logger, met *testutil.DummyMetrics, con
 
 	// Show device stats here...
 	ShowDeviceStats(met, fmt.Sprintf("%s-%d", conf.Name, id-1))
-
-	// If we're doing direct memory, AND periodically grabbing, we need to tell the dirtytracker to track everything.
-	// TODO: Move into firecracker/runtime
-	if conf.DirectMemory && conf.GrabPeriod != 0 {
-		di := peerTo.GetDG().GetDeviceInformationByName(common.DeviceMemoryName)
-		di.UseAltSourcesInDirty = true
-		di.DirtyRemote.TrackAt(int64(di.Size), 0)
-	}
 
 	err = peerTo.Resume(context.TODO(), 15*time.Minute, 15*time.Minute)
 
@@ -648,6 +580,7 @@ func setupPeer(log loggingtypes.Logger, met metrics.SiloMetrics, conf *RunConfig
 		GrabFailsafe:            conf.GrabFailsafe,
 		GrabUpdateMemory:        hConf.NoMapShared,
 		RunningCB:               runningCB,
+		DirectMemory:            conf.DirectMemory,
 	}
 
 	if conf.DirectMemory {
