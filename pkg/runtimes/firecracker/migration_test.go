@@ -26,6 +26,7 @@ import (
 	"github.com/loopholelabs/silo/pkg/storage/memory"
 	"github.com/loopholelabs/silo/pkg/storage/migrator"
 	"github.com/loopholelabs/silo/pkg/storage/modules"
+	"github.com/loopholelabs/silo/pkg/storage/protocol/packets"
 	"github.com/loopholelabs/silo/pkg/storage/sources"
 	"github.com/loopholelabs/silo/pkg/testutils"
 	"github.com/stretchr/testify/assert"
@@ -667,8 +668,9 @@ func migration(t *testing.T, config *migrationConfig) {
 		wg.Add(1)
 		go func() {
 			opts := &common.MigrateToOptions{
-				Concurrency: 10,
-				Compression: true,
+				Concurrency:     10,
+				Compression:     true,
+				CompressionType: packets.CompressionTypeZeroes,
 			}
 			err := lastPeer.MigrateTo(context.TODO(), devicesTo, 2*time.Minute, opts, []io.Reader{r1}, []io.Writer{w2}, hooks)
 			assert.NoError(t, err)

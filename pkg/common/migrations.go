@@ -435,8 +435,9 @@ func MigrateFromPipe(log types.Logger, met metrics.SiloMetrics, instanceID strin
 }
 
 type MigrateToOptions struct {
-	Concurrency int
-	Compression bool
+	Concurrency     int
+	Compression     bool
+	CompressionType packets.CompressionType
 }
 
 /**
@@ -470,7 +471,7 @@ func MigrateToPipe(log types.Logger, ctx context.Context, readers []io.Reader, w
 	}
 
 	// Start a migration to the protocol. This will send all schema info etc
-	err := dg.StartMigrationTo(pro, options.Compression)
+	err := dg.StartMigrationTo(pro, options.Compression, options.CompressionType)
 	if err != nil {
 		return err
 	}
