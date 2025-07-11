@@ -49,17 +49,21 @@ type FirecrackerRuntimeProvider[L ipc.AgentServerLocal, R ipc.AgentServerRemote[
 
 	RunningCB func(r bool)
 
-	// Grabber
-	GrabMemory   bool
-	GrabFailsafe bool
+	// Memory grabber
+	GrabMemory   bool // If true, we will grab memory from /proc/<pid>/mem instead of using map_shared
+	GrabFailsafe bool // If true, we do a failsafe memory grab instead of using the soft_dirty mechanism
 
-	GrabUpdateDirty  bool
-	GrabUpdateMemory bool
+	GrabUpdateDirty  bool // If true, we update dirty ranges
+	GrabUpdateMemory bool // If true, we update the memory content
 
 	grabberCtx    context.Context
 	grabberCancel context.CancelFunc
 	grabberWg     sync.WaitGroup
 	grabberProv   storage.Provider
+
+	DirectMemory          bool // If true, we're going to go directly to /proc/<pid>/mem at migration time, and for S3 assist
+	DirectMemorySyncDirty *dirtytracker.Remote
+	DirectMemoryDirty     *dirtytracker.Remote
 
 	dg *devicegroup.DeviceGroup
 
@@ -98,12 +102,51 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Resume(ctx context.Context, rescu
 		return errors.Join(ErrCouldNotDecodeConfigFile, err)
 	}
 
+	if rp.DirectMemory {
+		di := dg.GetDeviceInformationByName(common.DeviceMemoryName)
+		di.DirtyRemote.TrackAt(int64(di.Size), 0) // Track entire memory, since we will be only doing dirty
+		di.UseAltSourcesInDirty = true            // Do not clear alt sources (S3). We are *ONLY* doing dirty transfer here.
+		rp.DirectMemoryDirty = di.DirtyRemote
+	}
+
 	err = rp.Machine.ResumeSnapshot(ctx, common.DeviceStateName, common.DeviceMemoryName)
 	if err != nil {
 		return err
 	}
 
 	resumeMachineTook := time.Since(resumeCtime)
+
+	// Set things up for DirectMemory access if required. NB This can only be done *after* the resume
+	if rp.DirectMemory {
+		di := dg.GetDeviceInformationByName(common.DeviceMemoryName)
+		// At migration time, we're going to tell Silo it doesn't need to sent anything up front. We'll only be sending dirty
+		unrequiredBlocks := make([]uint, di.NumBlocks)
+		for i := 0; i < int(di.NumBlocks); i++ {
+			unrequiredBlocks[i] = uint(i)
+		}
+
+		memProv, err := memory.NewProcessMemoryStorage(rp.Machine.VMPid, "/memory", func() []uint {
+			return unrequiredBlocks
+		})
+		if err != nil {
+			return err
+		}
+
+		di.DirtyRemote.SetRemoteReadProv(memProv) // Read from the memory directly when migrating
+
+		// Tell the S3 Sync system that it should read directly from the direct memory prov.
+		syncInfoRet := storage.SendSiloEvent(di.Prov, storage.EventSyncInfo, nil)
+		if len(syncInfoRet) == 1 {
+			syncInfo := syncInfoRet[0].([]*device.SyncInfo)
+			if len(syncInfo) == 1 {
+				syncInfo[0].DirtyRemote.SetRemoteReadProv(memProv)
+				rp.DirectMemorySyncDirty = syncInfo[0].DirtyRemote
+				if rp.Log != nil {
+					rp.Log.Info().Msg("Setup memory S3 source to point to proc mem")
+				}
+			}
+		}
+	}
 
 	// Setup the grabber provider
 	di := dg.GetDeviceInformationByName(common.DeviceMemoryName)
@@ -645,25 +688,12 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChangesSoftDirty() erro
 
 	// We can update the dirty ranges here.
 	if rp.GrabUpdateDirty {
-		// This is the main migration DirtyRemote
-		di := rp.dg.GetDeviceInformationByName(common.DeviceMemoryName)
-		memDirty := di.DirtyRemote
-		var syncDirty *dirtytracker.Remote
-
-		syncInfoRet := storage.SendSiloEvent(di.Prov, storage.EventSyncInfo, nil)
-		if len(syncInfoRet) == 1 {
-			syncInfo := syncInfoRet[0].([]*device.SyncInfo)
-			if len(syncInfo) == 1 {
-				syncDirty = syncInfo[0].DirtyRemote
-			}
-		}
-
 		for _, tt := range copyData {
 			for _, r := range tt.ranges {
-				memDirty.MarkDirty(int64(r.Start-tt.addrStart+tt.offset), int64(r.End-r.Start))
+				rp.DirectMemoryDirty.MarkDirty(int64(r.Start-tt.addrStart+tt.offset), int64(r.End-r.Start))
 				updatedDirtyBytes += (r.End - r.Start)
-				if syncDirty != nil {
-					syncDirty.MarkDirty(int64(r.Start-tt.addrStart+tt.offset), int64(r.End-r.Start))
+				if rp.DirectMemorySyncDirty != nil {
+					rp.DirectMemorySyncDirty.MarkDirty(int64(r.Start-tt.addrStart+tt.offset), int64(r.End-r.Start))
 					updatedSyncDirtyBytes += (r.End - r.Start)
 				}
 			}

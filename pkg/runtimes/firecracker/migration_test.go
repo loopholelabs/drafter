@@ -25,7 +25,6 @@ import (
 	"github.com/loopholelabs/silo/pkg/storage"
 	"github.com/loopholelabs/silo/pkg/storage/memory"
 	"github.com/loopholelabs/silo/pkg/storage/migrator"
-	"github.com/loopholelabs/silo/pkg/storage/modules"
 	"github.com/loopholelabs/silo/pkg/storage/protocol/packets"
 	"github.com/loopholelabs/silo/pkg/storage/sources"
 	"github.com/loopholelabs/silo/pkg/testutils"
@@ -541,50 +540,6 @@ func migration(t *testing.T, config *migrationConfig) {
 
 	for migration := 0; migration < config.numMigrations; migration++ {
 
-		var dmProvider storage.Provider
-
-		// Tweak for directMemory
-		if config.directMemory {
-			di := lastPeer.GetDG().GetDeviceInformationByName(common.DeviceMemoryName)
-
-			numBlocks := (di.Size + uint64(config.blockSize) - 1) / uint64(config.blockSize)
-			unrequiredBlocks := make([]uint, numBlocks)
-			for i := 0; i < int(numBlocks); i++ {
-				unrequiredBlocks[i] = uint(i)
-			}
-
-			memProv, err := memory.NewProcessMemoryStorage(lastPeer.VMPid, "/memory", func() []uint { return unrequiredBlocks })
-			assert.NoError(t, err)
-
-			if config.hashChecks {
-				dmProvider = sources.NewMemoryStorage(int(di.Size))
-				// We need to copy the data from the current (snapshot) memory here...
-				exProvider := di.Exp.GetProvider()
-				buffer := make([]byte, 1024*1024)
-				for offset := 0; offset <= int(di.Size); offset += 1024 * 1024 {
-					n1, err := exProvider.ReadAt(buffer, int64(offset))
-					assert.NoError(t, err)
-					n2, err := dmProvider.WriteAt(buffer, int64(offset))
-					assert.NoError(t, err)
-					assert.Equal(t, n1, n2)
-				}
-
-				// Copy the data into dmProvider.
-				hooks := modules.NewHooks(memProv)
-				hooks.PostRead = func(buffer []byte, offset int64, n int, err error) (int, error) {
-					if err == nil {
-						_, perr := dmProvider.WriteAt(buffer, offset)
-						assert.NoError(t, perr)
-					}
-					return n, err
-				}
-
-				di.DirtyRemote.SetRemoteReadProv(hooks) // Read from the memory directly.
-			} else {
-				di.DirtyRemote.SetRemoteReadProv(memProv) // Read from the memory directly.
-			}
-		}
-
 		var shutdownTime time.Time
 		var resumeTime time.Time
 
@@ -625,6 +580,7 @@ func migration(t *testing.T, config *migrationConfig) {
 			AgentServerLocal: struct{}{},
 			GrabMemory:       config.noMapShared,
 			GrabUpdateMemory: config.noMapShared,
+			DirectMemory:     config.directMemory,
 		}
 
 		if config.directMemory {
@@ -736,9 +692,11 @@ func migration(t *testing.T, config *migrationConfig) {
 				if n == common.DeviceMemoryName && config.noMapShared {
 					if config.directMemory {
 						// When we do direct memory, we need to compare it directly...
+						memProv, err := memory.NewProcessMemoryStorage(lastPeer.VMPid, "/memory", func() []uint { return []uint{} })
+						assert.NoError(t, err)
 
 						prov2 := nextPeer.GetDG().GetDeviceInformationByName(n).Exp.GetProvider()
-						eq, err := storage.Equals(dmProvider, prov2, 1024*1024)
+						eq, err := storage.Equals(memProv, prov2, 1024*1024)
 						assert.NoError(t, err)
 						assert.True(t, eq)
 					} else {
