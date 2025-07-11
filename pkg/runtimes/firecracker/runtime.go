@@ -690,8 +690,10 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChangesSoftDirty() erro
 	if rp.GrabUpdateDirty {
 		for _, tt := range copyData {
 			for _, r := range tt.ranges {
-				rp.DirectMemoryDirty.MarkDirty(int64(r.Start-tt.addrStart+tt.offset), int64(r.End-r.Start))
-				updatedDirtyBytes += (r.End - r.Start)
+				if rp.DirectMemoryDirty != nil {
+					rp.DirectMemoryDirty.MarkDirty(int64(r.Start-tt.addrStart+tt.offset), int64(r.End-r.Start))
+					updatedDirtyBytes += (r.End - r.Start)
+				}
 				if rp.DirectMemorySyncDirty != nil {
 					rp.DirectMemorySyncDirty.MarkDirty(int64(r.Start-tt.addrStart+tt.offset), int64(r.End-r.Start))
 					updatedSyncDirtyBytes += (r.End - r.Start)
