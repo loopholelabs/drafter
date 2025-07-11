@@ -82,6 +82,7 @@ func TestMigrationDirectMemoryS3HashChecks(t *testing.T) {
 		hashChecks:     true,
 		noMapShared:    true,
 		directMemory:   true,
+		grabInterval:   1 * time.Second,
 	})
 }
 
