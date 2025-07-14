@@ -182,19 +182,25 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Resume(ctx context.Context, rescu
 		return err
 	}
 
-	resumeSuccess := false
 	resumeRetries := 0
-	for i := 0; i < resumeMaxRetries; i++ {
+	for {
+		resumeRetries++
+		if resumeRetries >= resumeMaxRetries {
+			if rp.Log != nil {
+				rp.Log.Error().
+					Str("vmpath", rp.Machine.VMPath).
+					Msg("Resume fc vm failed")
+			}
+			return ErrCouldNotResumeRunner
+		}
 		afterResumeCtx, afterResumeCancel := context.WithTimeout(ctx, resumeRetryTimeout)
 		r, err := rp.agent.GetRemote(afterResumeCtx)
 		if err == nil {
 			remote := *(*ipc.AgentServerRemote[G])(unsafe.Pointer(&r))
 			err = remote.AfterResume(afterResumeCtx)
-			resumeRetries++
 			afterResumeCancel()
 			if err == nil {
-				resumeSuccess = true
-				break
+				break // Success path
 			}
 		} else {
 			afterResumeCancel()
@@ -206,15 +212,6 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Resume(ctx context.Context, rescu
 				Msg("Resume RPC call failed.")
 		}
 		time.Sleep(resumeRetrySleep)
-	}
-
-	if !resumeSuccess {
-		if rp.Log != nil {
-			rp.Log.Error().
-				Str("vmpath", rp.Machine.VMPath).
-				Msg("Resume fc vm failed")
-		}
-		return ErrCouldNotResumeRunner
 	}
 
 	rpcCallTook := time.Since(rpcCtime)
