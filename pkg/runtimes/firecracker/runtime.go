@@ -210,11 +210,11 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Resume(ctx context.Context, rescu
 
 	if !resumeSuccess {
 		if rp.Log != nil {
-			// Show some stats on resume timings...
 			rp.Log.Error().
 				Str("vmpath", rp.Machine.VMPath).
 				Msg("Resume fc vm failed")
 		}
+		return ErrCouldNotResumeRunner
 	}
 
 	rpcCallTook := time.Since(rpcCtime)
