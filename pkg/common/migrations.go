@@ -444,7 +444,7 @@ type MigrateToOptions struct {
  * Migrate TO a pipe
  *
  */
-func MigrateToPipe(log types.Logger, ctx context.Context, readers []io.Reader, writers []io.Writer,
+func MigrateToPipe(ctx context.Context, log types.Logger, readers []io.Reader, writers []io.Writer,
 	dg *devicegroup.DeviceGroup, options *MigrateToOptions, onProgress func(p map[string]*migrator.MigrationProgress),
 	vmState *VMStateMgr, devices []MigrateToDevice, getCustomPayload func() []byte, met metrics.SiloMetrics, instanceID string) error {
 
