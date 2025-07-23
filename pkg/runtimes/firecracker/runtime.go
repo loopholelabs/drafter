@@ -17,8 +17,10 @@ import (
 	"github.com/loopholelabs/drafter/pkg/ipc"
 	"github.com/loopholelabs/logging/types"
 	"github.com/loopholelabs/silo/pkg/storage"
+	"github.com/loopholelabs/silo/pkg/storage/device"
 	"github.com/loopholelabs/silo/pkg/storage/devicegroup"
-	"github.com/loopholelabs/silo/pkg/storage/expose"
+	"github.com/loopholelabs/silo/pkg/storage/dirtytracker"
+	"github.com/loopholelabs/silo/pkg/storage/memory"
 	"github.com/loopholelabs/silo/pkg/storage/modules"
 )
 
@@ -47,13 +49,21 @@ type FirecrackerRuntimeProvider[L ipc.AgentServerLocal, R ipc.AgentServerRemote[
 
 	RunningCB func(r bool)
 
-	// Grabber
-	GrabMemory    bool
-	GrabFailsafe  bool
+	// Memory grabber
+	GrabMemory   bool // If true, we will grab memory from /proc/<pid>/mem instead of using map_shared
+	GrabFailsafe bool // If true, we do a failsafe memory grab instead of using the soft_dirty mechanism
+
+	GrabUpdateDirty  bool // If true, we update dirty ranges
+	GrabUpdateMemory bool // If true, we update the memory content
+
 	grabberCtx    context.Context
 	grabberCancel context.CancelFunc
 	grabberWg     sync.WaitGroup
 	grabberProv   storage.Provider
+
+	DirectMemory          bool // If true, we're going to go directly to /proc/<pid>/mem at migration time, and for S3 assist
+	DirectMemorySyncDirty *dirtytracker.Remote
+	DirectMemoryDirty     *dirtytracker.Remote
 
 	dg *devicegroup.DeviceGroup
 
@@ -61,6 +71,10 @@ type FirecrackerRuntimeProvider[L ipc.AgentServerLocal, R ipc.AgentServerRemote[
 	agent            *ipc.AgentRPC[L, R, G]
 	AgentServerLocal L
 }
+
+const resumeMaxRetries = 10
+const resumeRetrySleep = 1 * time.Second
+const resumeRetryTimeout = 30 * time.Second
 
 func (rp *FirecrackerRuntimeProvider[L, R, G]) Resume(ctx context.Context, rescueTimeout time.Duration, dg *devicegroup.DeviceGroup, errChan chan error) error {
 	resumeCtime := time.Now()
@@ -88,12 +102,67 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Resume(ctx context.Context, rescu
 		return errors.Join(ErrCouldNotDecodeConfigFile, err)
 	}
 
+	if rp.DirectMemory {
+		di := dg.GetDeviceInformationByName(common.DeviceMemoryName)
+		// Find out which blocks we should mark as dirty if they came in from a migration.
+		unreq := di.DirtyRemote.GetUnrequiredBlocks()
+		blocks := make([]bool, di.NumBlocks)
+		for _, b := range unreq {
+			blocks[b] = true
+		}
+		di.DirtyRemote.TrackAt(int64(di.Size), 0) // Track entire memory, since we will be only doing dirty
+		for b, un := range blocks {
+			if !un {
+				offset := b * int(di.BlockSize)
+				// Mark the block as dirty...
+				di.DirtyRemote.MarkDirty(int64(offset), int64(di.BlockSize))
+			}
+		}
+		if rp.Log != nil {
+			rp.Log.Info().Int("blocks", len(unreq)).Msg("Marked blocks dirty from incoming memory")
+		}
+		di.UseAltSourcesInDirty = true // Do not clear alt sources (S3). We are *ONLY* doing dirty transfer here.
+		rp.DirectMemoryDirty = di.DirtyRemote
+	}
+
 	err = rp.Machine.ResumeSnapshot(ctx, common.DeviceStateName, common.DeviceMemoryName)
 	if err != nil {
 		return err
 	}
 
 	resumeMachineTook := time.Since(resumeCtime)
+
+	// Set things up for DirectMemory access if required. NB This can only be done *after* the resume
+	if rp.DirectMemory {
+		di := dg.GetDeviceInformationByName(common.DeviceMemoryName)
+		// At migration time, we're going to tell Silo it doesn't need to sent anything up front. We'll only be sending dirty
+		unrequiredBlocks := make([]uint, di.NumBlocks)
+		for i := 0; i < int(di.NumBlocks); i++ {
+			unrequiredBlocks[i] = uint(i)
+		}
+
+		memProv, err := memory.NewProcessMemoryStorage(rp.Machine.VMPid, "/memory", func() []uint {
+			return unrequiredBlocks
+		})
+		if err != nil {
+			return err
+		}
+
+		di.DirtyRemote.SetRemoteReadProv(memProv) // Read from the memory directly when migrating
+
+		// Tell the S3 Sync system that it should read directly from the direct memory prov.
+		syncInfoRet := storage.SendSiloEvent(di.Prov, storage.EventSyncInfo, nil)
+		if len(syncInfoRet) == 1 {
+			syncInfo := syncInfoRet[0].([]*device.SyncInfo)
+			if len(syncInfo) == 1 {
+				syncInfo[0].DirtyRemote.SetRemoteReadProv(memProv)
+				rp.DirectMemorySyncDirty = syncInfo[0].DirtyRemote
+				if rp.Log != nil {
+					rp.Log.Info().Msg("Setup memory S3 source to point to proc mem")
+				}
+			}
+		}
+	}
 
 	// Setup the grabber provider
 	di := dg.GetDeviceInformationByName(common.DeviceMemoryName)
@@ -113,16 +182,36 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Resume(ctx context.Context, rescu
 		return err
 	}
 
-	// Call after resume RPC
-	r, err := rp.agent.GetRemote(ctx)
-	if err != nil {
-		return err
-	}
-
-	remote := *(*ipc.AgentServerRemote[G])(unsafe.Pointer(&r))
-	err = remote.AfterResume(ctx)
-	if err != nil {
-		return err
+	resumeRetries := 0
+	for {
+		resumeRetries++
+		if resumeRetries >= resumeMaxRetries {
+			if rp.Log != nil {
+				rp.Log.Error().
+					Str("vmpath", rp.Machine.VMPath).
+					Msg("Resume fc vm failed")
+			}
+			return ErrCouldNotResumeRunner
+		}
+		afterResumeCtx, afterResumeCancel := context.WithTimeout(ctx, resumeRetryTimeout)
+		r, err := rp.agent.GetRemote(afterResumeCtx)
+		if err == nil {
+			remote := *(*ipc.AgentServerRemote[G])(unsafe.Pointer(&r))
+			err = remote.AfterResume(afterResumeCtx)
+			afterResumeCancel()
+			if err == nil {
+				break // Success path
+			}
+		} else {
+			afterResumeCancel()
+		}
+		if rp.Log != nil {
+			rp.Log.Info().
+				Err(err).
+				Str("vmpath", rp.Machine.VMPath).
+				Msg("Resume RPC call failed.")
+		}
+		time.Sleep(resumeRetrySleep)
 	}
 
 	rpcCallTook := time.Since(rpcCtime)
@@ -133,6 +222,7 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Resume(ctx context.Context, rescu
 			Int64("resumeMachineMs", resumeMachineTook.Milliseconds()).
 			Int64("rpcCallMs", rpcCallTook.Milliseconds()).
 			Int64("timeMs", time.Since(resumeCtime).Milliseconds()).
+			Int("retries", resumeRetries).
 			Str("vmpath", rp.Machine.VMPath).
 			Msg("Resumed fc vm")
 	}
@@ -164,14 +254,15 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) setRunning(r bool) {
 					case <-rp.grabberCtx.Done():
 						rp.grabberWg.Done()
 						if rp.Log != nil {
-							rp.Log.Error().Msg("memory grabber finished")
+							rp.Log.Info().Msg("memory grabber finished")
 						}
 						return
 					case <-ticker.C:
 						err := rp.grabMemoryChanges()
 						if err != nil {
 							if rp.Log != nil {
-								rp.Log.Error().Err(err).Msg("could not grab memory changes")
+								// NB: This isn't critical, but it may still signal up an issue.
+								rp.Log.Error().Err(err).Msg("could not grab periodic memory changes")
 							}
 						}
 
@@ -215,6 +306,13 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Start(ctx context.Context, rescue
 }
 
 func (rp *FirecrackerRuntimeProvider[L, R, G]) FlushData(ctx context.Context, dg *devicegroup.DeviceGroup) error {
+	ctime := time.Now()
+	defer func() {
+		if rp.Log != nil {
+			rp.Log.Info().Int64("ms", time.Since(ctime).Milliseconds()).Msg("Timing FlushData")
+		}
+	}()
+
 	if rp.Log != nil {
 		rp.Log.Info().Msg("Firecracker FlushData")
 	}
@@ -283,6 +381,13 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Close(dg *devicegroup.DeviceGroup
 }
 
 func (rp *FirecrackerRuntimeProvider[L, R, G]) Suspend(ctx context.Context, suspendTimeout time.Duration, dg *devicegroup.DeviceGroup) error {
+	ctime := time.Now()
+	defer func() {
+		if rp.Log != nil {
+			rp.Log.Info().Int64("ms", time.Since(ctime).Milliseconds()).Msg("Timing Suspend")
+		}
+	}()
+
 	rp.runningLock.Lock()
 	defer rp.runningLock.Unlock()
 
@@ -360,7 +465,17 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Suspend(ctx context.Context, susp
 	return nil
 }
 
+// grabMemoryChanges
 func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChanges() error {
+	rp.memoryLock.Lock()
+	defer rp.memoryLock.Unlock()
+
+	ctime := time.Now()
+	defer func() {
+		if rp.Log != nil {
+			rp.Log.Info().Int64("ms", time.Since(ctime).Milliseconds()).Msg("Timing grabMemoryChanges")
+		}
+	}()
 	var err error
 	if rp.GrabFailsafe {
 		err = rp.grabMemoryChangesFailsafe()
@@ -375,16 +490,13 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChanges() error {
 	return err
 }
 
+// grabMemoryChangesFailsafe does a memory comparison (bit slow) to get dirty changes.
 func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChangesFailsafe() error {
-
-	rp.memoryLock.Lock()
-	defer rp.memoryLock.Unlock()
-
 	if rp.Log != nil {
 		rp.Log.Debug().Msg("Grabbing failsafe memory changes")
 	}
 
-	pm := expose.NewProcessMemory(rp.Machine.VMPid)
+	pm := memory.NewProcessMemory(rp.Machine.VMPid)
 	memRanges, err := pm.GetMemoryRange("/memory")
 
 	if err != nil {
@@ -395,7 +507,7 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChangesFailsafe() error
 	var resumeTime time.Time
 
 	lockcb := func() error {
-		err := pm.PauseProcess()
+		err := pm.PauseProcess(10 * time.Second)
 		pauseTime = time.Now()
 		if err != nil {
 			if rp.Log != nil {
@@ -411,7 +523,7 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChangesFailsafe() error
 			return err
 		}
 
-		err = pm.ResumeProcess()
+		err = pm.ResumeProcess(10 * time.Second)
 		resumeTime = time.Now()
 		if err != nil {
 			if rp.Log != nil {
@@ -436,7 +548,10 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChangesFailsafe() error
 
 	defer memf.Close()
 
+	// Find changes... (SLOW)
 	blockSize := uint64(1024 * 1024 * 4)
+
+	memDirty := rp.dg.GetDeviceInformationByName(common.DeviceMemoryName).DirtyRemote
 
 	for _, r := range memRanges {
 		buffer := make([]byte, blockSize)
@@ -460,12 +575,17 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChangesFailsafe() error
 				return errors.New("Couldn't check memory...\n")
 			}
 			if !bytes.Equal(buffer[:n1], provBuffer[:n2]) {
-				// Memory has changed, lets write it
-				n, err := rp.grabberProv.WriteAt(buffer[:n1], int64(r.Offset+o-r.Start))
-				if err != nil {
-					return err
+				if rp.GrabUpdateDirty {
+					memDirty.MarkDirty(int64(r.Offset+o-r.Start), int64(n1))
 				}
-				totalBytes += int64(n)
+				if rp.GrabUpdateMemory {
+					// Memory has changed, lets write it
+					n, err := rp.grabberProv.WriteAt(buffer[:n1], int64(r.Offset+o-r.Start))
+					if err != nil {
+						return err
+					}
+					totalBytes += int64(n)
+				}
 			}
 		}
 	}
@@ -483,13 +603,14 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChangesFailsafe() error
 	return nil
 }
 
+// grabMemoryChangesSoftDirty grabs memory changes via soft dirty flag etc
 func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChangesSoftDirty() error {
 	if rp.Log != nil {
 		rp.Log.Debug().Msg("Grabbing softDirty memory changes")
 	}
 
 	// Do a softDirty memory read here, and write it to the silo memory device.
-	pm := expose.NewProcessMemory(rp.Machine.VMPid)
+	pm := memory.NewProcessMemory(rp.Machine.VMPid)
 	memRanges, err := pm.GetMemoryRange("/memory")
 	if err != nil {
 		return err
@@ -499,7 +620,7 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChangesSoftDirty() erro
 	var resumeTime time.Time
 
 	lockcb := func() error {
-		err := pm.PauseProcess()
+		err := pm.PauseProcess(10 * time.Second)
 		pauseTime = time.Now()
 		if err != nil {
 			if rp.Log != nil {
@@ -515,7 +636,7 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChangesSoftDirty() erro
 			return err
 		}
 
-		err = pm.ResumeProcess()
+		err = pm.ResumeProcess(10 * time.Second)
 		resumeTime = time.Now()
 		if err != nil {
 			if rp.Log != nil {
@@ -529,7 +650,7 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChangesSoftDirty() erro
 	totalBytes := int64(0)
 
 	type CopyData struct {
-		ranges    []expose.MemoryRange
+		ranges    []memory.Range
 		addrStart uint64
 		offset    uint64
 	}
@@ -553,8 +674,14 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChangesSoftDirty() erro
 		}
 
 		needBytes := uint64(0)
+		needSwapBytes := uint64(0)
 		for _, r := range ranges {
 			needBytes += r.End - r.Start
+			needSwapBytes += r.Swapped
+		}
+
+		if rp.Log != nil {
+			rp.Log.Info().Uint64("bytes", needBytes).Uint64("swapped", needSwapBytes).Msg("Soft dirty memory")
 		}
 
 		copyData = append(copyData, CopyData{
@@ -569,22 +696,46 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChangesSoftDirty() erro
 		return err
 	}
 
-	// Outside the stop/cont, we now copy the regions we need.
-	for _, tt := range copyData {
-		// Copy to the Silo provider
-		b, err := pm.CopyMemoryRanges(int64(tt.addrStart)-int64(tt.offset), tt.ranges, rp.grabberProv)
-		if err != nil {
-			if rp.Log != nil {
-				rp.Log.Error().Err(err).Msg("Could not copy memory ranges")
-			}
+	updatedDirtyBytes := uint64(0)
+	updatedSyncDirtyBytes := uint64(0)
 
-			return err
+	// We can update the dirty ranges here.
+	if rp.GrabUpdateDirty {
+		for _, tt := range copyData {
+			for _, r := range tt.ranges {
+				if rp.DirectMemoryDirty != nil {
+					rp.DirectMemoryDirty.MarkDirty(int64(r.Start-tt.addrStart+tt.offset), int64(r.End-r.Start))
+					updatedDirtyBytes += (r.End - r.Start)
+				}
+				if rp.DirectMemorySyncDirty != nil {
+					rp.DirectMemorySyncDirty.MarkDirty(int64(r.Start-tt.addrStart+tt.offset), int64(r.End-r.Start))
+					updatedSyncDirtyBytes += (r.End - r.Start)
+				}
+			}
 		}
-		totalBytes += int64(b)
 	}
 
-	if rp.Log != nil {
-		rp.Log.Info().Int64("bytes", totalBytes).Int64("ms", resumeTime.Sub(pauseTime).Milliseconds()).Msg("SoftDirty copied memory to the silo provider")
+	if rp.GrabUpdateMemory {
+		// Outside the stop/cont, we now copy the regions we need.
+		for _, tt := range copyData {
+			// Copy to the Silo provider
+			b, err := pm.CopyMemoryRanges(int64(tt.addrStart)-int64(tt.offset), tt.ranges, rp.grabberProv)
+			if err != nil {
+				if rp.Log != nil {
+					rp.Log.Error().Err(err).Msg("Could not copy memory ranges")
+				}
+
+				return err
+			}
+			totalBytes += int64(b)
+		}
+
+		if rp.Log != nil {
+			rp.Log.Info().Int64("bytes", totalBytes).
+				Int64("dirtybytes", int64(updatedDirtyBytes)).
+				Int64("syncdirtybytes", int64(updatedSyncDirtyBytes)).
+				Int64("ms", resumeTime.Sub(pauseTime).Milliseconds()).Msg("SoftDirty copied memory to the silo provider")
+		}
 	}
 
 	return nil
