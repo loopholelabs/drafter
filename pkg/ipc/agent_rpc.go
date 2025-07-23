@@ -148,18 +148,24 @@ func (a *AgentRPC[L, R, G]) GetRemote(ctx context.Context) (R, error) {
 		a.log.Trace().Msg("AgentRPC waiting to GetRemote")
 	}
 
-	select {
-	case r := <-a.remote:
-		a.remote <- r // Put it back on the channel for another consumer
-		if a.log != nil {
-			a.log.Trace().Msg("AgentRPC GetRemote found remote")
+	for {
+		select {
+		case r := <-a.remote:
+			select {
+			case a.remote <- r: // Put it back on the channel for another consumer
+				if a.log != nil {
+					a.log.Trace().Msg("AgentRPC GetRemote found remote")
+				}
+				return r, nil
+			default:
+				// We could not put it back on the channel, so there's a new one. We should loop round and get the new one.
+			}
+		case <-ctx.Done():
+			if a.log != nil {
+				a.log.Trace().Msg("AgentRPC GetRemote timed out")
+			}
+			return R{}, ctx.Err()
 		}
-		return r, nil
-	case <-ctx.Done():
-		if a.log != nil {
-			a.log.Trace().Msg("AgentRPC GetRemote timed out")
-		}
-		return R{}, ctx.Err()
 	}
 }
 

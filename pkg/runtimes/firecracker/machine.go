@@ -255,9 +255,16 @@ func (fs *FirecrackerMachine) Close() error {
 	if fs.cmd.Process != nil {
 		fs.closeLock.Lock()
 
+		if fs.log != nil {
+			fs.log.Info().Str("VMPath", fs.VMPath).Int("VMPid", fs.VMPid).Bool("closed", fs.closed).Msg("Firecracker close")
+		}
+
 		if !fs.closed {
 			fs.closed = true
 			err := fs.cmd.Process.Kill()
+			if fs.log != nil {
+				fs.log.Info().Str("VMPath", fs.VMPath).Int("VMPid", fs.VMPid).Err(err).Msg("Sent kill")
+			}
 			if err != nil {
 				fs.closeLock.Unlock()
 				return err

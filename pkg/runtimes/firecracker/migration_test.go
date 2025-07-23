@@ -23,7 +23,9 @@ import (
 	"github.com/loopholelabs/logging"
 	"github.com/loopholelabs/logging/types"
 	"github.com/loopholelabs/silo/pkg/storage"
+	"github.com/loopholelabs/silo/pkg/storage/memory"
 	"github.com/loopholelabs/silo/pkg/storage/migrator"
+	"github.com/loopholelabs/silo/pkg/storage/protocol/packets"
 	"github.com/loopholelabs/silo/pkg/storage/sources"
 	"github.com/loopholelabs/silo/pkg/testutils"
 	"github.com/stretchr/testify/assert"
@@ -44,6 +46,43 @@ func TestMigrationBasicHashChecks(t *testing.T) {
 		pauseWaitMax:   3 * time.Second,
 		enableS3:       false,
 		hashChecks:     true,
+	})
+}
+
+func TestMigrationDirectMemoryHashChecks(t *testing.T) {
+	migration(t, &migrationConfig{
+		blockSize:      1024 * 1024,
+		numMigrations:  3,
+		minCycles:      0,
+		maxCycles:      0,
+		cycleThrottle:  100 * time.Millisecond,
+		maxDirtyBlocks: 10,
+		cpuCount:       1,
+		memorySize:     1024,
+		pauseWaitMax:   3 * time.Second,
+		enableS3:       false,
+		hashChecks:     true,
+		noMapShared:    true,
+		directMemory:   true,
+	})
+}
+
+func TestMigrationDirectMemoryS3HashChecks(t *testing.T) {
+	migration(t, &migrationConfig{
+		blockSize:      1024 * 1024,
+		numMigrations:  3,
+		minCycles:      0,
+		maxCycles:      0,
+		cycleThrottle:  100 * time.Millisecond,
+		maxDirtyBlocks: 10,
+		cpuCount:       1,
+		memorySize:     1024,
+		pauseWaitMax:   3 * time.Second,
+		enableS3:       true,
+		hashChecks:     true,
+		noMapShared:    true,
+		directMemory:   true,
+		grabInterval:   1 * time.Second,
 	})
 }
 
@@ -315,6 +354,7 @@ type migrationConfig struct {
 	noSparseFile   bool
 	blockSize      int
 	failsafe       bool
+	directMemory   bool
 }
 
 /**
@@ -381,10 +421,8 @@ func getDevicesFrom(t *testing.T, snapDir string, s3Endpoint string, i int, conf
 		fn := common.DeviceFilenames[n]
 
 		dev := common.MigrateFromDevice{
-			Name:       n,
-			BlockSize:  uint32(config.blockSize),
-			Shared:     false,
-			SharedBase: false,
+			Name:      n,
+			BlockSize: uint32(config.blockSize),
 		}
 
 		if !config.noCOW {
@@ -392,6 +430,7 @@ func getDevicesFrom(t *testing.T, snapDir string, s3Endpoint string, i int, conf
 			dev.Overlay = path.Join(path.Join(migDir, fmt.Sprintf("%s.overlay", fn)))
 			dev.State = path.Join(path.Join(migDir, fmt.Sprintf("%s.state", fn)))
 			dev.UseSparseFile = !config.noSparseFile
+			dev.SharedBase = true
 		} else {
 			dev.Base = path.Join(path.Join(migDir, fmt.Sprintf("%s.data", fn)))
 			// Copy the file
@@ -485,6 +524,13 @@ func migration(t *testing.T, config *migrationConfig) {
 		AgentServerLocal: struct{}{},
 		GrabMemory:       config.noMapShared,
 		GrabFailsafe:     config.failsafe,
+		GrabUpdateMemory: config.noMapShared,
+		DirectMemory:     config.directMemory,
+	}
+
+	if config.directMemory {
+		rp.GrabUpdateDirty = true
+		rp.GrabUpdateMemory = false
 	}
 
 	rp.GrabInterval = config.grabInterval
@@ -553,6 +599,13 @@ func migration(t *testing.T, config *migrationConfig) {
 			MemoryName:       common.DeviceMemoryName,
 			AgentServerLocal: struct{}{},
 			GrabMemory:       config.noMapShared,
+			GrabUpdateMemory: config.noMapShared,
+			DirectMemory:     config.directMemory,
+		}
+
+		if config.directMemory {
+			rp.GrabUpdateDirty = true
+			rp.GrabUpdateMemory = false
 		}
 
 		rp.GrabInterval = config.grabInterval
@@ -591,8 +644,9 @@ func migration(t *testing.T, config *migrationConfig) {
 		wg.Add(1)
 		go func() {
 			opts := &common.MigrateToOptions{
-				Concurrency: 10,
-				Compression: true,
+				Concurrency:     10,
+				Compression:     true,
+				CompressionType: packets.CompressionTypeZeroes,
 			}
 			err := lastPeer.MigrateTo(context.TODO(), devicesTo, 2*time.Minute, opts, []io.Reader{r1}, []io.Writer{w2}, hooks)
 			assert.NoError(t, err)
@@ -655,12 +709,37 @@ func migration(t *testing.T, config *migrationConfig) {
 			for _, n := range append(common.KnownNames, "oci") {
 
 				// If we're doing soft dirty, it doesn't go through NBD, so we should do the comparison in silo provider...
-				if rp.HypervisorConfiguration.NoMapShared && n == common.DeviceMemoryName {
-					prov1 := lastPeer.GetDG().GetDeviceInformationByName(n).Exp.GetProvider()
-					prov2 := nextPeer.GetDG().GetDeviceInformationByName(n).Exp.GetProvider()
-					eq, err := storage.Equals(prov1, prov2, 1024*1024)
-					assert.NoError(t, err)
-					assert.True(t, eq)
+				if n == common.DeviceMemoryName && config.noMapShared {
+					if config.directMemory {
+						// NB: We do a specific check here, because the size may differ by a block or so.
+						// It's not important, but we don't care about that here.
+
+						// When we do direct memory, we need to compare it directly...
+						memProv, err := memory.NewProcessMemoryStorage(lastPeer.VMPid, "/memory", func() []uint { return []uint{} })
+						assert.NoError(t, err)
+						memToDI := nextPeer.GetDG().GetDeviceInformationByName(common.DeviceMemoryName)
+						memToProv, err := sources.NewFileStorage(path.Join("/dev", memToDI.Exp.Device()), int64(memToDI.Size))
+
+						buffer := make([]byte, 1024*1024)
+						b2 := make([]byte, len(buffer))
+						for offset := uint64(0); offset < memProv.Size(); offset += uint64(len(buffer)) {
+							// Compare the data.
+							nr, err := memProv.ReadAt(buffer, int64(offset))
+							assert.NoError(t, err)
+							nr2, err := memToProv.ReadAt(b2, int64(offset))
+							if !bytes.Equal(buffer[:nr], b2[:nr2]) {
+								fmt.Printf("DATA DIFF at offset %d. Read %d %d bytes\n", offset, nr, nr2)
+							}
+							assert.LessOrEqual(t, nr, nr2) // Make sure we read at least nr bytes...
+							assert.True(t, bytes.Equal(buffer[:nr], b2[:nr2]))
+						}
+					} else {
+						prov1 := lastPeer.GetDG().GetDeviceInformationByName(n).Exp.GetProvider()
+						prov2 := nextPeer.GetDG().GetDeviceInformationByName(n).Exp.GetProvider()
+						eq, err := storage.Equals(prov1, prov2, 1024*1024)
+						assert.NoError(t, err)
+						assert.True(t, eq)
+					}
 				} else {
 					devSize := lastPeer.GetDG().GetDeviceInformationByName(n).Size
 

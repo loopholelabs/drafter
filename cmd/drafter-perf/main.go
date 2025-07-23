@@ -29,6 +29,8 @@ func main() {
 	noCleanup := flag.Bool("no-cleanup", false, "If true, then don't remove any files at the end")
 
 	// VM options
+	ioEngineSync := flag.Bool("sync", true, "Firecracker io engine sync")
+
 	cpuCount := flag.Int("cpus", 1, "CPU count")
 	memCount := flag.Int("memory", 1024, "Memory MB")
 
@@ -50,27 +52,35 @@ func main() {
 
 	iterations := flag.Int("count", 1, "Number of times to run each config")
 
-	defaultConfigs, err := json.Marshal([]RunConfig{
+	comp := true
+
+	defaultConfigs, err := json.Marshal([]*RunConfig{
 		{
-			Name:          "silo_30s_softdirty",
+			Name:          "silo_plain",
 			BlockSize:     1024 * 1024,
 			UseCow:        true,
 			UseSharedBase: true,
-			UseSparseFile: true,
-			UseVolatility: true,
+			UseSparseFile: false,
+			UseVolatility: false,
 			NoMapShared:   true,
 			MigrateAfter:  "90s",
+			DirectMemory:  true,
+
+			MigrationCompression: comp,
 		},
+
 		{
 			Name:          "silo",
 			BlockSize:     1024 * 1024,
 			UseCow:        true,
-			UseSparseFile: true,
-			UseVolatility: true,
-			UseWriteCache: false,
-			NoMapShared:   false,
-			GrabPeriod:    0,
+			UseSharedBase: true,
+			UseSparseFile: false,
+			UseVolatility: false,
+			NoMapShared:   true,
 			MigrateAfter:  "90s",
+			DirectMemory:  true,
+
+			MigrationCompression: comp,
 		},
 	})
 
@@ -85,7 +95,7 @@ func main() {
 
 	flag.Parse()
 
-	var siloBaseConfigs []RunConfig
+	var siloBaseConfigs []*RunConfig
 	err = json.Unmarshal([]byte(*runConfigs), &siloBaseConfigs)
 	if err != nil {
 		panic(err)
@@ -93,42 +103,47 @@ func main() {
 
 	log.Info().Str("runConfig", *runConfigs).Msg("using run configs")
 
-	var siloConfigs []RunConfig
+	var siloConfigs []*RunConfig
 
 	if *iterations == 1 {
 		siloConfigs = siloBaseConfigs
 	} else {
 		for _, c := range siloBaseConfigs {
 			for n := 0; n < *iterations; n++ {
-				siloConfigs = append(siloConfigs, RunConfig{
-					Name:                 fmt.Sprintf("%s.%d", c.Name, n),
-					UseCow:               c.UseCow,
-					UseSharedBase:        c.UseSharedBase,
-					UseSparseFile:        c.UseSparseFile,
-					UseVolatility:        c.UseVolatility,
-					UseWriteCache:        c.UseWriteCache,
-					WriteCacheMin:        c.WriteCacheMin,
-					WriteCacheMax:        c.WriteCacheMax,
-					WriteCacheBlocksize:  c.WriteCacheBlocksize,
-					BlockSize:            c.BlockSize,
-					GrabPeriod:           c.GrabPeriod,
-					NoMapShared:          c.NoMapShared,
+				siloConfigs = append(siloConfigs, &RunConfig{
+					Name:          fmt.Sprintf("%s.%d", c.Name, n),
+					UseCow:        c.UseCow,
+					UseSharedBase: c.UseSharedBase,
+					UseSparseFile: c.UseSparseFile,
+					UseVolatility: c.UseVolatility,
+					UseWriteCache: c.UseWriteCache,
+
+					WriteCacheMin:       c.WriteCacheMin,
+					WriteCacheMax:       c.WriteCacheMax,
+					WriteCacheBlocksize: c.WriteCacheBlocksize,
+
+					BlockSize:    c.BlockSize,
+					GrabPeriod:   c.GrabPeriod,
+					NoMapShared:  c.NoMapShared,
+					DirectMemory: c.DirectMemory,
+
 					MigrateAfter:         c.MigrateAfter,
 					MigrationCompression: c.MigrationCompression,
 					MigrationConcurrency: c.MigrationConcurrency,
-					S3Sync:               c.S3Sync,
-					S3Secure:             c.S3Secure,
-					S3SecretKey:          c.S3SecretKey,
-					S3Endpoint:           c.S3Endpoint,
-					S3Concurrency:        c.S3Concurrency,
-					S3Bucket:             c.S3Bucket,
-					S3AccessKey:          c.S3AccessKey,
-					S3BlockShift:         c.S3BlockShift,
-					S3OnlyDirty:          c.S3OnlyDirty,
-					S3MaxAge:             c.S3MaxAge,
-					S3MinChanged:         c.S3MinChanged,
-					S3Limit:              c.S3Limit,
-					S3CheckPeriod:        c.S3CheckPeriod,
+
+					S3Sync:        c.S3Sync,
+					S3Secure:      c.S3Secure,
+					S3SecretKey:   c.S3SecretKey,
+					S3Endpoint:    c.S3Endpoint,
+					S3Concurrency: c.S3Concurrency,
+					S3Bucket:      c.S3Bucket,
+					S3AccessKey:   c.S3AccessKey,
+					S3BlockShift:  c.S3BlockShift,
+					S3OnlyDirty:   c.S3OnlyDirty,
+					S3MaxAge:      c.S3MaxAge,
+					S3MinChanged:  c.S3MinChanged,
+					S3Limit:       c.S3Limit,
+					S3CheckPeriod: c.S3CheckPeriod,
 				})
 			}
 		}
@@ -230,7 +245,7 @@ func main() {
 		panic(err)
 	}
 
-	err = setupSnapshot(log, ctx, snapNs, vmConfig, *dBlueDir, *dSnapDir, waitReady)
+	err = setupSnapshot(log, ctx, snapNs, vmConfig, *ioEngineSync, *dBlueDir, *dSnapDir, waitReady)
 	if err != nil {
 		panic(err)
 	}
@@ -276,13 +291,14 @@ func main() {
 		err := runSilo(ctx, log, dummyMetrics, *dTestDir, *dSnapDir, getNetNs, doForwards, benchCB, sConf, *enableInput, *enableOutput)
 		if err != nil {
 			fmt.Printf("ERROR in runSilo %v\n", err)
+			panic(err) // Can't carry on
 		}
 
 		//		siloDGs[sConf.Name] = dg
 
 		siloTimingsRuntime[sConf.Name] = runtimeEnd.Sub(runtimeStart)
 
-		time.Sleep(10 * time.Second) // Let dust settle.
+		time.Sleep(10 * time.Second) // Let dust settle between runs.
 	}
 
 	var nosiloGet time.Duration
