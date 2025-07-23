@@ -66,6 +66,7 @@ type MigrateFromDevice struct {
 	S3Secure      bool   `json:"s3secure"`
 	S3Bucket      string `json:"s3bucket"`
 	S3Concurrency int    `json:"s3concurrency"`
+	S3Prefix      string `json:"s3prefix"`
 
 	// S3 sync config
 	S3OnlyDirty   bool   `json:"s3onlydirty"`
@@ -171,6 +172,8 @@ func CreateSiloDevSchema(i *MigrateFromDevice) (*config.DeviceSchema, error) {
 			Endpoint:        i.S3Endpoint,
 			Secure:          i.S3Secure,
 			Bucket:          i.S3Bucket,
+			Prefix:          i.S3Prefix,
+			GrabPrefix:      i.S3Prefix,
 			AutoStart:       true,
 			GrabConcurrency: i.S3Concurrency,
 			Config: &config.SyncConfigSchema{
@@ -235,8 +238,11 @@ func CreateIncomingSiloDevSchema(i *MigrateFromDevice, schema *config.DeviceSche
 			return nil, errors.Join(ErrCouldNotCreateStateDirectory, err)
 		}
 
-		ds.System = "sparsefile"
 		ds.Location = i.Overlay
+		ds.System = "file"
+		if i.UseSparseFile {
+			ds.System = "sparsefile"
+		}
 
 		// If it was shared with us, assume it's going to be shared with future migrations
 		ds.ROSourceShared = i.SharedBase
@@ -429,17 +435,22 @@ func MigrateFromPipe(log types.Logger, met metrics.SiloMetrics, instanceID strin
 }
 
 type MigrateToOptions struct {
-	Concurrency int
-	Compression bool
+	Concurrency     int
+	Compression     bool
+	CompressionType packets.CompressionType
 }
 
 /**
  * Migrate TO a pipe
  *
  */
-func MigrateToPipe(ctx context.Context, readers []io.Reader, writers []io.Writer,
+func MigrateToPipe(ctx context.Context, log types.Logger, readers []io.Reader, writers []io.Writer,
 	dg *devicegroup.DeviceGroup, options *MigrateToOptions, onProgress func(p map[string]*migrator.MigrationProgress),
 	vmState *VMStateMgr, devices []MigrateToDevice, getCustomPayload func() []byte, met metrics.SiloMetrics, instanceID string) error {
+
+	if log != nil {
+		log.Info().Msg("MigrateToPipe")
+	}
 
 	protocolCtx, protocolCancel := context.WithCancel(ctx)
 
@@ -460,15 +471,31 @@ func MigrateToPipe(ctx context.Context, readers []io.Reader, writers []io.Writer
 	}
 
 	// Start a migration to the protocol. This will send all schema info etc
-	err := dg.StartMigrationTo(pro, options.Compression)
+	err := dg.StartMigrationTo(pro, options.Compression, options.CompressionType)
 	if err != nil {
 		return err
+	}
+
+	if log != nil {
+		m := pro.GetMetrics()
+		log.Info().
+			Uint64("DataSent", m.DataSent).
+			Uint64("DataRecv", m.DataRecv).
+			Msg("MigrateToPipe.StartMigrationTo")
 	}
 
 	// Do the main migration of the data...
 	err = dg.MigrateAll(options.Concurrency, onProgress)
 	if err != nil {
 		return err
+	}
+
+	if log != nil {
+		m := pro.GetMetrics()
+		log.Info().
+			Uint64("DataSent", m.DataSent).
+			Uint64("DataRecv", m.DataRecv).
+			Msg("MigrateToPipe.MigrateAll")
 	}
 
 	dirtyDevices := make(map[string]*DeviceStatus, 0)
@@ -504,10 +531,26 @@ func MigrateToPipe(ctx context.Context, readers []io.Reader, writers []io.Writer
 		return err
 	}
 
+	if log != nil {
+		m := pro.GetMetrics()
+		log.Info().
+			Uint64("DataSent", m.DataSent).
+			Uint64("DataRecv", m.DataRecv).
+			Msg("MigrateToPipe.MigrateDirty")
+	}
+
 	// Send Silo completion events for the devices. This will trigger any S3 sync behaviour etc.
 	err = dg.Completed()
 	if err != nil {
 		return err
+	}
+
+	if log != nil {
+		m := pro.GetMetrics()
+		log.Info().
+			Uint64("DataSent", m.DataSent).
+			Uint64("DataRecv", m.DataRecv).
+			Msg("MigrateToPipe.Completed")
 	}
 
 	return nil

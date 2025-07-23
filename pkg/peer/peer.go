@@ -87,6 +87,10 @@ func (peer *Peer) GetMetrics() *PeerMetrics {
 	}
 }
 
+func (peer *Peer) GetInstanceID() string {
+	return peer.instanceID
+}
+
 func (peer *Peer) CloseRuntime() error {
 	if peer.log != nil {
 		peer.log.Info().Str("id", peer.instanceID).Msg("Peer.Close")
@@ -455,7 +459,7 @@ func (peer *Peer) MigrateTo(ctx context.Context, devices []common.MigrateToDevic
 		hooks.OnAfterSuspend,
 	)
 
-	err := common.MigrateToPipe(ctx, readers, writers, peer.dg, options, hooks.OnProgress, vmState, devices, hooks.GetXferCustomData, peer.met, peer.instanceID)
+	err := common.MigrateToPipe(ctx, peer.log, readers, writers, peer.dg, options, hooks.OnProgress, vmState, devices, hooks.GetXferCustomData, peer.met, peer.instanceID)
 	if err != nil {
 		if peer.log != nil {
 			peer.log.Info().Err(err).Msg("error in peer.MigrateTo")
