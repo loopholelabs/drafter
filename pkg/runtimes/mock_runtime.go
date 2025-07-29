@@ -12,7 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loopholelabs/drafter/pkg/common"
 	"github.com/loopholelabs/silo/pkg/storage/devicegroup"
 	"github.com/stretchr/testify/assert"
 )
@@ -60,7 +59,7 @@ func (rp *MockRuntimeProvider) Suspend(ctx context.Context, timeout time.Duratio
 func (rp *MockRuntimeProvider) FlushData(ctx context.Context, dg *devicegroup.DeviceGroup) error {
 	fmt.Printf(" ### FlushData %s\n", rp.HomePath)
 
-	for _, devName := range common.KnownNames {
+	for devName := range rp.DeviceSizes {
 		fp, err := os.OpenFile(path.Join(rp.HomePath, devName), os.O_RDWR, 0777)
 		assert.NoError(rp.T, err)
 
@@ -77,7 +76,7 @@ func (rp *MockRuntimeProvider) FlushData(ctx context.Context, dg *devicegroup.De
 func (rp *MockRuntimeProvider) Resume(ctx context.Context, rescueTimeout time.Duration, dg *devicegroup.DeviceGroup, errChan chan error) error {
 	fmt.Printf(" ### Resume %s\n", rp.HomePath)
 
-	for _, n := range common.KnownNames {
+	for n := range rp.DeviceSizes {
 		buffer, err := os.ReadFile(path.Join(rp.HomePath, n))
 		assert.NoError(rp.T, err)
 		hash := sha256.Sum256(buffer)
@@ -96,9 +95,14 @@ func (rp *MockRuntimeProvider) Resume(ctx context.Context, rescueTimeout time.Du
 			if rp.DoWrites {
 				// TODO: Write to some devices randomly until the context is cancelled...
 
+				deviceNames := make([]string, 0)
+				for d := range rp.DeviceSizes {
+					deviceNames = append(deviceNames, d)
+				}
+
 				for {
-					dev := rand.Intn(len(common.KnownNames))
-					devName := common.KnownNames[dev]
+					dev := rand.Intn(len(deviceNames))
+					devName := deviceNames[dev]
 					// Lets change a byte in this device...
 					fp, err := os.OpenFile(path.Join(rp.HomePath, devName), os.O_RDWR, 0777)
 					assert.NoError(rp.T, err)
@@ -124,7 +128,6 @@ func (rp *MockRuntimeProvider) Resume(ctx context.Context, rescueTimeout time.Du
 						fmt.Printf(" ### Writer stopped\n")
 						return
 					case <-time.After(periodWrites):
-						break
 					}
 				}
 
