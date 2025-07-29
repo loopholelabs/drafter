@@ -27,6 +27,9 @@ var (
 	ErrCouldNotGetBaseDeviceStat      = errors.New("could not get base device statistics")
 	ErrCouldNotCreateOverlayDirectory = errors.New("could not create overlay directory")
 	ErrCouldNotCreateStateDirectory   = errors.New("could not create state directory")
+	ErrCouldNotUseOverlays            = errors.New("could not use overlays")
+
+	OverlaySep = " "
 )
 
 type MigrateToDevice struct {
@@ -131,37 +134,45 @@ func CreateSiloDevSchema(i *MigrateFromDevice) (*config.DeviceSchema, error) {
 		}
 	}
 
-	if strings.TrimSpace(i.Overlay) == "" || strings.TrimSpace(i.State) == "" {
-		err := os.MkdirAll(filepath.Dir(i.Base), os.ModePerm)
-		if err != nil {
-			return nil, errors.Join(ErrCouldNotCreateDeviceDirectory, err)
-		}
-		ds.System = "file"
-		ds.Location = i.Base
-	} else {
-		err := os.MkdirAll(filepath.Dir(i.Overlay), os.ModePerm)
-		if err != nil {
-			return nil, errors.Join(ErrCouldNotCreateOverlayDirectory, err)
-		}
+	err = os.MkdirAll(filepath.Dir(i.Base), os.ModePerm)
+	if err != nil {
+		return nil, errors.Join(ErrCouldNotCreateDeviceDirectory, err)
+	}
+	ds.System = "file"
+	ds.Location = i.Base
 
-		err = os.MkdirAll(filepath.Dir(i.State), os.ModePerm)
-		if err != nil {
-			return nil, errors.Join(ErrCouldNotCreateStateDirectory, err)
+	if i.Overlay != "" {
+		overlays := strings.Split(i.Overlay, OverlaySep)
+		states := strings.Split(i.State, OverlaySep)
+
+		if len(overlays) != len(states) {
+			return nil, errors.Join(ErrCouldNotUseOverlays, err)
 		}
 
-		ds.System = "file"
-		if i.UseSparseFile {
-			ds.System = "sparsefile"
-		}
-		ds.Location = i.Overlay
+		for j, overlay := range overlays {
+			state := states[j]
+			err := os.MkdirAll(filepath.Dir(overlay), os.ModePerm)
+			if err != nil {
+				return nil, errors.Join(ErrCouldNotCreateOverlayDirectory, err)
+			}
 
-		ds.ROSourceShared = i.SharedBase
+			err = os.MkdirAll(filepath.Dir(state), os.ModePerm)
+			if err != nil {
+				return nil, errors.Join(ErrCouldNotCreateStateDirectory, err)
+			}
 
-		ds.ROSource = &config.DeviceSchema{
-			Name:     i.State,
-			System:   "file",
-			Location: i.Base,
-			Size:     fmt.Sprintf("%v", stat.Size()),
+			oSpec := &config.CowOverlay{
+				System:   "file",
+				Location: overlay,
+				Shared:   i.SharedBase,
+				Name:     state,
+			}
+			if i.UseSparseFile {
+				oSpec.System = "sparsefile"
+			}
+
+			fmt.Printf("# AddOverlay %s %s\n", overlay, state)
+			ds.AddOverlay(oSpec)
 		}
 	}
 
@@ -200,6 +211,8 @@ func CreateSiloDevSchema(i *MigrateFromDevice) (*config.DeviceSchema, error) {
 			//			BlockSize:   i.WriteCacheBlocksize,
 		}
 	}
+
+	fmt.Printf("DEVICE\n%s\n\n", ds.Encode())
 
 	return ds, nil
 }
