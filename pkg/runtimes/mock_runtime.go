@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loopholelabs/silo/pkg/storage"
 	"github.com/loopholelabs/silo/pkg/storage/devicegroup"
 	"github.com/stretchr/testify/assert"
 )
@@ -21,6 +22,7 @@ type MockRuntimeProvider struct {
 	T              *testing.T
 	HomePath       string
 	DoWrites       bool
+	WriteAlso      map[string]storage.Provider
 	DeviceSizes    map[string]int
 	writeContext   context.Context
 	writeCancel    context.CancelFunc
@@ -117,6 +119,12 @@ func (rp *MockRuntimeProvider) Resume(ctx context.Context, rescueTimeout time.Du
 					// Write some random data to the device...
 					_, err = fp.WriteAt(data, int64(offset))
 					assert.NoError(rp.T, err)
+
+					wa, ok := rp.WriteAlso[devName]
+					if ok {
+						_, err = wa.WriteAt(data, int64(offset))
+						assert.NoError(rp.T, err)
+					}
 
 					err = fp.Sync()
 					assert.NoError(rp.T, err)
