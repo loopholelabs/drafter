@@ -13,6 +13,8 @@ import (
 	"github.com/loopholelabs/drafter/pkg/runtimes"
 	"github.com/loopholelabs/logging"
 	"github.com/loopholelabs/logging/types"
+	"github.com/loopholelabs/silo/pkg/storage"
+	"github.com/loopholelabs/silo/pkg/storage/sources"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -38,6 +40,7 @@ func TestPeerCowOverlaysMulti(t *testing.T) {
 	// Create base file
 	overlays := make(map[string]string)
 	states := make(map[string]string)
+	writeAlso := make(map[string]storage.Provider)
 	for n, s := range deviceSizes {
 		baseData := make([]byte, s)
 		rand.Read(baseData)
@@ -45,6 +48,10 @@ func TestPeerCowOverlaysMulti(t *testing.T) {
 		assert.NoError(t, err)
 		overlays[n] = ""
 		states[n] = ""
+		// Create some memory devices to check against
+		writeAlso[n] = sources.NewMemoryStorage(s)
+		_, err = writeAlso[n].WriteAt(baseData, 0)
+		assert.NoError(t, err)
 	}
 
 	for i := 0; i < 10; i++ {
@@ -60,7 +67,7 @@ func TestPeerCowOverlaysMulti(t *testing.T) {
 			states[n] = fmt.Sprintf("%s%s", states[n], path.Join(testPeerDirCowOverlays, fmt.Sprintf("%s_state_%d", n, i)))
 		}
 
-		peer := startPeer(t, log, overlays, states, deviceSizes)
+		peer := startPeer(t, log, overlays, states, deviceSizes, writeAlso)
 		time.Sleep(1 * time.Second) // Allow some writes to go through
 
 		// Close the peer
@@ -75,13 +82,14 @@ func TestPeerCowOverlaysMulti(t *testing.T) {
 	}
 }
 
-func startPeer(t *testing.T, log types.Logger, overlays map[string]string, states map[string]string, deviceSizes map[string]int) *Peer {
+func startPeer(t *testing.T, log types.Logger, overlays map[string]string, states map[string]string, deviceSizes map[string]int, writeAlso map[string]storage.Provider) *Peer {
 	// Create a mock runtime, and start the peer.
 	rp := &runtimes.MockRuntimeProvider{
 		T:           t,
 		HomePath:    testPeerDirCowOverlays,
 		DoWrites:    true,
 		DeviceSizes: deviceSizes,
+		WriteAlso:   writeAlso,
 	}
 	peer, err := StartPeer(context.TODO(), context.Background(), log, nil, nil, "cow_test", rp)
 	assert.NoError(t, err)
@@ -109,6 +117,16 @@ func startPeer(t *testing.T, log types.Logger, overlays map[string]string, state
 
 	err = peer.MigrateFrom(context.TODO(), devicesFrom, nil, nil, hooks1)
 	assert.NoError(t, err)
+
+	// Check it's as expected (eg that the view through Silo cow overlays, is equal to our flat view writeAlso)
+	for n, s := range deviceSizes {
+		fprov, err := sources.NewFileStorage(path.Join(testPeerDirCowOverlays, n), int64(s))
+		assert.NoError(t, err)
+
+		eq, err := storage.Equals(fprov, writeAlso[n], 4096)
+		assert.NoError(t, err)
+		assert.True(t, eq)
+	}
 
 	err = peer.Resume(context.TODO(), 10*time.Second, 10*time.Second)
 	assert.NoError(t, err)
