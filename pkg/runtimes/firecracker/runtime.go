@@ -503,6 +503,10 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Suspend(ctx context.Context, susp
 					return errors.New("unable to copy enough data to writeback memory")
 				}
 			}
+
+			if rp.Log != nil {
+				rp.Log.Info().Int("blocks", len(dirtyBlocks)).Uint64("bytes", uint64(len(dirtyBlocks))*di.BlockSize).Msg("directmemory writing blocks")
+			}
 		}
 	}
 
