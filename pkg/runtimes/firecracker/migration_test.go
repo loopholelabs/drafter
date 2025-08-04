@@ -526,6 +526,7 @@ func migration(t *testing.T, config *migrationConfig) {
 		GrabFailsafe:     config.failsafe,
 		GrabUpdateMemory: config.noMapShared,
 		DirectMemory:     config.directMemory,
+		//		DirectMemoryWriteback: config.directMemory,
 	}
 
 	if config.directMemory {
@@ -601,6 +602,7 @@ func migration(t *testing.T, config *migrationConfig) {
 			GrabMemory:       config.noMapShared,
 			GrabUpdateMemory: config.noMapShared,
 			DirectMemory:     config.directMemory,
+			//			DirectMemoryWriteback: config.directMemory,
 		}
 
 		if config.directMemory {
