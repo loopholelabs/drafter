@@ -67,6 +67,25 @@ func TestMigrationDirectMemoryHashChecks(t *testing.T) {
 	})
 }
 
+func TestMigrationDirectMemoryWritebackHashChecks(t *testing.T) {
+	migration(t, &migrationConfig{
+		blockSize:             1024 * 1024,
+		numMigrations:         3,
+		minCycles:             0,
+		maxCycles:             0,
+		cycleThrottle:         100 * time.Millisecond,
+		maxDirtyBlocks:        10,
+		cpuCount:              1,
+		memorySize:            1024,
+		pauseWaitMax:          3 * time.Second,
+		enableS3:              false,
+		hashChecks:            true,
+		noMapShared:           true,
+		directMemory:          true,
+		directMemoryWriteback: true,
+	})
+}
+
 func TestMigrationDirectMemoryS3HashChecks(t *testing.T) {
 	migration(t, &migrationConfig{
 		blockSize:      1024 * 1024,
@@ -338,23 +357,24 @@ func TestMigrationNoCycleSoftDirty1s(t *testing.T) {
 }
 
 type migrationConfig struct {
-	numMigrations  int
-	minCycles      int
-	maxCycles      int
-	cycleThrottle  time.Duration
-	maxDirtyBlocks int
-	cpuCount       int
-	memorySize     int
-	pauseWaitMax   time.Duration
-	enableS3       bool
-	hashChecks     bool
-	noMapShared    bool
-	grabInterval   time.Duration
-	noCOW          bool
-	noSparseFile   bool
-	blockSize      int
-	failsafe       bool
-	directMemory   bool
+	numMigrations         int
+	minCycles             int
+	maxCycles             int
+	cycleThrottle         time.Duration
+	maxDirtyBlocks        int
+	cpuCount              int
+	memorySize            int
+	pauseWaitMax          time.Duration
+	enableS3              bool
+	hashChecks            bool
+	noMapShared           bool
+	grabInterval          time.Duration
+	noCOW                 bool
+	noSparseFile          bool
+	blockSize             int
+	failsafe              bool
+	directMemory          bool
+	directMemoryWriteback bool
 }
 
 /**
@@ -519,14 +539,14 @@ func migration(t *testing.T, config *migrationConfig) {
 			Stdin:          nil,
 			NoMapShared:    config.noMapShared,
 		},
-		StateName:        common.DeviceStateName,
-		MemoryName:       common.DeviceMemoryName,
-		AgentServerLocal: struct{}{},
-		GrabMemory:       config.noMapShared,
-		GrabFailsafe:     config.failsafe,
-		GrabUpdateMemory: config.noMapShared,
-		DirectMemory:     config.directMemory,
-		//		DirectMemoryWriteback: config.directMemory,
+		StateName:             common.DeviceStateName,
+		MemoryName:            common.DeviceMemoryName,
+		AgentServerLocal:      struct{}{},
+		GrabMemory:            config.noMapShared,
+		GrabFailsafe:          config.failsafe,
+		GrabUpdateMemory:      config.noMapShared,
+		DirectMemory:          config.directMemory,
+		DirectMemoryWriteback: config.directMemoryWriteback,
 	}
 
 	if config.directMemory {
@@ -596,13 +616,13 @@ func migration(t *testing.T, config *migrationConfig) {
 				Stdin:          nil,
 				NoMapShared:    config.noMapShared,
 			},
-			StateName:        common.DeviceStateName,
-			MemoryName:       common.DeviceMemoryName,
-			AgentServerLocal: struct{}{},
-			GrabMemory:       config.noMapShared,
-			GrabUpdateMemory: config.noMapShared,
-			DirectMemory:     config.directMemory,
-			//			DirectMemoryWriteback: config.directMemory,
+			StateName:             common.DeviceStateName,
+			MemoryName:            common.DeviceMemoryName,
+			AgentServerLocal:      struct{}{},
+			GrabMemory:            config.noMapShared,
+			GrabUpdateMemory:      config.noMapShared,
+			DirectMemory:          config.directMemory,
+			DirectMemoryWriteback: config.directMemoryWriteback,
 		}
 
 		if config.directMemory {
@@ -735,7 +755,9 @@ func migration(t *testing.T, config *migrationConfig) {
 							assert.LessOrEqual(t, nr, nr2) // Make sure we read at least nr bytes...
 							assert.True(t, bytes.Equal(buffer[:nr], b2[:nr2]))
 						}
-					} else {
+					}
+
+					if !config.directMemory || config.directMemoryWriteback {
 						prov1 := lastPeer.GetDG().GetDeviceInformationByName(n).Exp.GetProvider()
 						prov2 := nextPeer.GetDG().GetDeviceInformationByName(n).Exp.GetProvider()
 						eq, err := storage.Equals(prov1, prov2, 1024*1024)
