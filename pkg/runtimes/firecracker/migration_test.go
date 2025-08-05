@@ -708,6 +708,12 @@ func migration(t *testing.T, config *migrationConfig) {
 
 		migrationTook := time.Since(migrateStartTime)
 
+		// do device writeback if required (So we can do comparison etc)
+		if config.directMemoryWriteback {
+			err := lastrp.FlushDevices(context.TODO(), lastPeer.GetDG())
+			assert.NoError(t, err)
+		}
+
 		// Tot up some data...
 		totalBlocksP2P := 0
 		totalBlocksS3 := 0

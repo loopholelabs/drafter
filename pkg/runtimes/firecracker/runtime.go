@@ -470,43 +470,48 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Suspend(ctx context.Context, susp
 		if err != nil {
 			return err
 		}
+	}
 
-		if rp.DirectMemoryWriteback {
-			di := rp.dg.GetDeviceInformationByName(common.DeviceMemoryName)
+	return nil
+}
 
-			dirtyBlocksBF := rp.DirectMemoryWritebackDirty.GetAllDirtyBlocks()
-			dirtyBlocks := dirtyBlocksBF.Collect(0, dirtyBlocksBF.Length())
-			// Do any directmemory writeback if required.
-			if rp.Log != nil {
-				rp.Log.Info().Int("blocks", len(dirtyBlocks)).Msg("directmemory writing blocks")
-			}
+// Flush devices
+func (rp *FirecrackerRuntimeProvider[L, R, G]) FlushDevices(ctx context.Context, dg *devicegroup.DeviceGroup) error {
+	if rp.DirectMemoryWriteback {
+		di := rp.dg.GetDeviceInformationByName(common.DeviceMemoryName)
 
-			memProv, err := memory.NewProcessMemoryStorage(rp.Machine.VMPid, "/memory", func() []uint {
-				return []uint{}
-			})
+		dirtyBlocksBF := rp.DirectMemoryWritebackDirty.GetAllDirtyBlocks()
+		dirtyBlocks := dirtyBlocksBF.Collect(0, dirtyBlocksBF.Length())
+		// Do any directmemory writeback if required.
+		if rp.Log != nil {
+			rp.Log.Info().Int("blocks", len(dirtyBlocks)).Msg("directmemory writing blocks")
+		}
+
+		memProv, err := memory.NewProcessMemoryStorage(rp.Machine.VMPid, "/memory", func() []uint {
+			return []uint{}
+		})
+		if err != nil {
+			return err
+		}
+
+		buffer := make([]byte, di.BlockSize)
+		for _, r := range dirtyBlocks {
+			n1, err := memProv.ReadAt(buffer, int64(r)*int64(di.BlockSize))
 			if err != nil {
 				return err
 			}
-
-			buffer := make([]byte, di.BlockSize)
-			for _, r := range dirtyBlocks {
-				n1, err := memProv.ReadAt(buffer, int64(r)*int64(di.BlockSize))
-				if err != nil {
-					return err
-				}
-				// Write back to the device
-				n2, err := rp.grabberProv.WriteAt(buffer[:n1], int64(r)*int64(di.BlockSize))
-				if err != nil {
-					return err
-				}
-				if n2 != n1 {
-					return errors.New("unable to copy enough data to writeback memory")
-				}
+			// Write back to the device
+			n2, err := rp.grabberProv.WriteAt(buffer[:n1], int64(r)*int64(di.BlockSize))
+			if err != nil {
+				return err
 			}
-
-			if rp.Log != nil {
-				rp.Log.Info().Int("blocks", len(dirtyBlocks)).Uint64("bytes", uint64(len(dirtyBlocks))*di.BlockSize).Msg("directmemory writing blocks")
+			if n2 != n1 {
+				return errors.New("unable to copy enough data to writeback memory")
 			}
+		}
+
+		if rp.Log != nil {
+			rp.Log.Info().Int("blocks", len(dirtyBlocks)).Uint64("bytes", uint64(len(dirtyBlocks))*di.BlockSize).Msg("directmemory writing blocks")
 		}
 	}
 
