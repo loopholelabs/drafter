@@ -1,4 +1,4 @@
-name: Drafter CI
+name: Build OS
 
 on:
   push:
