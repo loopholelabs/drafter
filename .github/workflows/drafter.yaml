@@ -111,50 +111,6 @@ jobs:
             dst: out/drafteros-k3s-client-aarch64.tar.zst
             runner: depot-ubuntu-22.04-32
 
-          # OCI runtime bundles
-          - id: oci.valkey-x86_64
-            src: .
-            os: fedora:42
-            flags: -e '-v /tmp/ccache/go:/root/.cache/go-build'
-            cmd: ./Hydrunfile oci docker://valkey/valkey:latest amd64 oci-valkey-x86_64.tar.zst
-            dst: out/oci-valkey-x86_64.tar.zst
-            runner: depot-ubuntu-22.04-32
-          - id: oci.valkey-aarch64
-            src: .
-            os: fedora:42
-            flags: -e '-v /tmp/ccache/go:/root/.cache/go-build'
-            cmd: ./Hydrunfile oci docker://valkey/valkey:latest arm64 oci-valkey-aarch64.tar.zst
-            dst: out/oci-valkey-aarch64.tar.zst
-            runner: depot-ubuntu-22.04-32
-          - id: oci.postgres-x86_64
-            src: .
-            os: fedora:42
-            flags: -e '-v /tmp/ccache/go:/root/.cache/go-build'
-            cmd: ./Hydrunfile oci docker://postgres:latest amd64 oci-postgres-x86_64.tar.zst
-            dst: out/oci-postgres-x86_64.tar.zst
-            runner: depot-ubuntu-22.04-32
-          - id: oci.postgres-aarch64
-            src: .
-            os: fedora:42
-            flags: -e '-v /tmp/ccache/go:/root/.cache/go-build'
-            cmd: ./Hydrunfile oci docker://postgres:latest arm64 oci-postgres-aarch64.tar.zst
-            dst: out/oci-postgres-aarch64.tar.zst
-            runner: depot-ubuntu-22.04-32
-          - id: oci.ollama-x86_64
-            src: .
-            os: fedora:42
-            flags: -e '-v /tmp/ccache/go:/root/.cache/go-build'
-            cmd: ./Hydrunfile oci docker://ollama/ollama:latest amd64 oci-ollama-x86_64.tar.zst
-            dst: out/oci-ollama-x86_64.tar.zst
-            runner: depot-ubuntu-22.04-32
-          - id: oci.ollama-aarch64
-            src: .
-            os: fedora:42
-            flags: -e '-v /tmp/ccache/go:/root/.cache/go-build'
-            cmd: ./Hydrunfile oci docker://ollama/ollama:latest arm64 oci-ollama-aarch64.tar.zst
-            dst: out/oci-ollama-aarch64.tar.zst
-            runner: depot-ubuntu-22.04-32
-
   publish-os:
     needs: build-os
     uses: ./.github/workflows/publish.yaml
