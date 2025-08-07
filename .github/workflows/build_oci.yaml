@@ -25,17 +25,17 @@ jobs:
 
       - name: Build valkey
         run: |
-          make build/oci OCI_IMAGE_URI="docker://valkey/valkey:latest" OCI_IMAGE_ARCHITECTURE="amd64"
+          make -f oci/Makefile build/oci OCI_IMAGE_URI="docker://valkey/valkey:latest" OCI_IMAGE_ARCHITECTURE="amd64"
           go run ./cmd/drafter-packager --package-path "/tmp/oci/oci-valkey-x86_64.tar.zst" --devices '[{"name": "oci","path": "out/blueprint/oci.ext4"}]'
 
       - name: Build postgres
         run: |
-          make build/oci OCI_IMAGE_URI="docker://postgres:latest" OCI_IMAGE_ARCHITECTURE="amd64"
+          make -f oci/Makefile build/oci OCI_IMAGE_URI="docker://postgres:latest" OCI_IMAGE_ARCHITECTURE="amd64"
           go run ./cmd/drafter-packager --package-path "/tmp/oci/oci-postgres-x86_64.tar.zst" --devices '[{"name": "oci","path": "out/blueprint/oci.ext4"}]'
 
       - name: Build ollama
         run: |
-          make build/oci OCI_IMAGE_URI="docker://ollama/ollama:latest" OCI_IMAGE_ARCHITECTURE="amd64"
+          make -f oci/Makefile build/oci OCI_IMAGE_URI="docker://ollama/ollama:latest" OCI_IMAGE_ARCHITECTURE="amd64"
           go run ./cmd/drafter-packager --package-path "/tmp/oci/oci-ollama-x86_64.tar.zst" --devices '[{"name": "oci","path": "out/blueprint/oci.ext4"}]'
 
       - name: Show oci files
