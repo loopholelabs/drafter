@@ -43,7 +43,8 @@ func TestPeerCowOverlaysMulti(t *testing.T) {
 	writeAlso := make(map[string]storage.Provider)
 	for n, s := range deviceSizes {
 		baseData := make([]byte, s)
-		rand.Read(baseData)
+		_, err = rand.Read(baseData)
+		assert.NoError(t, err)
 		err = os.WriteFile(path.Join(testPeerDirCowOverlays, fmt.Sprintf("%s_base", n)), baseData, 0660)
 		assert.NoError(t, err)
 		overlays[n] = ""
