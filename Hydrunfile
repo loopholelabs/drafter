@@ -25,28 +25,6 @@ if [ "$1" = "test" ]; then
   exit 0
 fi
 
-# Go
-if [ "$1" = "go" ]; then
-  # Install native dependencies
-  apt update
-  apt install -y curl make
-
-  # Install bagop
-  curl -L -o /tmp/bagop "https://github.com/pojntfx/bagop/releases/latest/download/bagop.linux-$(uname -m)"
-  install /tmp/bagop /usr/local/bin
-
-  # Configure Git
-  git config --global --add safe.directory '*'
-
-  # Generate dependencies
-  make depend
-
-  # Build
-  CGO_ENABLED=0 bagop -j "$(nproc)" -b "$2" -x '(android/*|ios/*|plan9/*|aix/*|linux/loong64|freebsd/*|wasip1/*|js/*|openbsd/*|windows/*|darwin/*|solaris/*|dragonfly/*|netbsd/*|illumos/*)' -p "make build/$2 DST=\$DST" -d out
-
-  exit 0
-fi
-
 # OS
 if [ "$1" = "os" ]; then
   # Install native dependencies
