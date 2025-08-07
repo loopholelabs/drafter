@@ -106,7 +106,7 @@ pack/oci:
 	mkdir -p $(OUTPUT_DIR)/blueprint
 	sudo mke2fs -b 4096 -t ext4 -L oci -d $(OUTPUT_DIR)/oci-runtime-bundle/ $(OUTPUT_DIR)/blueprint/oci.ext4 $$(umoci stat --image $(OUTPUT_DIR)/oci-image:latest --json | jq '[.history[] | select(.layer != null) | .layer.size] | add * 1.1 | ceil')
 
-	resize2fs -M $(OUTPUT_DIR)/blueprint/oci.ext4
+	sudo resize2fs -M $(OUTPUT_DIR)/blueprint/oci.ext4
 
 # Install
 install: $(addprefix install/,$(obj))
