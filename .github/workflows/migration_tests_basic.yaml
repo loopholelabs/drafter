@@ -1,4 +1,4 @@
-name: Migration Tests
+name: Migration Tests (basic)
 
 on:
   pull_request
