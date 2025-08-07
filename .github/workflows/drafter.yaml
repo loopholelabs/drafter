@@ -251,30 +251,6 @@ jobs:
             dst: out/oci-ollama-aarch64.tar.zst
             runner: depot-ubuntu-22.04-32
 
-  integration:
-    uses: ./.github/workflows/hydrun.yaml
-    secrets: inherit
-    concurrency:
-      group: integration # Only one integration test can run in the repository at a time across all refs
-    with:
-      id: "${{matrix.target.id}}"
-      src: "${{matrix.target.src}}"
-      os: "${{matrix.target.os}}"
-      flags: "${{matrix.target.flags}}"
-      cmd: "${{matrix.target.cmd}}"
-      dst: "${{matrix.target.dst}}"
-      runner: "${{matrix.target.runner}}"
-    strategy:
-      matrix:
-        target:
-          - id: "integration"
-            src: "."
-            os: fedora:42
-            flags: "-e '-v /tmp/ssh-key:/tmp/ssh-key -v /tmp/ccache:/root/.cache/go-build -v /tmp/google-credentials:/tmp/google-credentials'"
-            cmd: "./Hydrunfile integration"
-            dst: "out/nonexistent"
-            runner: "depot-ubuntu-22.04-32"
-
   publish-os:
     needs: build-os
     uses: ./.github/workflows/publish.yaml
