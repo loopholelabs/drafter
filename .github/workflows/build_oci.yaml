@@ -33,14 +33,14 @@ jobs:
       - name: Build postgres
         run: |
           cd oci
-          make -f oci/Makefile build/oci OCI_IMAGE_URI="docker://postgres:latest" OCI_IMAGE_ARCHITECTURE="amd64"
+          make  build/oci OCI_IMAGE_URI="docker://postgres:latest" OCI_IMAGE_ARCHITECTURE="amd64"
           cd ..
           go run ./cmd/drafter-packager --package-path "/tmp/oci/oci-postgres-x86_64.tar.zst" --devices '[{"name": "oci","path": "oci/out/blueprint/oci.ext4"}]'
 
       - name: Build ollama
         run: |
           cd oci
-          make -f oci/Makefile build/oci OCI_IMAGE_URI="docker://ollama/ollama:latest" OCI_IMAGE_ARCHITECTURE="amd64"
+          make  build/oci OCI_IMAGE_URI="docker://ollama/ollama:latest" OCI_IMAGE_ARCHITECTURE="amd64"
           cd ..
           go run ./cmd/drafter-packager --package-path "/tmp/oci/oci-ollama-x86_64.tar.zst" --devices '[{"name": "oci","path": "oci/out/blueprint/oci.ext4"}]'
 
