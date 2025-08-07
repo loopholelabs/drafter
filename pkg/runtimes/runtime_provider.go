@@ -16,6 +16,7 @@ type RuntimeProviderIfc interface {
 	Resume(ctx context.Context, rescueTimeout time.Duration, dg *devicegroup.DeviceGroup, errChan chan error) error
 	Suspend(ctx context.Context, timeout time.Duration, dg *devicegroup.DeviceGroup) error
 	FlushData(ctx context.Context, dg *devicegroup.DeviceGroup) error
+	FlushDevices(ctx context.Context, dg *devicegroup.DeviceGroup) error
 	Close(dg *devicegroup.DeviceGroup) error
 
 	DevicePath() string

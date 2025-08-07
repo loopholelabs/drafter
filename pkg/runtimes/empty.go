@@ -35,6 +35,10 @@ func (rp *EmptyRuntimeProvider) FlushData(ctx context.Context, dg *devicegroup.D
 	return nil
 }
 
+func (rp *EmptyRuntimeProvider) FlushDevices(ctx context.Context, dg *devicegroup.DeviceGroup) error {
+	return nil
+}
+
 func (rp *EmptyRuntimeProvider) Resume(ctx context.Context, rescueTimeout time.Duration, dg *devicegroup.DeviceGroup, errChan chan error) error {
 	return nil
 }

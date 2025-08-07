@@ -61,9 +61,11 @@ type FirecrackerRuntimeProvider[L ipc.AgentServerLocal, R ipc.AgentServerRemote[
 	grabberWg     sync.WaitGroup
 	grabberProv   storage.Provider
 
-	DirectMemory          bool // If true, we're going to go directly to /proc/<pid>/mem at migration time, and for S3 assist
-	DirectMemorySyncDirty *dirtytracker.Remote
-	DirectMemoryDirty     *dirtytracker.Remote
+	DirectMemory               bool // If true, we're going to go directly to /proc/<pid>/mem at migration time, and for S3 assist
+	DirectMemoryWriteback      bool // If true, we will write all changes back to the device at suspend time.
+	DirectMemoryWritebackDirty *dirtytracker.Remote
+	DirectMemorySyncDirty      *dirtytracker.Remote
+	DirectMemoryDirty          *dirtytracker.Remote
 
 	dg *devicegroup.DeviceGroup
 
@@ -123,6 +125,14 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Resume(ctx context.Context, rescu
 		}
 		di.UseAltSourcesInDirty = true // Do not clear alt sources (S3). We are *ONLY* doing dirty transfer here.
 		rp.DirectMemoryDirty = di.DirtyRemote
+
+		if rp.DirectMemoryWriteback {
+			// Use a dirtyTracker to track all dirty blocks for VM lifecycle
+			_, r := dirtytracker.NewDirtyTracker(di.Prov, int(di.BlockSize))
+			rp.DirectMemoryWritebackDirty = r
+			// Track all dirty blocks
+			r.TrackAt(int64(di.Size), 0)
+		}
 	}
 
 	err = rp.Machine.ResumeSnapshot(ctx, common.DeviceStateName, common.DeviceMemoryName)
@@ -465,6 +475,49 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Suspend(ctx context.Context, susp
 	return nil
 }
 
+// Flush devices
+func (rp *FirecrackerRuntimeProvider[L, R, G]) FlushDevices(ctx context.Context, dg *devicegroup.DeviceGroup) error {
+	if rp.DirectMemoryWriteback {
+		di := rp.dg.GetDeviceInformationByName(common.DeviceMemoryName)
+
+		dirtyBlocksBF := rp.DirectMemoryWritebackDirty.GetAllDirtyBlocks()
+		dirtyBlocks := dirtyBlocksBF.Collect(0, dirtyBlocksBF.Length())
+		// Do any directmemory writeback if required.
+		if rp.Log != nil {
+			rp.Log.Info().Int("blocks", len(dirtyBlocks)).Msg("directmemory writing blocks")
+		}
+
+		memProv, err := memory.NewProcessMemoryStorage(rp.Machine.VMPid, "/memory", func() []uint {
+			return []uint{}
+		})
+		if err != nil {
+			return err
+		}
+
+		buffer := make([]byte, di.BlockSize)
+		for _, r := range dirtyBlocks {
+			n1, err := memProv.ReadAt(buffer, int64(r)*int64(di.BlockSize))
+			if err != nil {
+				return err
+			}
+			// Write back to the device
+			n2, err := rp.grabberProv.WriteAt(buffer[:n1], int64(r)*int64(di.BlockSize))
+			if err != nil {
+				return err
+			}
+			if n2 != n1 {
+				return errors.New("unable to copy enough data to writeback memory")
+			}
+		}
+
+		if rp.Log != nil {
+			rp.Log.Info().Int("blocks", len(dirtyBlocks)).Uint64("bytes", uint64(len(dirtyBlocks))*di.BlockSize).Msg("directmemory writing blocks")
+		}
+	}
+
+	return nil
+}
+
 // grabMemoryChanges
 func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChanges() error {
 	rp.memoryLock.Lock()
@@ -551,8 +604,6 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChangesFailsafe() error
 	// Find changes... (SLOW)
 	blockSize := uint64(1024 * 1024 * 4)
 
-	memDirty := rp.dg.GetDeviceInformationByName(common.DeviceMemoryName).DirtyRemote
-
 	for _, r := range memRanges {
 		buffer := make([]byte, blockSize)
 		provBuffer := make([]byte, blockSize)
@@ -572,11 +623,19 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChangesFailsafe() error
 				return err
 			}
 			if n1 != n2 {
-				return errors.New("Couldn't check memory...\n")
+				return errors.New("couldn't check memory")
 			}
 			if !bytes.Equal(buffer[:n1], provBuffer[:n2]) {
 				if rp.GrabUpdateDirty {
-					memDirty.MarkDirty(int64(r.Offset+o-r.Start), int64(n1))
+					if rp.DirectMemoryDirty != nil {
+						rp.DirectMemoryDirty.MarkDirty(int64(r.Offset+o-r.Start), int64(n1))
+					}
+					if rp.DirectMemorySyncDirty != nil {
+						rp.DirectMemorySyncDirty.MarkDirty(int64(r.Offset+o-r.Start), int64(n1))
+					}
+					if rp.DirectMemoryWritebackDirty != nil {
+						rp.DirectMemoryWritebackDirty.MarkDirty(int64(r.Offset+o-r.Start), int64(n1))
+					}
 				}
 				if rp.GrabUpdateMemory {
 					// Memory has changed, lets write it
@@ -710,6 +769,9 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChangesSoftDirty() erro
 				if rp.DirectMemorySyncDirty != nil {
 					rp.DirectMemorySyncDirty.MarkDirty(int64(r.Start-tt.addrStart+tt.offset), int64(r.End-r.Start))
 					updatedSyncDirtyBytes += (r.End - r.Start)
+				}
+				if rp.DirectMemoryWritebackDirty != nil {
+					rp.DirectMemoryWritebackDirty.MarkDirty(int64(r.Start-tt.addrStart+tt.offset), int64(r.End-r.Start))
 				}
 			}
 		}

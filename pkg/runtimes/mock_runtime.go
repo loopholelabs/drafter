@@ -58,6 +58,11 @@ func (rp *MockRuntimeProvider) Suspend(ctx context.Context, timeout time.Duratio
 	return nil
 }
 
+func (rp *MockRuntimeProvider) FlushDevices(ctx context.Context, dg *devicegroup.DeviceGroup) error {
+	fmt.Printf(" ### FlushDevices %s\n", rp.HomePath)
+	return nil
+}
+
 func (rp *MockRuntimeProvider) FlushData(ctx context.Context, dg *devicegroup.DeviceGroup) error {
 	fmt.Printf(" ### FlushData %s\n", rp.HomePath)
 
