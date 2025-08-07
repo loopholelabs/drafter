@@ -4,27 +4,6 @@ set -e
 
 export CI=true
 
-# Test
-if [ "$1" = "test" ]; then
-  # Install native dependencies
-  apt update
-  apt install -y kmod make
-
-  # Configure environment
-  modprobe nbd
-
-  # Configure Git
-  git config --global --add safe.directory '*'
-
-  # Generate dependencies
-  make depend
-
-  # Run tests
-  make test
-
-  exit 0
-fi
-
 # OS
 if [ "$1" = "os" ]; then
   # Install native dependencies
