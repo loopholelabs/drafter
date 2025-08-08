@@ -3,118 +3,60 @@ name: Build OS
 on:
   push:
   pull_request:
-  schedule:
-    - cron: "0 0 * * 0"
 
 jobs:
-  build-os:
-    uses: ./.github/workflows/hydrun.yaml
-    secrets: inherit
-    with:
-      id: "${{ matrix.target.id }}"
-      src: "${{ matrix.target.src }}"
-      os: "${{ matrix.target.os }}"
-      flags: "${{ matrix.target.flags }}"
-      cmd: "${{ matrix.target.cmd }}"
-      dst: "${{ matrix.target.dst }}"
-      runner: "${{ matrix.target.runner }}"
-    strategy:
-      matrix:
-        target:
-          # OCI OS
-          - id: os.drafteros-oci-x86_64
-            src: .
-            os: fedora:42
-            flags: -e '-v /tmp/ccache/go:/root/.cache/go-build -v /tmp/ccache/buildroot:/root/.buildroot-ccache'
-            cmd: ./Hydrunfile os drafteros-oci-firecracker-x86_64_defconfig drafteros-oci-x86_64.tar.zst
-            dst: out/drafteros-oci-x86_64.tar.zst
-            runner: depot-ubuntu-22.04-32
-          - id: os.drafteros-oci-x86_64_pvm
-            src: .
-            os: fedora:42
-            flags: -e '-v /tmp/ccache/go:/root/.cache/go-build -v /tmp/ccache/buildroot:/root/.buildroot-ccache'
-            cmd: ./Hydrunfile os drafteros-oci-firecracker-x86_64_pvm_defconfig drafteros-oci-x86_64_pvm.tar.zst
-            dst: out/drafteros-oci-x86_64_pvm.tar.zst
-            runner: depot-ubuntu-22.04-32
-          - id: os.drafteros-oci-x86_64_pvm_experimental
-            src: .
-            os: fedora:42
-            flags: -e '-v /tmp/ccache/go:/root/.cache/go-build -v /tmp/ccache/buildroot:/root/.buildroot-ccache'
-            cmd: ./Hydrunfile os drafteros-oci-firecracker-x86_64_pvm_experimental_defconfig drafteros-oci-x86_64_pvm_experimental.tar.zst
-            dst: out/drafteros-oci-x86_64_pvm_experimental.tar.zst
-            runner: depot-ubuntu-22.04-32
-          - id: os.drafteros-oci-aarch64
-            src: .
-            os: fedora:42
-            flags: -e '-v /tmp/ccache/go:/root/.cache/go-build -v /tmp/ccache/buildroot:/root/.buildroot-ccache'
-            cmd: ./Hydrunfile os drafteros-oci-firecracker-aarch64_defconfig drafteros-oci-aarch64.tar.zst
-            dst: out/drafteros-oci-aarch64.tar.zst
-            runner: depot-ubuntu-22.04-32
+  build-oci:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-          # k3s Server OS
-          - id: os.drafteros-k3s-server-x86_64
-            src: .
-            os: fedora:42
-            flags: -e '-v /tmp/ccache/go:/root/.cache/go-build -v /tmp/ccache/buildroot:/root/.buildroot-ccache'
-            cmd: ./Hydrunfile os drafteros-k3s-server-firecracker-x86_64_defconfig drafteros-k3s-server-x86_64.tar.zst
-            dst: out/drafteros-k3s-server-x86_64.tar.zst
-            runner: depot-ubuntu-22.04-32
-          - id: os.drafteros-k3s-server-x86_64_pvm
-            src: .
-            os: fedora:42
-            flags: -e '-v /tmp/ccache/go:/root/.cache/go-build -v /tmp/ccache/buildroot:/root/.buildroot-ccache'
-            cmd: ./Hydrunfile os drafteros-k3s-server-firecracker-x86_64_pvm_defconfig drafteros-k3s-server-x86_64_pvm.tar.zst
-            dst: out/drafteros-k3s-server-x86_64_pvm.tar.zst
-            runner: depot-ubuntu-22.04-32
-          - id: os.drafteros-k3s-server-x86_64_pvm_experimental
-            src: .
-            os: fedora:42
-            flags: -e '-v /tmp/ccache/go:/root/.cache/go-build -v /tmp/ccache/buildroot:/root/.buildroot-ccache'
-            cmd: ./Hydrunfile os drafteros-k3s-server-firecracker-x86_64_pvm_experimental_defconfig drafteros-k3s-server-x86_64_pvm_experimental.tar.zst
-            dst: out/drafteros-k3s-server-x86_64_pvm_experimental.tar.zst
-            runner: depot-ubuntu-22.04-32
-          - id: os.drafteros-k3s-server-aarch64
-            src: .
-            os: fedora:42
-            flags: -e '-v /tmp/ccache/go:/root/.cache/go-build -v /tmp/ccache/buildroot:/root/.buildroot-ccache'
-            cmd: ./Hydrunfile os drafteros-k3s-server-firecracker-aarch64_defconfig drafteros-k3s-server-aarch64.tar.zst
-            dst: out/drafteros-k3s-server-aarch64.tar.zst
-            runner: depot-ubuntu-22.04-32
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.24.2
 
-          # k3s Client OS
-          - id: os.drafteros-k3s-client-x86_64
-            src: .
-            os: fedora:42
-            flags: -e '-v /tmp/ccache/go:/root/.cache/go-build -v /tmp/ccache/buildroot:/root/.buildroot-ccache'
-            cmd: ./Hydrunfile os drafteros-k3s-client-firecracker-x86_64_defconfig drafteros-k3s-client-x86_64.tar.zst
-            dst: out/drafteros-k3s-client-x86_64.tar.zst
-            runner: depot-ubuntu-22.04-32
-          - id: os.drafteros-k3s-client-x86_64_pvm
-            src: .
-            os: fedora:42
-            flags: -e '-v /tmp/ccache/go:/root/.cache/go-build -v /tmp/ccache/buildroot:/root/.buildroot-ccache'
-            cmd: ./Hydrunfile os drafteros-k3s-client-firecracker-x86_64_pvm_defconfig drafteros-k3s-client-x86_64_pvm.tar.zst
-            dst: out/drafteros-k3s-client-x86_64_pvm.tar.zst
-            runner: depot-ubuntu-22.04-32
-          - id: os.drafteros-k3s-client-x86_64_pvm_experimental
-            src: .
-            os: fedora:42
-            flags: -e '-v /tmp/ccache/go:/root/.cache/go-build -v /tmp/ccache/buildroot:/root/.buildroot-ccache'
-            cmd: ./Hydrunfile os drafteros-k3s-client-firecracker-x86_64_pvm_experimental_defconfig drafteros-k3s-client-x86_64_pvm_experimental.tar.zst
-            dst: out/drafteros-k3s-client-x86_64_pvm_experimental.tar.zst
-            runner: depot-ubuntu-22.04-32
-          - id: os.drafteros-k3s-client-aarch64
-            src: .
-            os: fedora:42
-            flags: -e '-v /tmp/ccache/go:/root/.cache/go-build -v /tmp/ccache/buildroot:/root/.buildroot-ccache'
-            cmd: ./Hydrunfile os drafteros-k3s-client-firecracker-aarch64_defconfig drafteros-k3s-client-aarch64.tar.zst
-            dst: out/drafteros-k3s-client-aarch64.tar.zst
-            runner: depot-ubuntu-22.04-32
+      - name: deps
+        run: sudo apt install umoci
 
-  publish-os:
-    needs: build-os
-    uses: ./.github/workflows/publish.yaml
-    permissions:
-      id-token: write
-      contents: write
-    secrets: inherit
+      - name: Setup dest
+        run: |
+          mkdir /tmp/os
+
+      - name: Build OS 
+        run: |
+          cd os
+          make clean/os
+          make depend/os drafteros-oci-firecracker-x86_64_defconfig
+          FORCE_UNSAFE_CONFIGURE=1 make build/os
+          cd ..
+          go run ./cmd/drafter-packager --package-path "/tmp/os/drafteros-oci-x86_64.tar.zst" --devices '[{"name": "kernel","path": "os/out/blueprint/vmlinux"},{"name": "disk","path": "os/out/blueprint/rootfs.ext4"}]'
+
+      - name: Build OS KVM
+        run: |
+          cd os
+          make clean/os
+          make depend/os drafteros-oci-firecracker-x86_64_kvm_defconfig
+          FORCE_UNSAFE_CONFIGURE=1 make build/os
+          cd ..
+          go run ./cmd/drafter-packager --package-path "/tmp/os/drafteros-oci-x86_64_pvm.tar.zst" --devices '[{"name": "kernel","path": "os/out/blueprint/vmlinux"},{"name": "disk","path": "os/out/blueprint/rootfs.ext4"}]'
+
+      - name: Show os files
+        run: ls /tmp/os -l
+
+      - name: Publish pre-release to GitHub releases
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: release-${{ github.ref_name }}
+          prerelease: true
+          files: |
+            /tmp/os/*
+
+      - name: Publish release to GitHub releases
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          prerelease: false
+          files: |
+            /tmp/os/*
