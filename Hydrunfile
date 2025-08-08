@@ -21,14 +21,14 @@ if [ "$1" = "os" ]; then
   cd ..
 
   # Package OS
-  go run ./cmd/drafter-packager --package-path "os/out/$3" --devices '[
+  go run ./cmd/drafter-packager --package-path "out/$3" --devices '[
       {
         "name": "kernel",
-        "path": "out/blueprint/vmlinux"
+        "path": "os/out/blueprint/vmlinux"
       },
       {
         "name": "disk",
-        "path": "out/blueprint/rootfs.ext4"
+        "path": "os/out/blueprint/rootfs.ext4"
       }
     ]'
 
