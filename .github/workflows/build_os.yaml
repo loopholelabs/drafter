@@ -27,7 +27,7 @@ jobs:
         run: |
           cd os
           make clean/os
-          make depend/os drafteros-oci-firecracker-x86_64_defconfig
+          make depend/os OS_DEFCONFIG=drafteros-oci-firecracker-x86_64_defconfig
           FORCE_UNSAFE_CONFIGURE=1 make build/os
           cd ..
           go run ./cmd/drafter-packager --package-path "/tmp/os/drafteros-oci-x86_64.tar.zst" --devices '[{"name": "kernel","path": "os/out/blueprint/vmlinux"},{"name": "disk","path": "os/out/blueprint/rootfs.ext4"}]'
@@ -36,7 +36,7 @@ jobs:
         run: |
           cd os
           make clean/os
-          make depend/os drafteros-oci-firecracker-x86_64_kvm_defconfig
+          make depend/os OS_DEFCONFIG=drafteros-oci-firecracker-x86_64_kvm_defconfig
           FORCE_UNSAFE_CONFIGURE=1 make build/os
           cd ..
           go run ./cmd/drafter-packager --package-path "/tmp/os/drafteros-oci-x86_64_pvm.tar.zst" --devices '[{"name": "kernel","path": "os/out/blueprint/vmlinux"},{"name": "disk","path": "os/out/blueprint/rootfs.ext4"}]'
