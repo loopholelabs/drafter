@@ -30,7 +30,7 @@ jobs:
           make depend/os OS_DEFCONFIG=drafteros-oci-firecracker-x86_64_defconfig
           FORCE_UNSAFE_CONFIGURE=1 sudo make build/os
           cd ..
-          go run ./cmd/drafter-packager --package-path "/tmp/os/drafteros-oci-x86_64.tar.zst" --devices '[{"name": "kernel","path": "os/os/out/blueprint/vmlinux"},{"name": "disk","path": "os/os/out/blueprint/rootfs.ext4"}]'
+          go run ./cmd/drafter-packager --package-path "/tmp/os/drafteros-oci-x86_64.tar.zst" --devices '[{"name": "kernel","path": "os/out/blueprint/vmlinux"},{"name": "disk","path": "os/out/blueprint/rootfs.ext4"}]'
 
       - name: Show os files
         run: ls /tmp/os -l
@@ -77,7 +77,7 @@ jobs:
           make depend/os OS_DEFCONFIG=drafteros-oci-firecracker-x86_64_pvm_defconfig
           FORCE_UNSAFE_CONFIGURE=1 sudo make build/os
           cd ..
-          go run ./cmd/drafter-packager --package-path "/tmp/os/drafteros-oci-x86_64_pvm.tar.zst" --devices '[{"name": "kernel","path": "os/os/out/blueprint/vmlinux"},{"name": "disk","path": "os/os/out/blueprint/rootfs.ext4"}]'
+          go run ./cmd/drafter-packager --package-path "/tmp/os/drafteros-oci-x86_64_pvm.tar.zst" --devices '[{"name": "kernel","path": "os/out/blueprint/vmlinux"},{"name": "disk","path": "os/out/blueprint/rootfs.ext4"}]'
 
       - name: Show os files
         run: ls /tmp/os -l
