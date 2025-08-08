@@ -44,8 +44,8 @@ jobs:
           mkdir out
           mkdir out/blueprint
           cd out/blueprint
-          wget -q https://github.com/loopholelabs/drafter/releases/download/v0.6.3/oci-valkey-x86_64.tar.zst
-          wget -q https://github.com/loopholelabs/drafter/releases/download/v0.6.3/drafteros-oci-x86_64.tar.zst
+          wget -q https://github.com/loopholelabs/drafter/releases/latest/download/oci-valkey-x86_64.tar.zst
+          wget -q https://github.com/loopholelabs/drafter/releases/latest/download/drafteros-oci-x86_64.tar.zst
           tar --zstd -xf oci-valkey-x86_64.tar.zst
           tar --zstd -xf drafteros-oci-x86_64.tar.zst
           mv oci oci.ext4
@@ -103,8 +103,8 @@ jobs:
           mkdir out
           mkdir out/blueprint
           cd out/blueprint
-          wget -q https://github.com/loopholelabs/drafter/releases/download/v0.6.3/oci-valkey-x86_64.tar.zst
-          wget -q https://github.com/loopholelabs/drafter/releases/download/v0.6.3/drafteros-oci-x86_64.tar.zst
+          wget -q https://github.com/loopholelabs/drafter/releases/latest/download/oci-valkey-x86_64.tar.zst
+          wget -q https://github.com/loopholelabs/drafter/releases/latest/download/drafteros-oci-x86_64.tar.zst
           tar --zstd -xf oci-valkey-x86_64.tar.zst
           tar --zstd -xf drafteros-oci-x86_64.tar.zst
           mv oci oci.ext4
@@ -167,8 +167,8 @@ jobs:
           mkdir out
           mkdir out/blueprint
           cd out/blueprint
-          wget -q https://github.com/loopholelabs/drafter/releases/download/v0.6.3/oci-valkey-x86_64.tar.zst
-          wget -q https://github.com/loopholelabs/drafter/releases/download/v0.6.3/drafteros-oci-x86_64.tar.zst
+          wget -q https://github.com/loopholelabs/drafter/releases/latest/download/oci-valkey-x86_64.tar.zst
+          wget -q https://github.com/loopholelabs/drafter/releases/latest/download/drafteros-oci-x86_64.tar.zst
           tar --zstd -xf oci-valkey-x86_64.tar.zst
           tar --zstd -xf drafteros-oci-x86_64.tar.zst
           mv oci oci.ext4
