@@ -16,6 +16,9 @@ jobs:
         with:
           go-version: 1.24.2
 
+      - name: Install deps
+        run: sudo apt install libelf-dev
+
       - name: Setup dest
         run: |
           mkdir /tmp/os
