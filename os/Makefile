@@ -1,25 +1,9 @@
 # Public variables
-DESTDIR ?=
-PREFIX ?= /usr/local
 OUTPUT_DIR ?= out
-DST ?=
 
 OS_URL ?= https://github.com/loopholelabs/buildroot/archive/8958adcacfec580cda9ee5ff049017a9f64a6996.tar.gz
 OS_DEFCONFIG ?= drafteros-oci-firecracker-x86_64_defconfig
 OS_BR2_EXTERNAL ?= ../../os
-
-# Private variables
-obj = drafter-nat drafter-forwarder drafter-agent drafter-liveness drafter-snapshotter drafter-packager drafter-peer
-all: $(addprefix build/,$(obj))
-
-# Build
-build: $(addprefix build/,$(obj))
-$(addprefix build/,$(obj)):
-ifdef DST
-	go build -o $(DST) ./cmd/$(subst build/,,$@)
-else
-	go build -o $(OUTPUT_DIR)/$(subst build/,,$@) ./cmd/$(subst build/,,$@)
-endif
 
 # Build OS
 build/os:
@@ -69,39 +53,9 @@ save/kernel:
 	$(MAKE) -C $(OUTPUT_DIR)/buildroot BR2_EXTERNAL="$(OS_BR2_EXTERNAL)" linux-savedefconfig
 	$(MAKE) -C $(OUTPUT_DIR)/buildroot BR2_EXTERNAL="$(OS_BR2_EXTERNAL)" linux-update-defconfig
 
-# Install
-install: $(addprefix install/,$(obj))
-$(addprefix install/,$(obj)):
-	install -D -m 0755 $(OUTPUT_DIR)/$(subst install/,,$@) $(DESTDIR)$(PREFIX)/bin/$(subst install/,,$@)
-
-# Uninstall
-uninstall: $(addprefix uninstall/,$(obj))
-$(addprefix uninstall/,$(obj)):
-	rm $(DESTDIR)$(PREFIX)/bin/$(subst uninstall/,,$@)
-
-# Run
-$(addprefix run/,$(obj)):
-	$(subst run/,,$@) $(ARGS)
-
-# Test
-test:
-	go test -timeout 3600s -parallel $(shell nproc) ./...
-
-# Benchmark
-benchmark:
-	go test -timeout 3600s -bench=./... ./...
-
-# Clean
-clean:
-	rm -rf out
-
 # Clean OS
 clean/os:
 	rm -rf $(OUTPUT_DIR)/buildroot
-
-# Dependencies
-depend:
-	go generate ./...
 
 # OS dependencies
 depend/os:

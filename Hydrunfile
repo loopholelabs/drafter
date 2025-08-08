@@ -12,23 +12,16 @@ if [ "$1" = "os" ]; then
   # Configure Git
   git config --global --add safe.directory '*'
 
-  # Generate dependencies for packager
-  make depend
-
-  # Build packager
-  make build/drafter-packager
-
-  # Install packager
-  make install/drafter-packager
-
+  cd os
   # Generate dependencies for OS
   make depend/os OS_DEFCONFIG="$2"
 
   # Build OS
   FORCE_UNSAFE_CONFIGURE=1 make build/os
+  cd ..
 
   # Package OS
-  drafter-packager --package-path "out/$3" --devices '[
+  go run ./cmd/drafter-packager --package-path "os/out/$3" --devices '[
       {
         "name": "kernel",
         "path": "out/blueprint/vmlinux"
@@ -36,39 +29,6 @@ if [ "$1" = "os" ]; then
       {
         "name": "disk",
         "path": "out/blueprint/rootfs.ext4"
-      }
-    ]'
-
-  exit 0
-fi
-
-# OCI runtime bundle
-if [ "$1" = "oci" ]; then
-  # Install native dependencies
-  dnf install -y go curl make jq skopeo dnf-plugins-core openssh-clients git e2fsprogs
-  dnf copr enable -y ganto/umoci
-  dnf install -y golang-github-opencontainers-umoci
-
-  # Configure Git
-  git config --global --add safe.directory '*'
-
-  # Generate dependencies for packager
-  make depend
-
-  # Build packager
-  make build/drafter-packager
-
-  # Install packager
-  make install/drafter-packager
-
-  # Build OCI runtime bundle
-  make build/oci OCI_IMAGE_URI="$2" OCI_IMAGE_ARCHITECTURE="$3"
-
-  # Package OCI runtime bundle
-  drafter-packager --package-path "out/$4" --devices '[
-      {
-        "name": "oci",
-        "path": "out/blueprint/oci.ext4"
       }
     ]'
 
