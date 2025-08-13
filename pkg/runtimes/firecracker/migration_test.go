@@ -49,7 +49,7 @@ func TestMigrationBasicHashChecks(t *testing.T) {
 	})
 }
 
-func TestMigrationDirectMemoryHashChecks(t *testing.T) {
+func TestMigrationBasicDirectMemoryHashChecks(t *testing.T) {
 	migration(t, &migrationConfig{
 		blockSize:      1024 * 1024,
 		numMigrations:  3,
@@ -64,44 +64,6 @@ func TestMigrationDirectMemoryHashChecks(t *testing.T) {
 		hashChecks:     true,
 		noMapShared:    true,
 		directMemory:   true,
-	})
-}
-
-func TestMigrationDirectMemoryWritebackHashChecks(t *testing.T) {
-	migration(t, &migrationConfig{
-		blockSize:             1024 * 1024,
-		numMigrations:         3,
-		minCycles:             0,
-		maxCycles:             0,
-		cycleThrottle:         100 * time.Millisecond,
-		maxDirtyBlocks:        10,
-		cpuCount:              1,
-		memorySize:            1024,
-		pauseWaitMax:          3 * time.Second,
-		enableS3:              false,
-		hashChecks:            true,
-		noMapShared:           true,
-		directMemory:          true,
-		directMemoryWriteback: true,
-	})
-}
-
-func TestMigrationDirectMemoryS3HashChecks(t *testing.T) {
-	migration(t, &migrationConfig{
-		blockSize:      1024 * 1024,
-		numMigrations:  3,
-		minCycles:      0,
-		maxCycles:      0,
-		cycleThrottle:  100 * time.Millisecond,
-		maxDirtyBlocks: 10,
-		cpuCount:       1,
-		memorySize:     1024,
-		pauseWaitMax:   3 * time.Second,
-		enableS3:       true,
-		hashChecks:     true,
-		noMapShared:    true,
-		directMemory:   true,
-		grabInterval:   1 * time.Second,
 	})
 }
 
@@ -122,24 +84,6 @@ func TestMigrationBasicHashChecksSoftDirty(t *testing.T) {
 	})
 }
 
-func TestMigrationBasicHashChecksFailsafe(t *testing.T) {
-	migration(t, &migrationConfig{
-		blockSize:      1024 * 1024,
-		numMigrations:  3,
-		minCycles:      1,
-		maxCycles:      1,
-		cycleThrottle:  100 * time.Millisecond,
-		maxDirtyBlocks: 10,
-		cpuCount:       1,
-		memorySize:     1024,
-		pauseWaitMax:   3 * time.Second,
-		enableS3:       false,
-		hashChecks:     true,
-		noMapShared:    true,
-		failsafe:       true,
-	})
-}
-
 func TestMigrationBasicWithS3(t *testing.T) {
 	migration(t, &migrationConfig{
 		blockSize:      1024 * 1024,
@@ -153,38 +97,6 @@ func TestMigrationBasicWithS3(t *testing.T) {
 		pauseWaitMax:   3 * time.Second,
 		enableS3:       true,
 		hashChecks:     false,
-	})
-}
-
-func TestMigrationBasicSmallBlocksHashChecks(t *testing.T) {
-	migration(t, &migrationConfig{
-		blockSize:      256 * 1024,
-		numMigrations:  3,
-		minCycles:      1,
-		maxCycles:      1,
-		cycleThrottle:  100 * time.Millisecond,
-		maxDirtyBlocks: 10,
-		cpuCount:       1,
-		memorySize:     1024,
-		pauseWaitMax:   3 * time.Second,
-		enableS3:       false,
-		hashChecks:     true,
-	})
-}
-
-func TestMigrationBasicBigBlocksHashChecks(t *testing.T) {
-	migration(t, &migrationConfig{
-		blockSize:      4 * 1024 * 1024,
-		numMigrations:  3,
-		minCycles:      1,
-		maxCycles:      1,
-		cycleThrottle:  100 * time.Millisecond,
-		maxDirtyBlocks: 10,
-		cpuCount:       1,
-		memorySize:     1024,
-		pauseWaitMax:   3 * time.Second,
-		enableS3:       false,
-		hashChecks:     true,
 	})
 }
 
@@ -205,7 +117,146 @@ func TestMigrationBasicNoCOWHashChecks(t *testing.T) {
 	})
 }
 
-func TestMigrationBasicNoSparseFileHashChecks(t *testing.T) {
+func TestMigrationBasicNoPause(t *testing.T) {
+	migration(t, &migrationConfig{
+		blockSize:      1024 * 1024,
+		numMigrations:  3,
+		minCycles:      1,
+		maxCycles:      1,
+		cycleThrottle:  100 * time.Millisecond,
+		maxDirtyBlocks: 10,
+		cpuCount:       1,
+		memorySize:     1024,
+		pauseWaitMax:   0,
+		enableS3:       false,
+		hashChecks:     false,
+	})
+}
+
+func TestMigrationBasicMultiCycle(t *testing.T) {
+	migration(t, &migrationConfig{
+		blockSize:      1024 * 1024,
+		numMigrations:  3,
+		minCycles:      10,
+		maxCycles:      20,
+		cycleThrottle:  100 * time.Millisecond,
+		maxDirtyBlocks: 10,
+		cpuCount:       1,
+		memorySize:     1024,
+		pauseWaitMax:   3 * time.Second,
+		enableS3:       false,
+		hashChecks:     false,
+	})
+}
+
+func TestMigrationBasicNoCycle(t *testing.T) {
+	migration(t, &migrationConfig{
+		blockSize:      1024 * 1024,
+		numMigrations:  3,
+		minCycles:      0,
+		maxCycles:      0,
+		cycleThrottle:  100 * time.Millisecond,
+		maxDirtyBlocks: 10,
+		cpuCount:       1,
+		memorySize:     1024,
+		pauseWaitMax:   3 * time.Second,
+		enableS3:       false,
+		hashChecks:     false,
+	})
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////
+// More advanced migrations
+
+func TestMigrationAdvDirectMemoryWritebackHashChecks(t *testing.T) {
+	migration(t, &migrationConfig{
+		blockSize:             1024 * 1024,
+		numMigrations:         3,
+		minCycles:             0,
+		maxCycles:             0,
+		cycleThrottle:         100 * time.Millisecond,
+		maxDirtyBlocks:        10,
+		cpuCount:              1,
+		memorySize:            1024,
+		pauseWaitMax:          3 * time.Second,
+		enableS3:              false,
+		hashChecks:            true,
+		noMapShared:           true,
+		directMemory:          true,
+		directMemoryWriteback: true,
+	})
+}
+
+func TestMigrationAdvDirectMemoryS3HashChecks(t *testing.T) {
+	migration(t, &migrationConfig{
+		blockSize:      1024 * 1024,
+		numMigrations:  3,
+		minCycles:      0,
+		maxCycles:      0,
+		cycleThrottle:  100 * time.Millisecond,
+		maxDirtyBlocks: 10,
+		cpuCount:       1,
+		memorySize:     1024,
+		pauseWaitMax:   3 * time.Second,
+		enableS3:       true,
+		hashChecks:     true,
+		noMapShared:    true,
+		directMemory:   true,
+		grabInterval:   1 * time.Second,
+	})
+}
+
+func TestMigrationAdvHashChecksFailsafe(t *testing.T) {
+	migration(t, &migrationConfig{
+		blockSize:      1024 * 1024,
+		numMigrations:  3,
+		minCycles:      1,
+		maxCycles:      1,
+		cycleThrottle:  100 * time.Millisecond,
+		maxDirtyBlocks: 10,
+		cpuCount:       1,
+		memorySize:     1024,
+		pauseWaitMax:   3 * time.Second,
+		enableS3:       false,
+		hashChecks:     true,
+		noMapShared:    true,
+		failsafe:       true,
+	})
+}
+
+func TestMigrationAdvSmallBlocksHashChecks(t *testing.T) {
+	migration(t, &migrationConfig{
+		blockSize:      256 * 1024,
+		numMigrations:  3,
+		minCycles:      1,
+		maxCycles:      1,
+		cycleThrottle:  100 * time.Millisecond,
+		maxDirtyBlocks: 10,
+		cpuCount:       1,
+		memorySize:     1024,
+		pauseWaitMax:   3 * time.Second,
+		enableS3:       false,
+		hashChecks:     true,
+	})
+}
+
+func TestMigrationAdvBigBlocksHashChecks(t *testing.T) {
+	migration(t, &migrationConfig{
+		blockSize:      4 * 1024 * 1024,
+		numMigrations:  3,
+		minCycles:      1,
+		maxCycles:      1,
+		cycleThrottle:  100 * time.Millisecond,
+		maxDirtyBlocks: 10,
+		cpuCount:       1,
+		memorySize:     1024,
+		pauseWaitMax:   3 * time.Second,
+		enableS3:       false,
+		hashChecks:     true,
+	})
+}
+
+func TestMigrationAdvNoSparseFileHashChecks(t *testing.T) {
 	migration(t, &migrationConfig{
 		blockSize:      1024 * 1024,
 		numMigrations:  3,
@@ -223,7 +274,7 @@ func TestMigrationBasicNoSparseFileHashChecks(t *testing.T) {
 	})
 }
 
-func TestMigrationBasicHashChecksSoftDirty4Cpus(t *testing.T) {
+func TestMigrationAdvHashChecksSoftDirty4Cpus(t *testing.T) {
 	migration(t, &migrationConfig{
 		blockSize:      1024 * 1024,
 		numMigrations:  3,
@@ -240,7 +291,7 @@ func TestMigrationBasicHashChecksSoftDirty4Cpus(t *testing.T) {
 	})
 }
 
-func TestMigration4Cpus(t *testing.T) {
+func TestMigrationAdv4Cpus(t *testing.T) {
 	migration(t, &migrationConfig{
 		blockSize:      1024 * 1024,
 		numMigrations:  3,
@@ -256,55 +307,7 @@ func TestMigration4Cpus(t *testing.T) {
 	})
 }
 
-func TestMigrationNoPause(t *testing.T) {
-	migration(t, &migrationConfig{
-		blockSize:      1024 * 1024,
-		numMigrations:  3,
-		minCycles:      1,
-		maxCycles:      1,
-		cycleThrottle:  100 * time.Millisecond,
-		maxDirtyBlocks: 10,
-		cpuCount:       1,
-		memorySize:     1024,
-		pauseWaitMax:   0,
-		enableS3:       false,
-		hashChecks:     false,
-	})
-}
-
-func TestMigrationMultiCycle(t *testing.T) {
-	migration(t, &migrationConfig{
-		blockSize:      1024 * 1024,
-		numMigrations:  3,
-		minCycles:      10,
-		maxCycles:      20,
-		cycleThrottle:  100 * time.Millisecond,
-		maxDirtyBlocks: 10,
-		cpuCount:       1,
-		memorySize:     1024,
-		pauseWaitMax:   3 * time.Second,
-		enableS3:       false,
-		hashChecks:     false,
-	})
-}
-
-func TestMigrationNoCycle(t *testing.T) {
-	migration(t, &migrationConfig{
-		blockSize:      1024 * 1024,
-		numMigrations:  3,
-		minCycles:      0,
-		maxCycles:      0,
-		cycleThrottle:  100 * time.Millisecond,
-		maxDirtyBlocks: 10,
-		cpuCount:       1,
-		memorySize:     1024,
-		pauseWaitMax:   3 * time.Second,
-		enableS3:       false,
-		hashChecks:     false,
-	})
-}
-
-func TestMigrationMultiCycleSoftDirty(t *testing.T) {
+func TestMigrationAdvMultiCycleSoftDirty(t *testing.T) {
 	migration(t, &migrationConfig{
 		blockSize:      1024 * 1024,
 		numMigrations:  3,
@@ -321,7 +324,7 @@ func TestMigrationMultiCycleSoftDirty(t *testing.T) {
 	})
 }
 
-func TestMigrationNoCycleSoftDirty(t *testing.T) {
+func TestMigrationAdvNoCycleSoftDirty(t *testing.T) {
 	migration(t, &migrationConfig{
 		blockSize:      1024 * 1024,
 		numMigrations:  3,
@@ -338,7 +341,7 @@ func TestMigrationNoCycleSoftDirty(t *testing.T) {
 	})
 }
 
-func TestMigrationNoCycleSoftDirty1s(t *testing.T) {
+func TestMigrationAdvNoCycleSoftDirty1s(t *testing.T) {
 	migration(t, &migrationConfig{
 		blockSize:      1024 * 1024,
 		numMigrations:  3,
