@@ -23,7 +23,7 @@ It enables you to:
 - **Run OCI images as VMs**: In addition to running almost any Linux distribution (Alpine Linux, Fedora, Debian, Ubuntu etc.), Drafter can also run OCI images as VMs without the overhead of a nested Docker daemon or full CRI implementation. It uses a dynamic disk configuration system, an optional custom Buildroot-based OS to start the OCI image, and a familiar Docker-like networking configuration.
 - **Easily live migrate VMs between heterogeneous nodes with no downtime**: Drafter leverages a [custom optimized Firecracker fork](https://github.com/loopholelabs/firecracker) and [patches to PVM](https://github.com/loopholelabs/linux-pvm-ci) to enable live migration of VMs between heterogeneous nodes, data centers and cloud providers without hardware virtualization support, even across continents. With a [customizable hybrid pre- and post-copy strategy](https://pojntfx.github.io/networked-linux-memsync/main.pdf), migrations typically take below 100ms within the same data center and around 500ms for Europe ↔ North America migrations over the public internet, depending on the application.
 - **Hook into suspend and resume lifecycle with agents**: Drafter uses a VSock- and [panrpc](https://github.com/pojntfx/panrpc)-based agent system to signal to guest applications before a suspend/resume event, allowing them to react accordingly.
-- **Easily embed VMs inside your applications**: Drafter provides a powerful, context-aware [Go library](https://pkg.go.dev/github.com/loopholelabs/drafter) for all system components, including a NAT for guest-to-host networking, a forwarder for local port-forwarding/host-to-guest networking, an agent and liveness component for responding to snapshots and suspend/resume events inside the guest, a snapshotter for creating snapshots, a packager for packaging VM images, a runner for starting VM images locally, a registry for serving VM images over the network, a mounter for re-using files and devices between VMs and moving them without migrating the VM itself, a peer for starting and live migrating VMs over the network, and a terminator for backing up a VM.
+- **Easily embed VMs inside your applications**: Drafter provides a powerful, context-aware [Go library](https://pkg.go.dev/github.com/loopholelabs/drafter) for all system components, including a NAT for guest-to-host networking, a forwarder for local port-forwarding/host-to-guest networking, an agent and liveness component for responding to snapshots and suspend/resume events inside the guest, a snapshotter for creating snapshots, a packager for packaging VM images, and a peer for starting and live migrating VMs over the network.
 
 **Want to see it in action?** See this snippet from our KubeCon talk where we live migrate a Minecraft server between two continents without downtime:
 
@@ -138,7 +138,7 @@ out/
 <details>
   <summary>Expand section</summary>
 
-To build the blueprints locally, you can use the [included Makefile](./Makefile) with the following commands:
+To build the blueprints locally, you can use the [included Makefile](./os/Makefile) with the following commands:
 
 ```shell
 # Build the DrafterOS blueprint
@@ -290,33 +290,33 @@ Note that unless you're using PVM (see [installation](#installation) and [Live M
 
 ### 3. Creating a VM Instance from a Package with `drafter-runner`
 
-Now that we have a VM package, you can start it locally with `drafter-runner` by running the following:
+Now that we have a VM package, you can start it locally with `drafter-peer` by running the following:
 
 ```shell
-$ sudo drafter-runner --netns ark0 --devices '[
+$ sudo drafter-peer --netns ark0 --devices '[
   {
     "name": "state",
-    "path": "out/package/state.bin"
+    "base": "out/package/state.bin"
   },
   {
     "name": "memory",
-    "path": "out/package/memory.bin"
+    "base": "out/package/memory.bin"
   },
   {
     "name": "kernel",
-    "path": "out/package/vmlinux"
+    "base": "out/package/vmlinux"
   },
   {
     "name": "disk",
-    "path": "out/package/rootfs.ext4"
+    "base": "out/package/rootfs.ext4"
   },
   {
     "name": "config",
-    "path": "out/package/config.json"
+    "base": "out/package/config.json"
   },
   {
     "name": "oci",
-    "path": "out/blueprint/oci.ext4"
+    "base": "out/blueprint/oci.ext4"
   }
 ]'
 ```
@@ -332,9 +332,9 @@ Welcome to Loophole Labs DrafterOS
 drafterhost login:
 ```
 
-By default, input is disabled. To enable it, pass the `--enable-input` flag to `drafter-runner`. To stop the VM, press `CTRL-C` or send the `SIGINT` signal to the `drafter-runner` process. Before stopping, `drafter-runner` takes a snapshot of the VM, which it uses to resume the VM the next time it is started.
+By default, input is disabled. To enable it, pass the `--enable-input` flag to `drafter-peer`. To stop the VM, press `CTRL-C` or send the `SIGINT` signal to the `drafter-peer` process.
 
-**Well done!** You've successfully started your VM package; be sure to check out the [runner reference](#runner) for more information. Next, let's find out how you can access it!
+**Well done!** You've successfully started your VM package; be sure to check out the [peer reference](#peer) for more information. Next, let's find out how you can access it!
 
 ### 4. Forwarding a VM Instance Port with `drafter-forwarder`
 
@@ -384,14 +384,12 @@ Remember to open port `3333/tcp` on your firewall to make it reachable from your
 
 ### 5. Creating and Live Migrating VM Instances with `drafter-peer`
 
-While `drafter-runner` is useful for trying out VM packages locally, using `drafter-peer` is recommended for any advanced usage, such as creating multiple VM instances from the same VM package or live migrating VM instances between hosts.
-
 #### Creating a Single VM Instance from a VM Package
 
 <details>
   <summary>Expand section</summary>
 
-To replicate `drafter-runner` with `drafter-peer`, that is to say, to create a single VM instance from a VM package where all changes get written back to the VM package, run the following:
+To create a single VM instance from a VM package where all changes get written back to the VM package, run the following:
 
 ```shell
 $ sudo drafter-peer --netns ark0 --raddr '' --laddr '' --devices '[
@@ -1196,11 +1194,15 @@ For bandwidth issues between hosts, consider S3-assisted migrations. This contin
 
 Note that S3 configuration is only required when first starting a peer; future peers in a migration chain receive this configuration automatically.
 
-**🚀 That's it!** You've successfully created, snapshotted, started and live migrated your first service with Drafter. We can't wait to see what you're going to build next! Be sure to take a look at the [reference](#reference) (the [registry](#registry), [mounter](#mounter) and [terminator](#terminator) components can be quite helpful when working with live migration), [examples](#examples) and [frequently asked questions](#faq) for more information.
+**🚀 That's it!** You've successfully created, snapshotted, started and live migrated your first service with Drafter. We can't wait to see what you're going to build next!
 
 </details>
 
 ## Reference
+
+### FAQ
+
+[FAQ](FAQ.md)
 
 ### Examples
 
@@ -1211,350 +1213,7 @@ To make getting started with Drafter as a library easier, take a look at the fol
 - [**Agent**](./cmd/drafter-agent/main.go) and [**Liveness**](./cmd/drafter-liveness/main.go): Allow responding to snapshot and suspend/resume events within the guest
 - [**Snapshotter**](./cmd/drafter-snapshotter/main.go): Creates snapshots/VM packages from blueprints
 - [**Packager**](./cmd/drafter-packager/main.go): Packages VM instances into distributable packages
-- [**Runner**](./cmd/drafter-runner/main.go): Starts VM instances from packages locally
-- [**Registry**](./cmd/drafter-registry/main.go): Distributes VM packages across the network
-- [**Mounter**](./cmd/drafter-mounter/main.go): Allows files and devices to be re-used between VMs and moved without migrating the VM using them
 - [**Peer**](./cmd/drafter-peer/main.go): Live migrates VM instances across the network
-- [**Terminator**](./cmd/drafter-terminator/main.go): Handles backup operations for VMs
-
-### Command Line Arguments
-
-<details>
-  <summary>Expand command reference</summary>
-
-#### NAT
-
-```shell
-$ drafter-nat --help
-Usage of drafter-nat:
-  -allow-incoming-traffic
-    	Whether to allow incoming traffic to the namespaces (at host-veth-internal-ip:port) (default true)
-  -blocked-subnet-cidr string
-    	CIDR to block for the namespace (default "10.0.15.0/24")
-  -host-interface string
-    	Host gateway interface (default "wlp0s20f3")
-  -host-veth-cidr string
-    	CIDR for the veths outside the namespace (default "10.0.8.0/22")
-  -namespace-interface string
-    	Name for the interface inside the namespace (default "tap0")
-  -namespace-interface-gateway string
-    	Gateway for the interface inside the namespace (default "172.16.0.1")
-  -namespace-interface-ip string
-    	IP for the interface inside the namespace (default "172.16.0.2")
-  -namespace-interface-mac string
-    	MAC address for the interface inside the namespace (default "02:0e:d9:fd:68:3d")
-  -namespace-interface-netmask uint
-    	Netmask for the interface inside the namespace (default 30)
-  -namespace-prefix string
-    	Prefix for the namespace IDs (default "ark")
-  -namespace-veth-cidr string
-    	CIDR for the veths inside the namespace (default "10.0.15.0/24")
-```
-
-#### Forwarder
-
-```shell
-$ drafter-forwarder --help
-Usage of drafter-forwarder:
-  -host-veth-cidr string
-    	CIDR for the veths outside the namespace (default "10.0.8.0/22")
-  -port-forwards string
-    	Port forwards configuration (wildcard IPs like 0.0.0.0 are not valid, be explicit) (default "[{\"netns\":\"ark0\",\"internalPort\":\"6379\",\"protocol\":\"tcp\",\"externalAddr\":\"127.0.0.1:3333\"}]")
-```
-
-#### Agent
-
-```shell
-$ drafter-agent --help
-Usage of drafter-agent:
-  -after-resume-cmd string
-    	Command to run after the VM has been resumed (leave empty to disable)
-  -before-suspend-cmd string
-    	Command to run before the VM is suspended (leave empty to disable)
-  -shell-cmd string
-    	Shell to use to run the before suspend and after resume commands (default "sh")
-  -vsock-port uint
-    	VSock port (default 26)
-  -vsock-timeout duration
-    	VSock dial timeout (default 1m0s)
-```
-
-#### Liveness
-
-```shell
-$ drafter-liveness --help
-Usage of drafter-liveness:
-  -vsock-port int
-    	VSock port (default 25)
-  -vsock-timeout duration
-    	VSock dial timeout (default 1m0s)
-```
-
-#### Snapshotter
-
-```shell
-$ drafter-snapshotter --help
-Usage of drafter-snapshotter:
-  -agent-vsock-port int
-    	Agent VSock port (default 26)
-  -boot-args string
-    	Boot/kernel arguments (default "console=ttyS0 panic=1 pci=off modules=ext4 rootfstype=ext4 root=/dev/vda i8042.noaux i8042.nomux i8042.nopnp i8042.dumbkbd rootflags=rw printk.devkmsg=on printk_ratelimit=0 printk_ratelimit_burst=0 clocksource=tsc nokaslr lapic=notscdeadline tsc=unstable")
-  -cgroup-version int
-    	Cgroup version to use for Jailer (default 2)
-  -chroot-base-dir string
-    	chroot base directory (default "out/vms")
-  -cpu-count int
-    	CPU count (default 1)
-  -cpu-template string
-    	Firecracker CPU template (see https://github.com/firecracker-microvm/firecracker/blob/main/docs/cpu_templates/cpu-templates.md#static-cpu-templates for the options) (default "None")
-  -devices string
-    	Devices configuration (default "[{\"name\":\"kernel\",\"input\":\"\",\"output\":\"out/blueprint/vmlinux\"},{\"name\":\"disk\",\"input\":\"\",\"output\":\"out/blueprint/rootfs.ext4\"},{\"name\":\"state\",\"input\":\"\",\"output\":\"out/package/state.bin\"},{\"name\":\"memory\",\"input\":\"\",\"output\":\"out/package/memory.bin\"},{\"name\":\"config\",\"input\":\"\",\"output\":\"out/package/config.json\"}]")
-  -enable-input
-    	Whether to enable VM stdin
-  -enable-output
-    	Whether to enable VM stdout and stderr (default true)
-  -firecracker-bin string
-    	Firecracker binary (default "firecracker")
-  -gid int
-    	Group ID for the Firecracker process
-  -interface string
-    	Name of the interface in the network namespace to use (default "tap0")
-  -jailer-bin string
-    	Jailer binary (from Firecracker) (default "jailer")
-  -liveness-vsock-port int
-    	Liveness VSock port (default 25)
-  -mac string
-    	MAC of the interface in the network namespace to use (default "02:0e:d9:fd:68:3d")
-  -memory-size int
-    	Memory size (in MB) (default 1024)
-  -netns string
-    	Network namespace to run Firecracker in (default "ark0")
-  -numa-node int
-    	NUMA node to run Firecracker in
-  -resume-timeout duration
-    	Maximum amount of time to wait for agent and liveness to resume (default 1m0s)
-  -uid int
-    	User ID for the Firecracker process
-```
-
-#### Packager
-
-```shell
-$ drafter-packager --help
-Usage of drafter-packager:
-  -devices string
-    	Devices configuration (default "[{\"name\":\"kernel\",\"path\":\"out/package/vmlinux\"},{\"name\":\"disk\",\"path\":\"out/package/rootfs.ext4\"},{\"name\":\"state\",\"path\":\"out/package/state.bin\"},{\"name\":\"memory\",\"path\":\"out/package/memory.bin\"},{\"name\":\"config\",\"path\":\"out/package/config.json\"}]")
-  -extract
-    	Whether to extract or archive
-  -package-path string
-    	Path to package file (default "out/app.tar.zst")
-```
-
-#### Runner
-
-```shell
-$ drafter-runner --help
-Usage of drafter-runner:
-  -cgroup-version int
-    	Cgroup version to use for Jailer (default 2)
-  -chroot-base-dir string
-    	chroot base directory (default "out/vms")
-  -devices string
-    	Devices configuration (default "[{\"name\":\"kernel\",\"path\":\"out/package/vmlinux\",\"shared\":false},{\"name\":\"disk\",\"path\":\"out/package/rootfs.ext4\",\"shared\":false},{\"name\":\"state\",\"path\":\"out/package/state.bin\",\"shared\":false},{\"name\":\"memory\",\"path\":\"out/package/memory.bin\",\"shared\":false},{\"name\":\"config\",\"path\":\"out/package/config.json\",\"shared\":false}]")
-  -enable-input
-    	Whether to enable VM stdin
-  -enable-output
-    	Whether to enable VM stdout and stderr (default true)
-  -experimental-map-private
-    	(Experimental) Whether to use MAP_PRIVATE for memory and state devices
-  -experimental-map-private-memory-output string
-    	(Experimental) Path to write the local changes to the shared memory to (leave empty to write back to device directly) (ignored unless --experimental-map-private)
-  -experimental-map-private-state-output string
-    	(Experimental) Path to write the local changes to the shared state to (leave empty to write back to device directly) (ignored unless --experimental-map-private)
-  -firecracker-bin string
-    	Firecracker binary (default "firecracker")
-  -gid int
-    	Group ID for the Firecracker process
-  -jailer-bin string
-    	Jailer binary (from Firecracker) (default "jailer")
-  -netns string
-    	Network namespace to run Firecracker in (default "ark0")
-  -numa-node int
-    	NUMA node to run Firecracker in
-  -rescue-timeout duration
-    	Maximum amount of time to wait for rescue operations (default 5s)
-  -resume-timeout duration
-    	Maximum amount of time to wait for agent and liveness to resume (default 1m0s)
-  -uid int
-    	User ID for the Firecracker process
-```
-
-#### Registry
-
-```shell
-$ drafter-registry --help
-Usage of drafter-registry:
-  -concurrency int
-    	Number of concurrent workers to use in migrations (default 1024)
-  -devices string
-    	Devices configuration (default "[{\"name\":\"kernel\",\"input\":\"out/package/vmlinux\",\"blockSize\":65536},{\"name\":\"disk\",\"input\":\"out/package/rootfs.ext4\",\"blockSize\":65536},{\"name\":\"state\",\"input\":\"out/package/state.bin\",\"blockSize\":65536},{\"name\":\"memory\",\"input\":\"out/package/memory.bin\",\"blockSize\":65536},{\"name\":\"config\",\"input\":\"out/package/config.json\",\"blockSize\":65536}]")
-  -laddr string
-    	Address to listen on (default ":1600")
-```
-
-#### Mounter
-
-```shell
-$ drafter-mounter --help
-Usage of drafter-mounter:
-  -concurrency int
-    	Number of concurrent workers to use in migrations (default 1024)
-  -devices string
-    	Devices configuration (default "[{\"name\":\"state\",\"base\":\"out/package/state.bin\",\"overlay\":\"out/overlay/state.bin\",\"state\":\"out/state/state.bin\",\"blockSize\":65536,\"expiry\":1000000000,\"maxDirtyBlocks\":200,\"minCycles\":5,\"maxCycles\":20,\"cycleThrottle\":500000000,\"makeMigratable\":true},{\"name\":\"memory\",\"base\":\"out/package/memory.bin\",\"overlay\":\"out/overlay/memory.bin\",\"state\":\"out/state/memory.bin\",\"blockSize\":65536,\"expiry\":1000000000,\"maxDirtyBlocks\":200,\"minCycles\":5,\"maxCycles\":20,\"cycleThrottle\":500000000,\"makeMigratable\":true},{\"name\":\"kernel\",\"base\":\"out/package/vmlinux\",\"overlay\":\"out/overlay/vmlinux\",\"state\":\"out/state/vmlinux\",\"blockSize\":65536,\"expiry\":1000000000,\"maxDirtyBlocks\":200,\"minCycles\":5,\"maxCycles\":20,\"cycleThrottle\":500000000,\"makeMigratable\":true},{\"name\":\"disk\",\"base\":\"out/package/rootfs.ext4\",\"overlay\":\"out/overlay/rootfs.ext4\",\"state\":\"out/state/rootfs.ext4\",\"blockSize\":65536,\"expiry\":1000000000,\"maxDirtyBlocks\":200,\"minCycles\":5,\"maxCycles\":20,\"cycleThrottle\":500000000,\"makeMigratable\":true},{\"name\":\"config\",\"base\":\"out/package/config.json\",\"overlay\":\"out/overlay/config.json\",\"state\":\"out/state/config.json\",\"blockSize\":65536,\"expiry\":1000000000,\"maxDirtyBlocks\":200,\"minCycles\":5,\"maxCycles\":20,\"cycleThrottle\":500000000,\"makeMigratable\":true},{\"name\":\"oci\",\"base\":\"out/package/oci.ext4\",\"overlay\":\"out/overlay/oci.ext4\",\"state\":\"out/state/oci.ext4\",\"blockSize\":65536,\"expiry\":1000000000,\"maxDirtyBlocks\":200,\"minCycles\":5,\"maxCycles\":20,\"cycleThrottle\":500000000,\"makeMigratable\":true}]")
-  -laddr string
-    	Local address to listen on (leave empty to disable) (default "localhost:1337")
-  -raddr string
-    	Remote address to connect to (leave empty to disable) (default "localhost:1337")
-```
-
-#### Peer
-
-```shell
-$ drafter-peer --help
-Usage of drafter-peer:
-  -cgroup-version int
-    	Cgroup version to use for Jailer (default 2)
-  -chroot-base-dir string
-    	chroot base directory (default "out/vms")
-  -concurrency int
-    	Number of concurrent workers to use in migrations (default 1024)
-  -devices string
-    	Devices configuration (default "[{\"name\":\"state\",\"base\":\"out/package/state.bin\",\"overlay\":\"out/overlay/state.bin\",\"state\":\"out/state/state.bin\",\"blockSize\":65536,\"expiry\":1000000000,\"maxDirtyBlocks\":200,\"minCycles\":5,\"maxCycles\":20,\"cycleThrottle\":500000000,\"makeMigratable\":true,\"shared\":false,\"sharedbase\":false,\"s3sync\":false,\"s3accesskey\":\"\",\"s3secretkey\":\"\",\"s3endpoint\":\"\",\"s3secure\":false,\"s3bucket\":\"\",\"s3concurrency\":0},{\"name\":\"memory\",\"base\":\"out/package/memory.bin\",\"overlay\":\"out/overlay/memory.bin\",\"state\":\"out/state/memory.bin\",\"blockSize\":65536,\"expiry\":1000000000,\"maxDirtyBlocks\":200,\"minCycles\":5,\"maxCycles\":20,\"cycleThrottle\":500000000,\"makeMigratable\":true,\"shared\":false,\"sharedbase\":false,\"s3sync\":false,\"s3accesskey\":\"\",\"s3secretkey\":\"\",\"s3endpoint\":\"\",\"s3secure\":false,\"s3bucket\":\"\",\"s3concurrency\":0},{\"name\":\"kernel\",\"base\":\"out/package/vmlinux\",\"overlay\":\"out/overlay/vmlinux\",\"state\":\"out/state/vmlinux\",\"blockSize\":65536,\"expiry\":1000000000,\"maxDirtyBlocks\":200,\"minCycles\":5,\"maxCycles\":20,\"cycleThrottle\":500000000,\"makeMigratable\":true,\"shared\":false,\"sharedbase\":false,\"s3sync\":false,\"s3accesskey\":\"\",\"s3secretkey\":\"\",\"s3endpoint\":\"\",\"s3secure\":false,\"s3bucket\":\"\",\"s3concurrency\":0},{\"name\":\"disk\",\"base\":\"out/package/rootfs.ext4\",\"overlay\":\"out/overlay/rootfs.ext4\",\"state\":\"out/state/rootfs.ext4\",\"blockSize\":65536,\"expiry\":1000000000,\"maxDirtyBlocks\":200,\"minCycles\":5,\"maxCycles\":20,\"cycleThrottle\":500000000,\"makeMigratable\":true,\"shared\":false,\"sharedbase\":false,\"s3sync\":false,\"s3accesskey\":\"\",\"s3secretkey\":\"\",\"s3endpoint\":\"\",\"s3secure\":false,\"s3bucket\":\"\",\"s3concurrency\":0},{\"name\":\"config\",\"base\":\"out/package/config.json\",\"overlay\":\"out/overlay/config.json\",\"state\":\"out/state/config.json\",\"blockSize\":65536,\"expiry\":1000000000,\"maxDirtyBlocks\":200,\"minCycles\":5,\"maxCycles\":20,\"cycleThrottle\":500000000,\"makeMigratable\":true,\"shared\":false,\"sharedbase\":false,\"s3sync\":false,\"s3accesskey\":\"\",\"s3secretkey\":\"\",\"s3endpoint\":\"\",\"s3secure\":false,\"s3bucket\":\"\",\"s3concurrency\":0},{\"name\":\"oci\",\"base\":\"out/package/oci.ext4\",\"overlay\":\"out/overlay/oci.ext4\",\"state\":\"out/state/oci.ext4\",\"blockSize\":65536,\"expiry\":1000000000,\"maxDirtyBlocks\":200,\"minCycles\":5,\"maxCycles\":20,\"cycleThrottle\":500000000,\"makeMigratable\":true,\"shared\":false,\"sharedbase\":false,\"s3sync\":false,\"s3accesskey\":\"\",\"s3secretkey\":\"\",\"s3endpoint\":\"\",\"s3secure\":false,\"s3bucket\":\"\",\"s3concurrency\":0}]")
-  -disable-postcopy-migration
-    	Whether to disable post-copy migration
-  -enable-input
-    	Whether to enable VM stdin
-  -enable-output
-    	Whether to enable VM stdout and stderr (default true)
-  -experimental-map-private
-    	(Experimental) Whether to use MAP_PRIVATE for memory and state devices
-  -experimental-map-private-memory-output string
-    	(Experimental) Path to write the local changes to the shared memory to (leave empty to write back to device directly) (ignored unless --experimental-map-private)
-  -experimental-map-private-state-output string
-    	(Experimental) Path to write the local changes to the shared state to (leave empty to write back to device directly) (ignored unless --experimental-map-private)
-  -firecracker-bin string
-    	Firecracker binary (default "firecracker")
-  -gid int
-    	Group ID for the Firecracker process
-  -jailer-bin string
-    	Jailer binary (from Firecracker) (default "jailer")
-  -laddr string
-    	Local address to listen on (leave empty to disable) (default "localhost:1337")
-  -metrics string
-    	Address to serve metrics from
-  -netns string
-    	Network namespace to run Firecracker in (default "ark0")
-  -numa-node int
-    	NUMA node to run Firecracker in
-  -raddr string
-    	Remote address to connect to (leave empty to disable) (default "localhost:1337")
-  -rescue-timeout duration
-    	Maximum amount of time to wait for rescue operations (default 1m0s)
-  -resume-timeout duration
-    	Maximum amount of time to wait for agent and liveness to resume (default 1m0s)
-  -uid int
-    	User ID for the Firecracker process
-```
-
-#### Terminator
-
-```shell
-$ drafter-terminator --help
-Usage of drafter-terminator:
-  -devices string
-    	Devices configuration (default "[{\"name\":\"kernel\",\"output\":\"out/package/vmlinux\"},{\"name\":\"disk\",\"output\":\"out/package/rootfs.ext4\"},{\"name\":\"state\",\"output\":\"out/package/state.bin\"},{\"name\":\"memory\",\"output\":\"out/package/memory.bin\"},{\"name\":\"config\",\"output\":\"out/package/config.json\"}]")
-  -raddr string
-    	Remote address to connect to (default "localhost:1337")
-```
-
-</details>
-
-## FAQ
-
-### How Can I Embed Drafter in My Application?
-
-Integrating Drafter into your Go project is straightforward; it's a pure Go library that does not require CGo. To begin, you can add Drafter by running the following:
-
-```shell
-$ go get github.com/loopholelabs/drafter/...@latest
-```
-
-The [`pkg`](https://pkg.go.dev/github.com/loopholelabs/drafter/pkg) package includes all the necessary functionality for most usage scenarios. For practical implementation examples, refer to [examples](#examples).
-
-### How Can I Add Additional Disks to My VM Instance?
-
-Adding additional disks to a VM instance is as easy as adding them to the `--devices` flag for the snapshotter, runner or peer. For example, to add a disk at `/tmp/mydisk.ext4` to the peer, add the following to `--devices`:
-
-```json
-{
-  "name": "mydisk",
-  "base": "tmp/mydisk.ext4",
-  "overlay": "out/instance-0/overlay/mydisk.ext4",
-  "state": "out/instance-0/state/mydisk.ext4",
-  "blockSize": 65536,
-  "expiry": 1000000000,
-  "maxDirtyBlocks": 200,
-  "minCycles": 5,
-  "maxCycles": 20,
-  "cycleThrottle": 500000000,
-  "makeMigratable": true,
-  "shared": false,
-  "sharedbase": false,
-  "s3sync": false,
-  "s3accesskey": "",
-  "s3secretkey": "",
-  "s3endpoint": "",
-  "s3secure": false,
-  "s3bucket": "",
-  "s3concurrency": 0
-},
-```
-
-Disks aren't mounted automatically; to find and mount them, use the `lsblk` and `mount` commands in the guest VM. If you want to mount the disks at boot time, you can modify `/etc/fstab` and add a line like so (assuming that the disk has the label `mydisk`):
-
-```shell
-LABEL=mydisk    /mymount    ext4    defaults    0    2
-```
-
-### How Can I Add Additional VSocks to My VM?
-
-Using additional VSocks requires getting access to the runner's `VMPath`, which is available at `${runner.VMPath}/${snapshotter.VSockName}` and `${peer.VMPath}/${snapshotter.VSockName}`. Other than that, refer to the [Firecracker docs](https://github.com/firecracker-microvm/firecracker/blob/main/docs/vsock.md) and [examples](#examples) for more information on how to use Firecracker's VSock-via-UNIX socket implementation.
-
-### Does Drafter Support IPv6?
-
-Currently, Drafter's NAT only supports IPv4. IPv6 support is planned. If you need IPv6 support now, use a reverse proxy like `socat`, Traefik, HAProxy or Envoy that binds to an IPv6 address on the host and forwards traffic to Drafter's forwarded port over IPv4.
-
-### Does Drafter Support GPUs?
-
-Drafter doesn't support GPUs at this time [Firecracker does not support GPU passthrough](https://github.com/firecracker-microvm/firecracker/issues/1179). Unless Firecracker implements GPU passthrough, there is no way to directly expose a GPU to the guest. Alternatives include porting Drafter to support [Cloud Hypervisor, which has GPU passthrough support](https://fly.io/blog/fly-io-has-gpus-now/), or if a GPU is required as a graphical device, to use [LLVMpipe](https://docs.mesa3d.org/drivers/llvmpipe.html) and a headless Wayland compositor like [Cage](https://github.com/cage-kiosk/cage) and [wayvnc](https://github.com/any1/wayvnc).
-
-### How Can I Authenticate Live Migrations or Migrate over Another Network Protocol like TLS or a UNIX socket?
-
-Drafter doesn't have a preferred authentication or transport mechanism; it instead relies on an external implementation of an `io.ReadWriter` to function. This `io.ReadWriter` can be implemented and authenticated by a TCP connection, UDP connection, TLS connection, WebSocket connection, UNIX socket or any other protocol of choice. See [examples](#examples) for more information on how to use specific transports for live migrations, e.g. TCP. If you need built-in authentication or a network solution that integrates with your existing environment, check out [Loophole Labs Architect](https://architect.run/).
-
-### How Can I Make a VM Migratable after Starting It?
-
-The `drafter-peer` CLI only allows for a static configuration; if you supply a `--laddr`, the instance will automatically become migratable after resuming. If you wish to make a VM migratable at a specific point, or make it non-migratable, see [How Can I Embed Drafter in My Application?](#how-can-i-embed-drafter-in-my-application) to use the peer API directly, or check out [Loophole Labs Architect](https://architect.run/) for a solution with a built-in control plane.
-
-### How Can I Keep My Network Connections Alive While Live Migrating?
-
-Drafter doesn't concern itself with networking aside from its simple NAT and port forwarding implementations. If you're interested in a more full-fledged, production-ready networking solution with support for advanced networking rules and zero-downtime live migrations of network connections, check out [Loophole Labs Architect](https://architect.run/).
-
-### How Can I Change the Environment Variables, Volume Mounts or Startup Command of the OCI Image to Start?
-
-Drafter doesn't work with OCI images; instead, it works directly with [OCI runtime bundles](https://github.com/opencontainers/runtime-spec/blob/main/bundle.md), which can be created from an OCI image with commands such as `podman create` or `umoci unpack`. These OCI runtime bundles are then copied to an EXT4 file system and passed to an OCI runtime in the guest VM. Drafter includes a minimal implementation of the OCI image to OCI runtime bundle conversion process (see [Building a VM Blueprint Locally](#building-a-vm-blueprint-locally)) and utility targets such as `make unpack/oci` and `make pack/oci`, which allow you to unpack an OCI image to an OCI runtime bundle, adjust the OCI `config.json` file (at `out/oci-runtime-bundle/config.json`), and then pack the OCI image to an EXT4 file system.
-
-Drafter doesn't concern itself with the actual process of building the underlying VM images aside from this simple build tooling. This is because it also supports starting any other Linux distribution without any OCI integration, such as a Valkey instance running directly in the guest operating system, or running a full-fledged Docker daemon in the guest. If you're looking for a more advanced and streamlined process, like streaming conversion and startup of OCI images, a way to replicate/distribute packages or a build service, check out [Loophole Labs Architect](https://architect.run/).
 
 ## Acknowledgements
 

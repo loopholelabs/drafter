@@ -11,7 +11,7 @@ require (
 	github.com/loopholelabs/firecracker-go-sdk v1.0.0
 	github.com/loopholelabs/goroutine-manager v0.1.1
 	github.com/loopholelabs/logging v0.3.2
-	github.com/loopholelabs/silo v0.2.20
+	github.com/loopholelabs/silo v0.2.21
 	github.com/metal-stack/go-ipam v1.14.12
 	github.com/muesli/gotable v0.0.0-20210307142814-960606545b8b
 	github.com/nixigaj/go-default-route v0.0.0-20231019115740-0722aff7ebf3
@@ -22,7 +22,7 @@ require (
 	github.com/valkey-io/valkey-go v1.0.64
 	github.com/vishvananda/netlink v1.3.1
 	github.com/vishvananda/netns v0.0.5
-	golang.org/x/sys v0.34.0
+	golang.org/x/sys v0.35.0
 )
 
 require (
