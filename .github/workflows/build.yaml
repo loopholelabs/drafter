@@ -1,0 +1,86 @@
+name: Build binaries
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.24.2
+
+      - name: Setup dest
+        run: |
+          mkdir /tmp/binaries
+
+      - name: Build drafter agent
+        run: |
+          cd cmd/drafter-agent
+          go build .
+          cp ./drafter-agent /tmp/binaries
+
+      - name: Build drafter forwarder
+        run: |
+          cd cmd/drafter-forwarder
+          go build .
+          cp ./drafter-forwarder /tmp/binaries
+
+      - name: Build drafter liveness
+        run: |
+          cd cmd/drafter-liveness
+          go build .
+          cp ./drafter-liveness /tmp/binaries
+
+      - name: Build drafter nat
+        run: |
+          cd cmd/drafter-nat
+          go build .
+          cp ./drafter-nat /tmp/binaries
+
+      - name: Build drafter packager
+        run: |
+          cd cmd/drafter-packager
+          go build .
+          cp ./drafter-packager /tmp/binaries
+
+      - name: Build drafter peer
+        run: |
+          cd cmd/drafter-peer
+          go build .
+          cp ./drafter-peer /tmp/binaries
+
+      - name: Build drafter perf
+        run: |
+          cd cmd/drafter-perf
+          go build .
+          cp ./drafter-perf /tmp/binaries
+
+      - name: Build drafter snapshotter
+        run: |
+          cd cmd/drafter-snapshotter
+          go build .
+          cp ./drafter-snapshotter /tmp/binaries
+
+      - name: Publish pre-release to GitHub releases
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: release-${{ github.ref_name }}
+          prerelease: true
+          files: |
+            /tmp/binaries/*
+
+      - name: Publish release to GitHub releases
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          prerelease: false
+          files: |
+            /tmp/binaries/*
