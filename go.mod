@@ -1,6 +1,6 @@
 module github.com/loopholelabs/drafter
 
-go 1.24
+go 1.24.0
 
 require (
 	github.com/coreos/go-iptables v0.8.0
@@ -22,7 +22,7 @@ require (
 	github.com/valkey-io/valkey-go v1.0.64
 	github.com/vishvananda/netlink v1.3.1
 	github.com/vishvananda/netns v0.0.5
-	golang.org/x/sys v0.35.0
+	golang.org/x/sys v0.36.0
 )
 
 require (
