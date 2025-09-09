@@ -73,7 +73,9 @@ func runNonSilo(ctx context.Context, log loggingtypes.Logger, testDir string, sn
 	} else {
 		fout, err := os.OpenFile("nosilo.stdout", os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0660)
 		if err == nil {
-			defer fout.Close()
+			defer func() {
+				_ = fout.Close()
+			}()
 			conf.Stdout = fout
 			conf.Stderr = fout
 		} else {

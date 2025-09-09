@@ -29,7 +29,7 @@ func benchValkey(profileCPU bool, name string, port int, iterations int) (time.D
 
 		defer func() {
 			pprof.StopCPUProfile()
-			f.Close()
+			_ = f.Close()
 		}()
 	}
 
@@ -94,7 +94,7 @@ func (vwr *ValkeyWaitReady) Ready() error {
 			// Try to connect to valkey
 			con, err := net.Dial("tcp", "127.0.0.1:3333")
 			if err == nil {
-				con.Close()
+				_ = con.Close()
 				fmt.Printf(" ### Valkey up!\n")
 				vwr.Up = true
 				return nil

@@ -97,20 +97,22 @@ func (n *Namespace) Open() error {
 	if err != nil {
 		return errors.Join(ErrCouldNotGetOriginalNamespace, err)
 	}
-	defer originalNSHandle.Close()
 	defer func() {
 		err := netns.Set(originalNSHandle)
 		if err != nil {
 			// TODO: We need to handle this error
 			fmt.Printf("Error setting netns back %v", err)
 		}
+		_ = originalNSHandle.Close()
 	}()
 
 	nsHandle, err := netns.NewNamed(n.id)
 	if err != nil {
 		return errors.Join(ErrCouldNotNewNamespace, err)
 	}
-	defer nsHandle.Close()
+	defer func() {
+		_ = nsHandle.Close()
+	}()
 
 	tapIface := &netlink.Tuntap{
 		LinkAttrs: netlink.NewLinkAttrs(),
@@ -309,20 +311,22 @@ func (n *Namespace) Close() error {
 	if err != nil {
 		return errors.Join(ErrCouldNotGetOriginalNamespace, err)
 	}
-	defer originalNSHandle.Close()
 	defer func() {
 		err := netns.Set(originalNSHandle)
 		if err != nil {
 			// TODO: We need to handle this error
 			fmt.Printf("Error setting netns back %v", err)
 		}
+		_ = originalNSHandle.Close()
 	}()
 
 	nsHandle, err := netns.GetFromName(n.id)
 	if err != nil {
 		return errors.Join(ErrCouldNotNewNamespace, err)
 	}
-	defer nsHandle.Close()
+	defer func() {
+		_ = nsHandle.Close()
+	}()
 
 	if err = netns.Set(nsHandle); err != nil {
 		return errors.Join(ErrCouldNotSetOriginalNamespace, err)

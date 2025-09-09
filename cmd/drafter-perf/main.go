@@ -155,7 +155,7 @@ func main() {
 	}
 	if !*noCleanup {
 		defer func() {
-			os.RemoveAll(*dTestDir)
+			_ = os.RemoveAll(*dTestDir)
 		}()
 	}
 
@@ -229,7 +229,10 @@ func main() {
 	}
 
 	// Clear the snap dir...
-	os.RemoveAll(*dSnapDir)
+	err = os.RemoveAll(*dSnapDir)
+	if err != nil {
+		panic(err)
+	}
 	err = os.Mkdir(*dSnapDir, 0666)
 	if err != nil {
 		panic(err)

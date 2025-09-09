@@ -45,8 +45,14 @@ var serveMetrics *string
 
 func main() {
 	defer func() {
-		os.RemoveAll(createSnapshotDir)
-		os.RemoveAll(testPeerDirCowS3)
+		err := os.RemoveAll(createSnapshotDir)
+		if err != nil {
+			fmt.Printf("Could not remove directory\n")
+		}
+		err = os.RemoveAll(testPeerDirCowS3)
+		if err != nil {
+			fmt.Printf("Could not remove directory\n")
+		}
 	}()
 	iterations := flag.Int("num", 10, "number of iterations")
 	sleepTime := flag.Duration("sleep", 5*time.Second, "sleep inbetween resume/suspend")
@@ -244,8 +250,14 @@ func main() {
 
 			// Close the connection from here...
 			// Close from the sending side
-			r1.Close()
-			w2.Close()
+			err = r1.Close()
+			if err != nil {
+				panic(err)
+			}
+			err = w2.Close()
+			if err != nil {
+				panic(err)
+			}
 
 			wg.Done()
 		}()

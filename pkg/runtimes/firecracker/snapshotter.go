@@ -110,8 +110,10 @@ func CreateSnapshot(log types.Logger, ctx context.Context, devices []SnapshotDev
 	if err != nil {
 		return errors.Join(ErrCouldNotStartFirecrackerServer, err)
 	}
-	defer server.Close()
-	defer os.RemoveAll(filepath.Dir(server.VMPath)) // Remove `firecracker/$id`, not just `firecracker/$id/root`
+	defer func() {
+		_ = server.Close()
+		_ = os.RemoveAll(filepath.Dir(server.VMPath)) // Remove `firecracker/$id`, not just `firecracker/$id/root`
+	}()
 
 	serverErr := make(chan error, 1)
 	go func() {
@@ -162,7 +164,9 @@ func CreateSnapshot(log types.Logger, ctx context.Context, devices []SnapshotDev
 	if err != nil {
 		return errors.Join(ErrCouldNotChownAgentServerVSock, err)
 	}
-	defer agent.Close()
+	defer func() {
+		_ = agent.Close()
+	}()
 
 	disks := []string{}
 	for _, device := range devices {
@@ -188,7 +192,9 @@ func CreateSnapshot(log types.Logger, ctx context.Context, devices []SnapshotDev
 	if err != nil {
 		return errors.Join(ErrCouldNotStartVM, err)
 	}
-	defer os.Remove(filepath.Join(server.VMPath, VSockName))
+	defer func() {
+		_ = os.Remove(filepath.Join(server.VMPath, VSockName))
+	}()
 
 	if log != nil {
 		log.Info().Msg("Started firecracker VM")
@@ -240,7 +246,10 @@ func CreateSnapshot(log types.Logger, ctx context.Context, devices []SnapshotDev
 	}
 
 	// Connections need to be closed before creating the snapshot
-	agent.Close()
+	err = agent.Close()
+	if err != nil {
+		return err
+	}
 
 	err = createFinalSnapshot(ctx, server, agentConfiguration.AgentVSockPort,
 		server.VMPath, hypervisorConfiguration.UID, hypervisorConfiguration.GID)
@@ -265,19 +274,25 @@ func CreateSnapshot(log types.Logger, ctx context.Context, devices []SnapshotDev
 }
 
 func copyFile(src, dst string, uid int, gid int) (int64, error) {
-	srcFile, err := os.Open(src)
-	if err != nil {
-		return 0, errors.Join(ErrCouldNotOpenSourceFile, err)
-	}
-	defer srcFile.Close()
-
 	dstFile, err := os.Create(dst)
 	if err != nil {
 		return 0, errors.Join(ErrCouldNotCreateDestinationFile, err)
 	}
-	defer dstFile.Close()
+
+	srcFile, err := os.Open(src)
+	if err != nil {
+		_ = dstFile.Close()
+		return 0, errors.Join(ErrCouldNotOpenSourceFile, err)
+	}
 
 	n, err := io.Copy(dstFile, srcFile)
+	_ = srcFile.Close()
+	if err != nil {
+		_ = dstFile.Close()
+		return 0, errors.Join(ErrCouldNotCopyFileContent, err)
+	}
+
+	err = dstFile.Close()
 	if err != nil {
 		return 0, errors.Join(ErrCouldNotCopyFileContent, err)
 	}
@@ -296,13 +311,7 @@ func copyFile(src, dst string, uid int, gid int) (int64, error) {
 func copySnapshotFiles(devices []SnapshotDevice, vmPath string) error {
 
 	for _, device := range devices {
-		inputFile, err := os.Open(filepath.Join(vmPath, device.Name))
-		if err != nil {
-			return errors.Join(ErrCouldNotOpenInputFile, err)
-		}
-		defer inputFile.Close()
-
-		err = os.MkdirAll(filepath.Dir(device.Output), os.ModePerm)
+		err := os.MkdirAll(filepath.Dir(device.Output), os.ModePerm)
 		if err != nil {
 			return errors.Join(common.ErrCouldNotCreateOutputDir, err)
 		}
@@ -311,10 +320,17 @@ func copySnapshotFiles(devices []SnapshotDevice, vmPath string) error {
 		if err != nil {
 			return errors.Join(ErrCouldNotCreateOutputFile, err)
 		}
-		defer outputFile.Close()
+
+		inputFile, err := os.Open(filepath.Join(vmPath, device.Name))
+		if err != nil {
+			_ = outputFile.Close()
+			return errors.Join(ErrCouldNotOpenInputFile, err)
+		}
 
 		deviceSize, err := io.Copy(outputFile, inputFile)
+		_ = inputFile.Close()
 		if err != nil {
+			_ = outputFile.Close()
 			return errors.Join(ErrCouldNotCopyFile, err)
 		}
 
@@ -329,8 +345,14 @@ func copySnapshotFiles(devices []SnapshotDevice, vmPath string) error {
 		if paddingLength > 0 {
 			_, err := outputFile.Write(make([]byte, paddingLength))
 			if err != nil {
+				_ = outputFile.Close()
 				return errors.Join(ErrCouldNotWritePadding, err)
 			}
+		}
+
+		err = outputFile.Close()
+		if err != nil {
+			return errors.Join(ErrCouldNotCreateOutputFile, err)
 		}
 	}
 	return nil
@@ -363,9 +385,14 @@ func createFinalSnapshot(ctx context.Context, server *FirecrackerMachine, vsockP
 	if err != nil {
 		return errors.Join(ErrCouldNotOpenPackageConfigFile, err)
 	}
-	defer outputFile.Close()
 
 	_, err = outputFile.Write(packageConfig)
+	if err != nil {
+		_ = outputFile.Close()
+		return errors.Join(ErrCouldNotWritePackageConfig, err)
+	}
+
+	err = outputFile.Close()
 	if err != nil {
 		return errors.Join(ErrCouldNotWritePackageConfig, err)
 	}

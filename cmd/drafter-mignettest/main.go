@@ -152,7 +152,10 @@ func main() {
 		}
 
 		// Close the connection from here...
-		conn.Close()
+		err = conn.Close()
+		if err != nil {
+			panic(err)
+		}
 
 		err = myPeer.Close()
 		if err != nil {
@@ -297,7 +300,10 @@ func handleConnection(migration int, conn net.Conn, log types.Logger, firecracke
 	}
 
 	// Close the connection from here...
-	toConn.Close()
+	err = toConn.Close()
+	if err != nil {
+		return err
+	}
 
 	err = nextPeer.Close()
 	if err != nil {

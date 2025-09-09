@@ -62,7 +62,10 @@ func ShowDeviceStats(dummyMetrics *testutil.DummyMetrics, name string) {
 		}
 	}
 
-	devTab.Print()
+	err := devTab.Print()
+	if err != nil {
+		fmt.Printf("Error printing table")
+	}
 
 	fmt.Printf("\n")
 }

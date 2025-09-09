@@ -234,7 +234,7 @@ func migrateNow(id int, log loggingtypes.Logger, met *testutil.DummyMetrics, con
 	}
 	defer func() {
 		pprof.StopCPUProfile()
-		f.Close()
+		_ = f.Close()
 	}()
 
 	readersFrom := make([]io.Reader, 0)
@@ -388,7 +388,7 @@ func migrateNow(id int, log loggingtypes.Logger, met *testutil.DummyMetrics, con
 				}
 			}
 			fmt.Printf("MEMORY BYTES block at offset %d differ (%d)\n", offset, diff)
-			return errors.New("CORRUPTION!")
+			return errors.New("corruption detected")
 		}
 	}
 
@@ -410,7 +410,7 @@ func migrateNow(id int, log loggingtypes.Logger, met *testutil.DummyMetrics, con
 			fmt.Printf("Available P2P %v\n", met.AvailableP2P)
 			fmt.Printf("Available Alt %v\n", met.AvailableAltSources)
 
-			return errors.New("MISSING DATA!")
+			return errors.New("missing data")
 		}
 	}
 
@@ -426,7 +426,7 @@ func migrateNow(id int, log loggingtypes.Logger, met *testutil.DummyMetrics, con
 	err = peerTo.Resume(context.TODO(), 15*time.Minute, 15*time.Minute)
 
 	if err != nil {
-		peerTo.Close() // Close the VM here...
+		_ = peerTo.Close() // Close the VM here...
 		return err
 	}
 
@@ -469,11 +469,12 @@ func migrateNow(id int, log loggingtypes.Logger, met *testutil.DummyMetrics, con
 		inBoth := 0
 		// Now count up where the data came from
 		for _, v := range sources {
-			if v == 2 {
-				onlyP2P++
-			} else if v == 1 {
+			switch v {
+			case 1:
 				onlyAltSources++
-			} else if v == 3 {
+			case 2:
+				onlyP2P++
+			case 3:
 				inBoth++
 			}
 		}
@@ -519,7 +520,7 @@ func migrateNow(id int, log loggingtypes.Logger, met *testutil.DummyMetrics, con
 		formatBytes(totalFP2P), formatBytes(totalFAlt), formatBytes(totalFBoth),
 	})
 
-	devTab.Print()
+	_ = devTab.Print()
 
 	return nil
 }
@@ -561,7 +562,9 @@ func setupPeer(log loggingtypes.Logger, met metrics.SiloMetrics, conf *RunConfig
 	} else {
 		fout, err := os.OpenFile(fmt.Sprintf("%s-%04d.stdout", conf.Name, instance), os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0660)
 		if err == nil {
-			defer fout.Close()
+			defer func() {
+				_ = fout.Close()
+			}()
 			hConf.Stdout = fout
 			hConf.Stderr = fout
 		} else {

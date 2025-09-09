@@ -188,8 +188,8 @@ func TestPeerCowS3Multi(t *testing.T) {
 
 			// Close the connection from here...
 			// Close from the sending side
-			r1.Close()
-			w2.Close()
+			_ = r1.Close()
+			_ = w2.Close()
 
 			wg.Done()
 		}()
@@ -254,7 +254,7 @@ func TestPeerCowS3Multi(t *testing.T) {
 
 		// Make sure we can close the last peer.
 		for _, devName := range common.KnownNames {
-			os.Remove(path.Join(fmt.Sprintf("%s_%d", testPeerDirCowS3, migration), devName))
+			_ = os.Remove(path.Join(fmt.Sprintf("%s_%d", testPeerDirCowS3, migration), devName))
 		}
 
 		err = lastPeer.Close()

@@ -28,7 +28,10 @@ func benchCICD(profileCPU bool, name string, timeout time.Duration) error {
 		}
 		defer func() {
 			pprof.StopCPUProfile()
-			f.Close()
+			err := f.Close()
+			if err != nil {
+				panic(err)
+			}
 		}()
 	}
 
@@ -50,11 +53,11 @@ func portCallback(port int, timeout time.Duration) error {
 					return err
 				}
 				fmt.Printf("PORT %d said %s\n", port, data)
-				con.Close()
-				return nil
+				err = con.Close()
+				return err
 			}
 		case <-ctx.Done():
-			return errors.New("Never finished")
+			return errors.New("never finished")
 		}
 	}
 }

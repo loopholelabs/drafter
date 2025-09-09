@@ -235,7 +235,12 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
-		defer closer.Close()
+		defer func() {
+			err := closer.Close()
+			if err != nil {
+				log.Error().Err(err).Msg("Error closing connection")
+			}
+		}()
 
 		log.Info().Str("remote", remoteAddr).Msg("Migrating from")
 	}
@@ -296,7 +301,12 @@ func main() {
 				panic(err)
 			}
 		} else {
-			defer closer.Close()
+			defer func() {
+				err := closer.Close()
+				if err != nil {
+					log.Error().Err(err).Msg("Error closing connection")
+				}
+			}()
 
 			log.Info().Str("addr", remoteAddr).Msg("Migrating to")
 

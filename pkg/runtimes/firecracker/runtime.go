@@ -599,7 +599,9 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) grabMemoryChangesFailsafe() error
 		return err
 	}
 
-	defer memf.Close()
+	defer func() {
+		_ = memf.Close()
+	}()
 
 	// Find changes... (SLOW)
 	blockSize := uint64(1024 * 1024 * 4)

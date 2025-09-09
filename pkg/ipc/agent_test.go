@@ -66,7 +66,10 @@ func TestAgent(tt *testing.T) {
 
 			assert.NoError(t, err)
 
-			defer agent.Close()
+			defer func() {
+				err := agent.Close()
+				assert.NoError(t, err)
+			}()
 
 			countBeforeSuspend := uint64(0)
 			countAfterResume := uint64(0)
@@ -85,7 +88,10 @@ func TestAgent(tt *testing.T) {
 			client, err := StartAgentClient[*AgentClientLocal[struct{}], struct{}](log, connFactory2, agentClient)
 			assert.NoError(t, err)
 
-			defer client.Close()
+			defer func() {
+				err := client.Close()
+				assert.NoError(t, err)
+			}()
 
 			// Try doing RPC calls...
 
