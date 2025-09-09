@@ -13,7 +13,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: 1.24.2
+          go-version: 1.25
 
       - name: Test
         run: go test -exec sudo -v ./...
@@ -27,7 +27,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: 1.24.2
+          go-version: 1.25
 
       - name: Setup kvm
         uses: DeterminateSystems/nix-installer-action@main
@@ -86,7 +86,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: 1.24.2
+          go-version: 1.25
 
       - name: Setup kvm
         uses: DeterminateSystems/nix-installer-action@main
@@ -150,7 +150,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: 1.24.2
+          go-version: 1.25
 
       - name: Setup kvm
         uses: DeterminateSystems/nix-installer-action@main
