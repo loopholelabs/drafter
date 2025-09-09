@@ -123,7 +123,12 @@ func connectAndHandle(log loggingtypes.Logger, ctx context.Context, timeout time
 	if err != nil {
 		return err
 	}
-	defer connectedAgentClient.Close()
+	defer func() {
+		err := connectedAgentClient.Close()
+		if err != nil {
+			log.Info().Err(err).Msg("Error closing agent")
+		}
+	}()
 
 	log.Info().Msg("Connected to host, serving RPC calls")
 

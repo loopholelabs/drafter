@@ -65,16 +65,22 @@ func ArchivePackage(ctx context.Context, devices []PackagerDevice, packageOutput
 	if err != nil {
 		return errors.Join(ErrCouldNotOpenPackageOutputFile, err)
 	}
-	defer packageOutputFile.Close()
+	defer func() {
+		_ = packageOutputFile.Close()
+	}()
 
 	compressor, err := zstd.NewWriter(packageOutputFile)
 	if err != nil {
 		return errors.Join(ErrCouldNotCreateCompressor, err)
 	}
-	defer compressor.Close()
+	defer func() {
+		_ = compressor.Close()
+	}()
 
 	packageOutputArchive := tar.NewWriter(compressor)
-	defer packageOutputArchive.Close()
+	defer func() {
+		_ = packageOutputArchive.Close()
+	}()
 
 	for _, device := range devices {
 	s:
@@ -105,10 +111,15 @@ func ArchivePackage(ctx context.Context, devices []PackagerDevice, packageOutput
 		if err != nil {
 			return errors.Join(ErrCouldNotOpenDevice, err)
 		}
-		defer f.Close()
 
 		if _, err = io.Copy(packageOutputArchive, f); err != nil {
+			_ = f.Close()
 			return errors.Join(ErrCouldNotCopyToArchive, err)
+		}
+
+		err = f.Close()
+		if err != nil {
+			return errors.Join(ErrCouldNotOpenDevice, err)
 		}
 	}
 
@@ -120,7 +131,9 @@ func ExtractPackage(ctx context.Context, packageInputPath string, devices []Pack
 	if err != nil {
 		return errors.Join(ErrCouldNotOpenPackageInputFile, err)
 	}
-	defer packageFile.Close()
+	defer func() {
+		_ = packageFile.Close()
+	}()
 
 	uncompressor, err := zstd.NewReader(packageFile)
 	if err != nil {
@@ -163,10 +176,15 @@ func ExtractPackage(ctx context.Context, packageInputPath string, devices []Pack
 			if err != nil {
 				return errors.Join(ErrCouldNotOpenOutputFile, err)
 			}
-			defer outputFile.Close()
 
 			if _, err = io.Copy(outputFile, packageArchive); err != nil {
+				_ = outputFile.Close()
 				return errors.Join(ErrCouldNotCopyToOutput, err)
+			}
+
+			err = outputFile.Close()
+			if err != nil {
+				return errors.Join(ErrCouldNotOpenOutputFile, err)
 			}
 
 			extracted = true

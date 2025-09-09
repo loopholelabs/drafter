@@ -119,20 +119,22 @@ func ForwardPorts(
 				if err != nil {
 					return "", errors.Join(ErrCouldNotGetOriginalNSHandle, err)
 				}
-				defer originalNSHandle.Close()
 				defer func() {
 					err := netns.Set(originalNSHandle)
 					if err != nil {
 						// TODO: We need to handle this error
 						fmt.Printf("Error setting netns back %v", err)
 					}
+					_ = originalNSHandle.Close()
 				}()
 
 				nsHandle, err := netns.GetFromName(input.Netns)
 				if err != nil {
 					return "", errors.Join(ErrCouldNotGetNSHandle, err)
 				}
-				defer nsHandle.Close()
+				defer func() {
+					_ = nsHandle.Close()
+				}()
 
 				if err := netns.Set(nsHandle); err != nil {
 					return "", errors.Join(ErrCouldNotSetNSHandle, err)

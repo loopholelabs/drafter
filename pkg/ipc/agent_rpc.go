@@ -63,8 +63,8 @@ func StartAgentRPC[L AgentServerLocal, R AgentServerRemote[G], G any](log loggin
 	}
 
 	connFactoryShutdown := func() {
-		os.Remove(fmt.Sprintf("%s_%d", vsockPath, vsockPort))
-		lis.Close()
+		_ = os.Remove(fmt.Sprintf("%s_%d", vsockPath, vsockPort))
+		_ = lis.Close()
 	}
 
 	connFactory := func(ctx context.Context) (io.ReadWriteCloser, error) {

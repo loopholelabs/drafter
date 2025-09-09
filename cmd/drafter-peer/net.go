@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net"
 )
@@ -24,7 +25,12 @@ func listenAddr(ctx context.Context, addr string) (io.Closer, []io.Reader, []io.
 	if err != nil {
 		return nil, nil, nil, "", err
 	}
-	defer lis.Close()
+	defer func() {
+		err := lis.Close()
+		if err != nil {
+			fmt.Printf("Error closing listener\n")
+		}
+	}()
 
 	go func() {
 		conn, err := lis.Accept()
