@@ -1,7 +1,7 @@
 # Public variables
 OUTPUT_DIR ?= out
 
-OS_URL ?= https://github.com/loopholelabs/buildroot/archive/8958adcacfec580cda9ee5ff049017a9f64a6996.tar.gz
+OS_URL ?= https://github.com/loopholelabs/buildroot/archive/666509742535a5b7b04315040249ffdcf1ed7350.tar.gz
 OS_DEFCONFIG ?= drafteros-oci-firecracker-x86_64_defconfig
 OS_BR2_EXTERNAL ?= ../../os
 
