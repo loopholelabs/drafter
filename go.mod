@@ -22,7 +22,7 @@ require (
 	github.com/valkey-io/valkey-go v1.0.65
 	github.com/vishvananda/netlink v1.3.1
 	github.com/vishvananda/netns v0.0.5
-	golang.org/x/sys v0.36.0
+	golang.org/x/sys v0.37.0
 )
 
 require (
