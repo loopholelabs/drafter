@@ -19,7 +19,7 @@ require (
 	github.com/prometheus/client_golang v1.23.2
 	github.com/sirupsen/logrus v1.9.3
 	github.com/stretchr/testify v1.11.1
-	github.com/valkey-io/valkey-go v1.0.65
+	github.com/valkey-io/valkey-go v1.0.67
 	github.com/vishvananda/netlink v1.3.1
 	github.com/vishvananda/netns v0.0.5
 	golang.org/x/sys v0.36.0
